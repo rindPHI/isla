@@ -143,7 +143,7 @@ class ConjunctiveFormula(PropositionalCombinator):
 class DisjunctiveFormula(PropositionalCombinator):
     def __init__(self, *args: Formula):
         if len(args) < 2:
-            raise RuntimeError(f"Conjunction needs at least two arguments, {len(args)} given.")
+            raise RuntimeError(f"Disjunction needs at least two arguments, {len(args)} given.")
         super().__init__(*args)
 
     def __str__(self):
