@@ -271,6 +271,11 @@ def well_formed(formula: Formula, bound_vars: Optional[OrderedSet[BoundVariable]
     else:
         raise NotImplementedError()
 
+    # TODO: Implement propositional combinator checking.
+    #       In particular, free variables in SMT formulas have to be considered as bound
+    #       afterward in conjunctions, since we cannot change anything inside their instantiations.
+    #       Also, constants in SMT formulas must not be "in" variables of quantifiers.
+
 
 def evaluate(formula: Formula, assignments: Dict[Variable, ParseTree]) -> bool:
     assert well_formed(formula)
