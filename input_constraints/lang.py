@@ -3,7 +3,7 @@ from typing import Union, List, Optional, Iterable, cast, Dict, Tuple
 from orderedset import OrderedSet
 import z3
 
-from input_constraints.helpers import get_subtree, next_path
+from input_constraints.helpers import get_subtree, next_path, get_symbols
 from input_constraints.type_defs import ParseTree, Path
 
 
@@ -113,10 +113,25 @@ class Formula:
     def free_variables(self) -> OrderedSet[Variable]:
         pass
 
+    def __and__(self, other):
+        return ConjunctiveFormula(self, other)
+
+    def __or__(self, other):
+        return DisjunctiveFormula(self, other)
+
+    def __neg__(self):
+        return NegatedFormula(self)
+
 
 class PropositionalCombinator(Formula):
     def __init__(self, *args: Formula):
         self.args = list(args)
+
+    def free_variables(self) -> OrderedSet[Variable]:
+        result: OrderedSet[Variable] = OrderedSet([])
+        for arg in self.args:
+            result |= arg.free_variables()
+        return result
 
     def __repr__(self):
         return f"{type(self).__name__}({', '.join(map(repr, self.args))})"
@@ -157,6 +172,12 @@ class SMTFormula(Formula):
         :param formula: The SMT formula.
         :param free_variables: Free varialbes in this formula.
         """
+
+        actual_symbols = get_symbols(formula)
+        if len(free_variables) != len(actual_symbols):
+            raise RuntimeError(f"Supplied number of {len(free_variables)} symbols does not match "
+                               f"actual number of symbols {len(actual_symbols)} in formula '{formula}'")
+
         self.formula = formula
         self.free_variables_ = OrderedSet(free_variables)
 
@@ -246,13 +267,22 @@ class ExistsBeforeFormula(ExistsFormula):
                f'({str(self.inner_formula)})'
 
 
-def well_formed(formula: Formula, bound_vars: Optional[OrderedSet[BoundVariable]] = None) -> bool:
+def well_formed(formula: Formula,
+                bound_vars: Optional[OrderedSet[BoundVariable]] = None,
+                bound_constants: Optional[OrderedSet[Constant]] = None,
+                bound_by_smt: Optional[OrderedSet[Variable]] = None) -> bool:
     if bound_vars is None:
         bound_vars = OrderedSet([])
+    if bound_constants is None:
+        bound_constants = OrderedSet([])
+    if bound_by_smt is None:
+        bound_by_smt = OrderedSet([])
     t = type(formula)
 
     if issubclass(t, QuantifiedFormula):
         formula: QuantifiedFormula
+        if formula.in_variable in bound_by_smt:
+            return False
         if formula.bound_variables().intersection(bound_vars):
             return False
         if type(formula.in_variable) is BoundVariable and formula.in_variable not in bound_vars:
@@ -263,18 +293,42 @@ def well_formed(formula: Formula, bound_vars: Optional[OrderedSet[BoundVariable]
         if type(t) is ExistsBeforeFormula and cast(ExistsBeforeFormula, formula).before_variable not in bound_vars:
             return False
 
-        return well_formed(formula.inner_formula, bound_vars | formula.bound_variables())
+        return well_formed(
+            formula.inner_formula,
+            bound_vars | formula.bound_variables(),
+            bound_constants
+            if type(formula.in_variable) is BoundVariable
+            else bound_constants | OrderedSet([formula.in_variable]),
+            bound_by_smt
+        )
     elif t is SMTFormula:
+        if any(free_var in bound_constants for free_var in formula.free_variables()):
+            return False
+
         return not any(free_var not in bound_vars
                        for free_var in formula.free_variables()
                        if type(free_var) is BoundVariable)
+    elif issubclass(t, PropositionalCombinator):
+        formula: PropositionalCombinator
+
+        if t is ConjunctiveFormula:
+            smt_formulas = [f for f in formula.args if type(f) is SMTFormula]
+            other_formulas = [f for f in formula.args if type(f) is not SMTFormula]
+
+            if any(not well_formed(f, bound_vars, bound_constants, bound_by_smt) for f in smt_formulas):
+                return False
+
+            for smt_formula in smt_formulas:
+                bound_vars |= [var for var in smt_formula.free_variables() if type(var) is BoundVariable]
+                bound_by_smt |= smt_formula.free_variables()
+
+            return all(well_formed(f, bound_vars, bound_constants, bound_by_smt) for f in other_formulas)
+        else:
+            return all(well_formed(subformula, bound_vars, bound_constants, bound_by_smt)
+                       for subformula in formula.args)
+
     else:
         raise NotImplementedError()
-
-    # TODO: Implement propositional combinator checking.
-    #       In particular, free variables in SMT formulas have to be considered as bound
-    #       afterward in conjunctions, since we cannot change anything inside their instantiations.
-    #       Also, constants in SMT formulas must not be "in" variables of quantifiers.
 
 
 def evaluate(formula: Formula, assignments: Dict[Variable, ParseTree]) -> bool:

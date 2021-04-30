@@ -89,6 +89,36 @@ class TestEvaluation(unittest.TestCase):
 
         self.assertFalse(well_formed(bad_formula_3))
 
+        self.assertTrue(well_formed(-formula))
+        self.assertFalse(well_formed(-bad_formula))
+        self.assertFalse(well_formed(-bad_formula_2))
+        self.assertFalse(well_formed(-bad_formula_3))
+
+        self.assertFalse(well_formed(formula & bad_formula))
+        self.assertFalse(well_formed(formula | bad_formula))
+
+        bad_formula_4: Formula = sc.forall(
+            assgn_1,
+            prog,
+            sc.SMTFormula(cast(z3.BoolRef, prog.to_smt() == z3.StringVal("")), prog)
+        )
+
+        self.assertFalse(well_formed(bad_formula_4))
+
+        bad_formula_5: Formula = sc.forall(
+            assgn_1,
+            prog,
+            sc.SMTFormula(cast(z3.BoolRef, assgn_1.to_smt() == z3.StringVal("")), assgn_1) & \
+            sc.forall(
+                var,
+                assgn_1,
+                sc.SMTFormula(z3.BoolVal(True))
+            )
+        )
+
+        self.assertFalse(well_formed(bad_formula_5))
+
+
     def test_match(self):
         parser = EarleyParser(LANG_GRAMMAR)
 
