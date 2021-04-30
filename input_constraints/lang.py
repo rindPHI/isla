@@ -1,7 +1,10 @@
-from typing import Union, List, Optional, Iterable, cast
+from typing import Union, List, Optional, Iterable, cast, Dict, Tuple
 
 from orderedset import OrderedSet
 import z3
+
+from input_constraints.helpers import get_subtree, next_path
+from input_constraints.type_defs import ParseTree, Path
 
 
 class Variable:
@@ -59,8 +62,42 @@ class BindExpression:
         result.bound_elements.append(other)
         return result
 
-    def bound_variables(self):
+    def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([var for var in self.bound_elements if type(var) is BoundVariable])
+
+    def match(self, tree: ParseTree) -> Optional[Dict[BoundVariable, ParseTree]]:
+        result: Dict[BoundVariable, ParseTree] = {}
+
+        def find(path: Path, elems: List[BoundVariable]) -> bool:
+            if not elems:
+                return True
+
+            node, children = get_subtree(path, tree)
+            if node == elems[0].n_type:
+                result[elems[0]] = (node, children)
+
+                if len(elems) == 1:
+                    return True
+
+                next_p = next_path(path, tree)
+                if next_p is None:
+                    return False
+
+                return find(next_p, elems[1:])
+            else:
+                if not children:
+                    next_p = next_path(path, tree)
+                    if next_p is None:
+                        return False
+                    return find(next_p, elems)
+                else:
+                    return find(path + (0,), elems)
+
+        success = find(tuple(), [elem for elem in self.bound_elements if type(elem) is BoundVariable])
+        if success:
+            return result
+        else:
+            return None
 
     def __repr__(self):
         return f'BindExpression({", ".join(map(repr, self.bound_elements))})'
@@ -75,6 +112,42 @@ class Formula:
 
     def free_variables(self) -> OrderedSet[Variable]:
         pass
+
+
+class PropositionalCombinator(Formula):
+    def __init__(self, *args: Formula):
+        self.args = list(args)
+
+    def __repr__(self):
+        return f"{type(self).__name__}({', '.join(map(repr, self.args))})"
+
+
+class NegatedFormula(PropositionalCombinator):
+    def __init__(self, arg: Formula):
+        super().__init__(arg)
+
+    def __str__(self):
+        return f"¬({self.args[0]})"
+
+
+class ConjunctiveFormula(PropositionalCombinator):
+    def __init__(self, *args: Formula):
+        if len(args) < 2:
+            raise RuntimeError(f"Conjunction needs at least two arguments, {len(args)} given.")
+        super().__init__(*args)
+
+    def __str__(self):
+        return f"({' ∧ '.join(map(str, self.args))})"
+
+
+class DisjunctiveFormula(PropositionalCombinator):
+    def __init__(self, *args: Formula):
+        if len(args) < 2:
+            raise RuntimeError(f"Conjunction needs at least two arguments, {len(args)} given.")
+        super().__init__(*args)
+
+    def __str__(self):
+        return f"({' ∨ '.join(map(str, self.args))})"
 
 
 class SMTFormula(Formula):
@@ -197,3 +270,9 @@ def well_formed(formula: Formula, bound_vars: Optional[OrderedSet[BoundVariable]
                        if type(free_var) is BoundVariable)
     else:
         raise NotImplementedError()
+
+
+def evaluate(formula: Formula, assignments: Dict[Variable, ParseTree]) -> bool:
+    assert well_formed(formula)
+
+    return False  # Not implemented

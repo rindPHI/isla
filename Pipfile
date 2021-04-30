@@ -6,6 +6,7 @@ name = "pypi"
 [packages]
 z3-solver = "*"
 orderedset = "*"
+fuzzingbook = "*"
 
 [dev-packages]
 

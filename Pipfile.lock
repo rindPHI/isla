@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "ba9d067f718f9ec910fbcc18b66adb26771fe785ccc2cdaa2f5cd36af7e82131"
+            "sha256": "27a0492f662da8e97164d1de4d0337503adb4978a337b199af9bdeef849b7c95"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -16,6 +16,13 @@
         ]
     },
     "default": {
+        "fuzzingbook": {
+            "hashes": [
+                "sha256:3f44a5305f45faa98ca4c01dfe3c7a32e40df96ed7318253911d7edca2fce985"
+            ],
+            "index": "pypi",
+            "version": "==0.8.1"
+        },
         "orderedset": {
             "hashes": [
                 "sha256:b2f5ccfb5a86e7b3b3ddf18b29779cc18b24653abf9d6da4bebecf33780a6e29"

@@ -3,6 +3,8 @@ import unittest
 from typing import cast
 
 import z3
+from fuzzingbook.GrammarFuzzer import tree_to_string
+from fuzzingbook.Parser import EarleyParser
 
 from input_constraints.lang import Constant, BoundVariable, Formula, ForallFormula, well_formed
 import input_constraints.shortcuts as sc
@@ -86,6 +88,38 @@ class TestEvaluation(unittest.TestCase):
         )
 
         self.assertFalse(well_formed(bad_formula_3))
+
+    def test_match(self):
+        parser = EarleyParser(LANG_GRAMMAR)
+
+        lhs = BoundVariable("$lhs", "<var>")
+        rhs = BoundVariable("$rhs", "<var>")
+
+        bind_expr = lhs + " := " + rhs
+        tree = next(parser.parse("x := y"))
+
+        match = bind_expr.match(tree)
+        self.assertEqual(('<var>', [('x', [])]), match[lhs])
+        self.assertEqual(('<var>', [('y', [])]), match[rhs])
+
+        assgn_1 = BoundVariable("$assgn_1", "<assgn>")
+        assgn_2 = BoundVariable("$assgn_2", "<assgn>")
+        stmt = BoundVariable("$stmt", "<stmt>")
+
+        bind_expr = assgn_1 + " ; " + assgn_2 + " ; " + stmt
+        tree = next(parser.parse("x := y ; x := x ; y := z ; z := z"))
+
+        match = bind_expr.match(tree)
+        self.assertEqual(tree_to_string(match[assgn_1]), "x := y")
+        self.assertEqual(tree_to_string(match[assgn_2]), "x := x")
+        self.assertEqual(tree_to_string(match[stmt]), "y := z ; z := z")
+
+        # The stmt variable matches the whole remaining program; assgn2 can no longer be matched
+        bind_expr = assgn_1 + " ; " + stmt + " ; " + assgn_2
+        match = bind_expr.match(tree)
+        self.assertFalse(match)
+
+        match = bind_expr.match(tree)
 
 
 if __name__ == '__main__':
