@@ -113,8 +113,7 @@ class QuantifiedFormula(Formula):
 
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([self.bound_variable]) | \
-               (OrderedSet([]) if self.bind_expression is None else self.bind_expression.bound_variables()) | \
-               self.inner_formula.bound_variables()
+               (OrderedSet([]) if self.bind_expression is None else self.bind_expression.bound_variables())
 
     def free_variables(self) -> OrderedSet[Variable]:
         return (OrderedSet([self.in_variable]) | self.inner_formula.free_variables()) - self.bound_variables()
@@ -181,6 +180,8 @@ def well_formed(formula: Formula, bound_vars: Optional[OrderedSet[BoundVariable]
 
     if issubclass(t, QuantifiedFormula):
         formula: QuantifiedFormula
+        if formula.bound_variables().intersection(bound_vars):
+            return False
         if type(formula.in_variable) is BoundVariable and formula.in_variable not in bound_vars:
             return False
         if any(free_var not in bound_vars for free_var in formula.free_variables() if type(free_var) is BoundVariable):

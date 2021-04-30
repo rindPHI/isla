@@ -75,6 +75,18 @@ class TestEvaluation(unittest.TestCase):
         self.assertFalse(well_formed(bad_formula_2))
         self.assertFalse(bad_formula_2.free_variables())
 
+        bad_formula_3: Formula = sc.forall(
+            assgn_1,
+            prog,
+            sc.forall(
+                assgn_1,
+                prog,
+                sc.smt_for(z3.BoolVal(True))
+            )
+        )
+
+        self.assertFalse(well_formed(bad_formula_3))
+
 
 if __name__ == '__main__':
     unittest.main()
