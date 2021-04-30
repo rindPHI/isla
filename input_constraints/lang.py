@@ -1,5 +1,6 @@
 from typing import Union, List, Optional, Iterable, cast, Dict, Tuple
 
+from fuzzingbook.GrammarFuzzer import tree_to_string
 from orderedset import OrderedSet
 import z3
 
@@ -334,4 +335,30 @@ def well_formed(formula: Formula,
 def evaluate(formula: Formula, assignments: Dict[Variable, ParseTree]) -> bool:
     assert well_formed(formula)
 
-    return False  # Not implemented
+    t = type(formula)
+
+    if t is SMTFormula:
+        instantiation = z3.substitute(
+            formula,
+            *tuple({z3.String(symbol.name): z3.StringVal(tree_to_string(symbol_assignment))
+                    for symbol, symbol_assignment
+                    in assignments.items()}.items()))
+
+        z3.set_param("smt.string_solver", "z3str3")
+        solver = z3.Solver()
+        solver.add(instantiation)
+        return solver.check() == z3.sat  # Set timeout?
+    elif t is ForallFormula:
+        raise NotImplementedError()  # TODO
+    elif t is ExistsFormula:
+        raise NotImplementedError()  # TODO
+    elif t is ExistsBeforeFormula:
+        raise NotImplementedError()  # TODO
+    elif t is NegatedFormula:
+        raise NotImplementedError()  # TODO
+    elif t is ConjunctiveFormula:
+        raise NotImplementedError()  # TODO
+    elif t is DisjunctiveFormula:
+        raise NotImplementedError()  # TODO
+    else:
+        raise NotImplementedError()
