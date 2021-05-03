@@ -170,12 +170,13 @@ class TestEvaluation(unittest.TestCase):
         invalid_prog_1 = "x := x"
         invalid_prog_2 = "x := z"
         invalid_prog_3 = "x := 1 ; y := z"
+        invalid_prog_4 = "x := y ; y := 1"
 
         parser = EarleyParser(LANG_GRAMMAR)
 
         for valid_prog in [valid_prog_1, valid_prog_2]:
             self.assertTrue(evaluate(formula, {prog: next(parser.parse(valid_prog))}))
-        for invalid_prog in [invalid_prog_1, invalid_prog_2, invalid_prog_3]:
+        for invalid_prog in [invalid_prog_1, invalid_prog_2, invalid_prog_3, invalid_prog_4]:
             self.assertFalse(evaluate(formula, {prog: next(parser.parse(invalid_prog))}))
 
     def test_match(self):
@@ -207,8 +208,6 @@ class TestEvaluation(unittest.TestCase):
         bind_expr = assgn_1 + " ; " + stmt + " ; " + assgn_2
         match = bind_expr.match(tree)
         self.assertFalse(match)
-
-        match = bind_expr.match(tree)
 
 
 if __name__ == '__main__':
