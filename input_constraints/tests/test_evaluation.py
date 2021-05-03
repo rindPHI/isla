@@ -41,11 +41,11 @@ class TestEvaluation(unittest.TestCase):
             sc.forall(
                 var,
                 rhs_1,
-                sc.exists_before_bind(
+                sc.exists_bind(
                     lhs_2 + " := " + rhs_2,
                     assgn_2,
-                    assgn_1,
                     prog,
+                    sc.before(assgn_2, assgn_1, prog) &
                     sc.smt_for(cast(z3.BoolRef, lhs_2.to_smt() == var.to_smt()), lhs_2, var)
                 )
             )
@@ -57,11 +57,11 @@ class TestEvaluation(unittest.TestCase):
             lhs_1 + " := " + rhs_1,
             assgn_1,
             prog,
-            sc.exists_before_bind(
+            sc.exists_bind(
                 lhs_2 + " := " + rhs_2,
                 assgn_2,
-                assgn_1,
                 prog,
+                sc.before(assgn_2, assgn_1, prog) &
                 sc.smt_for(cast(z3.BoolRef, lhs_2.to_smt() == var.to_smt()), lhs_2, var)
             )
         )
@@ -117,6 +117,26 @@ class TestEvaluation(unittest.TestCase):
         )
 
         self.assertFalse(well_formed(bad_formula_5))
+
+        bad_formula_6: Formula = sc.forall(
+            assgn_1,
+            prog,
+            sc.SMTFormula(cast(z3.BoolRef, prog.to_smt() == z3.StringVal("x := x")), prog)
+        )
+
+        self.assertFalse(well_formed(bad_formula_6))
+
+        bad_formula_7: Formula = sc.forall(
+            assgn_1,
+            prog,
+            sc.forall(
+                assgn_2,
+                assgn_1,
+                sc.SMTFormula(cast(z3.BoolRef, assgn_1.to_smt() == z3.StringVal("x := x")), assgn_1)
+            )
+        )
+
+        self.assertFalse(well_formed(bad_formula_7))
 
     def test_evaluate(self):
         prog = Constant("$prog", "<prog>")

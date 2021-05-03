@@ -294,16 +294,14 @@ class ExistsFormula(QuantifiedFormula):
                f'{str(self.bound_variable)} ∈ {str(self.in_variable)}: ({str(self.inner_formula)})'
 
 
-# TODO: Inner SMT formulas must not use variables used in syntactic predicates
-#       or occurring in "in" expressions of quantifiers
 def well_formed(formula: Formula,
                 bound_vars: Optional[OrderedSet[BoundVariable]] = None,
-                bound_constants: Optional[OrderedSet[Constant]] = None,
+                in_expr_vars: Optional[OrderedSet[Variable]] = None,
                 bound_by_smt: Optional[OrderedSet[Variable]] = None) -> bool:
     if bound_vars is None:
         bound_vars = OrderedSet([])
-    if bound_constants is None:
-        bound_constants = OrderedSet([])
+    if in_expr_vars is None:
+        in_expr_vars = OrderedSet([])
     if bound_by_smt is None:
         bound_by_smt = OrderedSet([])
     t = type(formula)
@@ -322,13 +320,11 @@ def well_formed(formula: Formula,
         return well_formed(
             formula.inner_formula,
             bound_vars | formula.bound_variables(),
-            bound_constants
-            if type(formula.in_variable) is BoundVariable
-            else bound_constants | OrderedSet([formula.in_variable]),
+            in_expr_vars | OrderedSet([formula.in_variable]),
             bound_by_smt
         )
     elif t is SMTFormula:
-        if any(free_var in bound_constants for free_var in formula.free_variables()):
+        if any(free_var in in_expr_vars for free_var in formula.free_variables()):
             return False
 
         return not any(free_var not in bound_vars
@@ -341,16 +337,16 @@ def well_formed(formula: Formula,
             smt_formulas = [f for f in formula.args if type(f) is SMTFormula]
             other_formulas = [f for f in formula.args if type(f) is not SMTFormula]
 
-            if any(not well_formed(f, bound_vars, bound_constants, bound_by_smt) for f in smt_formulas):
+            if any(not well_formed(f, bound_vars, in_expr_vars, bound_by_smt) for f in smt_formulas):
                 return False
 
             for smt_formula in smt_formulas:
                 bound_vars |= [var for var in smt_formula.free_variables() if type(var) is BoundVariable]
                 bound_by_smt |= smt_formula.free_variables()
 
-            return all(well_formed(f, bound_vars, bound_constants, bound_by_smt) for f in other_formulas)
+            return all(well_formed(f, bound_vars, in_expr_vars, bound_by_smt) for f in other_formulas)
         else:
-            return all(well_formed(subformula, bound_vars, bound_constants, bound_by_smt)
+            return all(well_formed(subformula, bound_vars, in_expr_vars, bound_by_smt)
                        for subformula in formula.args)
     elif t is PredicateFormula:
         return all(free_var in bound_vars
