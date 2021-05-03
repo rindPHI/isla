@@ -1,10 +1,11 @@
-from typing import Union, List, Optional, Iterable, cast, Dict, Tuple
+import copy
+from typing import Union, List, Optional, Iterable, cast, Dict, Tuple, Callable
 
 from fuzzingbook.GrammarFuzzer import tree_to_string
 from orderedset import OrderedSet
 import z3
 
-from input_constraints.helpers import get_subtree, next_path, get_symbols
+from input_constraints.helpers import get_subtree, next_path, get_symbols, traverse_tree, get_path_of_subtree, is_before
 from input_constraints.type_defs import ParseTree, Path
 
 
@@ -15,6 +16,12 @@ class Variable:
 
     def to_smt(self):
         return z3.String(self.name)
+
+    def __eq__(self, other):
+        return type(self) is type(other) and (self.name, self.n_type) == (other.name, other.n_type)
+
+    def __hash__(self):
+        return hash((type(self).__name__, self.name, self.n_type))
 
     def __repr__(self):
         return f'{type(self).__name__}("{self.name}", "{self.n_type}")'
@@ -109,9 +116,11 @@ class BindExpression:
 
 class Formula:
     def bound_variables(self) -> OrderedSet[BoundVariable]:
+        """Non-recursive: Only non-empty for quantified formulas"""
         pass
 
     def free_variables(self) -> OrderedSet[Variable]:
+        """Recursive."""
         pass
 
     def __and__(self, other):
@@ -122,6 +131,45 @@ class Formula:
 
     def __neg__(self):
         return NegatedFormula(self)
+
+
+class Predicate:
+    def __init__(self, name: str, arity: int, eval_fun: Callable[..., bool]):
+        self.name = name
+        self.arity = arity
+        self.eval_fun = eval_fun
+
+    def evaluate(self, *instantiations: ParseTree):
+        return self.eval_fun(*instantiations)
+
+    def __eq__(self, other):
+        return type(other) is Predicate and (self.name, self.arity) == (other.name, other.arity)
+
+    def __repr__(self):
+        return f"Predicate({self.name}, {self.arity})"
+
+    def __str__(self):
+        return self.name
+
+
+BEFORE_PREDICATE = Predicate(
+    "before", 3,
+    lambda tree, before_tree, in_tree: is_before(get_path_of_subtree(in_tree, tree),
+                                                 get_path_of_subtree(in_tree, before_tree))
+)
+
+
+class PredicateFormula(Formula):
+    def __init__(self, predicate: Predicate, *args: Variable):
+        assert len(args) == predicate.arity
+        self.predicate = predicate
+        self.args: List[Variable] = list(args)
+
+    def bound_variables(self) -> OrderedSet[BoundVariable]:
+        return OrderedSet([])
+
+    def free_variables(self) -> OrderedSet[Variable]:
+        return OrderedSet(self.args)
 
 
 class PropositionalCombinator(Formula):
@@ -246,28 +294,8 @@ class ExistsFormula(QuantifiedFormula):
                f'{str(self.bound_variable)} ∈ {str(self.in_variable)}: ({str(self.inner_formula)})'
 
 
-class ExistsBeforeFormula(ExistsFormula):
-    def __init__(self, bound_variable: BoundVariable, before_variable: BoundVariable, in_variable: Variable,
-                 inner_formula: Formula, bind_expression: Optional[BindExpression] = None):
-        super().__init__(bound_variable, in_variable, inner_formula, bind_expression)
-        self.before_variable = before_variable
-
-    def free_variables(self) -> OrderedSet[Variable]:
-        return (OrderedSet([self.in_variable, self.before_variable]) |
-                self.inner_formula.free_variables()) - self.bound_variables()
-
-    def __repr__(self):
-        return f'{type(self).__name__}({repr(self.bound_variable)}, {repr(self.before_variable)}, ' \
-               f'{repr(self.in_variable)}, ' \
-               f'{repr(self.inner_formula)}{"" if self.bind_expression is None else ", " + repr(self.bind_expression)})'
-
-    def __str__(self):
-        quote = "'"
-        return f'∃ {"" if not self.bind_expression else quote + str(self.bind_expression) + quote + " = "}' \
-               f'{str(self.bound_variable)} before {str(self.before_variable)} ∈ {str(self.in_variable)}: ' \
-               f'({str(self.inner_formula)})'
-
-
+# TODO: Inner SMT formulas must not use variables used in syntactic predicates
+#       or occurring in "in" expressions of quantifiers
 def well_formed(formula: Formula,
                 bound_vars: Optional[OrderedSet[BoundVariable]] = None,
                 bound_constants: Optional[OrderedSet[Constant]] = None,
@@ -289,9 +317,6 @@ def well_formed(formula: Formula,
         if type(formula.in_variable) is BoundVariable and formula.in_variable not in bound_vars:
             return False
         if any(free_var not in bound_vars for free_var in formula.free_variables() if type(free_var) is BoundVariable):
-            return False
-
-        if type(t) is ExistsBeforeFormula and cast(ExistsBeforeFormula, formula).before_variable not in bound_vars:
             return False
 
         return well_formed(
@@ -327,7 +352,10 @@ def well_formed(formula: Formula,
         else:
             return all(well_formed(subformula, bound_vars, bound_constants, bound_by_smt)
                        for subformula in formula.args)
-
+    elif t is PredicateFormula:
+        return all(free_var in bound_vars
+                   for free_var in formula.free_variables()
+                   if type(free_var) is BoundVariable)
     else:
         raise NotImplementedError()
 
@@ -335,30 +363,68 @@ def well_formed(formula: Formula,
 def evaluate(formula: Formula, assignments: Dict[Variable, ParseTree]) -> bool:
     assert well_formed(formula)
 
-    t = type(formula)
+    def evaluate_(formula: Formula, assignments: Dict[Variable, ParseTree]) -> bool:
+        t = type(formula)
 
-    if t is SMTFormula:
-        instantiation = z3.substitute(
-            formula,
-            *tuple({z3.String(symbol.name): z3.StringVal(tree_to_string(symbol_assignment))
-                    for symbol, symbol_assignment
-                    in assignments.items()}.items()))
+        if t is SMTFormula:
+            formula: SMTFormula
+            instantiation = z3.substitute(
+                formula.formula,
+                *tuple({z3.String(symbol.name): z3.StringVal(tree_to_string(symbol_assignment))
+                        for symbol, symbol_assignment
+                        in assignments.items()}.items()))
 
-        z3.set_param("smt.string_solver", "z3str3")
-        solver = z3.Solver()
-        solver.add(instantiation)
-        return solver.check() == z3.sat  # Set timeout?
-    elif t is ForallFormula:
-        raise NotImplementedError()  # TODO
-    elif t is ExistsFormula:
-        raise NotImplementedError()  # TODO
-    elif t is ExistsBeforeFormula:
-        raise NotImplementedError()  # TODO
-    elif t is NegatedFormula:
-        raise NotImplementedError()  # TODO
-    elif t is ConjunctiveFormula:
-        raise NotImplementedError()  # TODO
-    elif t is DisjunctiveFormula:
-        raise NotImplementedError()  # TODO
-    else:
-        raise NotImplementedError()
+            z3.set_param("smt.string_solver", "z3str3")
+            solver = z3.Solver()
+            solver.add(instantiation)
+            return solver.check() == z3.sat  # Set timeout?
+        elif issubclass(t, QuantifiedFormula):
+            formula: QuantifiedFormula
+            assert formula.in_variable in assignments
+            in_inst: ParseTree = assignments[formula.in_variable]
+            qfd_var: BoundVariable = formula.bound_variable
+            bind_expr: Optional[BindExpression] = formula.bind_expression
+
+            new_assignments: List[Dict[Variable, ParseTree]] = []
+
+            def search_action(tree: ParseTree) -> None:
+                nonlocal new_assignments
+                node, children = tree
+                if node == qfd_var.n_type:
+                    if bind_expr is not None:
+                        maybe_match: Optional[Dict[BoundVariable, ParseTree]] = bind_expr.match(tree)
+                        if maybe_match is not None:
+                            new_assignment = copy.copy(assignments)
+                            new_assignment[qfd_var] = tree
+                            new_assignment.update(maybe_match)
+                            new_assignments.append(new_assignment)
+                    else:
+                        new_assignment = copy.copy(assignments)
+                        new_assignment[qfd_var] = tree
+                        new_assignments.append(new_assignment)
+
+            traverse_tree(in_inst, search_action)
+
+            if t is ForallFormula:
+                formula: ForallFormula
+                return all(evaluate_(formula.inner_formula, new_assignment) for new_assignment in new_assignments)
+            elif t is ExistsFormula:
+                formula: ExistsFormula
+                return any(evaluate_(formula.inner_formula, new_assignment) for new_assignment in new_assignments)
+        elif t is PredicateFormula:
+            formula: PredicateFormula
+            arg_insts = [assignments[arg] for arg in formula.args]
+            return formula.predicate.evaluate(*arg_insts)
+        elif t is NegatedFormula:
+            formula: NegatedFormula
+            return not evaluate_(formula.args[0], assignments)
+        elif t is ConjunctiveFormula:
+            formula: ConjunctiveFormula
+            return all(evaluate_(sub_formula, assignments) for sub_formula in formula.args)
+        elif t is DisjunctiveFormula:
+            formula: DisjunctiveFormula
+            return any(evaluate_(sub_formula, assignments) for sub_formula in formula.args)
+        else:
+            raise NotImplementedError()
+
+    return evaluate_(formula, assignments)

@@ -6,8 +6,8 @@ import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string
 from fuzzingbook.Parser import EarleyParser
 
-from input_constraints.lang import Constant, BoundVariable, Formula, ForallFormula, well_formed
 import input_constraints.shortcuts as sc
+from input_constraints.lang import Constant, BoundVariable, Formula, well_formed, evaluate
 
 LANG_GRAMMAR = {
     "<start>":
@@ -118,6 +118,45 @@ class TestEvaluation(unittest.TestCase):
 
         self.assertFalse(well_formed(bad_formula_5))
 
+    def test_evaluate(self):
+        prog = Constant("$prog", "<prog>")
+        lhs_1 = BoundVariable("$lhs_1", "<var>")
+        lhs_2 = BoundVariable("$lhs_2", "<var>")
+        rhs_1 = BoundVariable("$rhs_1", "<rhs>")
+        rhs_2 = BoundVariable("$rhs_2", "<rhs>")
+        assgn_1 = BoundVariable("$assgn_1", "<assgn>")
+        assgn_2 = BoundVariable("$assgn_2", "<assgn>")
+        var = BoundVariable("$var", "<var>")
+
+        formula: Formula = sc.forall_bind(
+            lhs_1 + " := " + rhs_1,
+            assgn_1,
+            prog,
+            sc.forall(
+                var,
+                rhs_1,
+                sc.exists_bind(
+                    lhs_2 + " := " + rhs_2,
+                    assgn_2,
+                    prog,
+                    sc.before(assgn_2, assgn_1, prog) &
+                    sc.smt_for(cast(z3.BoolRef, lhs_2.to_smt() == var.to_smt()), lhs_2, var)
+                )
+            )
+        )
+
+        valid_prog_1 = "x := 1 ; y := x"
+        valid_prog_2 = "x := 1 ; y := x ; y := 2 ; z := y ; x := z"
+        invalid_prog_1 = "x := x"
+        invalid_prog_2 = "x := z"
+        invalid_prog_3 = "x := 1 ; y := z"
+
+        parser = EarleyParser(LANG_GRAMMAR)
+
+        for valid_prog in [valid_prog_1, valid_prog_2]:
+            self.assertTrue(evaluate(formula, {prog: next(parser.parse(valid_prog))}))
+        for invalid_prog in [invalid_prog_1, invalid_prog_2, invalid_prog_3]:
+            self.assertFalse(evaluate(formula, {prog: next(parser.parse(invalid_prog))}))
 
     def test_match(self):
         parser = EarleyParser(LANG_GRAMMAR)
