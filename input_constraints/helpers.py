@@ -86,3 +86,10 @@ def get_symbols(formula: z3.BoolRef) -> Set[Symbol]:
 
     recurse(formula)
     return result
+
+
+def dfs(tree: ParseTree, action=print):
+    node, children = tree
+    action(tree)
+    for child in children:
+        dfs(child, action)

@@ -1,13 +1,16 @@
 import string
 import unittest
-from typing import cast
+from typing import cast, Dict
 
 import z3
+from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.GrammarFuzzer import tree_to_string
 from fuzzingbook.Parser import EarleyParser
 
 import input_constraints.shortcuts as sc
+from input_constraints.helpers import get_subtree, dfs
 from input_constraints.lang import Constant, BoundVariable, Formula, well_formed, evaluate
+from input_constraints.type_defs import ParseTree
 
 LANG_GRAMMAR = {
     "<start>":
@@ -21,6 +24,31 @@ LANG_GRAMMAR = {
     "<var>": list(string.ascii_lowercase),
     "<digit>": list(string.digits)
 }
+
+
+def eval_lang(inp: str) -> Dict[str, int]:
+    def assgnlhs(assgn: ParseTree):
+        return tree_to_string(get_subtree((0,), assgn))
+
+    def assgnrhs(assgn: ParseTree):
+        return tree_to_string(get_subtree((2,), assgn))
+
+    valueMap: Dict[str, int] = {}
+    tree = list(EarleyParser(LANG_GRAMMAR).parse(inp))[0]
+
+    def evalAssignments(tree):
+        node, children = tree
+        if node == "<assgn>":
+            lhs = assgnlhs(tree)
+            rhs = assgnrhs(tree)
+            if rhs.isdigit():
+                valueMap[lhs] = int(rhs)
+            else:
+                valueMap[lhs] = valueMap[rhs]
+
+    dfs(tree, evalAssignments)
+
+    return valueMap
 
 
 class TestEvaluation(unittest.TestCase):
@@ -208,6 +236,52 @@ class TestEvaluation(unittest.TestCase):
         bind_expr = assgn_1 + " ; " + stmt + " ; " + assgn_2
         match = bind_expr.match(tree)
         self.assertFalse(match)
+
+    def test_use_constraint_as_filter(self):
+        prog = Constant("$prog", "<start>")
+        lhs_1 = BoundVariable("$lhs_1", "<var>")
+        lhs_2 = BoundVariable("$lhs_2", "<var>")
+        rhs_1 = BoundVariable("$rhs_1", "<rhs>")
+        rhs_2 = BoundVariable("$rhs_2", "<rhs>")
+        assgn_1 = BoundVariable("$assgn_1", "<assgn>")
+        assgn_2 = BoundVariable("$assgn_2", "<assgn>")
+        var = BoundVariable("$var", "<var>")
+
+        formula: Formula = sc.forall_bind(
+            lhs_1 + " := " + rhs_1,
+            assgn_1,
+            prog,
+            sc.forall(
+                var,
+                rhs_1,
+                sc.exists_bind(
+                    lhs_2 + " := " + rhs_2,
+                    assgn_2,
+                    prog,
+                    sc.before(assgn_2, assgn_1, prog) &
+                    sc.smt_for(cast(z3.BoolRef, lhs_2.to_smt() == var.to_smt()), lhs_2, var)
+                )
+            )
+        )
+
+        fuzzer = GrammarCoverageFuzzer(LANG_GRAMMAR)
+
+        success = 0
+        fail = 0
+        for _ in range(100):
+            tree = fuzzer.expand_tree(("<start>", None))
+            if evaluate(formula, {prog: tree}):
+                inp = tree_to_string(tree)
+                try:
+                    eval_lang(inp)
+                except KeyError:
+                    self.fail()
+                success += 1
+            else:
+                fail += 1
+
+        success_rate = success / (success + fail)
+        self.assertGreater(success_rate, .3)
 
 
 if __name__ == '__main__':

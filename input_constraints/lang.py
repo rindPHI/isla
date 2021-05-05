@@ -171,6 +171,12 @@ class PredicateFormula(Formula):
     def free_variables(self) -> OrderedSet[Variable]:
         return OrderedSet(self.args)
 
+    def __str__(self):
+        return f"{self.predicate}({', '.join(map(str, self.args))})"
+
+    def __repr__(self):
+        return f'PredicateFormula({repr(self.predicate), ", ".join(map(repr, self.args))})'
+
 
 class PropositionalCombinator(Formula):
     def __init__(self, *args: Formula):
