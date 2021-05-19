@@ -1,4 +1,4 @@
-from typing import Optional, Set, Callable, Generator, Tuple
+from typing import Optional, Set, Callable, Generator, Tuple, List
 
 import z3
 from fuzzingbook.Grammars import unreachable_nonterminals
@@ -169,3 +169,7 @@ def dfs(tree: ParseTree, action=print):
     action(tree)
     for child in children:
         dfs(child, action)
+
+
+def geometric_sequence(length: int, base: float = 1.1) -> List[int]:
+    return list(map(lambda x: 1.1 ** x, range(0, length)))

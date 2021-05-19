@@ -366,6 +366,7 @@ def evaluate(formula: Formula, assignments: Dict[Variable, ParseTree]) -> bool:
     assert well_formed(formula)
 
     def evaluate_(formula: Formula, assignments: Dict[Variable, ParseTree]) -> bool:
+        q = '"'
         t = type(formula)
 
         if t is SMTFormula:
