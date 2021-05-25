@@ -1,11 +1,9 @@
-from operator import itemgetter
 from typing import List, Dict, Tuple, Union
-from pyswip import Prolog
 
 from fuzzingbook.Grammars import is_nonterminal
 from fuzzingbook.Parser import non_canonical
-from grammar_graph.gg import GrammarGraph, ChoiceNode
-from itertools import groupby
+from grammar_graph.gg import GrammarGraph
+from pyswip import Prolog
 
 from input_constraints.type_defs import CanonicalGrammar, Grammar
 
@@ -38,7 +36,7 @@ def translate_grammar(
         predicate_map: Dict[str, str],
         numeric_nonterminals: Dict[str, Tuple[int, int]],
         atomic_string_nonterminals: Dict[str, int]
-) -> str:
+) -> List[str]:
     """
     Translates a grammar to Prolog.
 
@@ -53,20 +51,9 @@ def translate_grammar(
     lines: List[str] = []
     graph = GrammarGraph.from_grammar(non_canonical(grammar))
 
-    terminal_parents: Dict[str, List[str]] = {}
-    for nonterminal in grammar.keys():
-        node = graph.get_node(nonterminal)
-        if node.reachable(node):
-            continue
-
-        subgraph = graph.subgraph(node)
-        children = [n.symbol for n in subgraph.all_nodes()
-                    if type(n) is not ChoiceNode
-                    and n.symbol not in ["<start>", nonterminal]]
-        if all(not is_nonterminal(child) for child in children):
-            terminal_parents[nonterminal] = children
-
-    for nonterminal, alternatives in [(n, a) for n, a in grammar.items() if n not in terminal_parents]:
+    for nonterminal, alternatives in [(n, a) for n, a in grammar.items()
+                                      if n not in numeric_nonterminals
+                                         and n not in atomic_string_nonterminals]:
         nonterminal = nonterminal[1:-1]
         for alternative in alternatives:
             params: List[str] = []
@@ -96,19 +83,18 @@ def translate_grammar(
                 line += " :- "
                 line += ", ".join([f"{predicate_map[variables[variable]]}({variable})" for variable in variables_list])
 
-            line += "."
             lines.append(line)
 
-    for nonterminal in terminal_parents:
-        assert all(map(lambda c: len(c) == 1, terminal_parents[nonterminal]))
-        children = sorted(list(map(ord, terminal_parents[nonterminal])))
-        nonterminal = nonterminal[1:-1]
-        ranges = [list(map(itemgetter(1), g)) for k, g in groupby(enumerate(children), lambda p: p[0] - p[1])]
-        for range in ranges:
-            if len(range) == 1:
-                lines.append(f"{predicate_map[nonterminal]}(['{nonterminal}', [[{range[0]}, []]]).")
-            else:
-                lines.append(f"{predicate_map[nonterminal]}(['{nonterminal}', "
-                             f"[[C, []]]) :- {range[0]} #=< C, C #=< {range[-1]}.")
+    for nonterminal in numeric_nonterminals:
+        lines.append(f"{predicate_map[nonterminal[1:-1]]}(['{nonterminal[1:-1]}', "
+                     f"[[C, []]]]) :- "
+                     f"{numeric_nonterminals[nonterminal][0]} #=< C, "
+                     f"C #=< {numeric_nonterminals[nonterminal][1]}")
 
-    return "\n".join(lines)
+    for nonterminal in atomic_string_nonterminals:
+        lines.append(f"{predicate_map[nonterminal[1:-1]]}(['{nonterminal[1:-1]}', "
+                     f"[[C, []]]]) :- "
+                     f"0 #=< C, "
+                     f"C #=< {atomic_string_nonterminals[nonterminal]}")
+
+    return lines

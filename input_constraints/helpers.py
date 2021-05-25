@@ -1,5 +1,6 @@
-from typing import Optional, Set, Callable, Generator, Tuple, List
+from typing import Optional, Set, Callable, Generator, Tuple, List, Union, Dict
 
+import pyswip.easy
 import z3
 from fuzzingbook.Grammars import unreachable_nonterminals
 from z3 import Symbol
@@ -173,3 +174,74 @@ def dfs(tree: ParseTree, action=print):
 
 def geometric_sequence(length: int, base: float = 1.1) -> List[int]:
     return list(map(lambda x: 1.1 ** x, range(0, length)))
+
+
+def pyswip_var_mapping(inp,
+                       mapping: Optional[Dict[pyswip.easy.Variable, str]] = None) -> Dict[pyswip.easy.Variable, str]:
+    if mapping is None:
+        mapping = {}
+
+    if type(inp) is pyswip.easy.Variable:
+        inp: pyswip.easy.Variable
+        if inp.chars is None:
+            if not any(v for v in mapping if v == inp):
+                mapping[inp] = f"_{inp.handle}"
+        else:
+            mapping[inp] = inp.chars
+
+    elif type(inp) is list:
+        inp: List
+        for elem in inp:
+            pyswip_var_mapping(elem, mapping)
+    elif type(inp) is dict:
+        inp: Dict
+        for key in inp:
+            pyswip_var_mapping(key, mapping)
+            pyswip_var_mapping(inp[key], mapping)
+
+    return mapping
+
+
+def pyswip_clp_constraints_to_str(inp: List, var_name_mapping: Dict[pyswip.easy.Variable, str]) -> str:
+    result = []
+    constraint: pyswip.easy.Functor
+
+    for constraint in inp:
+        assert constraint.args[0].value == "clpfd"
+        variable: pyswip.easy.Variable = constraint.args[1].args[0]
+        variable_str = [var_name_mapping[v] for v in var_name_mapping if v == variable][0]
+
+        range_functor: pyswip.easy.Functor = constraint.args[1].args[1]
+        assert type(range_functor) is pyswip.easy.Functor
+
+        range: List[int] = range_functor.args
+        result.append(f"{variable_str} in {range[0]}..{range[1]}")
+
+    return ", ".join(result)
+
+
+def pyswip_output_to_str(inp, var_name_mapping: Optional[Dict[pyswip.easy.Variable, str]] = None) -> str:
+    if type(inp) is bytes:
+        inp: bytes
+        return f'"{inp.decode("utf-8")}"'
+    elif type(inp) is int:
+        inp: int
+        return str(inp)
+    elif type(inp) is pyswip.easy.Functor:
+        assert False
+        pass
+    elif type(inp) is pyswip.easy.Variable:
+        inp: pyswip.easy.Variable
+        if inp.chars is None:
+            assert var_name_mapping is not None
+            matching_names = [var_name_mapping[v] for v in var_name_mapping if v == inp]
+            assert matching_names
+            return matching_names[0]
+        else:
+            return inp.chars
+    elif type(inp) is pyswip.easy.Atom:
+        inp: pyswip.easy.Atom
+        return f"'{inp.value}'"
+    elif type(inp) is list:
+        inp: List
+        return "[" + ", ".join([pyswip_output_to_str(child, var_name_mapping) for child in inp]) + "]"

@@ -1,2 +1,3 @@
 .idea/
 input_constraints/__pycache__/
+input_constraints/tests/__pycache__/
