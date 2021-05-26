@@ -1,3 +1,4 @@
+import random
 import unittest
 from typing import List, Dict, Tuple
 
@@ -75,12 +76,16 @@ class TestProlog(unittest.TestCase):
         outer_query.close()
 
         for outer_result in outer_results:
+            print(outer_result[0])
+            print(outer_result[1])
             inner_query = prolog.query(f"S={outer_result[0]}, {outer_result[1]}, term_variables(S, Vs), "
-                                       f"labeling([random_value(42)], Vs), tree_to_string(S, Str).")
+                                       f"sum(Vs, #=, Sum), "
+                                       f"labeling([min(Sum)], Vs), tree_to_string(S, Str).")
             parser = EarleyParser(LANG_GRAMMAR)
-            for _ in range(3):
+            for _ in range(9):
                 result = next(inner_query)
                 prog = pyswip_output_to_str(result["Str"])[1:-1]  # strip quotation marks
+                print(prog)
                 try:
                     next(parser.parse(prog))
                 except SyntaxError:
