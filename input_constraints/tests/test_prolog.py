@@ -1,10 +1,6 @@
-import random
 import unittest
 from typing import List, Dict, Tuple
 
-import os
-
-import itertools
 import pyswip
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.Parser import canonical, EarleyParser
@@ -62,8 +58,8 @@ class TestProlog(unittest.TestCase):
 
         next(prolog.query("use_module(library(clpfd))"))
 
-        for line in pl_grammar:
-            prolog.assertz(line)
+        for rule in pl_grammar:
+            prolog.assertz(str(rule))
 
         outer_query = prolog.query("stmt(S), term_variables(S, Vs), copy_term(Vs, Vs, Gs)")
 

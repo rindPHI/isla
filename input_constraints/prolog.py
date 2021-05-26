@@ -1,10 +1,13 @@
-from typing import List, Dict, Tuple, Union
+from typing import List, Dict, Tuple, Union, Type, Callable, TypeVar
 
 from fuzzingbook.Grammars import is_nonterminal
 from fuzzingbook.Parser import non_canonical
 from grammar_graph.gg import GrammarGraph
 from pyswip import Prolog
 
+from input_constraints.lang import Formula, SMTFormula
+from input_constraints.prolog_structs import Rule, PredicateApplication, Predicate, Term, Variable, ListTerm, \
+    StringTerm, Goal, Atom, Number
 from input_constraints.type_defs import CanonicalGrammar, Grammar
 
 
@@ -36,7 +39,7 @@ def translate_grammar(
         predicate_map: Dict[str, str],
         numeric_nonterminals: Dict[str, Tuple[int, int]],
         atomic_string_nonterminals: Dict[str, int]
-) -> List[str]:
+) -> List[Rule]:
     """
     Translates a grammar to Prolog.
 
@@ -48,7 +51,7 @@ def translate_grammar(
     the constraint at hand, and which therefore can be abstracted by integers (for later fuzzing).
     :return: The prolog translation of `grammar`.
     """
-    lines: List[str] = []
+    rules: List[Rule] = []
     graph = GrammarGraph.from_grammar(non_canonical(grammar))
 
     for nonterminal, alternatives in [(n, a) for n, a in grammar.items()
@@ -56,7 +59,7 @@ def translate_grammar(
                                          and n not in atomic_string_nonterminals]:
         nonterminal = nonterminal[1:-1]
         for alternative in alternatives:
-            params: List[str] = []
+            params: List[Term] = []
             variables: Dict[str, str] = {}
             for symbol in alternative:
                 if is_nonterminal(symbol):
@@ -66,13 +69,16 @@ def translate_grammar(
                     while var_name in variables:
                         var_name += f"_{i}"
                     variables[var_name] = symbol_type
-                    params.append(var_name)
+                    params.append(Variable(var_name))
                 else:
-                    params.append(f'["{symbol}", []]')
+                    params.append(ListTerm([StringTerm(symbol), ListTerm([])]))
 
-            params_str = "[" + ", ".join(params) + "]"
-            line = f"{predicate_map[nonterminal]}(['{nonterminal}', {params_str}])"
+            atom_name = predicate_map[nonterminal]
+            head = PredicateApplication(
+                Predicate(atom_name, 1),
+                [ListTerm([Atom(atom_name), ListTerm(params)])])
 
+            goals = []
             if variables:
                 # Need to call recursive nonterminals first
                 variables_list = sorted(variables.keys(),
@@ -80,21 +86,51 @@ def translate_grammar(
                                             node := graph.get_node(f"<{variables[n]}>"),
                                             chr(0) if node.reachable(node) else n[1:-1])[-1])
 
-                line += " :- "
-                line += ", ".join([f"{predicate_map[variables[variable]]}({variable})" for variable in variables_list])
+                goals = [PredicateApplication(Predicate(predicate_map[variables[variable]], 1),
+                                              [Variable(variable)])
+                         for variable in variables_list]
 
-            lines.append(line)
+            rules.append(Rule(head, goals))
 
     for nonterminal in numeric_nonterminals:
-        lines.append(f"{predicate_map[nonterminal[1:-1]]}(['{nonterminal[1:-1]}', "
-                     f"[[C, []]]]) :- "
-                     f"{numeric_nonterminals[nonterminal][0]} #=< C, "
-                     f"C #=< {numeric_nonterminals[nonterminal][1]}")
+        nonterminal_name = nonterminal[1:-1]
+        c = Variable("C")
+        leq = Predicate("#=<", 2, infix=True)
+
+        rules.append(Rule(PredicateApplication(
+            Predicate(predicate_map[nonterminal_name], 1),
+            [ListTerm([Atom(nonterminal_name), ListTerm([ListTerm([c, ListTerm([])])])])]
+        ), [
+            PredicateApplication(leq, [Number(numeric_nonterminals[nonterminal][0]), c]),
+            PredicateApplication(leq, [c, Number(numeric_nonterminals[nonterminal][1])])
+        ]))
 
     for nonterminal in atomic_string_nonterminals:
-        lines.append(f"{predicate_map[nonterminal[1:-1]]}(['{nonterminal[1:-1]}', "
-                     f"[[C, []]]]) :- "
-                     f"0 #=< C, "
-                     f"C #=< {atomic_string_nonterminals[nonterminal]}")
+        nonterminal_name = nonterminal[1:-1]
+        c = Variable("C")
+        leq = Predicate("#=<", 2, infix=True)
 
-    return lines
+        rules.append(Rule(PredicateApplication(
+            Predicate(predicate_map[nonterminal_name], 1),
+            [ListTerm([Atom(nonterminal_name), ListTerm([ListTerm([c, ListTerm([])])])])]
+        ), [
+            PredicateApplication(leq, [Number(0), c]),
+            PredicateApplication(leq, [c, Number(atomic_string_nonterminals[nonterminal])])
+        ]))
+
+    return rules
+
+
+def translate_constraint(formula: Formula) -> str:
+    translation_methods: Dict[Type[Formula], Type[Callable[[Formula], str]]] = {
+        SMTFormula: translate_smt_formula
+    }
+
+    if type(formula) not in translation_methods:
+        raise NotImplementedError
+
+    return translation_methods[type(formula)](formula)
+
+
+def translate_smt_formula(formula: SMTFormula) -> str:
+    pass
