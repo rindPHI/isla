@@ -1,6 +1,7 @@
 import copy
 from typing import Union, List, Optional, Iterable, cast, Dict, Tuple, Callable
 
+import inflection
 from fuzzingbook.GrammarFuzzer import tree_to_string
 from orderedset import OrderedSet
 import z3
@@ -114,6 +115,29 @@ class BindExpression:
         return ' '.join(map(lambda e: f'"{e}"' if type(e) is str else str(e), self.bound_elements))
 
 
+class FormulaVisitor:
+    def visit_predicate_formula(self, formula: 'PredicateFormula'):
+        pass
+
+    def visit_negated_formula(self, formula: 'NegatedFormula'):
+        pass
+
+    def visit_conjunctive_formula(self, formula: 'ConjunctiveFormula'):
+        pass
+
+    def visit_disjunctive_formula(self, formula: 'DisjunctiveFormula'):
+        pass
+
+    def visit_smt_formula(self, formula: 'SMTFormula'):
+        pass
+
+    def visit_exists_formula(self, formula: 'ExistsFormula'):
+        pass
+
+    def visit_forall_formula(self, formula: 'ForallFormula'):
+        pass
+
+
 class Formula:
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         """Non-recursive: Only non-empty for quantified formulas"""
@@ -131,6 +155,9 @@ class Formula:
 
     def __neg__(self):
         return NegatedFormula(self)
+
+    def accept(self, visitor: FormulaVisitor):
+        raise NotImplementedError()
 
 
 class Predicate:
@@ -171,6 +198,9 @@ class PredicateFormula(Formula):
     def free_variables(self) -> OrderedSet[Variable]:
         return OrderedSet(self.args)
 
+    def accept(self, visitor: FormulaVisitor):
+        visitor.visit_predicate_formula(self)
+
     def __str__(self):
         return f"{self.predicate}({', '.join(map(str, self.args))})"
 
@@ -196,6 +226,11 @@ class NegatedFormula(PropositionalCombinator):
     def __init__(self, arg: Formula):
         super().__init__(arg)
 
+    def accept(self, visitor: FormulaVisitor):
+        visitor.visit_negated_formula(self)
+        for formula in self.args:
+            formula.accept(visitor)
+
     def __str__(self):
         return f"¬({self.args[0]})"
 
@@ -206,6 +241,11 @@ class ConjunctiveFormula(PropositionalCombinator):
             raise RuntimeError(f"Conjunction needs at least two arguments, {len(args)} given.")
         super().__init__(*args)
 
+    def accept(self, visitor: FormulaVisitor):
+        visitor.visit_conjunctive_formula(self)
+        for formula in self.args:
+            formula.accept(visitor)
+
     def __str__(self):
         return f"({' ∧ '.join(map(str, self.args))})"
 
@@ -215,6 +255,11 @@ class DisjunctiveFormula(PropositionalCombinator):
         if len(args) < 2:
             raise RuntimeError(f"Disjunction needs at least two arguments, {len(args)} given.")
         super().__init__(*args)
+
+    def accept(self, visitor: FormulaVisitor):
+        visitor.visit_disjunctive_formula(self)
+        for formula in self.args:
+            formula.accept(visitor)
 
     def __str__(self):
         return f"({' ∨ '.join(map(str, self.args))})"
@@ -241,6 +286,9 @@ class SMTFormula(Formula):
 
     def free_variables(self) -> OrderedSet[Variable]:
         return self.free_variables_
+
+    def accept(self, visitor: FormulaVisitor):
+        visitor.visit_smt_formula(self)
 
     def __repr__(self):
         return f"SMTFormula({repr(self.formula)}, {', '.join(map(repr, self.free_variables_))})"
@@ -280,6 +328,10 @@ class ForallFormula(QuantifiedFormula):
                  bind_expression: Optional[BindExpression] = None):
         super().__init__(bound_variable, in_variable, inner_formula, bind_expression)
 
+    def accept(self, visitor: FormulaVisitor):
+        visitor.visit_forall_formula(self)
+        self.inner_formula.accept(visitor)
+
     def __str__(self):
         quote = "'"
         return f'∀ {"" if not self.bind_expression else quote + str(self.bind_expression) + quote + " = "}' \
@@ -294,10 +346,46 @@ class ExistsFormula(QuantifiedFormula):
                  bind_expression: Optional[BindExpression] = None):
         super().__init__(bound_variable, in_variable, inner_formula, bind_expression)
 
+    def accept(self, visitor: FormulaVisitor):
+        visitor.visit_exists_formula(self)
+        self.inner_formula.accept(visitor)
+
     def __str__(self):
         quote = "'"
         return f'∃ {"" if not self.bind_expression else quote + str(self.bind_expression) + quote + " = "}' \
                f'{str(self.bound_variable)} ∈ {str(self.in_variable)}: ({str(self.inner_formula)})'
+
+
+class VariablesCollector(FormulaVisitor):
+    def __init__(self, formula: Formula):
+        self.formula = formula
+        self.result: Optional[OrderedSet[Variable]] = None
+
+    def collect(self) -> OrderedSet[Variable]:
+        if self.result is not None:
+            return self.result
+
+        self.result = OrderedSet([])
+        self.formula.accept(self)
+        return self.result
+
+    def visit_exists_formula(self, formula: ExistsFormula):
+        self.visit_quantified_formula(formula)
+
+    def visit_forall_formula(self, formula: ForallFormula):
+        self.visit_quantified_formula(formula)
+
+    def visit_quantified_formula(self, formula: QuantifiedFormula):
+        self.result.add(formula.in_variable)
+        self.result.add(formula.bound_variable)
+        if formula.bind_expression is not None:
+            self.result.update(formula.bind_expression.bound_variables())
+
+    def visit_predicate_formula(self, formula: PredicateFormula):
+        self.result.update(formula.args)
+
+    def visit_smt_formula(self, formula: SMTFormula):
+        self.result.update(formula.free_variables())
 
 
 def well_formed(formula: Formula,

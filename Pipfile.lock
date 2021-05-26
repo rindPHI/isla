@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "9985ae48e2f2289009f057fb8306c10ee94f33aa649425b11994d5ab210d7d69"
+            "sha256": "636eaa61b828fa20b852752983d56838b66c2d097dd5fe810662bd5f91436f97"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -188,6 +188,14 @@
             ],
             "index": "pypi",
             "version": "==0.16"
+        },
+        "inflection": {
+            "hashes": [
+                "sha256:1a29730d366e996aaacffb2f1f1cb9593dc38e2ddd30c91250c6dde09ea9b417",
+                "sha256:f38b2b640938a4f35ade69ac3d053042959b62a0f1076a5bbaa1b9526605a8a2"
+            ],
+            "index": "pypi",
+            "version": "==0.5.1"
         },
         "ipykernel": {
             "hashes": [

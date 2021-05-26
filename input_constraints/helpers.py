@@ -1,9 +1,8 @@
-from typing import Optional, Set, Callable, Generator, Tuple, List, Union, Dict
+from typing import Optional, Set, Callable, Generator, Tuple, List, Dict, Union
 
 import pyswip.easy
 import z3
 from fuzzingbook.Grammars import unreachable_nonterminals
-from z3 import Symbol
 
 from input_constraints.type_defs import Path, ParseTree, Grammar
 
@@ -146,8 +145,8 @@ def reverse_tree_iterator(start_path: Path, tree: ParseTree) -> Generator[Tuple[
         curr_path = prev_path_complete(curr_path, tree)
 
 
-def get_symbols(formula: z3.BoolRef) -> Set[Symbol]:
-    result: Set[Symbol] = set()
+def get_symbols(formula: z3.BoolRef) -> Set[z3.Symbol]:
+    result: Set[z3.Symbol] = set()
 
     def recurse(elem: z3.ExprRef):
         op = elem.decl()
@@ -245,3 +244,26 @@ def pyswip_output_to_str(inp, var_name_mapping: Optional[Dict[pyswip.easy.Variab
     elif type(inp) is list:
         inp: List
         return "[" + ", ".join([pyswip_output_to_str(child, var_name_mapping) for child in inp]) + "]"
+
+
+def visit_z3_expr(e: Union[z3.ExprRef, z3.QuantifierRef],
+                  seen: Optional[Dict[Union[z3.ExprRef, z3.QuantifierRef], bool]] = None) -> \
+        Generator[Union[z3.ExprRef, z3.QuantifierRef], None, None]:
+    if seen is None:
+        seen = {}
+    elif e in seen:
+        return
+
+    seen[e] = True
+    yield e
+
+    if z3.is_app(e):
+        for ch in e.children():
+            for e in visit_z3_expr(ch, seen):
+                yield e
+        return
+
+    if z3.is_quantifier(e):
+        for e in visit_z3_expr(e.body(), seen):
+            yield e
+        return
