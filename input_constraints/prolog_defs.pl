@@ -2,6 +2,49 @@
 :- use_module(library(apply)).
 :- use_module(library(clpfd)).
 
+%%% equal/3
+equal(X, Y, Result) :-
+  [NT1, [[V1, []]]] = X,
+  [NT2, [[V2, []]]] = Y,
+  term_variables(V1, Vars1),
+  term_variables(V2, Vars2),
+  append([Vars1, Vars2], AllVars),
+  ((((numeric_nonterminal(NT1), numeric_nonterminal(NT2)) ;
+    (atomic_string_nonterminal(NT1), atomic_string_nonterminal(NT2))),
+      var(V1), var(V2)
+    ) ->
+    ( % Constraints with CLP variables: Post CLP constraint
+      (Result #= 1 -> V1 #= V2 ; V1 #\= V2), !
+    );
+    ( % At least one expression is already instantiated; label any remaining
+      % variables and check standard term equality on unparsed tree.
+      (AllVars \= [] -> 
+        (sum(AllVars, #=, Sum),
+          labeling([min(Sum)], AllVars));
+          true),
+      tree_to_string(X, Str1),
+      tree_to_string(Y, Str2),
+      (Result #= 1 -> Str1 =:= Str2 ; Str1 =\= Str2))).
+
+:- begin_tests(equal).
+test(equal) :- equal(['var', [[0, []]]], ['var', [[0, []]]], 1).
+test(equal) :- X in 0..10, equal(['var', [[X, []]]], ['var', [[X, []]]], 1).
+test(equal, all(X = [0, 1, 2])) :- X in 0..10, equal(['var', [[X, []]]], ['digit', [[X, []]]], 0).
+test(equal, [fail]) :- equal(['var', [[0, []]]], ['var', [[0, []]]], 0).
+test(equal) :- equal(['var', [[0, []]]], ['var', [[1, []]]], 0).
+test(equal) :- equal(['digit', [[0, []]]], ['digit', [[0, []]]], 1).
+test(equal) :- equal(['digit', [[0, []]]], ['digit', [[1, []]]], 0).
+test(equal) :- X #= 0, equal(['var', [[X, []]]], ['var', [[0, []]]], 1).
+test(equal) :- X #= 0, equal(['var', [[X, []]]], ['var', [["x", []]]], 1).
+test(equal) :- equal(['var', [[X, []]]], ['var', [[Y, []]]], 1), X #= Y.
+test(equal, [fail]) :- equal(['var', [[X, []]]], ['var', [[Y, []]]], 0), X #= Y.
+test(equal) :- equal(['var', [[X, []]]], ['var', [[Y, []]]], 0), X #\= Y.
+test(equal, [fail]) :- equal(['var', [[X, []]]], ['var', [[Y, []]]], 1), X #\= Y.
+test(equal, all(X = [0])) :- X in 0..10, equal(['var', [[X, []]]], ['var', [["x", []]]], 1).
+test(equal, all(X = [1, 2])) :- X in 0..10, equal(['var', [[X, []]]], ['var', [["x", []]]], 0).
+:- end_tests(equal).
+
+
 %%% all/2
 all([], 1).
 all([0|_], 0).

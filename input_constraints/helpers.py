@@ -4,7 +4,7 @@ import pyswip.easy
 import z3
 from fuzzingbook.Grammars import unreachable_nonterminals
 
-from input_constraints.type_defs import Path, ParseTree, Grammar
+from input_constraints.type_defs import Path, ParseTree, Grammar, CanonicalGrammar
 
 
 def traverse_tree(tree: ParseTree, action: Callable[[ParseTree], None]) -> None:
@@ -175,6 +175,10 @@ def geometric_sequence(length: int, base: float = 1.1) -> List[int]:
     return list(map(lambda x: 1.1 ** x, range(0, length)))
 
 
+def is_canonical_grammar(grammar: Union[Grammar, CanonicalGrammar]) -> bool:
+    return type(next(item[1] for item in grammar.items())[0]) is list
+
+
 def pyswip_var_mapping(inp,
                        mapping: Optional[Dict[pyswip.easy.Variable, str]] = None) -> Dict[pyswip.easy.Variable, str]:
     if mapping is None:
@@ -210,17 +214,30 @@ def pyswip_clp_constraints_to_str(inp: List, var_name_mapping: Dict[pyswip.easy.
         variable: pyswip.easy.Variable = constraint.args[1].args[0]
         variable_str = [var_name_mapping[v] for v in var_name_mapping if v == variable][0]
 
-        range_functor: pyswip.easy.Functor = constraint.args[1].args[1]
-        assert type(range_functor) is pyswip.easy.Functor
+        if type(constraint.args[1]) is pyswip.easy.Functor :
+            constraint_name = constraint.args[1].name.chars
+            if constraint_name in ["#\\=", "#=="]:
+                other_variable: pyswip.easy.Variable = constraint.args[1].args[1]
+                other_variable_str = [var_name_mapping[v] for v in var_name_mapping if v == other_variable][0]
+                result.append(f"{variable_str} {constraint_name} {other_variable_str}")
+                continue
 
-        range: List[int] = range_functor.args
-        result.append(f"{variable_str} in {range[0]}..{range[1]}")
+        functor: pyswip.easy.Functor = constraint.args[1].args[1]
+        functor_name = functor.name.chars
+        if functor_name == "..":
+            range: List[int] = functor.args
+            result.append(f"{variable_str} in {range[0]}..{range[1]}")
+            continue
+
+        raise NotImplementedError(f"Don't know how to translate constraint {constraint}")
 
     return ", ".join(result)
 
 
 def pyswip_output_to_str(inp, var_name_mapping: Optional[Dict[pyswip.easy.Variable, str]] = None) -> str:
-    if type(inp) is bytes:
+    if type(inp) is str:
+        return inp
+    elif type(inp) is bytes:
         inp: bytes
         return f'"{inp.decode("utf-8")}"'
     elif type(inp) is int:

@@ -270,7 +270,7 @@ class SMTFormula(Formula):
         """
         Encapsulates an SMT formula.
         :param formula: The SMT formula.
-        :param free_variables: Free varialbes in this formula.
+        :param free_variables: Free variables in this formula.
         """
 
         actual_symbols = get_symbols(formula)

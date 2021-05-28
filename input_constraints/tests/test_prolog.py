@@ -11,8 +11,8 @@ from pyswip import Prolog, registerForeign
 
 from input_constraints.helpers import pyswip_output_to_str, pyswip_clp_constraints_to_str, pyswip_var_mapping
 from input_constraints.lang import Constant, BoundVariable, Formula, SMTFormula
-from input_constraints import shortcuts as sc
-from input_constraints.prolog import translate_grammar, Translator
+from input_constraints import isla_shortcuts as sc
+from input_constraints.prolog import Translator
 from input_constraints.tests.test_data import LANG_GRAMMAR
 
 
@@ -70,55 +70,75 @@ class TestProlog(unittest.TestCase):
             SMTFormula(typing.cast(z3.BoolRef, z3.SubSeq(var.to_smt(), 0, 1) == z3.StringVal("a")), var))
         self.assertNotIn("<var>", translator.atomic_string_nonterminals.keys())
 
+    def test_translate_simple_equation(self):
+        var1 = Constant("$var1", "<var>")
+        var2 = Constant("$var2", "<var>")
+        constraint = SMTFormula(typing.cast(z3.BoolRef, var1.to_smt() == var2.to_smt()), var1, var2)
+        translator = Translator(canonical(LANG_GRAMMAR), constraint)
+
+        rule = translator.translate_smt_formula(constraint, 0)[0][0]
+        self.assertEqual("pred0(Var1, Var2, Result) :- "
+                         "_ - Tree1 = Var1, "
+                         "_ - Tree2 = Var2, "
+                         "equal(Tree1, Tree2, Result)", str(rule))
+
+        prolog = translator.translate()
+        var_predicate = translator.predicate_map["var"]
+        outer_query = prolog.query(f"{var_predicate}(V1), {var_predicate}(V2), pred0([] - V1, [] - V2, 1), "
+                                   f"term_variables([V1, V2], Vs), copy_term(Vs, Vs, Gs).")
+
+        result = list(outer_query)
+        self.assertEqual(1, len(result))
+
+        var_name_mapping = pyswip_var_mapping(result[0])
+        var1inst = pyswip_output_to_str(result[0]["V1"], var_name_mapping)
+        var2inst = pyswip_output_to_str(result[0]["V2"], var_name_mapping)
+        constraints = pyswip_clp_constraints_to_str(result[0]["Gs"], var_name_mapping)
+        self.assertEqual(var1inst, var2inst)
+        outer_query.close()
+
+        inner_query = prolog.query(f"V1={var1inst}, V2={var2inst}, "
+                                   f"{constraints}, "
+                                   f"term_variables(V1, Vars1), term_variables(V2, Vars2), "
+                                   f"append([Vars1, Vars2], Vars), "
+                                   f"label(Vars), "
+                                   f"tree_to_string(V1, V1Str), tree_to_string(V2, V2Str)")
+        for _ in range(9):
+            result = next(inner_query)
+            self.assertEqual(pyswip_output_to_str(result["V1Str"]), pyswip_output_to_str(result["V2Str"]))
+
+        inner_query.close()
+
+        outer_query = prolog.query(f"{var_predicate}(V1), {var_predicate}(V2), pred0([] - V1, [] - V2, 0), "
+                                   f"term_variables([V1, V2], Vs), copy_term(Vs, Vs, Gs).")
+
+        result = list(outer_query)
+        self.assertEqual(1, len(result))
+        var_name_mapping = pyswip_var_mapping(result[0])
+        var1inst = pyswip_output_to_str(result[0]["V1"], var_name_mapping)
+        var2inst = pyswip_output_to_str(result[0]["V2"], var_name_mapping)
+        constraints = pyswip_clp_constraints_to_str(result[0]["Gs"], var_name_mapping)
+        self.assertNotEqual(var1inst, var2inst)
+        outer_query.close()
+
+        inner_query = prolog.query(f"V1={var1inst}, V2={var2inst}, "
+                                   f"{constraints}, "
+                                   f"term_variables(V1, Vars1), term_variables(V2, Vars2), "
+                                   f"append([Vars1, Vars2], Vars), "
+                                   f"label(Vars), "
+                                   f"tree_to_string(V1, V1Str), tree_to_string(V2, V2Str)")
+        for _ in range(9):
+            result = next(inner_query)
+            self.assertNotEqual(pyswip_output_to_str(result["V1Str"]), pyswip_output_to_str(result["V2Str"]))
+
+        inner_query.close()
+
     def test_translate_grammar(self):
-        numeric_nonterminals = {"<digit>": (0, 9)}
-        atomic_string_nonterminals = {"<var>": 10}
+        translator = Translator(LANG_GRAMMAR, self.get_test_constraint())
+        prolog = translator.translate()
 
-        def numeric_nonterminal(atom: pyswip.easy.Atom) -> bool:
-            return f"<{atom.value}>" in numeric_nonterminals
-
-        def atomic_string_nonterminal(atom: pyswip.easy.Atom) -> bool:
-            return f"<{atom.value}>" in atomic_string_nonterminals
-
-        fuzz_results: Dict[str, List[str]] = {}
-        fuzzers: Dict[str, GrammarCoverageFuzzer] = {}
-
-        def fuzz(atom: pyswip.easy.Atom, idx: int, result: pyswip.easy.Variable) -> bool:
-            nonterminal = f"<{atom.value}>"
-
-            grammar = GrammarGraph.from_grammar(LANG_GRAMMAR).subgraph(nonterminal).to_grammar()
-            fuzzer = fuzzers.setdefault(nonterminal, GrammarCoverageFuzzer(grammar))
-            fuzz_results.setdefault(nonterminal, [])
-
-            while len(fuzz_results[nonterminal]) <= idx:
-                fuzz_results[nonterminal].append(fuzzer.fuzz())
-
-            result.value = fuzz_results[nonterminal][idx]
-            return True
-
-        prolog = Prolog()
-        prolog.consult("../prolog_defs.pl")
-
-        for pred in ["atomic_nonterminal/1", "atomic_string_nonterminal/1", "fuzz/3"]:
-            next(prolog.query(f"abolish({pred})"))
-
-        registerForeign(numeric_nonterminal, arity=1)
-        registerForeign(atomic_string_nonterminal, arity=1)
-        registerForeign(fuzz, arity=3)
-
-        pl_grammar = translate_grammar(
-            canonical(LANG_GRAMMAR),
-            Translator(LANG_GRAMMAR, None).compute_predicate_names_for_nonterminals(),
-            numeric_nonterminals,
-            atomic_string_nonterminals
-        )
-
-        next(prolog.query("use_module(library(clpfd))"))
-
-        for rule in pl_grammar:
-            prolog.assertz(str(rule))
-
-        outer_query = prolog.query("stmt(S), term_variables(S, Vs), copy_term(Vs, Vs, Gs)")
+        stmt_predicate = translator.predicate_map["stmt"]
+        outer_query = prolog.query(f"{stmt_predicate}(S), term_variables(S, Vs), copy_term(Vs, Vs, Gs)")
 
         outer_results: List[Tuple[str, str]] = []
         for _ in range(10):

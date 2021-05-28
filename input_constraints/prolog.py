@@ -1,149 +1,289 @@
-from typing import List, Dict, Tuple, Type, Callable
+import logging
+import re
+import tempfile
+from typing import List, Dict, Tuple, Type, Callable, Union
 
+import pyswip
 import sys
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.Grammars import is_nonterminal
-from fuzzingbook.Parser import non_canonical
-from grammar_graph.gg import GrammarGraph
+from fuzzingbook.Parser import non_canonical, canonical
+from grammar_graph.gg import GrammarGraph, ChoiceNode, NonterminalNode, Node
 from orderedset import OrderedSet
-from pyswip import Prolog
+from pyswip import Prolog, registerForeign
 
-from input_constraints.helpers import visit_z3_expr
-from input_constraints.lang import Formula, SMTFormula, FormulaVisitor, ForallFormula, ExistsFormula, VariablesCollector
-from input_constraints.prolog_structs import Rule, PredicateApplication, Predicate, Term, Variable, ListTerm, \
-    StringTerm, Atom, Number
-from input_constraints.type_defs import CanonicalGrammar
+from input_constraints.helpers import visit_z3_expr, is_canonical_grammar
+import input_constraints.lang as isla
+import input_constraints.prolog_structs as pl
+from input_constraints.type_defs import CanonicalGrammar, Grammar
+import input_constraints.prolog_shortcuts as psc
 
-
-def translate_grammar(
-        grammar: CanonicalGrammar,
-        predicate_map: Dict[str, str],
-        numeric_nonterminals: Dict[str, Tuple[int, int]],
-        atomic_string_nonterminals: Dict[str, int]
-) -> List[Rule]:
-    """
-    Translates a grammar to Prolog.
-
-    :param grammar: The grammar in canonical form.
-    :param predicate_map: Mapping of nonterminal names (w/o the "<", ">") to the corresponding predicate names. Accounts
-    for predefined predicates.
-    :param numeric_nonterminals: Nonterminals of integer type, mapped to their bounds.
-    :param atomic_string_nonterminals: Nonterminals of string type whose internal structure does not matter for
-    the constraint at hand, and which therefore can be abstracted by integers (for later fuzzing).
-    :return: The prolog translation of `grammar`.
-    """
-    rules: List[Rule] = []
-    graph = GrammarGraph.from_grammar(non_canonical(grammar))
-
-    for nonterminal, alternatives in [(n, a) for n, a in grammar.items()
-                                      if n not in numeric_nonterminals
-                                         and n not in atomic_string_nonterminals]:
-        nonterminal = nonterminal[1:-1]
-        for alternative in alternatives:
-            params: List[Term] = []
-            variables: Dict[str, str] = {}
-            for symbol in alternative:
-                if is_nonterminal(symbol):
-                    symbol_type = symbol[1:-1]
-                    var_name = symbol_type.capitalize()
-                    i = 1
-                    while var_name in variables:
-                        var_name += f"_{i}"
-                    variables[var_name] = symbol_type
-                    params.append(Variable(var_name))
-                else:
-                    params.append(ListTerm([StringTerm(symbol), ListTerm([])]))
-
-            atom_name = predicate_map[nonterminal]
-            head = PredicateApplication(
-                Predicate(atom_name, 1),
-                [ListTerm([Atom(atom_name), ListTerm(params)])])
-
-            goals = []
-            if variables:
-                # Need to call recursive nonterminals first
-                variables_list = sorted(variables.keys(),
-                                        key=lambda n: (
-                                            node := graph.get_node(f"<{variables[n]}>"),
-                                            chr(0) if node.reachable(node) else n[1:-1])[-1])
-
-                goals = [PredicateApplication(Predicate(predicate_map[variables[variable]], 1),
-                                              [Variable(variable)])
-                         for variable in variables_list]
-
-            rules.append(Rule(head, goals))
-
-    for nonterminal in numeric_nonterminals:
-        nonterminal_name = nonterminal[1:-1]
-        c = Variable("C")
-        leq = Predicate("#=<", 2, infix=True)
-
-        rules.append(Rule(PredicateApplication(
-            Predicate(predicate_map[nonterminal_name], 1),
-            [ListTerm([Atom(nonterminal_name), ListTerm([ListTerm([c, ListTerm([])])])])]
-        ), [
-            PredicateApplication(leq, [Number(numeric_nonterminals[nonterminal][0]), c]),
-            PredicateApplication(leq, [c, Number(numeric_nonterminals[nonterminal][1])])
-        ]))
-
-    for nonterminal in atomic_string_nonterminals:
-        nonterminal_name = nonterminal[1:-1]
-        c = Variable("C")
-        leq = Predicate("#=<", 2, infix=True)
-
-        rules.append(Rule(PredicateApplication(
-            Predicate(predicate_map[nonterminal_name], 1),
-            [ListTerm([Atom(nonterminal_name), ListTerm([ListTerm([c, ListTerm([])])])])]
-        ), [
-            PredicateApplication(leq, [Number(0), c]),
-            PredicateApplication(leq, [c, Number(atomic_string_nonterminals[nonterminal])])
-        ]))
-
-    return rules
-
-
-def translate_constraint(formula: Formula) -> str:
-    translation_methods: Dict[Type[Formula], Type[Callable[[Formula], str]]] = {
-        SMTFormula: translate_smt_formula
-    }
-
-    if type(formula) not in translation_methods:
-        raise NotImplementedError
-
-    return translation_methods[type(formula)](formula)
-
-
-def translate_smt_formula(formula: SMTFormula) -> str:
-    pass
+# A TranslationResult for a constraint is a list of Prolog rules together with a list of foreign foreign predicates,
+# each consisting of the Python function for the predicate, the predicate name, and its arity.
+TranslationResult = Tuple[List[pl.Rule], List[Tuple[Callable, str, int]]]
 
 
 class Translator:
+    # TODO: Make configurable
     FUZZING_DEPTH_ATOMIC_STRING_NONTERMINALS = 10
 
-    def __init__(self, grammar: CanonicalGrammar, formula: Formula):
-        self.grammar = grammar
+    def __init__(self, grammar: Union[Grammar, CanonicalGrammar], formula: isla.Formula):
+        if is_canonical_grammar(grammar):
+            self.grammar = grammar
+        else:
+            self.grammar = canonical(grammar)
+
         self.formula = formula
 
+        self.used_variables: OrderedSet[isla.Variable] = isla.VariablesCollector(formula).collect()
+        self.isla_to_prolog_var_map: Dict[isla.Variable, pl.Variable] = \
+            {iv: self.to_prolog_var(iv) for iv in self.used_variables}
+        self.isla_var_name_to_prolog_var_map: Dict[isla.Variable, pl.Variable] = \
+            {iv.name: pv for iv, pv in self.isla_to_prolog_var_map.items()}
         self.predicate_map: Dict[str, str] = self.compute_predicate_names_for_nonterminals()
         self.numeric_nonterminals: Dict[str, Tuple[int, int]] = self.compute_numeric_nonterminals()
         self.atomic_string_nonterminals: Dict[str, int] = self.compute_atomic_string_nonterminals()
 
-    def compute_atomic_string_nonterminals(self) -> Dict[str, int]:
-        non_atomic_variables = set()
+        self.logger = logging.getLogger(type(self).__name__)
 
-        class NonAtomicVisitor(FormulaVisitor):
-            def visit_forall_formula(self, formula: ForallFormula):
+    def translate(self) -> Prolog:
+        def numeric_nonterminal(atom: pyswip.easy.Atom) -> bool:
+            return f"<{atom.value}>" in self.numeric_nonterminals
+
+        def atomic_string_nonterminal(atom: pyswip.easy.Atom) -> bool:
+            return f"<{atom.value}>" in self.atomic_string_nonterminals
+
+        fuzz_results: Dict[str, List[str]] = {}
+        fuzzers: Dict[str, GrammarCoverageFuzzer] = {}
+
+        def fuzz(atom: pyswip.easy.Atom, idx: int, result: pyswip.easy.Variable) -> bool:
+            nonterminal = f"<{atom.value}>"
+
+            grammar = GrammarGraph.from_grammar(non_canonical(self.grammar)).subgraph(nonterminal).to_grammar()
+            fuzzer = fuzzers.setdefault(nonterminal, GrammarCoverageFuzzer(grammar))
+            fuzz_results.setdefault(nonterminal, [])
+
+            while len(fuzz_results[nonterminal]) <= idx:
+                fuzz_results[nonterminal].append(fuzzer.fuzz())
+
+            result.value = fuzz_results[nonterminal][idx]
+            return True
+
+        prolog = Prolog()
+
+        try:
+            import importlib.resources as pkg_resources
+        except ImportError:
+            # Try backported to PY<37 `importlib_resources`.
+            import importlib_resources as pkg_resources
+
+        preamble = pkg_resources.read_text(__package__, 'prolog_defs.pl')
+
+        with tempfile.NamedTemporaryFile() as tmp:
+            tmp.write(preamble.encode())
+            prolog.consult(tmp.name)
+
+        next(prolog.query("use_module(library(clpfd))"))
+
+        for pred in ["atomic_nonterminal/1", "atomic_string_nonterminal/1", "fuzz/3"]:
+            next(prolog.query(f"abolish({pred})"))
+
+        registerForeign(numeric_nonterminal, name="numeric_nonterminal", arity=1)
+        registerForeign(atomic_string_nonterminal, name="atomic_string_nonterminal", arity=1)
+        registerForeign(fuzz, name="fuzz", arity=3)
+
+        pl_grammar = self.translate_grammar()
+        for rule in pl_grammar:
+            prolog.assertz(str(rule))
+
+        try:
+            rules, foreign_functions = self.translate_constraint(self.formula)
+            for rule in rules:
+                prolog.assertz(str(rule))
+            for func, name, arity in foreign_functions:
+                registerForeign(func, name=name, arity=arity)
+        except NotImplementedError as e:
+            # TODO: Remove. Only for testing during ongoing development
+            self.logger.warning(f"Translation method not implemented: {str(e)}")
+
+        return prolog
+
+    def translate_constraint(self, formula: isla.Formula, counter: int = 0) -> TranslationResult:
+        translation_methods: Dict[Type[isla.Formula], Type[Callable[[isla.Formula, int], TranslationResult]]] = {
+            isla.SMTFormula: self.translate_smt_formula
+        }
+
+        if type(formula) not in translation_methods:
+            raise NotImplementedError
+
+        return translation_methods[type(formula)](formula, counter)
+
+    def translate_smt_formula(self, formula: isla.SMTFormula, counter: int) -> TranslationResult:
+        z3_formula: z3.BoolRef = formula.formula
+        free_isla_vars: OrderedSet[isla.Variable] = formula.free_variables()
+        free_pl_vars: OrderedSet[pl.Variable] = OrderedSet([self.isla_to_prolog_var_map[isla_var]
+                                                            for isla_var in free_isla_vars])
+
+        result_var = self.fresh_variable("Result", free_pl_vars)
+
+        if str(z3_formula.decl()) == "==" and all(z3.is_const(child) and child.decl().kind() == z3.Z3_OP_UNINTERPRETED
+                                                  or z3.is_string_value(child)
+                                                  for child in z3_formula.children()):
+            head = pl.PredicateApplication(
+                pl.Predicate(f"pred{counter}", len(free_pl_vars) + 1),
+                free_pl_vars.union([result_var])
+            )
+
+            tvar1 = self.fresh_variable("Tree1", free_pl_vars.union([result_var]))
+            tvar2 = self.fresh_variable("Tree2", free_pl_vars.union([result_var, tvar1]))
+
+            goals: List[pl.Goal] = [
+                psc.unify(psc.pair(psc.anon_var(), tvar1), free_pl_vars[0]),
+                psc.unify(psc.pair(psc.anon_var(), tvar2), free_pl_vars[1]),
+                pl.PredicateApplication(
+                    pl.Predicate("equal", 3),
+                    [tvar1, tvar2, result_var]
+                )
+            ]
+
+            return [pl.Rule(head, goals)], []
+
+        raise NotImplementedError()
+
+    def fresh_variable(self, name_pattern: str, context_vars: OrderedSet[pl.Variable]) -> pl.Variable:
+        name = name_pattern
+        i = 0
+        while any(cvar for cvar in context_vars if cvar.name == name):
+            name = f"{name_pattern}_{i}"
+            i += 1
+
+        return pl.Variable(name)
+
+    def to_prolog_var(self, variable: Union[str, isla.Variable]) -> pl.Variable:
+        result = variable if type(variable) is str else variable.name
+        result = re.sub('[^_a-zA-Z0-9]', '', result)
+
+        if result[0] != "_" and not result[0].isupper():
+            if result[0].isalpha():
+                result = result[0].upper() + result[1:]
+            else:
+                result = "_" + result
+
+        return pl.Variable(result)
+
+    def translate_grammar(self) -> List[pl.Rule]:
+        """
+        Translates a grammar to Prolog.
+
+        :param grammar: The grammar in canonical form.
+        :param predicate_map: Mapping of nonterminal names (w/o the "<", ">") to the corresponding predicate names. Accounts
+        for predefined predicates.
+        :param numeric_nonterminals: Nonterminals of integer type, mapped to their bounds.
+        :param atomic_string_nonterminals: Nonterminals of string type whose internal structure does not matter for
+        the constraint at hand, and which therefore can be abstracted by integers (for later fuzzing).
+        :return: The prolog translation of `grammar`.
+        """
+        rules: List[pl.Rule] = []
+        graph = GrammarGraph.from_grammar(non_canonical(self.grammar))
+
+        for nonterminal, alternatives in [(n, a) for n, a in self.grammar.items()
+                                          if n not in self.numeric_nonterminals
+                                             and n not in self.atomic_string_nonterminals]:
+            nonterminal = nonterminal[1:-1]
+            for alternative in alternatives:
+                params: List[pl.Term] = []
+                variables: Dict[str, str] = {}
+                for symbol in alternative:
+                    if is_nonterminal(symbol):
+                        symbol_type = symbol[1:-1]
+                        var_name = symbol_type.capitalize()
+                        i = 1
+                        while var_name in variables:
+                            var_name += f"_{i}"
+                        variables[var_name] = symbol_type
+                        params.append(pl.Variable(var_name))
+                    else:
+                        params.append(pl.ListTerm([pl.StringTerm(symbol), pl.ListTerm([])]))
+
+                atom_name = self.predicate_map[nonterminal]
+                head = pl.PredicateApplication(
+                    pl.Predicate(atom_name, 1),
+                    [pl.ListTerm([pl.Atom(atom_name), pl.ListTerm(params)])])
+
+                goals = []
+                if variables:
+                    # Need to call recursive nonterminals first
+                    variables_list = sorted(variables.keys(),
+                                            key=lambda n: (
+                                                node := graph.get_node(f"<{variables[n]}>"),
+                                                chr(0) if node.reachable(node) else n[1:-1])[-1])
+
+                    goals = [pl.PredicateApplication(pl.Predicate(self.predicate_map[variables[variable]], 1),
+                                                     [pl.Variable(variable)])
+                             for variable in variables_list]
+
+                rules.append(pl.Rule(head, goals))
+
+        for nonterminal in self.numeric_nonterminals:
+            nonterminal_name = nonterminal[1:-1]
+            c = pl.Variable("C")
+            leq = pl.Predicate("#=<", 2, infix=True)
+
+            rules.append(pl.Rule(pl.PredicateApplication(
+                pl.Predicate(self.predicate_map[nonterminal_name], 1),
+                [pl.ListTerm([pl.Atom(nonterminal_name), pl.ListTerm([pl.ListTerm([c, pl.ListTerm([])])])])]
+            ), [
+                pl.PredicateApplication(leq, [pl.Number(self.numeric_nonterminals[nonterminal][0]), c]),
+                pl.PredicateApplication(leq, [c, pl.Number(self.numeric_nonterminals[nonterminal][1])])
+            ]))
+
+        for nonterminal in self.atomic_string_nonterminals:
+            nonterminal_name = nonterminal[1:-1]
+            c = pl.Variable("C")
+            leq = pl.Predicate("#=<", 2, infix=True)
+
+            rules.append(pl.Rule(pl.PredicateApplication(
+                pl.Predicate(self.predicate_map[nonterminal_name], 1),
+                [pl.ListTerm([pl.Atom(nonterminal_name), pl.ListTerm([pl.ListTerm([c, pl.ListTerm([])])])])]
+            ), [
+                pl.PredicateApplication(leq, [pl.Number(0), c]),
+                pl.PredicateApplication(leq, [c, pl.Number(self.atomic_string_nonterminals[nonterminal])])
+            ]))
+
+        return rules
+
+    def compute_atomic_string_nonterminals(self) -> Dict[str, int]:
+        assert hasattr(self, "numeric_nonterminals")
+
+        used_nonterminals = OrderedSet([variable.n_type for variable in self.used_variables])
+
+        unused_sink_nonterminals: OrderedSet[str] = OrderedSet([])
+        for unused_nonterminal in OrderedSet(self.grammar.keys()) \
+                .difference(used_nonterminals).difference(set(self.numeric_nonterminals.keys())):
+            graph = GrammarGraph.from_grammar(non_canonical(self.grammar))
+            dist = graph.dijkstra(graph.get_node(unused_nonterminal))[0]
+            reachable_nonterminals = set([node.symbol for node in dist.keys()
+                                          if dist[node] < sys.maxsize
+                                          and node.symbol != unused_nonterminal
+                                          and type(node) is NonterminalNode])
+            if not reachable_nonterminals.intersection(used_nonterminals):
+                unused_sink_nonterminals.add(unused_nonterminal)
+
+        non_atomic_variables = OrderedSet([])
+
+        class NonAtomicVisitor(isla.FormulaVisitor):
+            def visit_forall_formula(self, formula: isla.ForallFormula):
                 non_atomic_variables.add(formula.in_variable)
                 if formula.bind_expression is not None:
                     non_atomic_variables.add(formula.bound_variable)
 
-            def visit_exists_formula(self, formula: ExistsFormula):
-                non_atomic_variables.add(formula.in_variable.n_type)
+            def visit_exists_formula(self, formula: isla.ExistsFormula):
+                non_atomic_variables.add(formula.in_variable)
                 if formula.bind_expression is not None:
                     non_atomic_variables.add(formula.bound_variable)
 
-            def visit_smt_formula(self, formula: SMTFormula):
+            def visit_smt_formula(self, formula: isla.SMTFormula):
                 for expr in visit_z3_expr(formula.formula):
                     # Any non-trivial string expression, e.g., substring computations
                     # or regex operations, exclude the involved variables from atomic
@@ -159,7 +299,9 @@ class Translator:
 
         non_atomic_nonterminals = [variable.n_type for variable in non_atomic_variables]
         return {nonterminal: Translator.FUZZING_DEPTH_ATOMIC_STRING_NONTERMINALS
-                for nonterminal in set(self.grammar.keys()).difference(non_atomic_nonterminals)}
+                for nonterminal in used_nonterminals
+                    .difference(non_atomic_nonterminals)
+                    .union(unused_sink_nonterminals)}
 
     def compute_numeric_nonterminals(self) -> Dict[str, Tuple[int, int]]:
         result = {}

@@ -35,7 +35,11 @@ class Number(Term):
 
 class Variable(Term):
     def __init__(self, name: str):
+        assert name[0] == "_" or name[0].isupper()
         self.name = name
+
+    def __hash__(self):
+        return hash((type(self), self.name))
 
     def __eq__(self, other):
         return type(other) == type(self) and other.name == self.name
@@ -48,9 +52,11 @@ class Variable(Term):
 
 
 class Functor:
-    def __init__(self, name: str, arity: int):
+    def __init__(self, name: str, arity: int, infix=False):
         self.name = name
         self.arity = arity
+        self.infix = infix
+        assert not infix or arity == 2
 
     def __eq__(self, other):
         return type(other) == type(self) and (other.name, other.arity) == (self.name, self.arity)
@@ -75,7 +81,10 @@ class CompoundTerm(Term):
         return f"{type(self).__name__}({repr(self.functor)}, [{', '.join(map(repr, self.arguments))}])"
 
     def __str__(self):
-        return f"{str(self.functor)}({', '.join(map(str, self.arguments))})"
+        if self.functor.infix:
+            return (" " + str(self.functor) + " ").join(map(str, self.arguments))
+        else:
+            return f"{str(self.functor)}({', '.join(map(str, self.arguments))})"
 
 
 class ListTerm(CompoundTerm):

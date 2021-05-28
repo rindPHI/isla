@@ -4,7 +4,7 @@ from typing import cast
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
-import input_constraints.shortcuts as sc
+import input_constraints.isla_shortcuts as sc
 from input_constraints.lang import Constant, BoundVariable, Formula, well_formed, evaluate
 from test_data import *
 
