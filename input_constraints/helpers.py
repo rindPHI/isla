@@ -214,7 +214,7 @@ def pyswip_clp_constraints_to_str(inp: List, var_name_mapping: Dict[pyswip.easy.
         variable: pyswip.easy.Variable = constraint.args[1].args[0]
         variable_str = [var_name_mapping[v] for v in var_name_mapping if v == variable][0]
 
-        if type(constraint.args[1]) is pyswip.easy.Functor :
+        if type(constraint.args[1]) is pyswip.easy.Functor:
             constraint_name = constraint.args[1].name.chars
             if constraint_name in ["#\\=", "#=="]:
                 other_variable: pyswip.easy.Variable = constraint.args[1].args[1]
@@ -284,3 +284,7 @@ def visit_z3_expr(e: Union[z3.ExprRef, z3.QuantifierRef],
         for e in visit_z3_expr(e.body(), seen):
             yield e
         return
+
+
+def is_z3_var(expr: z3.ExprRef) -> bool:
+    return z3.is_const(expr) and expr.decl().kind() == z3.Z3_OP_UNINTERPRETED

@@ -133,6 +133,27 @@ class TestProlog(unittest.TestCase):
 
         inner_query.close()
 
+    def test_translate_unknown_smt_op(self):
+        """This test depends on the fact that there is no translation for the SMT function/pred being used to
+        Prolog, so we use a foreign function connecting to Z3. Tested SMT function currently is substring,
+        in case this is later implemented in Prolog, have to change test case.
+
+        NOTE: Executing the SMT test grounds all involved CLP variables!"""
+        variable = Constant("$var", "<var>")
+        constraint = SMTFormula(typing.cast(z3.BoolRef,
+                                            z3.SubString(variable.to_smt(), 0, 1) == z3.StringVal("z")),
+                                variable)
+        translator = Translator(canonical(LANG_GRAMMAR), constraint)
+
+        prolog = translator.translate()
+        var_predicate = translator.predicate_map["var"]
+        outer_query = prolog.query(f"{var_predicate}(V), pred0([] - V, 1), tree_to_string(V, Str).")
+
+        result = list(outer_query)
+        self.assertEqual(1, len(result))
+        strinst = pyswip_output_to_str(result[0]["Str"])[1:-1]
+        self.assertEqual("z", strinst)
+
     def test_translate_grammar(self):
         translator = Translator(LANG_GRAMMAR, self.get_test_constraint())
         prolog = translator.translate()

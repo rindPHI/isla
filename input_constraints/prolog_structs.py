@@ -146,7 +146,7 @@ class PredicateApplication(Goal):
 
 
 class Conjunction(Goal):
-    def __init__(self, arguments: Iterable[PredicateApplication]):
+    def __init__(self, arguments: Iterable[Goal]):
         self.arguments = list(arguments)
 
     def __eq__(self, other):
@@ -156,11 +156,11 @@ class Conjunction(Goal):
         return f"Conjunction([{', '.join(map(repr, self.arguments))}])"
 
     def __str__(self):
-        return ", ".join(map(str, self.arguments))
+        return ", ".join(map(lambda s: f"({s})", map(str, self.arguments)))
 
 
 class Disjunction(Goal):
-    def __init__(self, arguments: Iterable[PredicateApplication]):
+    def __init__(self, arguments: Iterable[Goal]):
         self.arguments = list(arguments)
 
     def __eq__(self, other):
@@ -170,7 +170,24 @@ class Disjunction(Goal):
         return f"Disjunction([{', '.join(map(repr, self.arguments))}])"
 
     def __str__(self):
-        return "; ".join(map(str, self.arguments))
+        return "; ".join(map(lambda s: f"({s})", map(str, self.arguments)))
+
+
+class Conditional(Goal):
+    def __init__(self, condition: Term, then_branch: Goal, else_branch: Goal):
+        self.condition = condition
+        self.then_branch = then_branch
+        self.else_branch = else_branch
+
+    def __eq__(self, other):
+        return type(other) == type(self) and ((other.condition, other.then_branch, other.else_branch) ==
+                                              (self.condition, self.then_branch, self.else_branch))
+
+    def __repr__(self):
+        return f"Conditional([{repr(self.condition)}, {repr(self.then_branch)}, {repr(self.else_branch)}])"
+
+    def __str__(self):
+        return f"(({str(self.condition)}) -> ({str(self.then_branch)}) ; ({str(self.else_branch)}))"
 
 
 class Rule:

@@ -7,13 +7,14 @@ import pyswip
 import sys
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
+from fuzzingbook.GrammarFuzzer import tree_to_string
 from fuzzingbook.Grammars import is_nonterminal
 from fuzzingbook.Parser import non_canonical, canonical
 from grammar_graph.gg import GrammarGraph, ChoiceNode, NonterminalNode, Node
 from orderedset import OrderedSet
 from pyswip import Prolog, registerForeign
 
-from input_constraints.helpers import visit_z3_expr, is_canonical_grammar
+from input_constraints.helpers import visit_z3_expr, is_canonical_grammar, is_z3_var, pyswip_output_to_str
 import input_constraints.lang as isla
 import input_constraints.prolog_structs as pl
 from input_constraints.type_defs import CanonicalGrammar, Grammar
@@ -124,32 +125,65 @@ class Translator:
         free_isla_vars: OrderedSet[isla.Variable] = formula.free_variables()
         free_pl_vars: OrderedSet[pl.Variable] = OrderedSet([self.isla_to_prolog_var_map[isla_var]
                                                             for isla_var in free_isla_vars])
+        all_pl_vars: OrderedSet[pl.Variable] = OrderedSet(free_pl_vars)
 
         result_var = self.fresh_variable("Result", free_pl_vars)
+        all_pl_vars.add(result_var)
 
-        if str(z3_formula.decl()) == "==" and all(z3.is_const(child) and child.decl().kind() == z3.Z3_OP_UNINTERPRETED
-                                                  or z3.is_string_value(child)
+        head = pl.PredicateApplication(
+            pl.Predicate(f"pred{counter}", len(free_pl_vars) + 1),
+            free_pl_vars.union([result_var])
+        )
+
+        if str(z3_formula.decl()) == "==" and all(is_z3_var(child) or z3.is_string_value(child)
                                                   for child in z3_formula.children()):
-            head = pl.PredicateApplication(
-                pl.Predicate(f"pred{counter}", len(free_pl_vars) + 1),
-                free_pl_vars.union([result_var])
-            )
-
-            tvar1 = self.fresh_variable("Tree1", free_pl_vars.union([result_var]))
-            tvar2 = self.fresh_variable("Tree2", free_pl_vars.union([result_var, tvar1]))
+            tvar1 = self.fresh_variable("Tree1", all_pl_vars)
+            tvar2 = self.fresh_variable("Tree2", all_pl_vars.union([tvar1]))
 
             goals: List[pl.Goal] = [
                 psc.unify(psc.pair(psc.anon_var(), tvar1), free_pl_vars[0]),
                 psc.unify(psc.pair(psc.anon_var(), tvar2), free_pl_vars[1]),
                 pl.PredicateApplication(
-                    pl.Predicate("equal", 3),
-                    [tvar1, tvar2, result_var]
+                    pl.Predicate("equal", 3), [tvar1, tvar2, result_var]
                 )
             ]
 
             return [pl.Rule(head, goals)], []
+        else:
+            def solve_smt(*atoms: pyswip.easy.Atom) -> bool:
+                instantiation = z3.substitute(
+                    z3_formula,
+                    *tuple({z3.String(variable.name): z3.StringVal(pyswip_output_to_str(atom)[1:-1])
+                            for variable, atom in zip(free_isla_vars, atoms)}.items()))
 
-        raise NotImplementedError()
+                z3.set_param("smt.string_solver", "z3str3")
+                solver = z3.Solver()
+                solver.add(instantiation)
+                return solver.check() == z3.sat  # Set timeout?
+
+            vars_var = self.fresh_variable("Vars", all_pl_vars)
+            all_pl_vars.add(vars_var)
+            goals: List[pl.Goal] = [
+                psc.pred("term_variables", pl.ListTerm(free_pl_vars), vars_var),
+                psc.pred("label", vars_var)
+            ]
+
+            tvars: List[pl.Variable] = []
+            strvars: List[pl.Variable] = []
+            for variable in free_pl_vars:
+                tvar = self.fresh_variable("Tree", free_pl_vars.union([result_var]).union(tvars).union(strvars))
+                strvar = self.fresh_variable("StrTree", free_pl_vars.union([result_var]).union(tvars).union(strvars))
+                tvars.append(tvar)
+                strvars.append(strvar)
+                goals.append(psc.unify(psc.pair(psc.anon_var(), tvar), variable))
+                goals.append(psc.pred("tree_to_string", tvar, strvar))
+
+            function_name = f"solve_smt_{counter}"
+            smt_pred_appl = psc.pred(function_name, *strvars)
+            goals.append(psc.disj(psc.conj(psc.clp_eq(result_var, pl.Number(1)), smt_pred_appl),
+                                  psc.conj(psc.clp_eq(result_var, pl.Number(0)), smt_pred_appl)))
+
+            return [pl.Rule(head, goals)], [(solve_smt, function_name, len(free_pl_vars))]
 
     def fresh_variable(self, name_pattern: str, context_vars: OrderedSet[pl.Variable]) -> pl.Variable:
         name = name_pattern
