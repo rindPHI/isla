@@ -1,10 +1,25 @@
 import unittest
 
+from fuzzingbook.Parser import EarleyParser
+
 from input_constraints.helpers import get_subtree, next_path, get_path_of_subtree, is_before, is_prefix, is_after, \
-    prev_path_complete
+    prev_path_complete, path_iterator
+from input_constraints.tests.test_data import LANG_GRAMMAR
 
 
 class TestHelpers(unittest.TestCase):
+    def test_path_iterator(self):
+        prog = "x := 1 ; y := x"
+        parser = EarleyParser(LANG_GRAMMAR)
+        tree = next(parser.parse(prog))
+
+        paths = [path for path, subtree in list(path_iterator(tree))]
+        self.assertEqual([
+            (), (0,), (0, 0), (0, 0, 0), (0, 0, 0, 0), (0, 0, 1), (0, 0, 2), (0, 0, 2, 0), (0, 0, 2, 0, 0),
+            (0, 1), (0, 2), (0, 2, 0), (0, 2, 0, 0), (0, 2, 0, 0, 0), (0, 2, 0, 1), (0, 2, 0, 2),
+            (0, 2, 0, 2, 0), (0, 2, 0, 2, 0, 0)],
+            paths)
+
     def test_nextpath(self):
         tree = ("1", [
             ("2", [("4", [])]),
@@ -43,7 +58,7 @@ class TestHelpers(unittest.TestCase):
         ])
 
         subtrees = []
-        prev = prev_path_complete((1,1), tree)
+        prev = prev_path_complete((1, 1), tree)
         while prev is not None:
             subtrees.append(get_subtree(prev, tree))
             prev = prev_path_complete(prev, tree)

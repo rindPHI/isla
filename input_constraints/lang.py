@@ -74,8 +74,8 @@ class BindExpression:
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([var for var in self.bound_elements if type(var) is BoundVariable])
 
-    def match(self, tree: ParseTree) -> Optional[Dict[BoundVariable, ParseTree]]:
-        result: Dict[BoundVariable, ParseTree] = {}
+    def match(self, tree: ParseTree) -> Optional[Dict[BoundVariable, Tuple[Path, ParseTree]]]:
+        result: Dict[BoundVariable, Tuple[Path, ParseTree]] = {}
 
         def find(path: Path, elems: List[BoundVariable]) -> bool:
             if not elems:
@@ -83,7 +83,7 @@ class BindExpression:
 
             node, children = get_subtree(path, tree)
             if node == elems[0].n_type:
-                result[elems[0]] = (node, children)
+                result[elems[0]] = path, (node, children)
 
                 if len(elems) == 1:
                     return True
@@ -103,10 +103,7 @@ class BindExpression:
                     return find(path + (0,), elems)
 
         success = find(tuple(), [elem for elem in self.bound_elements if type(elem) is BoundVariable])
-        if success:
-            return result
-        else:
-            return None
+        return result if success else None
 
     def __repr__(self):
         return f'BindExpression({", ".join(map(repr, self.bound_elements))})'
@@ -166,7 +163,7 @@ class Predicate:
         self.arity = arity
         self.eval_fun = eval_fun
 
-    def evaluate(self, *instantiations: ParseTree):
+    def evaluate(self, *instantiations: Tuple[Path, ParseTree]):
         return self.eval_fun(*instantiations)
 
     def __eq__(self, other):
@@ -180,9 +177,7 @@ class Predicate:
 
 
 BEFORE_PREDICATE = Predicate(
-    "before", 3,
-    lambda tree, before_tree, in_tree: is_before(get_path_of_subtree(in_tree, tree),
-                                                 get_path_of_subtree(in_tree, before_tree))
+    "before", 2, lambda tree, before_tree: is_before(tree[0], before_tree[0])
 )
 
 
@@ -450,10 +445,10 @@ def well_formed(formula: Formula,
         raise NotImplementedError()
 
 
-def evaluate(formula: Formula, assignments: Dict[Variable, ParseTree]) -> bool:
+def evaluate(formula: Formula, assignments: Dict[Variable, Tuple[Path, ParseTree]]) -> bool:
     assert well_formed(formula)
 
-    def evaluate_(formula: Formula, assignments: Dict[Variable, ParseTree]) -> bool:
+    def evaluate_(formula: Formula, assignments: Dict[Variable, Tuple[Path, ParseTree]]) -> bool:
         q = '"'
         t = type(formula)
 
@@ -461,7 +456,7 @@ def evaluate(formula: Formula, assignments: Dict[Variable, ParseTree]) -> bool:
             formula: SMTFormula
             instantiation = z3.substitute(
                 formula.formula,
-                *tuple({z3.String(symbol.name): z3.StringVal(tree_to_string(symbol_assignment))
+                *tuple({z3.String(symbol.name): z3.StringVal(tree_to_string(symbol_assignment[1]))
                         for symbol, symbol_assignment
                         in assignments.items()}.items()))
 
@@ -472,26 +467,26 @@ def evaluate(formula: Formula, assignments: Dict[Variable, ParseTree]) -> bool:
         elif issubclass(t, QuantifiedFormula):
             formula: QuantifiedFormula
             assert formula.in_variable in assignments
-            in_inst: ParseTree = assignments[formula.in_variable]
+            in_inst: ParseTree = assignments[formula.in_variable][1]
             qfd_var: BoundVariable = formula.bound_variable
             bind_expr: Optional[BindExpression] = formula.bind_expression
 
-            new_assignments: List[Dict[Variable, ParseTree]] = []
+            new_assignments: List[Dict[Variable, Tuple[Path, ParseTree]]] = []
 
-            def search_action(tree: ParseTree) -> None:
+            def search_action(path: Path, tree: ParseTree) -> None:
                 nonlocal new_assignments
                 node, children = tree
                 if node == qfd_var.n_type:
                     if bind_expr is not None:
-                        maybe_match: Optional[Dict[BoundVariable, ParseTree]] = bind_expr.match(tree)
+                        maybe_match: Optional[Dict[BoundVariable, Tuple[Path, ParseTree]]] = bind_expr.match(tree)
                         if maybe_match is not None:
                             new_assignment = copy.copy(assignments)
-                            new_assignment[qfd_var] = tree
+                            new_assignment[qfd_var] = path, tree
                             new_assignment.update(maybe_match)
                             new_assignments.append(new_assignment)
                     else:
                         new_assignment = copy.copy(assignments)
-                        new_assignment[qfd_var] = tree
+                        new_assignment[qfd_var] = path, tree
                         new_assignments.append(new_assignment)
 
             traverse_tree(in_inst, search_action)

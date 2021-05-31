@@ -7,11 +7,15 @@ from fuzzingbook.Grammars import unreachable_nonterminals
 from input_constraints.type_defs import Path, ParseTree, Grammar, CanonicalGrammar
 
 
-def traverse_tree(tree: ParseTree, action: Callable[[ParseTree], None]) -> None:
-    node, children = tree
-    action(tree)
-    for child in children:
-        traverse_tree(child, action)
+def traverse_tree(tree: ParseTree, action: Callable[[Path, ParseTree], None]) -> None:
+    for path, subtree in path_iterator(tree):
+        action(path, subtree)
+
+
+def path_iterator(tree: ParseTree, path: Path = ()) -> Generator[Tuple[Path, ParseTree], None, None]:
+    yield path, tree
+    for i, child in enumerate(tree[1]):
+        yield from path_iterator(child, path + (i,))
 
 
 def get_path_of_subtree(tree: ParseTree, subtree: ParseTree, path: Path = tuple()) -> Optional[Path]:

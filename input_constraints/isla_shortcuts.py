@@ -34,9 +34,8 @@ def exists(
 
 def before(
         var: Variable,
-        before_var: Variable,
-        in_var: Variable) -> PredicateFormula:
-    return PredicateFormula(BEFORE_PREDICATE, var, before_var, in_var)
+        before_var: Variable) -> PredicateFormula:
+    return PredicateFormula(BEFORE_PREDICATE, var, before_var)
 
 
 def smt_for(formula: z3.BoolRef, *free_variables: Variable) -> SMTFormula:

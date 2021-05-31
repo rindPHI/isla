@@ -31,7 +31,7 @@ class TestEvaluation(unittest.TestCase):
                     lhs_2 + " := " + rhs_2,
                     assgn_2,
                     prog,
-                    sc.before(assgn_2, assgn_1, prog) &
+                    sc.before(assgn_2, assgn_1) &
                     sc.smt_for(cast(z3.BoolRef, lhs_2.to_smt() == var.to_smt()), lhs_2, var)
                 )
             )
@@ -47,7 +47,7 @@ class TestEvaluation(unittest.TestCase):
                 lhs_2 + " := " + rhs_2,
                 assgn_2,
                 prog,
-                sc.before(assgn_2, assgn_1, prog) &
+                sc.before(assgn_2, assgn_1) &
                 sc.smt_for(cast(z3.BoolRef, lhs_2.to_smt() == var.to_smt()), lhs_2, var)
             )
         )
@@ -145,7 +145,7 @@ class TestEvaluation(unittest.TestCase):
                     lhs_2 + " := " + rhs_2,
                     assgn_2,
                     prog,
-                    sc.before(assgn_2, assgn_1, prog) &
+                    sc.before(assgn_2, assgn_1) &
                     sc.smt_for(cast(z3.BoolRef, lhs_2.to_smt() == var.to_smt()), lhs_2, var)
                 )
             )
@@ -160,11 +160,12 @@ class TestEvaluation(unittest.TestCase):
 
         parser = EarleyParser(LANG_GRAMMAR)
 
-        self.assertTrue(evaluate(formula, {prog: next(parser.parse(valid_prog_1))}))
-        # for valid_prog in [valid_prog_1, valid_prog_2]:
-        #     self.assertTrue(evaluate(formula, {prog: next(parser.parse(valid_prog))}))
-        # for invalid_prog in [invalid_prog_1, invalid_prog_2, invalid_prog_3, invalid_prog_4]:
-        #     self.assertFalse(evaluate(formula, {prog: next(parser.parse(invalid_prog))}))
+        self.assertTrue(evaluate(formula, {prog: ((), next(parser.parse(valid_prog_1)))}))
+        for valid_prog in [valid_prog_1, valid_prog_2]:
+            self.assertTrue(evaluate(formula, {prog: ((), next(parser.parse(valid_prog)))}))
+
+        for invalid_prog in [invalid_prog_1, invalid_prog_2, invalid_prog_3, invalid_prog_4]:
+            self.assertFalse(evaluate(formula, {prog: ((), next(parser.parse(invalid_prog)))}))
 
     def test_match(self):
         parser = EarleyParser(LANG_GRAMMAR)
@@ -176,8 +177,8 @@ class TestEvaluation(unittest.TestCase):
         tree = next(parser.parse("x := y"))
 
         match = bind_expr.match(tree)
-        self.assertEqual(('<var>', [('x', [])]), match[lhs])
-        self.assertEqual(('<var>', [('y', [])]), match[rhs])
+        self.assertEqual(('<var>', [('x', [])]), match[lhs][1])
+        self.assertEqual(('<var>', [('y', [])]), match[rhs][1])
 
         assgn_1 = BoundVariable("$assgn_1", "<assgn>")
         assgn_2 = BoundVariable("$assgn_2", "<assgn>")
@@ -187,9 +188,9 @@ class TestEvaluation(unittest.TestCase):
         tree = next(parser.parse("x := y ; x := x ; y := z ; z := z"))
 
         match = bind_expr.match(tree)
-        self.assertEqual(tree_to_string(match[assgn_1]), "x := y")
-        self.assertEqual(tree_to_string(match[assgn_2]), "x := x")
-        self.assertEqual(tree_to_string(match[stmt]), "y := z ; z := z")
+        self.assertEqual(tree_to_string(match[assgn_1][1]), "x := y")
+        self.assertEqual(tree_to_string(match[assgn_2][1]), "x := x")
+        self.assertEqual(tree_to_string(match[stmt][1]), "y := z ; z := z")
 
         # The stmt variable matches the whole remaining program; assgn2 can no longer be matched
         bind_expr = assgn_1 + " ; " + stmt + " ; " + assgn_2
@@ -217,7 +218,7 @@ class TestEvaluation(unittest.TestCase):
                     lhs_2 + " := " + rhs_2,
                     assgn_2,
                     prog,
-                    sc.before(assgn_2, assgn_1, prog) &
+                    sc.before(assgn_2, assgn_1) &
                     sc.smt_for(cast(z3.BoolRef, lhs_2.to_smt() == var.to_smt()), lhs_2, var)
                 )
             )
@@ -229,7 +230,7 @@ class TestEvaluation(unittest.TestCase):
         fail = 0
         for _ in range(100):
             tree = fuzzer.expand_tree(("<start>", None))
-            if evaluate(formula, {prog: tree}):
+            if evaluate(formula, {prog: (tuple(), tree)}):
                 inp = tree_to_string(tree)
                 try:
                     eval_lang(inp)
