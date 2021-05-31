@@ -112,28 +112,38 @@ class Translator:
 
     def translate_constraint(self, formula: isla.Formula, counter: int = 0) -> TranslationResult:
         translation_methods: Dict[Type[isla.Formula], Type[Callable[[isla.Formula, int], TranslationResult]]] = {
-            isla.SMTFormula: self.translate_smt_formula
+            isla.SMTFormula: self.translate_smt_formula,
+            isla.PredicateFormula: self.translate_predicate_formula,
         }
 
         if type(formula) not in translation_methods:
-            raise NotImplementedError
+            raise NotImplementedError(f"Translation for '{type(formula).__name__}' not implemented.")
 
         return translation_methods[type(formula)](formula, counter)
+
+    def translate_predicate_formula(self, formula: isla.PredicateFormula, counter: int) -> TranslationResult:
+        predicate = formula.predicate
+        if predicate is isla.BEFORE_PREDICATE:
+            head, free_pl_vars, result_var, all_pl_vars = self.create_head(formula, counter)
+            pvar1 = self.fresh_variable("Path1", all_pl_vars)
+            pvar2 = self.fresh_variable("Path2", all_pl_vars.union([pvar1]))
+
+            goals: List[pl.Goal] = [
+                psc.unify(psc.pair(pvar1, psc.anon_var()), free_pl_vars[0]),
+                psc.unify(psc.pair(pvar2, psc.anon_var()), free_pl_vars[1]),
+                pl.PredicateApplication(
+                    pl.Predicate("path_is_before", 3), [pvar1, pvar2, result_var]
+                )
+            ]
+
+            return [pl.Rule(head, goals)], []
+        else:
+            raise NotImplementedError
 
     def translate_smt_formula(self, formula: isla.SMTFormula, counter: int) -> TranslationResult:
         z3_formula: z3.BoolRef = formula.formula
         free_isla_vars: OrderedSet[isla.Variable] = formula.free_variables()
-        free_pl_vars: OrderedSet[pl.Variable] = OrderedSet([self.isla_to_prolog_var_map[isla_var]
-                                                            for isla_var in free_isla_vars])
-        all_pl_vars: OrderedSet[pl.Variable] = OrderedSet(free_pl_vars)
-
-        result_var = self.fresh_variable("Result", free_pl_vars)
-        all_pl_vars.add(result_var)
-
-        head = pl.PredicateApplication(
-            pl.Predicate(f"pred{counter}", len(free_pl_vars) + 1),
-            free_pl_vars.union([result_var])
-        )
+        head, free_pl_vars, result_var, all_pl_vars = self.create_head(formula, counter)
 
         if str(z3_formula.decl()) == "==" and all(is_z3_var(child) or z3.is_string_value(child)
                                                   for child in z3_formula.children()):
@@ -150,7 +160,7 @@ class Translator:
 
             return [pl.Rule(head, goals)], []
         else:
-            def solve_smt(*atoms: pyswip.easy.Atom) -> bool:
+            def solve_smt(*atoms: bytes) -> bool:
                 instantiation = z3.substitute(
                     z3_formula,
                     *tuple({z3.String(variable.name): z3.StringVal(pyswip_output_to_str(atom)[1:-1])
@@ -184,6 +194,23 @@ class Translator:
                                   psc.conj(psc.clp_eq(result_var, pl.Number(0)), smt_pred_appl)))
 
             return [pl.Rule(head, goals)], [(solve_smt, function_name, len(free_pl_vars))]
+
+    def create_head(self, formula: isla.Formula, counter: int) -> \
+            Tuple[pl.PredicateApplication, OrderedSet[pl.Variable], pl.Variable, OrderedSet[pl.Variable]]:
+        free_isla_vars: OrderedSet[isla.Variable] = formula.free_variables()
+        free_pl_vars: OrderedSet[pl.Variable] = OrderedSet([self.isla_to_prolog_var_map[isla_var]
+                                                            for isla_var in free_isla_vars])
+        all_pl_vars: OrderedSet[pl.Variable] = OrderedSet(free_pl_vars)
+
+        result_var = self.fresh_variable("Result", free_pl_vars)
+        all_pl_vars.add(result_var)
+
+        head = pl.PredicateApplication(
+            pl.Predicate(f"pred{counter}", len(all_pl_vars)),
+            all_pl_vars
+        )
+
+        return head, free_pl_vars, result_var, all_pl_vars
 
     def fresh_variable(self, name_pattern: str, context_vars: OrderedSet[pl.Variable]) -> pl.Variable:
         name = name_pattern
@@ -370,10 +397,14 @@ class Translator:
             nonterminal = nonterminal[1:-1]
             idx = 0
             curr_name = nonterminal
-            while list(prolog.query(f"current_predicate({curr_name}/1)")):
+            while self.predicate_defined(curr_name, 1):
                 curr_name = f"{nonterminal}_{idx}"
                 idx += 1
 
             predicate_map[nonterminal] = curr_name
 
         return predicate_map
+
+    def predicate_defined(self, name: str, arity: int):
+        prolog = Prolog()
+        return len(list(prolog.query(f"current_predicate({name}/{arity})"))) > 0

@@ -1,17 +1,14 @@
 import typing
 import unittest
-from typing import List, Dict, Tuple, cast
+from typing import List, Tuple, cast
 
-import pyswip
 import z3
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.Parser import canonical, EarleyParser
-from grammar_graph.gg import GrammarGraph
-from pyswip import Prolog, registerForeign
 
+from input_constraints import isla_shortcuts as sc
 from input_constraints.helpers import pyswip_output_to_str, pyswip_clp_constraints_to_str, pyswip_var_mapping
 from input_constraints.lang import Constant, BoundVariable, Formula, SMTFormula
-from input_constraints import isla_shortcuts as sc
+import input_constraints.lang as isla
 from input_constraints.prolog import Translator
 from input_constraints.tests.test_data import LANG_GRAMMAR
 
@@ -54,8 +51,7 @@ class TestProlog(unittest.TestCase):
     def test_compute_atomic_string_nonterminals(self):
         grammar = canonical(LANG_GRAMMAR)
         translator = Translator(grammar, self.get_test_constraint())
-        self.assertEqual({'<digit>': 10, '<stmt>': 10, '<var>': 10, '<start>': 10},
-                         translator.atomic_string_nonterminals)
+        self.assertEqual({'<var>': 10}, translator.atomic_string_nonterminals)
 
     def test_compute_atomic_string_nonterminals_2(self):
         grammar = canonical(LANG_GRAMMAR)
@@ -153,6 +149,21 @@ class TestProlog(unittest.TestCase):
         self.assertEqual(1, len(result))
         strinst = pyswip_output_to_str(result[0]["Str"])[1:-1]
         self.assertEqual("z", strinst)
+
+    def test_translate_before(self):
+        variable1 = Constant("$var1", "<var>")
+        variable2 = Constant("$var2", "<var>")
+        stmt = Constant("$stmt", "<stmt>")
+        constraint = isla.PredicateFormula(isla.BEFORE_PREDICATE, variable1, variable2, stmt)
+        translator = Translator(canonical(LANG_GRAMMAR), constraint)
+
+        prolog = translator.translate()
+        var_predicate = translator.predicate_map["var"]
+        outer_query = prolog.query(f"{var_predicate}(V1), {var_predicate}(V2), "
+                                   f"pred0([0,2] - V1, [0,1] - V2, 1), tree_to_string(V, Str).")
+
+        result = next(outer_query)
+        print(result)
 
     def test_translate_grammar(self):
         translator = Translator(LANG_GRAMMAR, self.get_test_constraint())
