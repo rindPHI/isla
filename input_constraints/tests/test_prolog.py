@@ -80,7 +80,7 @@ class TestProlog(unittest.TestCase):
 
         prolog = translator.translate()
         var_predicate = translator.predicate_map["var"]
-        outer_query = prolog.query(f"{var_predicate}(V1), {var_predicate}(V2), pred0([] - V1, [] - V2, 1), "
+        outer_query = prolog.query(f"{var_predicate}(V1), {var_predicate}(V2), pred0([] - V2, [] - V1, 1), "
                                    f"term_variables([V1, V2], Vs), copy_term(Vs, Vs, Gs).")
 
         result = list(outer_query)
