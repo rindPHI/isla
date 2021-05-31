@@ -153,17 +153,27 @@ class TestProlog(unittest.TestCase):
     def test_translate_before(self):
         variable1 = Constant("$var1", "<var>")
         variable2 = Constant("$var2", "<var>")
-        stmt = Constant("$stmt", "<stmt>")
-        constraint = isla.PredicateFormula(isla.BEFORE_PREDICATE, variable1, variable2, stmt)
+        constraint = isla.PredicateFormula(isla.BEFORE_PREDICATE, variable1, variable2)
         translator = Translator(canonical(LANG_GRAMMAR), constraint)
 
         prolog = translator.translate()
         var_predicate = translator.predicate_map["var"]
-        outer_query = prolog.query(f"{var_predicate}(V1), {var_predicate}(V2), "
-                                   f"pred0([0,2] - V1, [0,1] - V2, 1), tree_to_string(V, Str).")
 
-        result = next(outer_query)
-        print(result)
+        outer_query = prolog.query(f"{var_predicate}(V1), {var_predicate}(V2), "
+                                   f"pred0([1,0] - V1, [1,1] - V2, 1), "
+                                   f"term_variables([V1, V2], Vars), label(Vars), "
+                                   f"tree_to_string(V1, Str1), tree_to_string(V2, Str2).")
+
+        self.assertTrue(any(outer_query))
+        outer_query.close()
+
+        outer_query = prolog.query(f"{var_predicate}(V1), {var_predicate}(V2), "
+                                   f"pred0([1,2] - V1, [1,1] - V2, 1), "
+                                   f"term_variables([V1, V2], Vars), label(Vars), "
+                                   f"tree_to_string(V1, Str1), tree_to_string(V2, Str2).")
+
+        self.assertFalse(any(outer_query))
+        outer_query.close()
 
     def test_translate_grammar(self):
         translator = Translator(LANG_GRAMMAR, self.get_test_constraint())

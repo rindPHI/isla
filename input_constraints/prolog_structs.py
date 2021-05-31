@@ -174,7 +174,7 @@ class Disjunction(Goal):
 
 
 class Conditional(Goal):
-    def __init__(self, condition: Term, then_branch: Goal, else_branch: Goal):
+    def __init__(self, condition: Goal, then_branch: Goal, else_branch: Goal):
         self.condition = condition
         self.then_branch = then_branch
         self.else_branch = else_branch

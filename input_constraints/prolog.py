@@ -124,15 +124,19 @@ class Translator:
     def translate_predicate_formula(self, formula: isla.PredicateFormula, counter: int) -> TranslationResult:
         predicate = formula.predicate
         if predicate is isla.BEFORE_PREDICATE:
-            head, free_pl_vars, result_var, all_pl_vars = self.create_head(formula, counter)
+            head, isla_to_pl_vars_mapping, free_pl_vars, result_var, all_pl_vars = self.create_head(formula, counter)
             pvar1 = self.fresh_variable("Path1", all_pl_vars)
             pvar2 = self.fresh_variable("Path2", all_pl_vars.union([pvar1]))
 
             goals: List[pl.Goal] = [
-                psc.unify(psc.pair(pvar1, psc.anon_var()), free_pl_vars[0]),
-                psc.unify(psc.pair(pvar2, psc.anon_var()), free_pl_vars[1]),
-                pl.PredicateApplication(
-                    pl.Predicate("path_is_before", 3), [pvar1, pvar2, result_var]
+                psc.unify(psc.pair(pvar1, psc.anon_var()), isla_to_pl_vars_mapping[formula.args[0]]),
+                psc.unify(psc.pair(pvar2, psc.anon_var()), isla_to_pl_vars_mapping[formula.args[1]]),
+                psc.ite(
+                    pl.PredicateApplication(
+                        pl.Predicate("path_is_before", 2), [pvar1, pvar2]
+                    ),
+                    psc.clp_eq(result_var, pl.Number(1)),
+                    psc.clp_eq(result_var, pl.Number(0)),
                 )
             ]
 
@@ -143,13 +147,16 @@ class Translator:
     def translate_smt_formula(self, formula: isla.SMTFormula, counter: int) -> TranslationResult:
         z3_formula: z3.BoolRef = formula.formula
         free_isla_vars: OrderedSet[isla.Variable] = formula.free_variables()
-        head, free_pl_vars, result_var, all_pl_vars = self.create_head(formula, counter)
+        head, isla_to_pl_vars_mapping, free_pl_vars, result_var, all_pl_vars = self.create_head(formula, counter)
 
         if str(z3_formula.decl()) == "==" and all(is_z3_var(child) or z3.is_string_value(child)
                                                   for child in z3_formula.children()):
             tvar1 = self.fresh_variable("Tree1", all_pl_vars)
             tvar2 = self.fresh_variable("Tree2", all_pl_vars.union([tvar1]))
 
+            # TODO: Variables are not necessarily passed in the order of their occurrence in the free
+            #   variables list, and also the numbers of variables don't need to match (e.g., x = x).
+            #   Have to use the variable mapping etc. to get from SMT variables to prolog variables.
             goals: List[pl.Goal] = [
                 psc.unify(psc.pair(psc.anon_var(), tvar1), free_pl_vars[0]),
                 psc.unify(psc.pair(psc.anon_var(), tvar2), free_pl_vars[1]),
@@ -196,10 +203,17 @@ class Translator:
             return [pl.Rule(head, goals)], [(solve_smt, function_name, len(free_pl_vars))]
 
     def create_head(self, formula: isla.Formula, counter: int) -> \
-            Tuple[pl.PredicateApplication, OrderedSet[pl.Variable], pl.Variable, OrderedSet[pl.Variable]]:
+            Tuple[
+                pl.PredicateApplication,
+                Dict[isla.Variable, pl.Variable], # Mapping from isla to prolog variables
+                OrderedSet[pl.Variable],  # Free prolog variables
+                pl.Variable,  # The result variable
+                OrderedSet[pl.Variable]  # Free prolog variables + result variable
+            ]:
         free_isla_vars: OrderedSet[isla.Variable] = formula.free_variables()
-        free_pl_vars: OrderedSet[pl.Variable] = OrderedSet([self.isla_to_prolog_var_map[isla_var]
-                                                            for isla_var in free_isla_vars])
+        isla_to_pl_vars_mapping: List[Tuple[isla.Variable, pl.Variable]] = \
+            [(isla_var, self.isla_to_prolog_var_map[isla_var]) for isla_var in free_isla_vars]
+        free_pl_vars = OrderedSet([pl_variable for _, pl_variable in isla_to_pl_vars_mapping])
         all_pl_vars: OrderedSet[pl.Variable] = OrderedSet(free_pl_vars)
 
         result_var = self.fresh_variable("Result", free_pl_vars)
@@ -210,7 +224,7 @@ class Translator:
             all_pl_vars
         )
 
-        return head, free_pl_vars, result_var, all_pl_vars
+        return head, dict(isla_to_pl_vars_mapping), free_pl_vars, result_var, all_pl_vars
 
     def fresh_variable(self, name_pattern: str, context_vars: OrderedSet[pl.Variable]) -> pl.Variable:
         name = name_pattern

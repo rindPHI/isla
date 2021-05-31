@@ -21,7 +21,7 @@ def unify(left: pl.Term, right: pl.Term) -> pl.PredicateApplication:
     return pl.PredicateApplication(pl.Predicate("=", 2, infix=True), [left, right])
 
 
-def ite(condition: pl.Term, then_branch: pl.Goal, else_branch: pl.Goal) -> pl.Goal:
+def ite(condition: pl.Goal, then_branch: pl.Goal, else_branch: pl.Goal) -> pl.Goal:
     return pl.Conditional(condition, then_branch, else_branch)
 
 
