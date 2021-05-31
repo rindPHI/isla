@@ -154,12 +154,13 @@ class Translator:
             tvar1 = self.fresh_variable("Tree1", all_pl_vars)
             tvar2 = self.fresh_variable("Tree2", all_pl_vars.union([tvar1]))
 
-            # TODO: Variables are not necessarily passed in the order of their occurrence in the free
-            #   variables list, and also the numbers of variables don't need to match (e.g., x = x).
-            #   Have to use the variable mapping etc. to get from SMT variables to prolog variables.
+            vars_in_order = [isla_to_pl_vars_mapping[next(variable for variable in free_isla_vars
+                                                          if variable.name == z3_formula.children()[i].as_string())]
+                             for i in range(2)]
+
             goals: List[pl.Goal] = [
-                psc.unify(psc.pair(psc.anon_var(), tvar1), free_pl_vars[0]),
-                psc.unify(psc.pair(psc.anon_var(), tvar2), free_pl_vars[1]),
+                psc.unify(psc.pair(psc.anon_var(), tvar1), vars_in_order[0]),
+                psc.unify(psc.pair(psc.anon_var(), tvar2), vars_in_order[1]),
                 pl.PredicateApplication(
                     pl.Predicate("equal", 3), [tvar1, tvar2, result_var]
                 )
@@ -205,7 +206,7 @@ class Translator:
     def create_head(self, formula: isla.Formula, counter: int) -> \
             Tuple[
                 pl.PredicateApplication,
-                Dict[isla.Variable, pl.Variable], # Mapping from isla to prolog variables
+                Dict[isla.Variable, pl.Variable],  # Mapping from isla to prolog variables
                 OrderedSet[pl.Variable],  # Free prolog variables
                 pl.Variable,  # The result variable
                 OrderedSet[pl.Variable]  # Free prolog variables + result variable
