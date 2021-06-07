@@ -1,8 +1,10 @@
+import string
 import typing
 import unittest
 from typing import List, Tuple, cast
 
 import z3
+from fuzzingbook.Grammars import srange
 from fuzzingbook.Parser import canonical, EarleyParser
 
 from input_constraints import isla_shortcuts as sc
@@ -137,18 +139,33 @@ class TestProlog(unittest.TestCase):
         NOTE: Executing the SMT test grounds all involved CLP variables!"""
         variable = Constant("$var", "<var>")
         constraint = SMTFormula(typing.cast(z3.BoolRef,
-                                            z3.SubString(variable.to_smt(), 0, 1) == z3.StringVal("z")),
+                                            z3.Or(
+                                                z3.SubString(variable.to_smt(), 0, 1) == z3.StringVal("y"),
+                                                z3.SubString(variable.to_smt(), 0, 1) == z3.StringVal("z"))),
                                 variable)
         translator = Translator(canonical(LANG_GRAMMAR), constraint)
 
         prolog = translator.translate()
         var_predicate = translator.predicate_map["var"]
-        outer_query = prolog.query(f"{var_predicate}(V), pred0([] - V, 1), tree_to_string(V, Str).")
 
+        outer_query = prolog.query(f"{var_predicate}(V), pred0([] - V, 1), tree_to_string(V, Str).")
         result = list(outer_query)
-        self.assertEqual(1, len(result))
-        strinst = pyswip_output_to_str(result[0]["Str"])[1:-1]
-        self.assertEqual("z", strinst)
+        outer_query.close()
+
+        self.assertEqual(2, len(result))
+        strinsts = [pyswip_output_to_str(r["Str"])[1:-1] for r in result]
+        self.assertEqual(["y", "z"], strinsts)
+
+        outer_query = prolog.query(f"{var_predicate}(V), pred0([] - V, 0), tree_to_string(V, Str).")
+        result = list(outer_query)
+        outer_query.close()
+
+        self.assertEqual(24, len(result))
+        strinsts = [pyswip_output_to_str(r["Str"])[1:-1] for r in result]
+        self.assertEqual([c for c in srange(string.ascii_lowercase) if c not in ["y", "z"]], strinsts)
+
+    def test_translate_conjunction(self):
+        pass
 
     def test_translate_before(self):
         variable1 = Constant("$var1", "<var>")

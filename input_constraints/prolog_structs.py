@@ -156,7 +156,7 @@ class Conjunction(Goal):
         return f"Conjunction([{', '.join(map(repr, self.arguments))}])"
 
     def __str__(self):
-        return ", ".join(map(lambda s: f"({s})", map(str, self.arguments)))
+        return "(" + ", ".join(map(lambda s: f"({s})", map(str, self.arguments))) + ")"
 
 
 class Disjunction(Goal):
@@ -170,7 +170,7 @@ class Disjunction(Goal):
         return f"Disjunction([{', '.join(map(repr, self.arguments))}])"
 
     def __str__(self):
-        return "; ".join(map(lambda s: f"({s})", map(str, self.arguments)))
+        return "(" + "; ".join(map(lambda s: f"({s})", map(str, self.arguments))) + ")"
 
 
 class Conditional(Goal):

@@ -121,6 +121,27 @@ class Translator:
 
         return translation_methods[type(formula)](formula, counter)
 
+    def translate_propositional_combinator(self, formula: isla.PropositionalCombinator,
+                                           counter: int) -> TranslationResult:
+        head, isla_to_pl_vars_mapping, free_pl_vars, result_var, all_pl_vars = self.create_head(formula, counter)
+        result_vars: List[pl.Variable] = []
+        goals: List[pl.Goal] = []
+
+        for child_formula in formula.args:
+            counter += 1
+            child_result_var = self.fresh_variable(f"Result{counter}", all_pl_vars)
+            all_pl_vars.add(child_result_var)
+            result_vars.append(child_result_var)
+            child_head, _, _, _, _ = self.create_head(child_formula, counter)
+            goals.append(child_head)
+
+            # TODO Call to translation for child, record and later return translation results
+
+        # TODO
+
+        raise NotImplementedError
+        return [pl.Rule(head, goals)], []
+
     def translate_predicate_formula(self, formula: isla.PredicateFormula, counter: int) -> TranslationResult:
         predicate = formula.predicate
         if predicate is isla.BEFORE_PREDICATE:
@@ -168,9 +189,9 @@ class Translator:
 
             return [pl.Rule(head, goals)], []
         else:
-            def solve_smt(*atoms: bytes) -> bool:
+            def solve_smt(success: int, *atoms: bytes) -> bool:
                 instantiation = z3.substitute(
-                    z3_formula,
+                    z3_formula if success == 1 else z3.Not(z3_formula),
                     *tuple({z3.String(variable.name): z3.StringVal(pyswip_output_to_str(atom)[1:-1])
                             for variable, atom in zip(free_isla_vars, atoms)}.items()))
 
@@ -197,11 +218,12 @@ class Translator:
                 goals.append(psc.pred("tree_to_string", tvar, strvar))
 
             function_name = f"solve_smt_{counter}"
-            smt_pred_appl = psc.pred(function_name, *strvars)
-            goals.append(psc.disj(psc.conj(psc.clp_eq(result_var, pl.Number(1)), smt_pred_appl),
-                                  psc.conj(psc.clp_eq(result_var, pl.Number(0)), smt_pred_appl)))
+            smt_pred_appl_pos = psc.pred(function_name, pl.Number(1), *(strvars))
+            smt_pred_appl_neg = psc.pred(function_name, pl.Number(0), *(strvars))
+            goals.append(psc.disj(psc.conj(psc.clp_eq(result_var, pl.Number(1)), smt_pred_appl_pos),
+                                  psc.conj(psc.clp_eq(result_var, pl.Number(0)), smt_pred_appl_neg)))
 
-            return [pl.Rule(head, goals)], [(solve_smt, function_name, len(free_pl_vars))]
+            return [pl.Rule(head, goals)], [(solve_smt, function_name, len(free_pl_vars) + 1)]
 
     def create_head(self, formula: isla.Formula, counter: int) -> \
             Tuple[
@@ -386,14 +408,14 @@ class Translator:
             fuzzer = GrammarCoverageFuzzer(GrammarGraph.from_grammar(noncanonical).subgraph(nonterminal).to_grammar())
             lower_bound, upper_bound = sys.maxsize, -1
             for _ in range(100):
-                try:
-                    maybe_int = int(fuzzer.fuzz())
-                    if maybe_int < lower_bound:
-                        lower_bound = maybe_int
-                    elif maybe_int > upper_bound:
-                        upper_bound = maybe_int
-                except ValueError:
+                inp = fuzzer.fuzz()
+                if not (inp.isnumeric()):
                     break
+                int_repr = int(inp)
+                if int_repr < lower_bound:
+                    lower_bound = int_repr
+                elif int_repr > upper_bound:
+                    upper_bound = int_repr
             else:
                 result[nonterminal] = (lower_bound, upper_bound)
 
