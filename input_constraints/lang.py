@@ -79,14 +79,14 @@ class BindExpression:
 
         def find(path: Path, elems: List[BoundVariable]) -> bool:
             if not elems:
-                return True
+                return True if next_path(path, tree) is None else False
 
             node, children = get_subtree(path, tree)
             if node == elems[0].n_type:
                 result[elems[0]] = path, (node, children)
 
                 if len(elems) == 1:
-                    return True
+                    return True if next_path(path, tree) is None else False
 
                 next_p = next_path(path, tree)
                 if next_p is None:

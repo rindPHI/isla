@@ -181,6 +181,8 @@ class Translator:
 
             return [pl.Rule(head, goals)], []
         else:
+            # TODO: If a predicate translation is not implemented, we can hook its evaluation interpretation
+            #       into prolog as a foreign function.
             raise NotImplementedError
 
     def translate_smt_formula(self, formula: isla.SMTFormula, counter: int) -> TranslationResult:
