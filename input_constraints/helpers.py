@@ -2,7 +2,9 @@ from typing import Optional, Set, Callable, Generator, Tuple, List, Dict, Union
 
 import pyswip.easy
 import z3
-from fuzzingbook.Grammars import unreachable_nonterminals
+from fuzzingbook.Grammars import unreachable_nonterminals, is_nonterminal
+import input_constraints.prolog_structs as pl
+import input_constraints.prolog_shortcuts as psc
 
 from input_constraints.type_defs import Path, ParseTree, Grammar, CanonicalGrammar
 
@@ -238,6 +240,23 @@ def pyswip_clp_constraints_to_str(inp: List, var_name_mapping: Dict[pyswip.easy.
     return ", ".join(result)
 
 
+def pyswip_output_to_python(inp, var_name_mapping: Optional[Dict[pyswip.easy.Variable, str]] = None) \
+        -> Union[str, List, Tuple]:
+    if type(inp) is pyswip.easy.Functor and str(inp.name) == "-":
+        inp: pyswip.easy.Functor
+        return tuple(pyswip_output_to_python(child) for child in inp.args)
+    elif type(inp) is list:
+        return [pyswip_output_to_python(child) for child in inp]
+    elif type(inp) is bytes:
+        inp: bytes
+        return inp.decode("utf-8")
+    elif type(inp) is pyswip.easy.Atom:
+        return str(inp)
+    elif (type(inp) is str or type(inp) is bytes or type(inp) is int
+          or type(inp) is pyswip.easy.Variable):
+        return pyswip_output_to_str(inp, var_name_mapping)
+
+
 def pyswip_output_to_str(inp, var_name_mapping: Optional[Dict[pyswip.easy.Variable, str]] = None) -> str:
     if type(inp) is str:
         return inp
@@ -249,7 +268,6 @@ def pyswip_output_to_str(inp, var_name_mapping: Optional[Dict[pyswip.easy.Variab
         return str(inp)
     elif type(inp) is pyswip.easy.Functor:
         assert False
-        pass
     elif type(inp) is pyswip.easy.Variable:
         inp: pyswip.easy.Variable
         if inp.chars is None:

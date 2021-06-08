@@ -4,6 +4,7 @@ import unittest
 from typing import List, Tuple, cast
 
 import z3
+from fuzzingbook.GrammarFuzzer import tree_to_string
 from fuzzingbook.Grammars import srange
 from fuzzingbook.Parser import canonical, EarleyParser
 
@@ -38,7 +39,7 @@ class TestProlog(unittest.TestCase):
                     lhs_2 + " := " + rhs_2,
                     assgn_2,
                     prog,
-                    sc.before(assgn_2, assgn_1, prog) &
+                    sc.before(assgn_2, assgn_1) &
                     sc.smt_for(cast(z3.BoolRef, lhs_2.to_smt() == var.to_smt()), lhs_2, var)
                 )
             )
@@ -54,7 +55,8 @@ class TestProlog(unittest.TestCase):
     def test_compute_atomic_string_nonterminals(self):
         grammar = canonical(LANG_GRAMMAR)
         translator = Translator(grammar, self.get_test_constraint())
-        self.assertEqual({'<var>': 10}, translator.atomic_string_nonterminals)
+        self.assertEqual({'<var>': Translator.FUZZING_DEPTH_ATOMIC_STRING_NONTERMINALS},
+                         translator.atomic_string_nonterminals)
 
     def test_compute_atomic_string_nonterminals_2(self):
         grammar = canonical(LANG_GRAMMAR)
@@ -164,6 +166,29 @@ class TestProlog(unittest.TestCase):
         self.assertEqual(24, len(result))
         strinsts = [pyswip_output_to_str(r["Str"])[1:-1] for r in result]
         self.assertEqual([c for c in srange(string.ascii_lowercase) if c not in ["y", "z"]], strinsts)
+
+    def test_unknown_predicate(self):
+        assignment = Constant("$assgn", "<assgn>")
+
+        pred = isla.Predicate("mypred", 1, lambda pair: pair[1] == "x := x")
+
+        constraint = isla.PredicateFormula(pred, assignment)
+        translator = Translator(canonical(LANG_GRAMMAR), constraint)
+
+        prolog = translator.translate()
+        stmt_predicate = translator.predicate_map["assgn"]
+
+        outer_query = prolog.query(f"{stmt_predicate}(V), pred0([] - V, 1), tree_to_string(V, Str).")
+        for i in range(4):
+            result = next(outer_query)
+            self.assertEqual('"x := x"', pyswip_output_to_str(result["Str"]))
+        outer_query.close()
+
+        outer_query = prolog.query(f"{stmt_predicate}(V), pred0([] - V, 0), tree_to_string(V, Str).")
+        for i in range(20):
+            result = next(outer_query)
+            self.assertNotEqual('"x := x"', pyswip_output_to_str(result["Str"]))
+        outer_query.close()
 
     def test_translate_conjunction(self):
         variable = Constant("$var", "<var>")

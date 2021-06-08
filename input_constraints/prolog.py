@@ -16,7 +16,8 @@ from pyswip import Prolog, registerForeign
 import input_constraints.lang as isla
 import input_constraints.prolog_shortcuts as psc
 import input_constraints.prolog_structs as pl
-from input_constraints.helpers import visit_z3_expr, is_canonical_grammar, is_z3_var, pyswip_output_to_str
+from input_constraints.helpers import visit_z3_expr, is_canonical_grammar, is_z3_var, pyswip_output_to_str, \
+    pyswip_output_to_python
 from input_constraints.type_defs import CanonicalGrammar, Grammar
 
 # A TranslationResult for a constraint is a list of Prolog rules together with a list of foreign foreign predicates,
@@ -27,7 +28,7 @@ TranslationResult = Tuple[List[pl.Rule], List[ForeignFunctionSpec]]
 
 class Translator:
     # TODO: Make configurable
-    FUZZING_DEPTH_ATOMIC_STRING_NONTERMINALS = 10
+    FUZZING_DEPTH_ATOMIC_STRING_NONTERMINALS = 100
 
     def __init__(self, grammar: Union[Grammar, CanonicalGrammar], formula: isla.Formula):
         if is_canonical_grammar(grammar):
@@ -43,6 +44,7 @@ class Translator:
         self.isla_var_name_to_prolog_var_map: Dict[isla.Variable, pl.Variable] = \
             {iv.name: pv for iv, pv in self.isla_to_prolog_var_map.items()}
         self.predicate_map: Dict[str, str] = self.compute_predicate_names_for_nonterminals()
+
         self.numeric_nonterminals: Dict[str, Tuple[int, int]] = self.compute_numeric_nonterminals()
         self.atomic_string_nonterminals: Dict[str, int] = self.compute_atomic_string_nonterminals()
 
@@ -162,8 +164,9 @@ class Translator:
 
     def translate_predicate_formula(self, formula: isla.PredicateFormula, counter: int) -> TranslationResult:
         predicate = formula.predicate
+        head, isla_to_pl_vars_mapping, free_pl_vars, result_var, all_pl_vars = self.create_head(formula, counter)
+
         if predicate is isla.BEFORE_PREDICATE:
-            head, isla_to_pl_vars_mapping, free_pl_vars, result_var, all_pl_vars = self.create_head(formula, counter)
             pvar1 = self.fresh_variable("Path1", all_pl_vars)
             pvar2 = self.fresh_variable("Path2", all_pl_vars.union([pvar1]))
 
@@ -181,9 +184,40 @@ class Translator:
 
             return [pl.Rule(head, goals)], []
         else:
-            # TODO: If a predicate translation is not implemented, we can hook its evaluation interpretation
-            #       into prolog as a foreign function.
-            raise NotImplementedError
+            def evaluate_predicate(success: int, list_of_pairs: List) -> bool:
+                result = predicate.evaluate(*tuple(pyswip_output_to_python(atom) for atom in list_of_pairs))
+                return result if success == 1 else not result
+
+            vars_var = self.fresh_variable("Vars", all_pl_vars)
+            all_pl_vars.add(vars_var)
+            goals: List[pl.Goal] = [
+                psc.pred("term_variables", pl.ListTerm(free_pl_vars), vars_var),
+                psc.pred("label", vars_var)
+            ]
+
+            free_pl_vars_list = psc.list_term(*free_pl_vars)
+            free_pl_vars_paths_var = self.fresh_variable("Paths", all_pl_vars)
+            all_pl_vars.add(free_pl_vars_paths_var)
+            free_pl_vars_trees_var = self.fresh_variable("Trees", all_pl_vars)
+            all_pl_vars.add(free_pl_vars_trees_var)
+            concretized_trees_var = self.fresh_variable("Strings", all_pl_vars)
+            all_pl_vars.add(concretized_trees_var)
+            concretized_args_var = self.fresh_variable("ConcrArgs", all_pl_vars)
+            all_pl_vars.add(concretized_args_var)
+
+            goals += [
+                psc.pred("pairs_keys_values", free_pl_vars_list, free_pl_vars_paths_var, free_pl_vars_trees_var),
+                psc.pred("maplist", pl.Atom("tree_to_string"), free_pl_vars_trees_var, concretized_trees_var),
+                psc.pred("pairs_keys_values", concretized_args_var, free_pl_vars_paths_var, concretized_trees_var),
+            ]
+
+            function_name = f"evaluate_predicate_{counter}"
+            eval_pred_appl_pos = psc.pred(function_name, pl.Number(1), concretized_args_var)
+            eval_pred_appl_neg = psc.pred(function_name, pl.Number(0), concretized_args_var)
+            goals.append(psc.disj(psc.conj(psc.clp_eq(result_var, pl.Number(1)), eval_pred_appl_pos),
+                                  psc.conj(psc.clp_eq(result_var, pl.Number(0)), eval_pred_appl_neg)))
+
+            return [pl.Rule(head, goals)], [(evaluate_predicate, function_name, 2)]
 
     def translate_smt_formula(self, formula: isla.SMTFormula, counter: int) -> TranslationResult:
         z3_formula: z3.BoolRef = formula.formula
@@ -238,8 +272,8 @@ class Translator:
                 goals.append(psc.pred("tree_to_string", tvar, strvar))
 
             function_name = f"solve_smt_{counter}"
-            smt_pred_appl_pos = psc.pred(function_name, pl.Number(1), *(strvars))
-            smt_pred_appl_neg = psc.pred(function_name, pl.Number(0), *(strvars))
+            smt_pred_appl_pos = psc.pred(function_name, pl.Number(1), *strvars)
+            smt_pred_appl_neg = psc.pred(function_name, pl.Number(0), *strvars)
             goals.append(psc.disj(psc.conj(psc.clp_eq(result_var, pl.Number(1)), smt_pred_appl_pos),
                                   psc.conj(psc.clp_eq(result_var, pl.Number(0)), smt_pred_appl_neg)))
 
@@ -400,6 +434,10 @@ class Translator:
                 non_atomic_variables.add(formula.in_variable)
                 if formula.bind_expression is not None:
                     non_atomic_variables.add(formula.bound_variable)
+
+            def visit_predicate_formula(self, formula: isla.PredicateFormula):
+                if formula.predicate != isla.BEFORE_PREDICATE:
+                    non_atomic_variables.update(formula.free_variables())
 
             def visit_smt_formula(self, formula: isla.SMTFormula):
                 for expr in visit_z3_expr(formula.formula):
