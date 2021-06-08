@@ -1,28 +1,28 @@
 import logging
 import re
+import sys
 import tempfile
 from typing import List, Dict, Tuple, Type, Callable, Union
 
 import pyswip
-import sys
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
-from fuzzingbook.GrammarFuzzer import tree_to_string
 from fuzzingbook.Grammars import is_nonterminal
 from fuzzingbook.Parser import non_canonical, canonical
-from grammar_graph.gg import GrammarGraph, ChoiceNode, NonterminalNode, Node
+from grammar_graph.gg import GrammarGraph, NonterminalNode
 from orderedset import OrderedSet
 from pyswip import Prolog, registerForeign
 
-from input_constraints.helpers import visit_z3_expr, is_canonical_grammar, is_z3_var, pyswip_output_to_str
 import input_constraints.lang as isla
-import input_constraints.prolog_structs as pl
-from input_constraints.type_defs import CanonicalGrammar, Grammar
 import input_constraints.prolog_shortcuts as psc
+import input_constraints.prolog_structs as pl
+from input_constraints.helpers import visit_z3_expr, is_canonical_grammar, is_z3_var, pyswip_output_to_str
+from input_constraints.type_defs import CanonicalGrammar, Grammar
 
 # A TranslationResult for a constraint is a list of Prolog rules together with a list of foreign foreign predicates,
 # each consisting of the Python function for the predicate, the predicate name, and its arity.
-TranslationResult = Tuple[List[pl.Rule], List[Tuple[Callable, str, int]]]
+ForeignFunctionSpec = Tuple[Callable, str, int]
+TranslationResult = Tuple[List[pl.Rule], List[ForeignFunctionSpec]]
 
 
 class Translator:
@@ -114,6 +114,8 @@ class Translator:
         translation_methods: Dict[Type[isla.Formula], Type[Callable[[isla.Formula, int], TranslationResult]]] = {
             isla.SMTFormula: self.translate_smt_formula,
             isla.PredicateFormula: self.translate_predicate_formula,
+            isla.DisjunctiveFormula: self.translate_propositional_combinator,
+            isla.ConjunctiveFormula: self.translate_propositional_combinator
         }
 
         if type(formula) not in translation_methods:
@@ -126,21 +128,37 @@ class Translator:
         head, isla_to_pl_vars_mapping, free_pl_vars, result_var, all_pl_vars = self.create_head(formula, counter)
         result_vars: List[pl.Variable] = []
         goals: List[pl.Goal] = []
+        children_rules: List[pl.Rule] = []
+        children_foreign_functions: List[ForeignFunctionSpec] = []
 
         for child_formula in formula.args:
             counter += 1
             child_result_var = self.fresh_variable(f"Result{counter}", all_pl_vars)
             all_pl_vars.add(child_result_var)
             result_vars.append(child_result_var)
-            child_head, _, _, _, _ = self.create_head(child_formula, counter)
+
+            child_vars = [isla_to_pl_vars_mapping[v] for v in child_formula.free_variables()]
+            child_head = pl.PredicateApplication(
+                pl.Predicate(f"pred{counter}", len(child_vars) + 1),
+                child_vars + [child_result_var]
+            )
+
             goals.append(child_head)
 
-            # TODO Call to translation for child, record and later return translation results
+            child_rules, child_foreign_functions = self.translate_constraint(child_formula, counter)
+            children_rules.extend(child_rules)
+            children_foreign_functions.extend(child_foreign_functions)
 
-        # TODO
+        child_result_vars_list = pl.ListTerm(result_vars)
+        if type(formula) is isla.ConjunctiveFormula:
+            goals.append(psc.pred("product", child_result_vars_list, result_var))
+        elif type(formula) is isla.DisjunctiveFormula:
+            sum_var = self.fresh_variable(f"Sum", all_pl_vars)
+            all_pl_vars.add(sum_var)
+            goals.append(psc.pred("eqsum", child_result_vars_list, sum_var))
+            goals.append(psc.clp_iff(psc.clp_eq(result_var, pl.Number(1)), psc.clp_gt(sum_var, pl.Number(0))))
 
-        raise NotImplementedError
-        return [pl.Rule(head, goals)], []
+        return [pl.Rule(head, goals)] + children_rules, children_foreign_functions
 
     def translate_predicate_formula(self, formula: isla.PredicateFormula, counter: int) -> TranslationResult:
         predicate = formula.predicate

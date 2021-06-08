@@ -154,6 +154,14 @@ tree_to_string([A, X], Y) :- atom(A), maplist(tree_to_string, X, Z), !, concat(Z
 concat([], "").
 concat([X|L], Z) :- concat(L, Y), !, string_concat(X, Y, Z).
 
+%%% product/2
+product([], 1).
+product([0|_], 0).
+product([H|T], R) :- product(T, P), R #= H * P.
+
+%%% eqsum/2
+eqsum(L, R) :- sum(L, #=, R).
+
 :- begin_tests(helpers).
 test(tree_to_string) :- tree_to_string(['var', [[0, []]]], "x").
 test(tree_to_string) :- tree_to_string(['stmt', [['assgn', [['var', [[0, []]]], [" := ", []], ['assgn', [['var', [[0, []]]]]]]]]], "x := x").

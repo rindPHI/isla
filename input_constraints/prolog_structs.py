@@ -122,6 +122,23 @@ class Predicate:
         return self.name
 
 
+class GoalCombinator:
+    def __init__(self, name: str, arity: int, infix=False):
+        self.name = name
+        self.arity = arity
+        self.infix = infix
+        assert not infix or arity == 2
+
+    def __eq__(self, other):
+        return type(other) == type(self) and (other.name, other.arity) == (self.name, self.arity)
+
+    def __repr__(self):
+        return f"GoalCombinator({self.name}, {self.arity})"
+
+    def __str__(self):
+        return self.name
+
+
 class Goal:
     pass
 
@@ -143,6 +160,25 @@ class PredicateApplication(Goal):
             return (" " + str(self.predicate) + " ").join(map(str, self.arguments))
         else:
             return f"{str(self.predicate)}({', '.join(map(str, self.arguments))})"
+
+
+class GoalCombinatorApplication(Goal):
+    def __init__(self, combinator: GoalCombinator, arguments: Iterable[Goal]):
+        self.combinator = combinator
+        self.arguments = list(arguments)
+        assert self.combinator.arity == len(self.arguments)
+
+    def __eq__(self, other):
+        return type(other) == type(self) and (other.predicate, other.arguments) == self.combinator, self.arguments
+
+    def __repr__(self):
+        return f"{type(self).__name__}({repr(self.combinator)}, [{', '.join(map(repr, self.arguments))}])"
+
+    def __str__(self):
+        if self.combinator.infix:
+            return "(" + (" " + str(self.combinator) + " ").join(map(str, self.arguments)) + ")"
+        else:
+            return f"{str(self.combinator)}({', '.join(map(str, self.arguments))})"
 
 
 class Conjunction(Goal):

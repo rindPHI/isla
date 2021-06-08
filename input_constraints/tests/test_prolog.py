@@ -7,10 +7,11 @@ import z3
 from fuzzingbook.Grammars import srange
 from fuzzingbook.Parser import canonical, EarleyParser
 
+import input_constraints.lang as isla
+import input_constraints.prolog_shortcuts as psc
 from input_constraints import isla_shortcuts as sc
 from input_constraints.helpers import pyswip_output_to_str, pyswip_clp_constraints_to_str, pyswip_var_mapping
 from input_constraints.lang import Constant, BoundVariable, Formula, SMTFormula
-import input_constraints.lang as isla
 from input_constraints.prolog import Translator
 from input_constraints.tests.test_data import LANG_GRAMMAR
 
@@ -165,7 +166,29 @@ class TestProlog(unittest.TestCase):
         self.assertEqual([c for c in srange(string.ascii_lowercase) if c not in ["y", "z"]], strinsts)
 
     def test_translate_conjunction(self):
-        pass
+        variable = Constant("$var", "<var>")
+
+        subconstraint_1 = SMTFormula(typing.cast(z3.BoolRef,
+                                                 z3.SubString(variable.to_smt(), 0, 1) == z3.StringVal("y")),
+                                     variable)
+        subconstraint_2 = SMTFormula(typing.cast(z3.BoolRef,
+                                                 z3.SubString(variable.to_smt(), 0, 1) == z3.StringVal("z")),
+                                     variable)
+        constraint = sc.DisjunctiveFormula(subconstraint_1, subconstraint_2)
+        translator = Translator(canonical(LANG_GRAMMAR), constraint)
+
+        prolog = translator.translate()
+        var_predicate = translator.predicate_map["var"]
+
+        outer_query = prolog.query(f"{var_predicate}(V), pred0([] - V, 1), tree_to_string(V, Str).")
+        strinsts = [pyswip_output_to_str(r["Str"])[1:-1] for r in list(outer_query)]
+        self.assertEqual(["y", "z"], strinsts)
+        outer_query.close()
+
+        outer_query = prolog.query(f"{var_predicate}(V), pred0([] - V, 0), tree_to_string(V, Str).")
+        strinsts = [pyswip_output_to_str(r["Str"])[1:-1] for r in list(outer_query)]
+        self.assertEqual([c for c in srange(string.ascii_lowercase) if c not in ["y", "z"]], strinsts)
+        outer_query.close()
 
     def test_translate_before(self):
         variable1 = Constant("$var1", "<var>")

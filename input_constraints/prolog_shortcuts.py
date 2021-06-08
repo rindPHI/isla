@@ -17,6 +17,14 @@ def clp_eq(left: pl.Term, right: pl.Term) -> pl.PredicateApplication:
     return pl.PredicateApplication(pl.Predicate("#=", 2, infix=True), [left, right])
 
 
+def clp_gt(left: pl.Term, right: pl.Term) -> pl.PredicateApplication:
+    return pl.PredicateApplication(pl.Predicate("#>", 2, infix=True), [left, right])
+
+
+def clp_iff(left: pl.Goal, right: pl.Goal) -> pl.Goal:
+    return pl.GoalCombinatorApplication(pl.GoalCombinator("#<==>", 2, infix=True), [left, right])
+
+
 def unify(left: pl.Term, right: pl.Term) -> pl.PredicateApplication:
     return pl.PredicateApplication(pl.Predicate("=", 2, infix=True), [left, right])
 
@@ -31,6 +39,10 @@ def conj(*arguments: pl.Goal) -> pl.Goal:
 
 def disj(*arguments: pl.Goal) -> pl.Goal:
     return pl.Disjunction(arguments)
+
+
+def list_term(*arguments: pl.Term) -> pl.ListTerm:
+    return pl.ListTerm(arguments)
 
 
 def pred(name: str, *args: pl.Term) -> pl.PredicateApplication:
