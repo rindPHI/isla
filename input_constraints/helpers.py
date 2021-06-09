@@ -1,7 +1,9 @@
+import copy
 from typing import Optional, Set, Callable, Generator, Tuple, List, Dict, Union
 
 import pyswip.easy
 import z3
+from fuzzingbook.GrammarFuzzer import GrammarFuzzer, all_terminals
 from fuzzingbook.Grammars import unreachable_nonterminals, is_nonterminal
 import input_constraints.prolog_structs as pl
 import input_constraints.prolog_shortcuts as psc
@@ -310,3 +312,54 @@ def visit_z3_expr(e: Union[z3.ExprRef, z3.QuantifierRef],
 
 def is_z3_var(expr: z3.ExprRef) -> bool:
     return z3.is_const(expr) and expr.decl().kind() == z3.Z3_OP_UNINTERPRETED
+
+
+def tree_depth(tree: ParseTree, depth: int = 1) -> int:
+    _, children = tree
+    if not children:
+        return depth
+    else:
+        return max([tree_depth(child, depth + 1) for child in children])
+
+
+class TreeExpander(GrammarFuzzer):
+    def expand_tree_once(self, tree: ParseTree) -> List[ParseTree]:
+        """Choose an unexpanded symbol in tree; expand it.  Can be overloaded in subclasses."""
+        (symbol, children) = tree
+        if children is None:
+            # Expand this node
+            return self.expand_node(tree)
+
+        # Find all children with possible expansions
+        expandable_children = [
+            c for c in children if self.any_possible_expansions(c)]
+
+        # `index_map` translates an index in `expandable_children`
+        # back into the original index in `children`
+        index_map = [i for (i, c) in enumerate(children)
+                     if c in expandable_children]
+
+        result = []
+
+        for child_to_be_expanded in range(len(expandable_children)):
+            for children_expansion in self.expand_tree_once(expandable_children[child_to_be_expanded]):
+                children_ = copy.deepcopy(children)
+                children_[index_map[child_to_be_expanded]] = children_expansion
+                result.append((symbol, children_))
+
+        return result
+
+    def expand_node(self, node):
+        (symbol, children) = node
+        assert children is None
+
+        if self.log:
+            print("Expanding", all_terminals(node), "exhaustively")
+
+        # Fetch the possible expansions from grammar...
+        expansions = self.grammar[symbol]
+        possible_children = [self.expansion_to_children(
+            expansion) for expansion in expansions]
+
+        # Return with new children
+        return [(symbol, chosen_children) for chosen_children in possible_children]

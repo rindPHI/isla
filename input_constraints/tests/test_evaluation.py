@@ -5,7 +5,7 @@ import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
 import input_constraints.isla_shortcuts as sc
-from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate
+from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression
 from test_data import *
 
 
@@ -242,6 +242,31 @@ class TestEvaluation(unittest.TestCase):
 
         success_rate = success / (success + fail)
         self.assertGreater(success_rate, .3)
+
+    def test_bind_expression_to_tree(self):
+        lhs = BoundVariable("$lhs ", "<var>")
+        rhs = BoundVariable("$rhs", "<rhs>")
+        assgn = BoundVariable("$assgn", "<assgn>")
+
+        bind_expr: BindExpression = lhs + " := " + rhs
+        tree, bindings = bind_expr.to_tree_prefix(assgn.n_type, LANG_GRAMMAR)
+        self.assertEqual(("<assgn>", [("<var>", None), (" := ", []), ("<rhs>", None)]), tree)
+        self.assertEqual((0,), bindings[lhs])
+        self.assertEqual((2,), bindings[rhs])
+
+        prog = BoundVariable("$prog ", "<stmt>")
+        lhs_2 = BoundVariable("$lhs_2 ", "<var>")
+        rhs_2 = BoundVariable("$rhs_2", "<rhs>")
+        bind_expr: BindExpression = lhs + " := " + rhs + " ; " + lhs_2 + " := " + rhs_2
+        tree, bindings = bind_expr.to_tree_prefix(prog.n_type, LANG_GRAMMAR)
+        self.assertEqual(('<stmt>', [
+            ('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', None)]),
+            (' ; ', []),
+            ('<stmt>', [('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', None)])])]), tree)
+        self.assertEqual((0, 0), bindings[lhs])
+        self.assertEqual((0, 2), bindings[rhs])
+        self.assertEqual((2, 0, 0), bindings[lhs_2])
+        self.assertEqual((2, 0, 2), bindings[rhs_2])
 
 
 if __name__ == '__main__':

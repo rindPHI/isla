@@ -2,12 +2,14 @@ import copy
 from typing import Union, List, Optional, Iterable, cast, Dict, Tuple, Callable
 
 import inflection
+from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.GrammarFuzzer import tree_to_string
 from orderedset import OrderedSet
 import z3
 
-from input_constraints.helpers import get_subtree, next_path, get_symbols, traverse_tree, get_path_of_subtree, is_before
-from input_constraints.type_defs import ParseTree, Path
+from input_constraints.helpers import get_subtree, next_path, get_symbols, traverse_tree, get_path_of_subtree, \
+    is_before, TreeExpander, tree_depth
+from input_constraints.type_defs import ParseTree, Path, Grammar
 
 
 class Variable:
@@ -73,6 +75,28 @@ class BindExpression:
 
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([var for var in self.bound_elements if type(var) is BoundVariable])
+
+    def to_tree_prefix(self, in_nonterminal: str, grammar: Grammar, max_depth=4) -> \
+            Tuple[ParseTree, Dict[BoundVariable, Path]]:
+        # TODO: Possible optimization which would also allow to check deeper nestings within
+        #       reasonable time: Check whether a candidate cannot possibly match. This is the case,
+        #       e.g., if the first path is concrete and the first bound variable (non)terminal does
+        #       not occur along that path, and similarly for all subsequent paths and variables.
+
+        queue: List[ParseTree] = [(in_nonterminal, None)]
+        expander = TreeExpander(grammar)
+        while queue:
+            expanded = expander.expand_tree_once(queue.pop())
+
+            for tree in expanded:
+                if (match_res := self.match(tree)) is not None:
+                    match_res: Dict[BoundVariable, Tuple[Path, ParseTree]]
+                    return tree, {bv: match_res[bv][0] for bv in match_res}
+
+            queue.extend([tree for tree in expanded if tree_depth(tree) < max_depth])
+
+        assert False, f"Bind expression {str(self)} does does not match with grammar, " \
+                      f"or requires max_depth > {max_depth}"
 
     def match(self, tree: ParseTree) -> Optional[Dict[BoundVariable, Tuple[Path, ParseTree]]]:
         result: Dict[BoundVariable, Tuple[Path, ParseTree]] = {}
