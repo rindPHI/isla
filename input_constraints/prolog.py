@@ -117,13 +117,20 @@ class Translator:
             isla.SMTFormula: self.translate_smt_formula,
             isla.PredicateFormula: self.translate_predicate_formula,
             isla.DisjunctiveFormula: self.translate_propositional_combinator,
-            isla.ConjunctiveFormula: self.translate_propositional_combinator
+            isla.ConjunctiveFormula: self.translate_propositional_combinator,
+            isla.QuantifiedFormula: self.translate_quantified_formula,
         }
 
         if type(formula) not in translation_methods:
             raise NotImplementedError(f"Translation for '{type(formula).__name__}' not implemented.")
 
         return translation_methods[type(formula)](formula, counter)
+
+    def translate_quantified_formula(self, formula: isla.QuantifiedFormula, counter: int) -> TranslationResult:
+        head, isla_to_pl_vars_mapping, free_pl_vars, result_var, all_pl_vars = self.create_head(formula, counter)
+        goals: List[pl.Goal] = []
+        children_rules: List[pl.Rule] = []
+        children_foreign_functions: List[ForeignFunctionSpec] = []
 
     def translate_propositional_combinator(self, formula: isla.PropositionalCombinator,
                                            counter: int) -> TranslationResult:
@@ -136,7 +143,6 @@ class Translator:
         for child_formula in formula.args:
             counter += 1
             child_result_var = self.fresh_variable(f"Result{counter}", all_pl_vars)
-            all_pl_vars.add(child_result_var)
             result_vars.append(child_result_var)
 
             child_vars = [isla_to_pl_vars_mapping[v] for v in child_formula.free_variables()]
@@ -156,7 +162,6 @@ class Translator:
             goals.append(psc.pred("product", child_result_vars_list, result_var))
         elif type(formula) is isla.DisjunctiveFormula:
             sum_var = self.fresh_variable(f"Sum", all_pl_vars)
-            all_pl_vars.add(sum_var)
             goals.append(psc.pred("eqsum", child_result_vars_list, sum_var))
             goals.append(psc.clp_iff(psc.clp_eq(result_var, pl.Number(1)), psc.clp_gt(sum_var, pl.Number(0))))
 
@@ -189,7 +194,6 @@ class Translator:
                 return result if success == 1 else not result
 
             vars_var = self.fresh_variable("Vars", all_pl_vars)
-            all_pl_vars.add(vars_var)
             goals: List[pl.Goal] = [
                 psc.pred("term_variables", pl.ListTerm(free_pl_vars), vars_var),
                 psc.pred("label", vars_var)
@@ -197,13 +201,9 @@ class Translator:
 
             free_pl_vars_list = psc.list_term(*free_pl_vars)
             free_pl_vars_paths_var = self.fresh_variable("Paths", all_pl_vars)
-            all_pl_vars.add(free_pl_vars_paths_var)
             free_pl_vars_trees_var = self.fresh_variable("Trees", all_pl_vars)
-            all_pl_vars.add(free_pl_vars_trees_var)
             concretized_trees_var = self.fresh_variable("Strings", all_pl_vars)
-            all_pl_vars.add(concretized_trees_var)
             concretized_args_var = self.fresh_variable("ConcrArgs", all_pl_vars)
-            all_pl_vars.add(concretized_args_var)
 
             goals += [
                 psc.pred("pairs_keys_values", free_pl_vars_list, free_pl_vars_paths_var, free_pl_vars_trees_var),
@@ -227,7 +227,7 @@ class Translator:
         if str(z3_formula.decl()) == "==" and all(is_z3_var(child) or z3.is_string_value(child)
                                                   for child in z3_formula.children()):
             tvar1 = self.fresh_variable("Tree1", all_pl_vars)
-            tvar2 = self.fresh_variable("Tree2", all_pl_vars.union([tvar1]))
+            tvar2 = self.fresh_variable("Tree2", all_pl_vars)
 
             vars_in_order = [isla_to_pl_vars_mapping[next(variable for variable in free_isla_vars
                                                           if variable.name == z3_formula.children()[i].as_string())]
@@ -255,7 +255,6 @@ class Translator:
                 return solver.check() == z3.sat  # Set timeout?
 
             vars_var = self.fresh_variable("Vars", all_pl_vars)
-            all_pl_vars.add(vars_var)
             goals: List[pl.Goal] = [
                 psc.pred("term_variables", pl.ListTerm(free_pl_vars), vars_var),
                 psc.pred("label", vars_var)
@@ -293,7 +292,7 @@ class Translator:
         free_pl_vars = OrderedSet([pl_variable for _, pl_variable in isla_to_pl_vars_mapping])
         all_pl_vars: OrderedSet[pl.Variable] = OrderedSet(free_pl_vars)
 
-        result_var = self.fresh_variable("Result", free_pl_vars)
+        result_var = self.fresh_variable("Result", free_pl_vars, add=False)
         all_pl_vars.add(result_var)
 
         head = pl.PredicateApplication(
@@ -303,14 +302,19 @@ class Translator:
 
         return head, dict(isla_to_pl_vars_mapping), free_pl_vars, result_var, all_pl_vars
 
-    def fresh_variable(self, name_pattern: str, context_vars: OrderedSet[pl.Variable]) -> pl.Variable:
+    def fresh_variable(self, name_pattern: str, context_vars: OrderedSet[pl.Variable], add=True) -> pl.Variable:
         name = name_pattern
         i = 0
         while any(cvar for cvar in context_vars if cvar.name == name):
             name = f"{name_pattern}_{i}"
             i += 1
 
-        return pl.Variable(name)
+        result = pl.Variable(name)
+
+        if add:
+            context_vars.add(result)
+
+        return result
 
     def to_prolog_var(self, variable: Union[str, isla.Variable]) -> pl.Variable:
         result = variable if type(variable) is str else variable.name
