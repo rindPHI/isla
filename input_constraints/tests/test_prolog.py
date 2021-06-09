@@ -4,12 +4,10 @@ import unittest
 from typing import List, Tuple, cast
 
 import z3
-from fuzzingbook.GrammarFuzzer import tree_to_string
 from fuzzingbook.Grammars import srange
 from fuzzingbook.Parser import canonical, EarleyParser
 
 import input_constraints.lang as isla
-import input_constraints.prolog_shortcuts as psc
 from input_constraints import isla_shortcuts as sc
 from input_constraints.helpers import pyswip_output_to_str, pyswip_clp_constraints_to_str, pyswip_var_mapping
 from input_constraints.lang import Constant, BoundVariable, Formula, SMTFormula
