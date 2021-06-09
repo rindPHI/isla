@@ -96,6 +96,7 @@ class BindExpression:
             queue.extend([tree for tree in expanded if tree_depth(tree) < max_depth])
 
         assert False, f"Bind expression {str(self)} does does not match with grammar, " \
+                      f"or does not occur under scope of nonterminal {in_nonterminal}, " \
                       f"or requires max_depth > {max_depth}"
 
     def match(self, tree: ParseTree) -> Optional[Dict[BoundVariable, Tuple[Path, ParseTree]]]:
