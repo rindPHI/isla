@@ -13,7 +13,7 @@ from grammar_graph.gg import GrammarGraph, NonterminalNode
 from orderedset import OrderedSet
 from pyswip import Prolog, registerForeign
 
-import input_constraints.lang as isla
+import input_constraints.isla as isla
 import input_constraints.prolog_shortcuts as psc
 import input_constraints.prolog_structs as pl
 from input_constraints.helpers import visit_z3_expr, is_canonical_grammar, is_z3_var, pyswip_output_to_str, \

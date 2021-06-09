@@ -1,4 +1,4 @@
-from input_constraints.lang import *
+from input_constraints.isla import *
 import input_constraints.prolog_structs as pl
 
 
