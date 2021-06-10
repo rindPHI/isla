@@ -322,6 +322,32 @@ def tree_depth(tree: ParseTree, depth: int = 1) -> int:
         return max([tree_depth(child, depth + 1) for child in children])
 
 
+def python_to_prolog_tree(tree: ParseTree) -> pl.ListTerm:
+    node, children = tree
+
+    if children is None:
+        return psc.list_term(pl.Atom(node[1:-1]), psc.anon_var())
+    elif not children:
+        return psc.list_term(pl.StringTerm(node), psc.list_term())
+    else:
+        return psc.list_term(pl.Atom(node[1:-1]), psc.list_term(*[python_to_prolog_tree(child) for child in children]))
+
+
+def python_list_to_prolog_list(l: Union[List, Tuple]) -> pl.ListTerm:
+    if not l:
+        return psc.list_term()
+
+    def convert_elem(elem: Union[int, str, Tuple, List]) -> pl.Term:
+        if type(elem) is int:
+            return pl.Number(elem)
+        elif type(elem) is str:
+            return pl.StringTerm(elem)
+        elif type(elem) is list or type(elem) is tuple:
+            return python_list_to_prolog_list(elem)
+
+    return psc.list_term(*[convert_elem(elem) for elem in l])
+
+
 class TreeExpander(GrammarFuzzer):
     def expand_tree_once(self, tree: ParseTree) -> List[ParseTree]:
         """Choose an unexpanded symbol in tree; expand it.  Can be overloaded in subclasses."""

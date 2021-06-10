@@ -24,7 +24,7 @@ equal(X, Y, Result) :-
           true),
       tree_to_string(X, Str1),
       tree_to_string(Y, Str2),
-      (Result #= 1 -> Str1 =:= Str2 ; Str1 =\= Str2))).
+      ((Result #= 1, Str1 == Str2) ; (Result #= 0, Str1 \= Str2)))).
 
 :- begin_tests(equal).
 test(equal) :- equal(['var', [[0, []]]], ['var', [[0, []]]], 1).

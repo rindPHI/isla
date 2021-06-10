@@ -46,4 +46,8 @@ def list_term(*arguments: pl.Term) -> pl.ListTerm:
 
 
 def pred(name: str, *args: pl.Term) -> pl.PredicateApplication:
-    return pl.PredicateApplication(pl.Predicate(name, len(args)), list(args))
+    return pl.PredicateApplication(pl.Predicate(name, len(args), infix=False), list(args))
+
+
+def infix_pred(name: str, *args: pl.Term) -> pl.PredicateApplication:
+    return pl.PredicateApplication(pl.Predicate(name, len(args), infix=True), list(args))

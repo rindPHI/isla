@@ -17,7 +17,7 @@ import input_constraints.isla as isla
 import input_constraints.prolog_shortcuts as psc
 import input_constraints.prolog_structs as pl
 from input_constraints.helpers import visit_z3_expr, is_canonical_grammar, is_z3_var, pyswip_output_to_str, \
-    pyswip_output_to_python
+    pyswip_output_to_python, python_to_prolog_tree, python_list_to_prolog_list
 from input_constraints.type_defs import CanonicalGrammar, Grammar
 
 # A TranslationResult for a constraint is a list of Prolog rules together with a list of foreign foreign predicates,
@@ -118,7 +118,8 @@ class Translator:
             isla.PredicateFormula: self.translate_predicate_formula,
             isla.DisjunctiveFormula: self.translate_propositional_combinator,
             isla.ConjunctiveFormula: self.translate_propositional_combinator,
-            isla.QuantifiedFormula: self.translate_quantified_formula,
+            isla.ForallFormula: self.translate_quantified_formula,
+            isla.ExistsFormula: self.translate_quantified_formula,
         }
 
         if type(formula) not in translation_methods:
@@ -129,8 +130,102 @@ class Translator:
     def translate_quantified_formula(self, formula: isla.QuantifiedFormula, counter: int) -> TranslationResult:
         head, isla_to_pl_vars_mapping, free_pl_vars, result_var, all_pl_vars = self.create_head(formula, counter)
         goals: List[pl.Goal] = []
-        children_rules: List[pl.Rule] = []
-        children_foreign_functions: List[ForeignFunctionSpec] = []
+
+        in_var_path_var = self.fresh_variable("InVarPath", all_pl_vars)
+        in_var_tree_var = self.fresh_variable("InVarTree", all_pl_vars)
+        qfd_var_paths = self.fresh_variable("QfdVarPaths", all_pl_vars)
+
+        goals.append(psc.unify(psc.pair(in_var_path_var, in_var_tree_var),
+                               isla_to_pl_vars_mapping[formula.in_variable]))
+
+        rel_paths = None
+        if formula.bind_expression is not None:
+            prefix_tree, rel_paths = formula.bind_expression.to_tree_prefix(formula.bound_variable.n_type,
+                                                                            non_canonical(self.grammar))
+            pl_tree = python_to_prolog_tree(prefix_tree)
+            goals.append(psc.pred("find_subtrees", in_var_tree_var, pl_tree, qfd_var_paths))
+        else:
+            goals.append(psc.pred("find_subtrees",
+                                  in_var_tree_var,
+                                  psc.list_term(pl.Atom(formula.bound_variable.n_type[1:-1]), psc.anon_var()),
+                                  qfd_var_paths))
+
+        qfd_var_rel_path_var = self.fresh_variable("QfdVarRelPath", all_pl_vars)
+        qfd_var_path_var = self.fresh_variable("QfdVarPath", all_pl_vars)
+        out_var = self.fresh_variable("Out", all_pl_vars)
+        sub_results = self.fresh_variable("SubResults", all_pl_vars)
+
+        lambda_goals: List[pl.Goal] = []
+
+        isla_to_pl_vars_mapping.update(
+            {v: self.fresh_variable(v.name, all_pl_vars)
+             for v in formula.inner_formula.free_variables()
+             if v not in isla_to_pl_vars_mapping})
+
+        inner_free_vars_to_lists_map: Dict[isla.Variable, pl.CompoundTerm] = {}
+
+        lambda_goals.append(psc.pred("append",
+                                     psc.list_term(in_var_path_var, qfd_var_rel_path_var),
+                                     qfd_var_path_var))
+        qfd_var_tree_var = self.fresh_variable("QfdVarTree", all_pl_vars)
+        lambda_goals.append(psc.pred("get_subtree", in_var_tree_var, qfd_var_rel_path_var, qfd_var_tree_var))
+        inner_free_vars_to_lists_map[formula.bound_variable] = psc.pair(qfd_var_path_var, qfd_var_tree_var)
+
+        if formula.bind_expression is not None:
+            for v in [v for v in formula.inner_formula.free_variables() if v in formula.bind_expression.bound_variables()]:
+                bv_rel_path_var = self.fresh_variable(f"{v.name}RelPath", all_pl_vars)
+                lambda_goals.append(psc.pred("append",
+                                             psc.list_term(qfd_var_rel_path_var,
+                                                           python_list_to_prolog_list(rel_paths[v])),
+                                             bv_rel_path_var))
+                bv_tree_var = self.fresh_variable(f"{v.name}Tree", all_pl_vars)
+                lambda_goals.append(psc.pred("get_subtree", in_var_tree_var, bv_rel_path_var, bv_tree_var))
+
+                bv_path_var = self.fresh_variable(f"{v.name}Path", all_pl_vars)
+                lambda_goals.append(psc.pred("append",
+                                             psc.list_term(in_var_path_var, bv_rel_path_var),
+                                             bv_path_var))
+                inner_free_vars_to_lists_map[v] = psc.pair(bv_path_var, bv_tree_var)
+
+        counter += 1
+        child_head = pl.PredicateApplication(
+            pl.Predicate(f"pred{counter}", len(formula.inner_formula.free_variables()) + 1),
+            [inner_free_vars_to_lists_map.get(child_var, isla_to_pl_vars_mapping[child_var])
+             for child_var in formula.inner_formula.free_variables()] +
+            [out_var if type(formula) is isla.ForallFormula else result_var]
+        )
+        lambda_goals.append(child_head)
+
+        if type(formula) is isla.ForallFormula:
+            goals.append(psc.pred(
+                "maplist",
+                pl.LambdaTerm(
+                    free_pl_vars.
+                        union([in_var_path_var, in_var_tree_var]).
+                        union([isla_to_pl_vars_mapping[v]
+                               for v in formula.inner_formula.free_variables()
+                               if formula.bind_expression is None
+                               or v not in formula.bind_expression.bound_variables()]),
+                    [qfd_var_rel_path_var, out_var],
+                    lambda_goals,
+                ),
+                qfd_var_paths,
+                sub_results
+            ))
+
+            goals.append(psc.pred("all", sub_results, result_var))
+        elif type(formula) is isla.ExistsFormula:
+            length_var = self.fresh_variable("L", all_pl_vars)
+            goals.append(psc.pred("length", qfd_var_paths, length_var))
+            idx_var = self.fresh_variable("I", all_pl_vars)
+            goals.append(psc.infix_pred("in", idx_var, psc.infix_term("..", pl.Number(1), length_var)))
+            goals.append(psc.pred("nth1", idx_var, qfd_var_paths, qfd_var_rel_path_var))
+            goals.extend(lambda_goals)
+        else:
+            assert False
+
+        child_rules, child_foreign_functions = self.translate_constraint(formula.inner_formula, counter)
+        return [pl.Rule(head, goals)] + child_rules, child_foreign_functions
 
     def translate_propositional_combinator(self, formula: isla.PropositionalCombinator,
                                            counter: int) -> TranslationResult:
@@ -224,22 +319,56 @@ class Translator:
         free_isla_vars: OrderedSet[isla.Variable] = formula.free_variables()
         head, isla_to_pl_vars_mapping, free_pl_vars, result_var, all_pl_vars = self.create_head(formula, counter)
 
+        # TODO: This is still rather ad-hoc and fragile. Have to work on the SMT translation...
         if str(z3_formula.decl()) == "==" and all(is_z3_var(child) or z3.is_string_value(child)
                                                   for child in z3_formula.children()):
             tvar1 = self.fresh_variable("Tree1", all_pl_vars)
             tvar2 = self.fresh_variable("Tree2", all_pl_vars)
 
-            vars_in_order = [isla_to_pl_vars_mapping[next(variable for variable in free_isla_vars
-                                                          if variable.name == z3_formula.children()[i].as_string())]
-                             for i in range(2)]
+            vars_in_order = []
+            indexes_of_nonvar_children = []
+            for i, z3_child in enumerate(z3_formula.children()):
+                if is_z3_var(z3_child):
+                    vars_in_order.append(
+                        isla_to_pl_vars_mapping[next(v for v in free_isla_vars if v.name == z3_child.as_string())])
+                else:
+                    indexes_of_nonvar_children.append(i)
 
-            goals: List[pl.Goal] = [
-                psc.unify(psc.pair(psc.anon_var(), tvar1), vars_in_order[0]),
-                psc.unify(psc.pair(psc.anon_var(), tvar2), vars_in_order[1]),
-                pl.PredicateApplication(
-                    pl.Predicate("equal", 3), [tvar1, tvar2, result_var]
-                )
-            ]
+            goals: List[pl.Goal]
+            if len(free_isla_vars) == 2:
+                goals = [
+                    psc.unify(psc.pair(psc.anon_var(), tvar1), vars_in_order[0]),
+                    psc.unify(psc.pair(psc.anon_var(), tvar2), vars_in_order[1]),
+                    psc.pred("equal", tvar1, tvar2, result_var)
+                ]
+            else:
+                assert len(free_isla_vars) == 1
+                str_var = self.fresh_variable("Str", all_pl_vars)
+                vars_var = self.fresh_variable("Vars", all_pl_vars)
+                goals = [
+                    psc.unify(psc.pair(psc.anon_var(), tvar1), vars_in_order[0]),
+                    psc.pred("term_variables", psc.list_term(tvar1), vars_var),
+                    psc.pred("label", vars_var),
+                    psc.pred("tree_to_string", tvar1, str_var),
+                    psc.disj(
+                        psc.conj(
+                            psc.clp_eq(result_var, pl.Number(1)),
+                            psc.infix_pred(
+                                "==",
+                                str_var,
+                                pl.StringTerm(z3_formula.children()[indexes_of_nonvar_children[0]].as_string())
+                            )
+                        ),
+                        psc.conj(
+                            psc.clp_eq(result_var, pl.Number(0)),
+                            psc.infix_pred(
+                                "\\=",
+                                str_var,
+                                pl.StringTerm(z3_formula.children()[indexes_of_nonvar_children[0]].as_string())
+                            )
+                        )
+                    )
+                ]
 
             return [pl.Rule(head, goals)], []
         else:
@@ -303,13 +432,12 @@ class Translator:
         return head, dict(isla_to_pl_vars_mapping), free_pl_vars, result_var, all_pl_vars
 
     def fresh_variable(self, name_pattern: str, context_vars: OrderedSet[pl.Variable], add=True) -> pl.Variable:
-        name = name_pattern
+        result = self.to_prolog_var(name_pattern)
         i = 0
-        while any(cvar for cvar in context_vars if cvar.name == name):
+        while result in context_vars:
             name = f"{name_pattern}_{i}"
+            result = self.to_prolog_var(name)
             i += 1
-
-        result = pl.Variable(name)
 
         if add:
             context_vars.add(result)
@@ -444,6 +572,14 @@ class Translator:
                     non_atomic_variables.update(formula.free_variables())
 
             def visit_smt_formula(self, formula: isla.SMTFormula):
+                # TODO: This is still quite arbitrary and ad-hoc, should be fundamentally investigated and reworked.
+
+                if str(formula.formula.decl()) == "==" and any(not is_z3_var(child)
+                                                               for child in formula.formula.children()):
+                    # In equations like "Var == 'asdf'", it slows down the process to first fuzz Var.
+                    # Thus, we have to leave Var's type concrete.
+                    non_atomic_variables.update(formula.free_variables())
+
                 for expr in visit_z3_expr(formula.formula):
                     # Any non-trivial string expression, e.g., substring computations
                     # or regex operations, exclude the involved variables from atomic

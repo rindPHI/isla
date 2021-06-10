@@ -1,8 +1,10 @@
+import re
 import string
 import typing
 import unittest
 from typing import List, Tuple, cast
 
+import pyswip
 import z3
 from fuzzingbook.Grammars import srange
 from fuzzingbook.Parser import canonical, EarleyParser
@@ -68,6 +70,78 @@ class TestProlog(unittest.TestCase):
             grammar,
             SMTFormula(typing.cast(z3.BoolRef, z3.SubSeq(var.to_smt(), 0, 1) == z3.StringVal("a")), var))
         self.assertNotIn("<var>", translator.atomic_string_nonterminals.keys())
+
+    def test_simple_existential_formula(self):
+        prog = Constant("$prog", "<start>")
+        lhs = BoundVariable("$lhs", "<var>")
+        rhs = BoundVariable("$rhs", "<rhs>")
+        assgn = BoundVariable("$assgn", "<assgn>")
+
+        exist_formula: isla.QuantifiedFormula = sc.exists_bind(
+            lhs + " := " + rhs,
+            assgn,
+            prog,
+            sc.smt_for(cast(z3.BoolRef, lhs.to_smt() == z3.StringVal("x")), lhs)
+        )
+
+        self._test_simple_qfd_formulas(exist_formula, False)
+
+    def test_simple_universal_formula(self):
+        prog = Constant("$prog", "<start>")
+        lhs = BoundVariable("$lhs", "<var>")
+        rhs = BoundVariable("$rhs", "<rhs>")
+        assgn = BoundVariable("$assgn", "<assgn>")
+
+        univ_formula: isla.QuantifiedFormula = sc.forall_bind(
+            lhs + " := " + rhs,
+            assgn,
+            prog,
+            sc.smt_for(cast(z3.BoolRef, lhs.to_smt() == z3.StringVal("x")), lhs)
+        )
+
+        self._test_simple_qfd_formulas(univ_formula, True)
+
+    def _test_simple_qfd_formulas(self, formula, univ):
+        translator = Translator(LANG_GRAMMAR, formula)
+
+        prolog = translator.translate()
+        start_predicate = translator.predicate_map["start"]
+        outer_query = prolog.query(f"{start_predicate}(Prog), pred0([] - Prog, 1), "
+                                   f"term_variables([Prog], Vs), copy_term(Vs, Vs, Gs).")
+
+        outer_results: List[Tuple[str, str]] = []
+
+        # Note: This is quite slow since we're comparing identifier names to
+        #       concrete values. For a length of four consecutive statements,
+        #       we have to wait quite long...
+        for _ in range(3):
+            result = next(outer_query)
+            var_name_mapping = pyswip_var_mapping(result)
+            prog_inst = pyswip_output_to_str(result["Prog"], var_name_mapping)
+            constraints = pyswip_clp_constraints_to_str(result["Gs"], var_name_mapping)
+            outer_results.append((prog_inst, constraints))
+
+        outer_query.close()
+
+        for prog_inst, constraints in outer_results:
+            inner_query = prolog.query(f"Prog={prog_inst}, "
+                                       f"{constraints}, "
+                                       f"term_variables(Prog, ProgVars), "
+                                       f"sum(ProgVars, #=, Sum), "
+                                       f"labeling([min(Sum)], ProgVars), "
+                                       f"tree_to_string(Prog, ProgStr)")
+            for _ in range(9):
+                inner_result = next(inner_query)
+
+                if univ:
+                    regex = r'x := .(?: ; x := .)*'
+                else:
+                    regex = r'.*x :=.*'
+
+                prog = pyswip_output_to_str(inner_result["ProgStr"])[1:-1]
+                self.assertTrue(re.fullmatch(regex, prog))
+
+            inner_query.close()
 
     def test_translate_simple_equation(self):
         var1 = Constant("$var1", "<var>")

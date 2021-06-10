@@ -1,4 +1,4 @@
-from typing import Union, Iterable
+from typing import Union, Iterable, List
 
 
 class Term:
@@ -179,6 +179,37 @@ class GoalCombinatorApplication(Goal):
             return "(" + (" " + str(self.combinator) + " ").join(map(str, self.arguments)) + ")"
         else:
             return f"{str(self.combinator)}({', '.join(map(str, self.arguments))})"
+
+
+class LambdaTerm(Term):
+    def __init__(self,
+                 hidden_vars: Iterable[Variable],
+                 params: Iterable[Variable],
+                 goals: Iterable[Goal]):
+        self.hidden_vars = hidden_vars
+        self.params = params
+        self.goals = goals
+
+    def __eq__(self, other):
+        other: LambdaTerm
+        return type(other) == type(self) and \
+               (other.hidden_vars, other.params, other.goals) == \
+               (self.hidden_vars, self.params, self.goals)
+
+    def __repr__(self):
+        return f"LambdaTerm({repr(self.hidden_vars)}, {repr(self.params)}, {repr(self.goals)})"
+
+    def __str__(self):
+        result: List[str] = []
+        if self.hidden_vars:
+            result.append(f"{{{', '.join(map(str, self.hidden_vars))}}}/")
+
+        result.append(f"[{', '.join(map(str, self.params))}]")
+        result.append(">>(")
+        result.append(", ".join(map(str, self.goals)))
+        result.append(")")
+
+        return "".join(result)
 
 
 class Conjunction(Goal):
