@@ -14,7 +14,7 @@ from input_constraints import isla_shortcuts as sc
 from input_constraints.helpers import pyswip_output_to_str, pyswip_clp_constraints_to_str, pyswip_var_mapping
 from input_constraints.isla import Constant, BoundVariable, Formula, SMTFormula
 from input_constraints.prolog import Translator
-from input_constraints.tests.test_data import LANG_GRAMMAR
+from input_constraints.tests.test_data import LANG_GRAMMAR, eval_lang
 
 
 class TestProlog(unittest.TestCase):
@@ -46,6 +46,43 @@ class TestProlog(unittest.TestCase):
         )
 
         return formula
+
+    def test_full_test_constraint(self):
+        formula = self.get_test_constraint()
+        translator = Translator(LANG_GRAMMAR, formula)
+
+        prolog = translator.translate()
+        start_predicate = translator.predicate_map["start"]
+        outer_query = prolog.query(f"{start_predicate}(Prog), pred0([] - Prog, 1), "
+                                   f"term_variables([Prog], Vs), copy_term(Vs, Vs, Gs).")
+
+        outer_results: List[Tuple[str, str]] = []
+
+        for _ in range(30):
+            result = next(outer_query)
+            var_name_mapping = pyswip_var_mapping(result)
+            prog_inst = pyswip_output_to_str(result["Prog"], var_name_mapping)
+            constraints = pyswip_clp_constraints_to_str(result["Gs"], var_name_mapping)
+            outer_results.append((prog_inst, constraints))
+
+        outer_query.close()
+
+        for prog_inst, constraints in outer_results:
+            inner_query = prolog.query(f"Prog={prog_inst}, "
+                                       f"{constraints}, "
+                                       f"term_variables(Prog, ProgVars), "
+                                       f"sum(ProgVars, #=, Sum), "
+                                       f"labeling([min(Sum)], ProgVars), "
+                                       f"tree_to_string(Prog, ProgStr)")
+            for _ in range(10):
+                inner_result = next(inner_query)
+                prog = pyswip_output_to_str(inner_result["ProgStr"])[1:-1]
+                try:
+                    eval_lang(prog)
+                except KeyError:
+                    self.fail(f"Program {prog} does not match constraint.")
+
+            inner_query.close()
 
     def test_compute_numeric_nonterminals(self):
         grammar = canonical(LANG_GRAMMAR)
