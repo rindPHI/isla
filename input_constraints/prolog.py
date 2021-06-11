@@ -172,7 +172,8 @@ class Translator:
         inner_free_vars_to_lists_map[formula.bound_variable] = psc.pair(qfd_var_path_var, qfd_var_tree_var)
 
         if formula.bind_expression is not None:
-            for v in [v for v in formula.inner_formula.free_variables() if v in formula.bind_expression.bound_variables()]:
+            for v in [v for v in formula.inner_formula.free_variables() if
+                      v in formula.bind_expression.bound_variables()]:
                 bv_rel_path_var = self.fresh_variable(f"{v.name}RelPath", all_pl_vars)
                 lambda_goals.append(psc.pred("append",
                                              psc.list_term(qfd_var_rel_path_var,
@@ -534,6 +535,18 @@ class Translator:
                 pl.PredicateApplication(leq, [pl.Number(0), c]),
                 pl.PredicateApplication(leq, [c, pl.Number(self.atomic_string_nonterminals[nonterminal])])
             ]))
+
+        # % Alternative for using foreign method fuzz function: Embed into Prolog code. Speed difference
+        # % seems to be negligible.
+        # for nonterminal in self.atomic_string_nonterminals:
+        #     grammar = GrammarGraph.from_grammar(non_canonical(self.grammar)).subgraph(nonterminal).to_grammar()
+        #     fuzzer = GrammarCoverageFuzzer(grammar)
+        #
+        #     for i in range(self.atomic_string_nonterminals[nonterminal]):
+        #         rules.append(pl.Rule(psc.pred("fuzz",
+        #                                       pl.Atom(nonterminal[1:-1]),
+        #                                       pl.Number(i),
+        #                                       pl.StringTerm(fuzzer.fuzz())), []))
 
         return rules
 
