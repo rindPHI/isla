@@ -257,12 +257,16 @@ class TestEvaluation(unittest.TestCase):
         prog = BoundVariable("$prog ", "<stmt>")
         lhs_2 = BoundVariable("$lhs_2 ", "<var>")
         rhs_2 = BoundVariable("$rhs_2", "<rhs>")
-        bind_expr: BindExpression = lhs + " := " + rhs + " ; " + lhs_2 + " := " + rhs_2
+        semicolon = BoundVariable("$semi", " ; ")
+
+        bind_expr: BindExpression = lhs + " := " + rhs + semicolon + lhs_2 + " := " + rhs_2
         tree, bindings = bind_expr.to_tree_prefix(prog.n_type, LANG_GRAMMAR)
         self.assertEqual(('<stmt>', [
             ('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', None)]),
             (' ; ', []),
             ('<stmt>', [('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', None)])])]), tree)
+
+        self.assertEqual((1,), bindings[semicolon])
         self.assertEqual((0, 0), bindings[lhs])
         self.assertEqual((0, 2), bindings[rhs])
         self.assertEqual((2, 0, 0), bindings[lhs_2])

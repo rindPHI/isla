@@ -7,7 +7,6 @@ from fuzzingbook.GrammarFuzzer import GrammarFuzzer, all_terminals
 from fuzzingbook.Grammars import unreachable_nonterminals, is_nonterminal
 import input_constraints.prolog_structs as pl
 import input_constraints.prolog_shortcuts as psc
-
 from input_constraints.type_defs import Path, ParseTree, Grammar, CanonicalGrammar
 
 
@@ -322,11 +321,19 @@ def tree_depth(tree: ParseTree, depth: int = 1) -> int:
         return max([tree_depth(child, depth + 1) for child in children])
 
 
+def var_to_pl_nsym(variable: Union['isla.Variable', str]):
+    ntype = variable if type(variable) is str else variable.n_type
+    if is_nonterminal(ntype):
+        return pl.Atom(ntype[1:-1].lower())
+    else:
+        return pl.StringTerm(ntype)
+
+
 def python_to_prolog_tree(tree: ParseTree) -> pl.ListTerm:
     node, children = tree
 
     if children is None:
-        return psc.list_term(pl.Atom(node[1:-1]), psc.anon_var())
+        return psc.list_term(var_to_pl_nsym(node), psc.anon_var())
     elif not children:
         return psc.list_term(pl.StringTerm(node), psc.list_term())
     else:

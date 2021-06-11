@@ -2,7 +2,8 @@ import logging
 import re
 import sys
 import tempfile
-from typing import List, Dict, Tuple, Type, Callable, Union
+import time
+from typing import List, Dict, Tuple, Type, Callable, Union, Optional, Set
 
 import pyswip
 import z3
@@ -17,7 +18,7 @@ import input_constraints.isla as isla
 import input_constraints.prolog_shortcuts as psc
 import input_constraints.prolog_structs as pl
 from input_constraints.helpers import visit_z3_expr, is_canonical_grammar, is_z3_var, pyswip_output_to_str, \
-    pyswip_output_to_python, python_to_prolog_tree, python_list_to_prolog_list
+    pyswip_output_to_python, python_to_prolog_tree, python_list_to_prolog_list, var_to_pl_nsym
 from input_constraints.type_defs import CanonicalGrammar, Grammar
 
 # A TranslationResult for a constraint is a list of Prolog rules together with a list of foreign foreign predicates,
@@ -30,7 +31,12 @@ class Translator:
     # TODO: Make configurable
     FUZZING_DEPTH_ATOMIC_STRING_NONTERMINALS = 100
 
-    def __init__(self, grammar: Union[Grammar, CanonicalGrammar], formula: isla.Formula):
+    def __init__(self,
+                 grammar: Union[Grammar, CanonicalGrammar],
+                 formula: isla.Formula,
+                 numeric_nonterminals: Optional[Dict[str, Tuple[int, int]]] = None,
+                 atomic_string_nonterminals: Optional[Dict[str, int]] = None
+                 ):
         if is_canonical_grammar(grammar):
             self.grammar = grammar
         else:
@@ -45,8 +51,12 @@ class Translator:
             {iv.name: pv for iv, pv in self.isla_to_prolog_var_map.items()}
         self.predicate_map: Dict[str, str] = self.compute_predicate_names_for_nonterminals()
 
-        self.numeric_nonterminals: Dict[str, Tuple[int, int]] = self.compute_numeric_nonterminals()
-        self.atomic_string_nonterminals: Dict[str, int] = self.compute_atomic_string_nonterminals()
+        self.numeric_nonterminals: Dict[str, Tuple[int, int]] = numeric_nonterminals \
+            if numeric_nonterminals is not None \
+            else self.compute_numeric_nonterminals()
+        self.atomic_string_nonterminals: Dict[str, int] = atomic_string_nonterminals \
+            if atomic_string_nonterminals is not None \
+            else self.compute_atomic_string_nonterminals()
 
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -147,7 +157,7 @@ class Translator:
         else:
             goals.append(psc.pred("find_subtrees",
                                   in_var_tree_var,
-                                  psc.list_term(pl.Atom(formula.bound_variable.n_type[1:-1]), psc.anon_var()),
+                                  psc.list_term(var_to_pl_nsym(formula.bound_variable), psc.anon_var()),
                                   qfd_var_paths))
 
         qfd_var_rel_path_var = self.fresh_variable("QfdVarRelPath", all_pl_vars)
@@ -458,12 +468,17 @@ class Translator:
         return pl.Variable(result)
 
     def translate_grammar(self) -> List[pl.Rule]:
+        # TODO XXX: Have to output base cases first, otherwise leads to non-termination!
+        # TODO XXX: Also, recursive calls have to come first.
+        # TODO XXX: Have to think about string representation! Should use flat lists... Maybe even with
+        #           symbolic ints representing char points.
+
         """
         Translates a grammar to Prolog.
 
         :param grammar: The grammar in canonical form.
-        :param predicate_map: Mapping of nonterminal names (w/o the "<", ">") to the corresponding predicate names. Accounts
-        for predefined predicates.
+        :param predicate_map: Mapping of nonterminal names (w/o the "<", ">") to the corresponding predicate names.
+        Accounts for predefined predicates.
         :param numeric_nonterminals: Nonterminals of integer type, mapped to their bounds.
         :param atomic_string_nonterminals: Nonterminals of string type whose internal structure does not matter for
         the constraint at hand, and which therefore can be abstracted by integers (for later fuzzing).
@@ -551,21 +566,43 @@ class Translator:
         return rules
 
     def compute_atomic_string_nonterminals(self) -> Dict[str, int]:
+        # TODO: We should not consider as atomic nonterminals with a simple domain, e.g., a brief enumeration.
+        # TODO: It also makes sense to constrain the numeric domains of atomic nonterminals if there are
+        #       fewer options available than the given maximum domain element.
         assert hasattr(self, "numeric_nonterminals")
 
-        used_nonterminals = OrderedSet([variable.n_type for variable in self.used_variables])
-
-        unused_sink_nonterminals: OrderedSet[str] = OrderedSet([])
-        for unused_nonterminal in OrderedSet(self.grammar.keys()) \
-                .difference(used_nonterminals).difference(set(self.numeric_nonterminals.keys())):
+        def reachable(nonterminal: str) -> Set[str]:
             graph = GrammarGraph.from_grammar(non_canonical(self.grammar))
-            dist = graph.dijkstra(graph.get_node(unused_nonterminal))[0]
-            reachable_nonterminals = set([node.symbol for node in dist.keys()
-                                          if dist[node] < sys.maxsize
-                                          and node.symbol != unused_nonterminal
-                                          and type(node) is NonterminalNode])
-            if not reachable_nonterminals.intersection(used_nonterminals):
-                unused_sink_nonterminals.add(unused_nonterminal)
+            dist = graph.dijkstra(graph.get_node(nonterminal))[0]
+            return set([node.symbol for node in dist.keys()
+                        if dist[node] < sys.maxsize
+                        and node.symbol != nonterminal
+                        and type(node) is NonterminalNode])
+
+        used_nonterminals = OrderedSet([variable.n_type
+                                        for variable in self.used_variables
+                                        if is_nonterminal(variable.n_type)])
+
+        non_atomic_nonterminals = OrderedSet([])
+
+        # Only consider nonterminals that don't reach other used nonterminals
+        used_proxy_nonterminals: OrderedSet[str] = OrderedSet([
+            used_nonterminal
+            for used_nonterminal in
+            used_nonterminals.difference(set(self.numeric_nonterminals.keys()))
+            if reachable(used_nonterminal).intersection(used_nonterminals)
+        ])
+
+        non_atomic_nonterminals |= used_proxy_nonterminals
+
+        unused_sink_nonterminals: OrderedSet[str] = OrderedSet([
+            unused_nonterminal
+            for unused_nonterminal in
+            OrderedSet(self.grammar.keys())
+                .difference(used_nonterminals)
+                .difference(set(self.numeric_nonterminals.keys()))
+            if not reachable(unused_nonterminal).intersection(used_nonterminals)
+        ])
 
         non_atomic_variables = OrderedSet([])
 
@@ -606,13 +643,15 @@ class Translator:
 
         self.formula.accept(NonAtomicVisitor())
 
-        non_atomic_nonterminals = [variable.n_type for variable in non_atomic_variables]
+        non_atomic_nonterminals |= [variable.n_type for variable in non_atomic_variables]
+
         return {nonterminal: Translator.FUZZING_DEPTH_ATOMIC_STRING_NONTERMINALS
                 for nonterminal in used_nonterminals
                     .difference(non_atomic_nonterminals)
                     .union(unused_sink_nonterminals)}
 
     def compute_numeric_nonterminals(self) -> Dict[str, Tuple[int, int]]:
+        # TODO: This could be a performance bottleneck. We should try to statically solve this!
         result = {}
         noncanonical = non_canonical(self.grammar)
         for nonterminal in self.grammar:
@@ -644,9 +683,9 @@ class Translator:
         for nonterminal in self.grammar:
             nonterminal = nonterminal[1:-1]
             idx = 0
-            curr_name = nonterminal
+            curr_name = nonterminal.lower()
             while self.predicate_defined(curr_name, 1):
-                curr_name = f"{nonterminal}_{idx}"
+                curr_name = f"{nonterminal.lower()}_{idx}"
                 idx += 1
 
             predicate_map[nonterminal] = curr_name

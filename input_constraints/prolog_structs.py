@@ -272,7 +272,8 @@ class Rule:
         # Full stops omitted since pyswip does not accept them
         if self.goals:
             # Rule
-            return f"{str(self.head)} :- {', '.join(map(str, self.goals))}"
+            breakstr = ",\n  "
+            return f"{str(self.head)} :-\n  {breakstr.join(map(str, self.goals))}"
         else:
             # Fact
             return str(self.head)
