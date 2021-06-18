@@ -17,8 +17,20 @@ def clp_eq(left: pl.Term, right: pl.Term) -> pl.PredicateApplication:
     return pl.PredicateApplication(pl.Predicate("#=", 2, infix=True), [left, right])
 
 
+def clp_lt(left: pl.Term, right: pl.Term) -> pl.PredicateApplication:
+    return pl.PredicateApplication(pl.Predicate("#<", 2, infix=True), [left, right])
+
+
+def clp_le(left: pl.Term, right: pl.Term) -> pl.PredicateApplication:
+    return pl.PredicateApplication(pl.Predicate("#=<", 2, infix=True), [left, right])
+
+
 def clp_gt(left: pl.Term, right: pl.Term) -> pl.PredicateApplication:
     return pl.PredicateApplication(pl.Predicate("#>", 2, infix=True), [left, right])
+
+
+def clp_ge(left: pl.Term, right: pl.Term) -> pl.PredicateApplication:
+    return pl.PredicateApplication(pl.Predicate("#>=", 2, infix=True), [left, right])
 
 
 def clp_iff(left: pl.Goal, right: pl.Goal) -> pl.Goal:

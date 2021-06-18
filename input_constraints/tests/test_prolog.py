@@ -52,7 +52,7 @@ class TestProlog(unittest.TestCase):
         translator = Translator(LANG_GRAMMAR, formula)
 
         prolog = translator.translate()
-        start_predicate = translator.predicate_map["start"]
+        start_predicate = translator.nonterminal_predicate_map["start"]
         outer_query = prolog.query(f"{start_predicate}(Prog), pred0([] - Prog, 1), "
                                    f"term_variables([Prog], Vs), copy_term(Vs, Vs, Gs).")
 
@@ -142,7 +142,7 @@ class TestProlog(unittest.TestCase):
         translator = Translator(LANG_GRAMMAR, formula)
 
         prolog = translator.translate()
-        start_predicate = translator.predicate_map["start"]
+        start_predicate = translator.nonterminal_predicate_map["start"]
         outer_query = prolog.query(f"{start_predicate}(Prog), pred0([] - Prog, 1), "
                                    f"term_variables([Prog], Vs), copy_term(Vs, Vs, Gs).")
 
@@ -193,7 +193,7 @@ class TestProlog(unittest.TestCase):
                          "equal(Tree1, Tree2, Result)", str(rule))
 
         prolog = translator.translate()
-        var_predicate = translator.predicate_map["var"]
+        var_predicate = translator.nonterminal_predicate_map["var"]
         outer_query = prolog.query(f"{var_predicate}(V1), {var_predicate}(V2), pred0([] - V2, [] - V1, 1), "
                                    f"term_variables([V1, V2], Vs), copy_term(Vs, Vs, Gs).")
 
@@ -258,7 +258,7 @@ class TestProlog(unittest.TestCase):
         translator = Translator(canonical(LANG_GRAMMAR), constraint)
 
         prolog = translator.translate()
-        var_predicate = translator.predicate_map["var"]
+        var_predicate = translator.nonterminal_predicate_map["var"]
 
         outer_query = prolog.query(f"{var_predicate}(V), pred0([] - V, 1), tree_to_string(V, Str).")
         result = list(outer_query)
@@ -285,7 +285,7 @@ class TestProlog(unittest.TestCase):
         translator = Translator(canonical(LANG_GRAMMAR), constraint)
 
         prolog = translator.translate()
-        stmt_predicate = translator.predicate_map["assgn"]
+        stmt_predicate = translator.nonterminal_predicate_map["assgn"]
 
         outer_query = prolog.query(f"{stmt_predicate}(V), pred0([] - V, 1), tree_to_string(V, Str).")
         for i in range(4):
@@ -312,7 +312,7 @@ class TestProlog(unittest.TestCase):
         translator = Translator(canonical(LANG_GRAMMAR), constraint)
 
         prolog = translator.translate()
-        var_predicate = translator.predicate_map["var"]
+        var_predicate = translator.nonterminal_predicate_map["var"]
 
         outer_query = prolog.query(f"{var_predicate}(V), pred0([] - V, 1), tree_to_string(V, Str).")
         strinsts = [pyswip_output_to_str(r["Str"])[1:-1] for r in list(outer_query)]
@@ -331,7 +331,7 @@ class TestProlog(unittest.TestCase):
         translator = Translator(canonical(LANG_GRAMMAR), constraint)
 
         prolog = translator.translate()
-        var_predicate = translator.predicate_map["var"]
+        var_predicate = translator.nonterminal_predicate_map["var"]
 
         outer_query = prolog.query(f"{var_predicate}(V1), {var_predicate}(V2), "
                                    f"pred0([1,0] - V1, [1,1] - V2, 1), "
@@ -353,7 +353,7 @@ class TestProlog(unittest.TestCase):
         translator = Translator(LANG_GRAMMAR, self.get_test_constraint())
         prolog = translator.translate()
 
-        stmt_predicate = translator.predicate_map["stmt"]
+        stmt_predicate = translator.nonterminal_predicate_map["stmt"]
         outer_query = prolog.query(f"{stmt_predicate}(S), term_variables(S, Vs), copy_term(Vs, Vs, Gs)")
 
         outer_results: List[Tuple[str, str]] = []

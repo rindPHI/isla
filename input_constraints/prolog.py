@@ -49,7 +49,8 @@ class Translator:
             {iv: self.to_prolog_var(iv) for iv in self.used_variables}
         self.isla_var_name_to_prolog_var_map: Dict[isla.Variable, pl.Variable] = \
             {iv.name: pv for iv, pv in self.isla_to_prolog_var_map.items()}
-        self.predicate_map: Dict[str, str] = self.compute_predicate_names_for_nonterminals()
+        self.nonterminal_predicate_map: Dict[str, str] = self.compute_predicate_names_for_nonterminals()
+        self.predicate_to_nonterminal_map: Dict[str, str] = {v: k for k, v in self.nonterminal_predicate_map.items()}
 
         self.numeric_nonterminals: Dict[str, Tuple[int, int]] = numeric_nonterminals \
             if numeric_nonterminals is not None \
@@ -61,17 +62,17 @@ class Translator:
         self.logger = logging.getLogger(type(self).__name__)
 
     def translate(self) -> Prolog:
-        def numeric_nonterminal(atom: pyswip.easy.Atom) -> bool:
-            return f"<{atom.value}>" in self.numeric_nonterminals
-
-        def atomic_string_nonterminal(atom: pyswip.easy.Atom) -> bool:
-            return f"<{atom.value}>" in self.atomic_string_nonterminals
+        # def numeric_nonterminal(atom: pyswip.easy.Atom) -> bool:
+        #     return f"<{atom.value}>" in self.numeric_nonterminals
+        #
+        # def atomic_string_nonterminal(atom: pyswip.easy.Atom) -> bool:
+        #     return f"<{atom.value}>" in self.atomic_string_nonterminals
 
         fuzz_results: Dict[str, List[str]] = {}
         fuzzers: Dict[str, GrammarCoverageFuzzer] = {}
 
         def fuzz(atom: pyswip.easy.Atom, idx: int, result: pyswip.easy.Variable) -> bool:
-            nonterminal = f"<{atom.value}>"
+            nonterminal = f"<{self.predicate_to_nonterminal_map[atom.value]}>"
 
             grammar = GrammarGraph.from_grammar(non_canonical(self.grammar)).subgraph(nonterminal).to_grammar()
             fuzzer = fuzzers.setdefault(nonterminal, GrammarCoverageFuzzer(grammar))
@@ -85,6 +86,8 @@ class Translator:
 
         prolog = Prolog()
 
+        next(prolog.query("use_module(library(clpfd))"))
+
         try:
             import importlib.resources as pkg_resources
         except ImportError:
@@ -97,13 +100,11 @@ class Translator:
             tmp.write(preamble.encode())
             prolog.consult(tmp.name)
 
-        next(prolog.query("use_module(library(clpfd))"))
+        # for pred in ["atomic_nonterminal/1", "atomic_string_nonterminal/1", "fuzz/3"]:
+        #     next(prolog.query(f"abolish({pred})"))
+        # registerForeign(numeric_nonterminal, name="numeric_nonterminal", arity=1)
+        # registerForeign(atomic_string_nonterminal, name="atomic_string_nonterminal", arity=1)
 
-        for pred in ["atomic_nonterminal/1", "atomic_string_nonterminal/1", "fuzz/3"]:
-            next(prolog.query(f"abolish({pred})"))
-
-        registerForeign(numeric_nonterminal, name="numeric_nonterminal", arity=1)
-        registerForeign(atomic_string_nonterminal, name="atomic_string_nonterminal", arity=1)
         registerForeign(fuzz, name="fuzz", arity=3)
 
         pl_grammar = self.translate_grammar()
@@ -468,8 +469,6 @@ class Translator:
         return pl.Variable(result)
 
     def translate_grammar(self) -> List[pl.Rule]:
-        # TODO XXX: Have to output base cases first, otherwise leads to non-termination!
-        # TODO XXX: Also, recursive calls have to come first.
         # TODO XXX: Have to think about string representation! Should use flat lists... Maybe even with
         #           symbolic ints representing char points.
 
@@ -491,6 +490,7 @@ class Translator:
                                           if n not in self.numeric_nonterminals
                                              and n not in self.atomic_string_nonterminals]:
             nonterminal = nonterminal[1:-1]
+            nonterminal_rules: List[pl.Rule] = []
             for alternative in alternatives:
                 params: List[pl.Term] = []
                 variables: Dict[str, str] = {}
@@ -506,49 +506,79 @@ class Translator:
                     else:
                         params.append(pl.ListTerm([pl.StringTerm(symbol), pl.ListTerm([])]))
 
-                atom_name = self.predicate_map[nonterminal]
-                head = pl.PredicateApplication(
-                    pl.Predicate(atom_name, 1),
-                    [pl.ListTerm([pl.Atom(atom_name), pl.ListTerm(params)])])
+                atom_name = self.nonterminal_predicate_map[nonterminal]
+                depth_var = self.fresh_variable("D", OrderedSet(variables.keys()), add=False)
 
-                goals = []
+                head = psc.pred(
+                    atom_name,
+                    pl.ListTerm([pl.Atom(atom_name), pl.ListTerm(params)]),
+                    depth_var)
+
                 if variables:
-                    # Need to call recursive nonterminals first
+                    goals = [psc.clp_gt(depth_var, pl.Number(0))]
+                else:
+                    goals = [psc.clp_eq(depth_var, pl.Number(1))]
+
+                if variables:
+                    all_variables = OrderedSet([pl.Variable(variable) for variable in variables])
+                    child_depth_vars = []
+                    for idx in range(len(variables)):
+                        child_depth_vars.append(self.fresh_variable("DC", all_variables))
+
+                    for child_depth_var in child_depth_vars:
+                        goals.append(psc.clp_ge(child_depth_var, pl.Number(0)))
+                        goals.append(psc.clp_lt(child_depth_var, depth_var))
+
+                    goals.append(psc.disj(*[
+                        psc.clp_eq(child_depth_var, psc.infix_term("-", depth_var, pl.Number(1)))
+                        for child_depth_var in child_depth_vars
+                    ]))
+
+                    # Need to call recursive nonterminals last
                     variables_list = sorted(variables.keys(),
                                             key=lambda n: (
                                                 node := graph.get_node(f"<{variables[n]}>"),
-                                                chr(0) if node.reachable(node) else n[1:-1])[-1])
+                                                chr(0) if not node.reachable(node) else n[1:-1])[-1])
+                    goals += [
+                        psc.pred(self.nonterminal_predicate_map[variables[variable]],
+                                 pl.Variable(variable),
+                                 child_depth_vars[idx])
+                        for idx, variable in enumerate(variables_list)]
 
-                    goals = [pl.PredicateApplication(pl.Predicate(self.predicate_map[variables[variable]], 1),
-                                                     [pl.Variable(variable)])
-                             for variable in variables_list]
+                nonterminal_rules.append(pl.Rule(head, goals))
 
-                rules.append(pl.Rule(head, goals))
+            # rules.extend(self.sort_rules(nonterminal_rules))
+            rules.extend(nonterminal_rules)
 
         for nonterminal in self.numeric_nonterminals:
             nonterminal_name = nonterminal[1:-1]
             c = pl.Variable("C")
-            leq = pl.Predicate("#=<", 2, infix=True)
+            depth_var = pl.Variable("D")
 
-            rules.append(pl.Rule(pl.PredicateApplication(
-                pl.Predicate(self.predicate_map[nonterminal_name], 1),
-                [pl.ListTerm([pl.Atom(nonterminal_name), pl.ListTerm([pl.ListTerm([c, pl.ListTerm([])])])])]
+            rules.append(pl.Rule(psc.pred(
+                self.nonterminal_predicate_map[nonterminal_name],
+                pl.ListTerm([pl.Atom(nonterminal_name.lower()), pl.ListTerm([pl.ListTerm([c, pl.ListTerm([])])])]),
+                depth_var
             ), [
-                pl.PredicateApplication(leq, [pl.Number(self.numeric_nonterminals[nonterminal][0]), c]),
-                pl.PredicateApplication(leq, [c, pl.Number(self.numeric_nonterminals[nonterminal][1])])
+                psc.clp_eq(depth_var, pl.Number(1)),
+                psc.clp_le(pl.Number(self.numeric_nonterminals[nonterminal][0]), c),
+                psc.clp_le(c, pl.Number(self.numeric_nonterminals[nonterminal][1])),
             ]))
 
         for nonterminal in self.atomic_string_nonterminals:
             nonterminal_name = nonterminal[1:-1]
             c = pl.Variable("C")
-            leq = pl.Predicate("#=<", 2, infix=True)
+            depth_var = pl.Variable("D")
 
-            rules.append(pl.Rule(pl.PredicateApplication(
-                pl.Predicate(self.predicate_map[nonterminal_name], 1),
-                [pl.ListTerm([pl.Atom(nonterminal_name), pl.ListTerm([pl.ListTerm([c, pl.ListTerm([])])])])]
+            rules.append(pl.Rule(psc.pred(
+                self.nonterminal_predicate_map[nonterminal_name],
+                pl.ListTerm([pl.Atom(nonterminal_name.lower()), pl.ListTerm([pl.ListTerm([c, pl.ListTerm([])])])]),
+                depth_var
+
             ), [
-                pl.PredicateApplication(leq, [pl.Number(0), c]),
-                pl.PredicateApplication(leq, [c, pl.Number(self.atomic_string_nonterminals[nonterminal])])
+                psc.clp_eq(depth_var, pl.Number(1)),
+                psc.clp_le(pl.Number(0), c),
+                psc.clp_le(c, pl.Number(self.atomic_string_nonterminals[nonterminal]))
             ]))
 
         # % Alternative for using foreign method fuzz function: Embed into Prolog code. Speed difference
@@ -563,7 +593,66 @@ class Translator:
         #                                       pl.Number(i),
         #                                       pl.StringTerm(fuzzer.fuzz())), []))
 
+        for atomic_string_nonterminal in self.atomic_string_nonterminals:
+            rules.append(
+                pl.Rule(psc.pred("atomic_string_nonterminal",
+                                 pl.Atom(self.nonterminal_predicate_map[atomic_string_nonterminal[1:-1]])), []))
+
+        for numeric_nonterminal in self.numeric_nonterminals:
+            rules.append(
+                pl.Rule(psc.pred("numeric_nonterminal",
+                                 pl.Atom(self.nonterminal_predicate_map[numeric_nonterminal[1:-1]])), []))
+
         return rules
+
+    def sort_rules(self, rules: List[pl.Rule]) -> List[pl.Rule]:
+        # Sorting criteria: Trivial rules (w/o cycles) first.
+        # Within rules: Recursive goals last.
+        result: List[pl.Rule] = []
+
+        for rule in rules:
+            head, goals = rule.head, rule.goals
+            grammar_graph = GrammarGraph.from_grammar(non_canonical(self.grammar))
+            head_nonterminal = "<" + self.predicate_to_nonterminal_map[head.predicate.name] + ">"
+            head_node = grammar_graph.get_node(head_nonterminal)
+
+            def key_func(elem: pl.Goal) -> int:
+                if type(elem) is not pl.PredicateApplication:
+                    return -2
+                elem: pl.PredicateApplication
+
+                if elem.predicate.name not in self.predicate_to_nonterminal_map:
+                    # These are predicates like #>, which come first.
+                    return -3
+
+                elem_nonterminal = "<" + self.predicate_to_nonterminal_map[elem.predicate.name] + ">"
+                if elem_nonterminal == head_nonterminal:
+                    return 1
+                elif grammar_graph.get_node(elem_nonterminal).reachable(head_node):
+                    return 0
+                else:
+                    return -1
+
+            goals.sort(key=key_func)
+            result.append(pl.Rule(head, goals))
+
+        def key_func(rule: pl.Rule) -> int:
+            head, goals = rule.head, rule.goals
+            if not goals:
+                # Trivial goals first
+                return -1
+
+            for goal in [g for g in goals if type(g) is pl.PredicateApplication]:
+                if goal.predicate.name == head.predicate.name:
+                    # Recursive goals last
+                    return 100 * len(goals)
+
+            # Other goals somewhere in-between
+            return len(goals)
+
+        result.sort(key=key_func)
+
+        return result
 
     def compute_atomic_string_nonterminals(self) -> Dict[str, int]:
         # TODO: We should not consider as atomic nonterminals with a simple domain, e.g., a brief enumeration.
@@ -678,7 +767,6 @@ class Translator:
 
         :return: The mapping.
         """
-        prolog = Prolog()
         predicate_map: Dict[str, str] = {}
         for nonterminal in self.grammar:
             nonterminal = nonterminal[1:-1]

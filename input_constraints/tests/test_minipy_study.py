@@ -1,11 +1,12 @@
-import typing
 import unittest
-from typing import Dict
+from typing import Dict, List, Tuple
 
+import pyswip.easy
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
-from input_constraints.helpers import pyswip_output_to_str
+from input_constraints.helpers import pyswip_output_to_str, pyswip_var_mapping, pyswip_clp_constraints_to_str, \
+    pyswip_output_to_python, tree_list_to_str
 from input_constraints.prolog import Translator
 from input_constraints.tests import minipy
 from input_constraints.tests.minipy import to_real_python
@@ -14,6 +15,35 @@ from input_constraints import isla_shortcuts as sc
 
 
 class MinipyTest(unittest.TestCase):
+    def test_minipy_grammar(self):
+        grammar = minipy.GRAMMAR
+
+        translator = Translator(grammar, isla.SMTFormula(z3.BoolVal(True)),
+                                numeric_nonterminals={"<NUMBER>": (0, 100), "<DIGIT>": (0, 9)},
+                                atomic_string_nonterminals={
+                                    "<NAME>": 10, "<IDCHAR>": 10, "<INIT_CHAR>": 10, "<IDCHARS>": 10})
+        # print("\n".join(map(str, translator.translate_grammar())))
+
+        prolog = translator.translate()
+        min_depth, max_depth, sols_per_level, labelings = 10, 20, 50, 10
+        query = prolog.query(
+            f"D in {min_depth}..{max_depth}, "
+            f"indomain(D), "
+            f"findnsols_nobt({sols_per_level}, S, stmt(S, D), OS), "
+            f"maplist([In, Out]>>("
+            f"findnsols_nobt({labelings}, Str, (term_variables(In, Vars), label(Vars), tree_to_string(In, Str)), Out)"
+            f"), OS, IS)")
+
+        for _ in range((max_depth - min_depth) * sols_per_level * labelings):
+            result = next(query)
+            var_name_mapping = pyswip_var_mapping(result)
+            result_list = pyswip_output_to_python(result["IS"], var_name_mapping)
+            for labeled_progs in result_list:
+                for prog in labeled_progs:
+                    print(to_real_python(prog[1:-1]))
+
+        query.close()
+
     def test_minipy(self):
         grammar = minipy.GRAMMAR
 

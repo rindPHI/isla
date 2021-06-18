@@ -1,14 +1,12 @@
 import copy
-from typing import Union, List, Optional, Iterable, cast, Dict, Tuple, Callable
+from typing import Union, List, Optional, Dict, Tuple, Callable
 
-import inflection
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
+import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string
 from orderedset import OrderedSet
-import z3
 
-from input_constraints.helpers import get_subtree, next_path, get_symbols, traverse_tree, get_path_of_subtree, \
-    is_before, TreeExpander, tree_depth
+from input_constraints.helpers import get_subtree, next_path, get_symbols, traverse_tree, is_before, TreeExpander, \
+    tree_depth
 from input_constraints.type_defs import ParseTree, Path, Grammar
 
 

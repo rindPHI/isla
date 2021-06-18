@@ -208,59 +208,63 @@ def pyswip_var_mapping(inp,
         for key in inp:
             pyswip_var_mapping(key, mapping)
             pyswip_var_mapping(inp[key], mapping)
+    elif type(inp) is pyswip.easy.Functor:
+        inp: pyswip.easy.Functor
+        for arg in inp.args:
+            pyswip_var_mapping(arg, mapping)
 
     return mapping
 
 
-def pyswip_clp_constraints_to_str(inp: List, var_name_mapping: Dict[pyswip.easy.Variable, str]) -> str:
-    result = []
-    constraint: pyswip.easy.Functor
+def pyswip_clp_constraint_to_str(constraint: pyswip.easy.Functor,
+                                 var_name_mapping: Dict[pyswip.easy.Variable, str]) -> str:
+    assert constraint.args[0].value == "clpfd"
+    variable: pyswip.easy.Variable = constraint.args[1].args[0]
+    variable_str = [var_name_mapping[v] for v in var_name_mapping if v == variable][0]
 
-    for constraint in inp:
-        assert constraint.args[0].value == "clpfd"
-        variable: pyswip.easy.Variable = constraint.args[1].args[0]
-        variable_str = [var_name_mapping[v] for v in var_name_mapping if v == variable][0]
+    if type(constraint.args[1]) is pyswip.easy.Functor:
+        constraint_name = constraint.args[1].name.chars
+        if constraint_name in ["#\\=", "#=="]:
+            other_variable: pyswip.easy.Variable = constraint.args[1].args[1]
+            other_variable_str = [var_name_mapping[v] for v in var_name_mapping if v == other_variable][0]
+            return f"{variable_str} {constraint_name} {other_variable_str}"
 
-        if type(constraint.args[1]) is pyswip.easy.Functor:
-            constraint_name = constraint.args[1].name.chars
-            if constraint_name in ["#\\=", "#=="]:
-                other_variable: pyswip.easy.Variable = constraint.args[1].args[1]
-                other_variable_str = [var_name_mapping[v] for v in var_name_mapping if v == other_variable][0]
-                result.append(f"{variable_str} {constraint_name} {other_variable_str}")
-                continue
+    functor: pyswip.easy.Functor = constraint.args[1].args[1]
+    functor_name = functor.name.chars
+    if functor_name == "..":
+        range: List[int] = functor.args
+        return f"{variable_str} in {range[0]}..{range[1]}"
 
-        functor: pyswip.easy.Functor = constraint.args[1].args[1]
-        functor_name = functor.name.chars
-        if functor_name == "..":
-            range: List[int] = functor.args
-            result.append(f"{variable_str} in {range[0]}..{range[1]}")
-            continue
+    raise NotImplementedError(f"Don't know how to translate constraint {constraint}")
 
-        raise NotImplementedError(f"Don't know how to translate constraint {constraint}")
 
-    return ", ".join(result)
+def pyswip_clp_constraints_to_str(inp: List[pyswip.easy.Functor],
+                                  var_name_mapping: Dict[pyswip.easy.Variable, str]) -> str:
+    return ", ".join([pyswip_clp_constraint_to_str(constraint, var_name_mapping) for constraint in inp])
 
 
 def pyswip_output_to_python(inp, var_name_mapping: Optional[Dict[pyswip.easy.Variable, str]] = None) \
         -> Union[str, List, Tuple]:
     if type(inp) is pyswip.easy.Functor and str(inp.name) == "-":
         inp: pyswip.easy.Functor
-        return tuple(pyswip_output_to_python(child) for child in inp.args)
+        return tuple(pyswip_output_to_python(child, var_name_mapping) for child in inp.args)
     elif type(inp) is list:
-        return [pyswip_output_to_python(child) for child in inp]
-    elif type(inp) is bytes:
-        inp: bytes
-        return inp.decode("utf-8")
-    elif type(inp) is pyswip.easy.Atom:
-        return str(inp)
-    elif (type(inp) is str or type(inp) is bytes or type(inp) is int
-          or type(inp) is pyswip.easy.Variable):
+        return [pyswip_output_to_python(child, var_name_mapping) for child in inp]
+    elif (type(inp) is str or
+          type(inp) is bytes or
+          type(inp) is int or
+          type(inp) is pyswip.easy.Variable or
+          type(inp) is pyswip.easy.Atom):
         return pyswip_output_to_str(inp, var_name_mapping)
+    elif type(inp) is pyswip.easy.Functor:
+        return pyswip_clp_constraint_to_str(inp, var_name_mapping)
+
+    assert False, f"Type {type(inp)} not supported by function pyswip_output_to_python"
 
 
 def pyswip_output_to_str(inp, var_name_mapping: Optional[Dict[pyswip.easy.Variable, str]] = None) -> str:
     if type(inp) is str:
-        return inp
+        return f'"{inp}"'
     elif type(inp) is bytes:
         inp: bytes
         return f'"{inp.decode("utf-8")}"'
@@ -284,6 +288,12 @@ def pyswip_output_to_str(inp, var_name_mapping: Optional[Dict[pyswip.easy.Variab
     elif type(inp) is list:
         inp: List
         return "[" + ", ".join([pyswip_output_to_str(child, var_name_mapping) for child in inp]) + "]"
+
+
+def tree_list_to_str(tree_list: List) -> str:
+    head, tail = tree_list
+    assert type(head) is str
+    return f"[{head}, [{', '.join(map(tree_list_to_str, tail))}]]"
 
 
 def visit_z3_expr(e: Union[z3.ExprRef, z3.QuantifierRef],
@@ -321,7 +331,8 @@ def tree_depth(tree: ParseTree, depth: int = 1) -> int:
         return max([tree_depth(child, depth + 1) for child in children])
 
 
-def var_to_pl_nsym(variable: Union['isla.Variable', str]):
+def var_to_pl_nsym(variable):
+    # variable is either isla.Variable (not imported to avoid circular inputs) or str
     ntype = variable if type(variable) is str else variable.n_type
     if is_nonterminal(ntype):
         return pl.Atom(ntype[1:-1].lower())

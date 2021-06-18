@@ -2,6 +2,9 @@
 :- use_module(library(apply)).
 :- use_module(library(clpfd)).
 
+%%% findnsols_nobt/4:
+findnsols_nobt(N, T, G, R) :- findnsols(N, T, G, R), !.
+
 %%% equal/3
 equal(X, Y, Result) :-
   [NT1, [[V1, []]]] = X,
@@ -25,25 +28,6 @@ equal(X, Y, Result) :-
       tree_to_string(X, Str1),
       tree_to_string(Y, Str2),
       ((Result #= 1, Str1 == Str2) ; (Result #= 0, Str1 \= Str2)))).
-
-:- begin_tests(equal).
-test(equal) :- equal(['var', [[0, []]]], ['var', [[0, []]]], 1).
-test(equal) :- X in 0..10, equal(['var', [[X, []]]], ['var', [[X, []]]], 1).
-test(equal, all(X = [0, 1, 2])) :- X in 0..10, equal(['var', [[X, []]]], ['digit', [[X, []]]], 0).
-test(equal, [fail]) :- equal(['var', [[0, []]]], ['var', [[0, []]]], 0).
-test(equal) :- equal(['var', [[0, []]]], ['var', [[1, []]]], 0).
-test(equal) :- equal(['digit', [[0, []]]], ['digit', [[0, []]]], 1).
-test(equal) :- equal(['digit', [[0, []]]], ['digit', [[1, []]]], 0).
-test(equal) :- X #= 0, equal(['var', [[X, []]]], ['var', [[0, []]]], 1).
-test(equal) :- X #= 0, equal(['var', [[X, []]]], ['var', [["x", []]]], 1).
-test(equal) :- equal(['var', [[X, []]]], ['var', [[Y, []]]], 1), X #= Y.
-test(equal, [fail]) :- equal(['var', [[X, []]]], ['var', [[Y, []]]], 0), X #= Y.
-test(equal) :- equal(['var', [[X, []]]], ['var', [[Y, []]]], 0), X #\= Y.
-test(equal, [fail]) :- equal(['var', [[X, []]]], ['var', [[Y, []]]], 1), X #\= Y.
-test(equal, all(X = [0])) :- X in 0..10, equal(['var', [[X, []]]], ['var', [["x", []]]], 1).
-test(equal, all(X = [1, 2])) :- X in 0..10, equal(['var', [[X, []]]], ['var', [["x", []]]], 0).
-:- end_tests(equal).
-
 
 %%% all/2
 all([], 1).
@@ -127,13 +111,6 @@ tcontains(T, [T|_]).
 tcontains(T, [C|_]) :- tcontains(T, C).
 tcontains(T, [_|CS]) :- tcontains(T, CS).
 
-%%% Stubs. Ensures tests can be run.
-numeric_nonterminal('digit').
-atomic_string_nonterminal('var').
-fuzz('var', 0, "x").
-fuzz('var', 1, "y").
-fuzz('var', 2, "z").
-
 %%% tree_to_string/2
 tree_to_string([X, []], X) :- string(X), !.
 
@@ -161,37 +138,6 @@ product([H|T], R) :- product(T, P), R #= H * P.
 
 %%% eqsum/2
 eqsum(L, R) :- sum(L, #=, R).
-
-:- begin_tests(helpers).
-test(tree_to_string) :- tree_to_string(['var', [[0, []]]], "x").
-test(tree_to_string) :- tree_to_string(['stmt', [['assgn', [['var', [[0, []]]], [" := ", []], ['assgn', [['var', [[0, []]]]]]]]]], "x := x").
-
-test(get_subtree) :- get_subtree([var, [["y", []]]], [], [var, [["y", []]]]).
-test(get_subtree) :- get_subtree([assgn, [[var, [["y", []]]], [" := ", []], [rhs, [[var, [["y", []]]]]]]], [0], [var, [["y", []]]]).
-
-test(path_is_before) :- path_is_before([1, 0], [1, 1]).
-test(path_is_before) :- path_is_before([1, 1, 0], [1, 2]).
-test(path_is_before) :- path_is_before([1, 2, 0], [1, 3, 0, 0, 9]).
-
-test(path_is_before, [fail]) :- path_is_before([1], [1, 0]).
-test(path_is_before, [fail]) :- path_is_before([1, 2, 0], [1, 2]).
-test(path_is_before, [fail]) :- path_is_before([1, 3], [1, 2]).
-
-test(list_replace) :- list_replace(0, 1, [0], [1]).
-test(list_replace) :- list_replace(1, 1, [0,0], [0,1]).
-
-test(all) :- all([1], 1).
-test(all, [fail]) :- all([1], 0).
-test(all) :- all([], 1).
-test(all, [fail]) :- all([], 0).
-test(all) :- all([0], 0).
-test(all, [fail]) :- all([0], 1).
-test(all) :- all([1, 0, 1], 0).
-test(all, [fail]) :- all([1, 0, 1], 1).
-test(all) :- all([1, 1, 1], 1).
-test(all, [fail]) :- all([1, 1, 1], 0).
-:- end_tests(helpers).
-
 
 neg(F) :- F, !, fail.
 neg(_).
