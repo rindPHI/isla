@@ -62,12 +62,6 @@ class Translator:
         self.logger = logging.getLogger(type(self).__name__)
 
     def translate(self) -> Prolog:
-        # def numeric_nonterminal(atom: pyswip.easy.Atom) -> bool:
-        #     return f"<{atom.value}>" in self.numeric_nonterminals
-        #
-        # def atomic_string_nonterminal(atom: pyswip.easy.Atom) -> bool:
-        #     return f"<{atom.value}>" in self.atomic_string_nonterminals
-
         fuzz_results: Dict[str, List[str]] = {}
         fuzzers: Dict[str, GrammarCoverageFuzzer] = {}
 
@@ -99,11 +93,6 @@ class Translator:
         with tempfile.NamedTemporaryFile() as tmp:
             tmp.write(preamble.encode())
             prolog.consult(tmp.name)
-
-        # for pred in ["atomic_nonterminal/1", "atomic_string_nonterminal/1", "fuzz/3"]:
-        #     next(prolog.query(f"abolish({pred})"))
-        # registerForeign(numeric_nonterminal, name="numeric_nonterminal", arity=1)
-        # registerForeign(atomic_string_nonterminal, name="atomic_string_nonterminal", arity=1)
 
         registerForeign(fuzz, name="fuzz", arity=3)
 
