@@ -141,3 +141,23 @@ eqsum(L, R) :- sum(L, #=, R).
 
 neg(F) :- F, !, fail.
 neg(_).
+
+% :- begin_tests(equal).
+%test(equal) :- equal(['var', [[0, []]]], ['var', [[0, []]]], 1).
+%test(equal) :- X in 0..10, equal(['var', [[X, []]]], ['var', [[X, []]]], 1).
+%test(equal, all(X = [0, 1, 2])) :- X in 0..10, equal(['var', [[X, []]]], ['digit', [[X, []]]], 0).
+%test(equal, [fail]) :- equal(['var', [[0, []]]], ['var', [[0, []]]], 0).
+%test(equal) :- equal(['var', [[0, []]]], ['var', [[1, []]]], 0).
+%test(equal) :- equal(['digit', [[0, []]]], ['digit', [[0, []]]], 1).
+%test(equal) :- equal(['digit', [[0, []]]], ['digit', [[1, []]]], 0).
+%test(equal) :- X #= 0, equal(['var', [[X, []]]], ['var', [[0, []]]], 1).
+%test(equal) :- X #= 0, equal(['var', [[X, []]]], ['var', [["x", []]]], 1).
+%test(equal) :- equal(['var', [[X, []]]], ['var', [[Y, []]]], 1), X #= Y.
+%test(equal, [fail]) :- equal(['var', [[X, []]]], ['var', [[Y, []]]], 0), X #= Y.
+%test(equal) :- equal(['var', [[X, []]]], ['var', [[Y, []]]], 0), X #\= Y.
+%test(equal, [fail]) :- equal(['var', [[X, []]]], ['var', [[Y, []]]], 1), X #\= Y.
+%test(equal, all(X = [0])) :- X in 0..10, equal(['var', [[X, []]]], ['var', [["x", []]]], 1).
+%test(equal, all(X = [1, 2])) :- X in 0..10, equal(['var', [[X, []]]], ['var', [["x", []]]], 0).
+% :- end_tests(equal).
+
+
