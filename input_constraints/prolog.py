@@ -2,7 +2,6 @@ import logging
 import re
 import sys
 import tempfile
-import time
 from typing import List, Dict, Tuple, Type, Callable, Union, Optional, Set
 
 import pyswip
@@ -17,6 +16,7 @@ from pyswip import Prolog, registerForeign
 import input_constraints.isla as isla
 import input_constraints.prolog_shortcuts as psc
 import input_constraints.prolog_structs as pl
+from input_constraints import helpers
 from input_constraints.helpers import visit_z3_expr, is_canonical_grammar, is_z3_var, pyswip_output_to_str, \
     pyswip_output_to_python, python_to_prolog_tree, python_list_to_prolog_list, var_to_pl_nsym
 from input_constraints.type_defs import CanonicalGrammar, Grammar
@@ -44,7 +44,7 @@ class Translator:
 
         self.formula = formula
 
-        self.used_variables: OrderedSet[isla.Variable] = isla.VariablesCollector(formula).collect()
+        self.used_variables: OrderedSet[isla.Variable] = isla.VariablesCollector().collect(formula)
         self.isla_to_prolog_var_map: Dict[isla.Variable, pl.Variable] = \
             {iv: self.to_prolog_var(iv) for iv in self.used_variables}
         self.isla_var_name_to_prolog_var_map: Dict[isla.Variable, pl.Variable] = \
@@ -54,10 +54,14 @@ class Translator:
 
         self.numeric_nonterminals: Dict[str, Tuple[int, int]] = numeric_nonterminals \
             if numeric_nonterminals is not None \
-            else self.compute_numeric_nonterminals()
+            else helpers.compute_numeric_nonterminals(non_canonical(grammar))
         self.atomic_string_nonterminals: Dict[str, int] = atomic_string_nonterminals \
             if atomic_string_nonterminals is not None \
-            else self.compute_atomic_string_nonterminals()
+            else {nonterminal: Translator.FUZZING_DEPTH_ATOMIC_STRING_NONTERMINALS
+                  for nonterminal in isla.compute_atomic_string_nonterminals(non_canonical(grammar),
+                                                                             formula,
+                                                                             self.used_variables,
+                                                                             self.numeric_nonterminals)}
 
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -67,6 +71,9 @@ class Translator:
 
         def fuzz(atom: pyswip.easy.Atom, idx: int, result: pyswip.easy.Variable) -> bool:
             nonterminal = f"<{self.predicate_to_nonterminal_map[atom.value]}>"
+            if nonterminal in fuzz_results and len(fuzz_results[nonterminal]) > idx:
+                result.value = fuzz_results[nonterminal][idx]
+                return True
 
             grammar = GrammarGraph.from_grammar(non_canonical(self.grammar)).subgraph(nonterminal).to_grammar()
             fuzzer = fuzzers.setdefault(nonterminal, GrammarCoverageFuzzer(grammar))
@@ -640,112 +647,6 @@ class Translator:
             return len(goals)
 
         result.sort(key=key_func)
-
-        return result
-
-    def compute_atomic_string_nonterminals(self) -> Dict[str, int]:
-        # TODO: We should not consider as atomic nonterminals with a simple domain, e.g., a brief enumeration.
-        # TODO: It also makes sense to constrain the numeric domains of atomic nonterminals if there are
-        #       fewer options available than the given maximum domain element.
-        assert hasattr(self, "numeric_nonterminals")
-
-        def reachable(nonterminal: str) -> Set[str]:
-            graph = GrammarGraph.from_grammar(non_canonical(self.grammar))
-            dist = graph.dijkstra(graph.get_node(nonterminal))[0]
-            return set([node.symbol for node in dist.keys()
-                        if dist[node] < sys.maxsize
-                        and node.symbol != nonterminal
-                        and type(node) is NonterminalNode])
-
-        used_nonterminals = OrderedSet([variable.n_type
-                                        for variable in self.used_variables
-                                        if is_nonterminal(variable.n_type)])
-
-        non_atomic_nonterminals = OrderedSet([])
-
-        # Only consider nonterminals that don't reach other used nonterminals
-        used_proxy_nonterminals: OrderedSet[str] = OrderedSet([
-            used_nonterminal
-            for used_nonterminal in
-            used_nonterminals.difference(set(self.numeric_nonterminals.keys()))
-            if reachable(used_nonterminal).intersection(used_nonterminals)
-        ])
-
-        non_atomic_nonterminals |= used_proxy_nonterminals
-
-        unused_sink_nonterminals: OrderedSet[str] = OrderedSet([
-            unused_nonterminal
-            for unused_nonterminal in
-            OrderedSet(self.grammar.keys())
-                .difference(used_nonterminals)
-                .difference(set(self.numeric_nonterminals.keys()))
-            if not reachable(unused_nonterminal).intersection(used_nonterminals)
-        ])
-
-        non_atomic_variables = OrderedSet([])
-
-        class NonAtomicVisitor(isla.FormulaVisitor):
-            def visit_forall_formula(self, formula: isla.ForallFormula):
-                non_atomic_variables.add(formula.in_variable)
-                if formula.bind_expression is not None:
-                    non_atomic_variables.add(formula.bound_variable)
-
-            def visit_exists_formula(self, formula: isla.ExistsFormula):
-                non_atomic_variables.add(formula.in_variable)
-                if formula.bind_expression is not None:
-                    non_atomic_variables.add(formula.bound_variable)
-
-            def visit_predicate_formula(self, formula: isla.PredicateFormula):
-                if formula.predicate != isla.BEFORE_PREDICATE:
-                    non_atomic_variables.update(formula.free_variables())
-
-            def visit_smt_formula(self, formula: isla.SMTFormula):
-                # TODO: This is still quite arbitrary and ad-hoc, should be fundamentally investigated and reworked.
-
-                if str(formula.formula.decl()) == "==" and any(not is_z3_var(child)
-                                                               for child in formula.formula.children()):
-                    # In equations like "Var == 'asdf'", it slows down the process to first fuzz Var.
-                    # Thus, we have to leave Var's type concrete.
-                    non_atomic_variables.update(formula.free_variables())
-
-                for expr in visit_z3_expr(formula.formula):
-                    # Any non-trivial string expression, e.g., substring computations
-                    # or regex operations, exclude the involved variables from atomic
-                    # representations, since their internal structure matters.
-                    # TODO: Have to more thoroughly test whether this suffices.
-                    if expr.decl().name() == "str.in_re":
-                        non_atomic_variables.update(formula.free_variables())
-
-                    if z3.is_string(expr) and not z3.is_string_value(expr) and not z3.is_const(expr):
-                        non_atomic_variables.update(formula.free_variables())
-
-        self.formula.accept(NonAtomicVisitor())
-
-        non_atomic_nonterminals |= [variable.n_type for variable in non_atomic_variables]
-
-        return {nonterminal: Translator.FUZZING_DEPTH_ATOMIC_STRING_NONTERMINALS
-                for nonterminal in used_nonterminals
-                    .difference(non_atomic_nonterminals)
-                    .union(unused_sink_nonterminals)}
-
-    def compute_numeric_nonterminals(self) -> Dict[str, Tuple[int, int]]:
-        # TODO: This could be a performance bottleneck. We should try to statically solve this!
-        result = {}
-        noncanonical = non_canonical(self.grammar)
-        for nonterminal in self.grammar:
-            fuzzer = GrammarCoverageFuzzer(GrammarGraph.from_grammar(noncanonical).subgraph(nonterminal).to_grammar())
-            lower_bound, upper_bound = sys.maxsize, -1
-            for _ in range(100):
-                inp = fuzzer.fuzz()
-                if not (inp.isnumeric()):
-                    break
-                int_repr = int(inp)
-                if int_repr < lower_bound:
-                    lower_bound = int_repr
-                elif int_repr > upper_bound:
-                    upper_bound = int_repr
-            else:
-                result[nonterminal] = (lower_bound, upper_bound)
 
         return result
 

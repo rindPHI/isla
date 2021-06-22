@@ -1,13 +1,18 @@
 import copy
-from typing import Optional, Set, Callable, Generator, Tuple, List, Dict, Union
+import sys
+from typing import Optional, Set, Callable, Generator, Tuple, List, Dict, Union, Iterable
 
 import pyswip.easy
 import z3
+from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.GrammarFuzzer import GrammarFuzzer, all_terminals
 from fuzzingbook.Grammars import unreachable_nonterminals, is_nonterminal
+from grammar_graph.gg import GrammarGraph, NonterminalNode
+from orderedset import OrderedSet
+
 import input_constraints.prolog_structs as pl
 import input_constraints.prolog_shortcuts as psc
-from input_constraints.type_defs import Path, ParseTree, Grammar, CanonicalGrammar
+from input_constraints.type_defs import Path, ParseTree, Grammar, CanonicalGrammar, AbstractTree
 
 
 def traverse_tree(tree: ParseTree, action: Callable[[Path, ParseTree], None]) -> None:
@@ -15,10 +20,11 @@ def traverse_tree(tree: ParseTree, action: Callable[[Path, ParseTree], None]) ->
         action(path, subtree)
 
 
-def path_iterator(tree: ParseTree, path: Path = ()) -> Generator[Tuple[Path, ParseTree], None, None]:
+def path_iterator(tree: AbstractTree, path: Path = ()) -> Generator[Tuple[Path, AbstractTree], None, None]:
     yield path, tree
-    for i, child in enumerate(tree[1]):
-        yield from path_iterator(child, path + (i,))
+    if tree[1] is not None:
+        for i, child in enumerate(tree[1]):
+            yield from path_iterator(child, path + (i,))
 
 
 def get_path_of_subtree(tree: ParseTree, subtree: ParseTree, path: Path = tuple()) -> Optional[Path]:
@@ -43,7 +49,26 @@ def delete_unreachable(grammar: Grammar) -> None:
         del grammar[unreachable]
 
 
-def replace_tree_path(in_tree: ParseTree, path: Path, replacement_tree: ParseTree) -> ParseTree:
+def replace_tree(in_tree: AbstractTree,
+                 to_replace: AbstractTree,
+                 with_tree: AbstractTree) -> AbstractTree:
+    if in_tree == to_replace:
+        return with_tree
+
+    symbol, children = in_tree
+
+    if not children:
+        return symbol, children
+
+    new_children = []
+    for child in children:
+        child_result = replace_tree(child, to_replace, with_tree)
+        new_children.append(child_result)
+
+    return symbol, new_children
+
+
+def replace_tree_path(in_tree: AbstractTree, path: Path, replacement_tree: AbstractTree) -> AbstractTree:
     """Returns a symbolic input with a new tree where replacement_tree has been inserted at `path`"""
 
     def recurse(_tree, _path):
@@ -407,3 +432,28 @@ class TreeExpander(GrammarFuzzer):
 
         # Return with new children
         return [(symbol, chosen_children) for chosen_children in possible_children]
+
+
+def compute_numeric_nonterminals(grammar: Grammar) -> Dict[str, Tuple[int, int]]:
+    # TODO: This could be a performance bottleneck. We should try to statically solve this!
+    result = {}
+    for nonterminal in grammar:
+        new_grammar = copy.deepcopy(grammar)
+        new_grammar["<start>"] = [nonterminal]
+        delete_unreachable(new_grammar)
+        fuzzer = GrammarCoverageFuzzer(new_grammar)
+
+        lower_bound, upper_bound = sys.maxsize, -1
+        for _ in range(100):
+            inp = fuzzer.fuzz()
+            if not (inp.isnumeric()):
+                break
+            int_repr = int(inp)
+            if int_repr < lower_bound:
+                lower_bound = int_repr
+            elif int_repr > upper_bound:
+                upper_bound = int_repr
+        else:
+            result[nonterminal] = (lower_bound, upper_bound)
+
+    return result

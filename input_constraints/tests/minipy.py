@@ -8,8 +8,18 @@ from fuzzingbook.Grammars import srange
 GRAMMAR = {
     "<start>": ["<stmts>"],
     "<stmts>": ["<stmt><NEWLINE><stmts>", "<stmt>"],
+    "<loop_body_stmts>": ["<loop_body_stmt><NEWLINE><loop_body_stmts>", "<loop_body_stmt>"],
     "<stmt>": ["<compound_stmt>", "<simple_stmt>"],
+    "<loop_body_stmt>": ["<compound_stmt>", "<simple_loop_body_stmt>"],
     "<simple_stmt>": [
+        "pass",
+        "<return_stmt>",
+        "<assignment>",
+        "<expression>",
+        # "<raise_stmt>",
+        # "<assert_stmt>",
+    ],
+    "<simple_loop_body_stmt>": [
         "pass",
         "break",
         "continue",
@@ -20,8 +30,8 @@ GRAMMAR = {
         # "<assert_stmt>",
     ],
     "<compound_stmt>": [
-        "<function_def>",
-        "<try_stmt>",
+        # "<function_def>",
+        # "<try_stmt>",
         "<if_stmt>",
         "<while_stmt>"
         # "<for_stmt>",
@@ -31,18 +41,19 @@ GRAMMAR = {
     # "<raise_stmt>": ["raise <expression>"],
     "<if_stmt>": ["if <expression>: <block><maybe_else_block>"],
     "<maybe_else_block>": ["<NEWLINE>else: <block>", ""],
-    "<while_stmt>": ["while <expression>: <block><maybe_else_block>"],
-    "<try_stmt>": ["try: <block><except_block>"],
+    "<while_stmt>": ["while <expression>: <loop_block><maybe_else_block>"],
+    # "<try_stmt>": ["try: <block><except_block>"],
 
-    "<function_def>": ["def <NAME>(<params>) -> <type>: <block>"],
+    # "<function_def>": ["def <NAME>(<params>) -> <type>: <block>"],
 
-    "<except_block>": [
-        "<NEWLINE>except <NAME>: <block>",
-        "<NEWLINE>except: <block>"],
+    # "<except_block>": [
+    #     "<NEWLINE>except <NAME>: <block>",
+    #     "<NEWLINE>except: <block>"],
     "<block>": ["{<NEWLINE><stmts>}"],
+    "<loop_block>": ["{<NEWLINE><loop_body_stmts>}"],
 
-    "<params>": ["<param>, <params>", "<param>", ""],
-    "<param>": ["<NAME>: <type>"],
+    # "<params>": ["<param>, <params>", "<param>", ""],
+    # "<param>": ["<NAME>: <type>"],
 
     "<type>": ["int", "bool", "tuple"],
 

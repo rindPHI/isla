@@ -9,6 +9,7 @@ orderedset = "*"
 fuzzingbook = "*"
 grammargraph = {path = "./../GrammarGraph/dist/grammargraph-0.0.1.tar.gz"}
 #grammargraph = {editable = true, path = "./../GrammarGraph"}
+grammar2regex = {path = "./../SubGrammarToRegex/dist/grammar2regex-0.0.1.tar.gz"}
 graphviz = "*"
 fibheap = "*"
 pyswip = "*"

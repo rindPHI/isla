@@ -21,11 +21,14 @@ class MinipyTest(unittest.TestCase):
         translator = Translator(grammar, isla.SMTFormula(z3.BoolVal(True)),
                                 numeric_nonterminals={"<NUMBER>": (0, 100), "<DIGIT>": (0, 9)},
                                 atomic_string_nonterminals={
-                                    "<NAME>": 10, "<IDCHAR>": 10, "<INIT_CHAR>": 10, "<IDCHARS>": 10})
+                                    "<NAME>": 10, "<IDCHAR>": 10,
+                                    "<INIT_CHAR>": 10, "<IDCHARS>": 10,
+                                    "<type>": 3
+                                })
         # print("\n".join(map(str, translator.translate_grammar())))
 
         prolog = translator.translate()
-        min_depth, max_depth, sols_per_level, labelings = 10, 20, 50, 10
+        min_depth, max_depth, sols_per_level, labelings = 11, 20, 5000, 1
         query = prolog.query(
             f"D in {min_depth}..{max_depth}, "
             f"indomain(D), "
@@ -34,13 +37,19 @@ class MinipyTest(unittest.TestCase):
             f"findnsols_nobt({labelings}, Str, (term_variables(In, Vars), label(Vars), tree_to_string(In, Str)), Out)"
             f"), OS, IS)")
 
-        for _ in range((max_depth - min_depth) * sols_per_level * labelings):
+        i = 0
+        for _ in range(max_depth - min_depth + 1):
             result = next(query)
             var_name_mapping = pyswip_var_mapping(result)
             result_list = pyswip_output_to_python(result["IS"], var_name_mapping)
+
             for labeled_progs in result_list:
                 for prog in labeled_progs:
+                    i += 1
                     print(to_real_python(prog[1:-1]))
+                    print()
+
+        print(i)
 
         query.close()
 

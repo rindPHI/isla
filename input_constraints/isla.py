@@ -1,12 +1,15 @@
 import copy
-from typing import Union, List, Optional, Dict, Tuple, Callable
+import sys
+from typing import Union, List, Optional, Dict, Tuple, Callable, Iterable, Set
 
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string
+from fuzzingbook.Grammars import is_nonterminal
+from grammar_graph.gg import GrammarGraph, NonterminalNode
 from orderedset import OrderedSet
 
 from input_constraints.helpers import get_subtree, next_path, get_symbols, traverse_tree, is_before, TreeExpander, \
-    tree_depth
+    tree_depth, visit_z3_expr, is_z3_var
 from input_constraints.type_defs import ParseTree, Path, Grammar
 
 
@@ -20,6 +23,20 @@ class Variable:
 
     def __eq__(self, other):
         return type(self) is type(other) and (self.name, self.n_type) == (other.name, other.n_type)
+
+    # Comparisons (<, <=, >, >=) implemented s.t. variables can be used, e.g., in priority lists
+    def __lt__(self, other):
+        return self.name < other.name
+
+    def __le__(self, other):
+        return self.name <= other.name
+
+    def __gt__(self, other):
+        assert issubclass(type(other), Variable)
+        return self.name > other.name
+
+    def __ge__(self, other):
+        return self.name >= other.name
 
     def __hash__(self):
         return hash((type(self).__name__, self.name, self.n_type))
@@ -167,6 +184,9 @@ class Formula:
         """Recursive."""
         pass
 
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> 'Formula':
+        pass
+
     def __and__(self, other):
         return ConjunctiveFormula(self, other)
 
@@ -210,6 +230,10 @@ class PredicateFormula(Formula):
         self.predicate = predicate
         self.args: List[Variable] = list(args)
 
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        return PredicateFormula(self.predicate,
+                                *[arg if arg not in subst_map else subst_map[arg] for arg in self.args])
+
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([])
 
@@ -229,6 +253,9 @@ class PredicateFormula(Formula):
 class PropositionalCombinator(Formula):
     def __init__(self, *args: Formula):
         self.args = list(args)
+
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        return PropositionalCombinator(*[arg.substitute_variables(subst_map) for arg in self.args])
 
     def free_variables(self) -> OrderedSet[Variable]:
         result: OrderedSet[Variable] = OrderedSet([])
@@ -299,6 +326,19 @@ class SMTFormula(Formula):
         self.formula = formula
         self.free_variables_ = OrderedSet(free_variables)
 
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        new_smt_formula = z3.substitute(
+            self.formula,
+            *tuple({
+                       z3.String(free_var.name): z3.String(free_var.name) if free_var not in subst_map
+                       else z3.String(subst_map[free_var].name)
+                       for free_var in self.free_variables_
+                   }.items()))
+
+        return SMTFormula(new_smt_formula,
+                          *[variable if variable not in subst_map else subst_map[variable]
+                            for variable in self.free_variables_])
+
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([])
 
@@ -346,6 +386,13 @@ class ForallFormula(QuantifiedFormula):
                  bind_expression: Optional[BindExpression] = None):
         super().__init__(bound_variable, in_variable, inner_formula, bind_expression)
 
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        return ForallFormula(
+            self.bound_variable,
+            self.in_variable if self.in_variable not in subst_map else subst_map[self.in_variable],
+            self.inner_formula.substitute_variables(subst_map),
+            self.bind_expression)
+
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_forall_formula(self)
         self.inner_formula.accept(visitor)
@@ -364,6 +411,13 @@ class ExistsFormula(QuantifiedFormula):
                  bind_expression: Optional[BindExpression] = None):
         super().__init__(bound_variable, in_variable, inner_formula, bind_expression)
 
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        return ExistsFormula(
+            self.bound_variable,
+            self.in_variable if self.in_variable not in subst_map else subst_map[self.in_variable],
+            self.inner_formula.substitute_variables(subst_map),
+            self.bind_expression)
+
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_exists_formula(self)
         self.inner_formula.accept(visitor)
@@ -375,16 +429,12 @@ class ExistsFormula(QuantifiedFormula):
 
 
 class VariablesCollector(FormulaVisitor):
-    def __init__(self, formula: Formula):
-        self.formula = formula
+    def __init__(self):
         self.result: Optional[OrderedSet[Variable]] = None
 
-    def collect(self) -> OrderedSet[Variable]:
-        if self.result is not None:
-            return self.result
-
+    def collect(self, formula: Formula) -> OrderedSet[Variable]:
         self.result = OrderedSet([])
-        self.formula.accept(self)
+        formula.accept(self)
         return self.result
 
     def visit_exists_formula(self, formula: ExistsFormula):
@@ -404,6 +454,45 @@ class VariablesCollector(FormulaVisitor):
 
     def visit_smt_formula(self, formula: SMTFormula):
         self.result.update(formula.free_variables())
+
+
+class FilterVisitor(FormulaVisitor):
+    def __init__(self, filter: Callable[[Formula], bool]):
+        self.filter = filter
+        self.result: List[Formula] = []
+
+    def collect(self, formula: Formula) -> OrderedSet[Variable]:
+        self.result = OrderedSet([])
+        formula.accept(self)
+        return self.result
+
+    def visit_forall_formula(self, formula: ForallFormula):
+        if self.filter(formula):
+            self.result.append(formula)
+
+    def visit_exists_formula(self, formula: ExistsFormula):
+        if self.filter(formula):
+            self.result.append(formula)
+
+    def visit_negated_formula(self, formula: NegatedFormula):
+        if self.filter(formula):
+            self.result.append(formula)
+
+    def visit_smt_formula(self, formula: SMTFormula):
+        if self.filter(formula):
+            self.result.append(formula)
+
+    def visit_predicate_formula(self, formula: PredicateFormula):
+        if self.filter(formula):
+            self.result.append(formula)
+
+    def visit_disjunctive_formula(self, formula: DisjunctiveFormula):
+        if self.filter(formula):
+            self.result.append(formula)
+
+    def visit_conjunctive_formula(self, formula: ConjunctiveFormula):
+        if self.filter(formula):
+            self.result.append(formula)
 
 
 def well_formed(formula: Formula,
@@ -491,28 +580,7 @@ def evaluate(formula: Formula, assignments: Dict[Variable, Tuple[Path, ParseTree
             formula: QuantifiedFormula
             assert formula.in_variable in assignments
             in_inst: ParseTree = assignments[formula.in_variable][1]
-            qfd_var: BoundVariable = formula.bound_variable
-            bind_expr: Optional[BindExpression] = formula.bind_expression
-
-            new_assignments: List[Dict[Variable, Tuple[Path, ParseTree]]] = []
-
-            def search_action(path: Path, tree: ParseTree) -> None:
-                nonlocal new_assignments
-                node, children = tree
-                if node == qfd_var.n_type:
-                    if bind_expr is not None:
-                        maybe_match: Optional[Dict[BoundVariable, Tuple[Path, ParseTree]]] = bind_expr.match(tree)
-                        if maybe_match is not None:
-                            new_assignment = copy.copy(assignments)
-                            new_assignment[qfd_var] = path, tree
-                            new_assignment.update(maybe_match)
-                            new_assignments.append(new_assignment)
-                    else:
-                        new_assignment = copy.copy(assignments)
-                        new_assignment[qfd_var] = path, tree
-                        new_assignments.append(new_assignment)
-
-            traverse_tree(in_inst, search_action)
+            new_assignments = matches_for_quantified_variable(formula, in_inst, assignments)
 
             if t is ForallFormula:
                 formula: ForallFormula
@@ -537,3 +605,127 @@ def evaluate(formula: Formula, assignments: Dict[Variable, Tuple[Path, ParseTree
             raise NotImplementedError()
 
     return evaluate_(formula, assignments)
+
+
+def matches_for_quantified_variable(
+        formula: QuantifiedFormula,
+        in_tree: ParseTree,
+        initial_assignments: Optional[Dict[Variable, Tuple[Path, ParseTree]]] = None) -> \
+        List[Dict[Variable, Tuple[Path, ParseTree]]]:
+    qfd_var: BoundVariable = formula.bound_variable
+    bind_expr: Optional[BindExpression] = formula.bind_expression
+    new_assignments: List[Dict[Variable, Tuple[Path, ParseTree]]] = []
+    if initial_assignments is None:
+        initial_assignments = {}
+
+    def search_action(path: Path, tree: ParseTree) -> None:
+        nonlocal new_assignments
+        node, children = tree
+        if node == qfd_var.n_type:
+            if bind_expr is not None:
+                maybe_match: Optional[Dict[BoundVariable, Tuple[Path, ParseTree]]] = bind_expr.match(tree)
+                if maybe_match is not None:
+                    new_assignment = copy.copy(initial_assignments)
+                    new_assignment[qfd_var] = path, tree
+                    new_assignment.update(maybe_match)
+                    new_assignments.append(new_assignment)
+            else:
+                new_assignment = copy.copy(initial_assignments)
+                new_assignment[qfd_var] = path, tree
+                new_assignments.append(new_assignment)
+
+    traverse_tree(in_tree, search_action)
+    return new_assignments
+
+
+class NonAtomicVisitor(FormulaVisitor):
+    def __init__(self):
+        self.non_atomic_variables = OrderedSet([])
+
+    def visit_forall_formula(self, formula: ForallFormula):
+        self.non_atomic_variables.add(formula.in_variable)
+        if formula.bind_expression is not None:
+            self.non_atomic_variables.add(formula.bound_variable)
+
+    def visit_exists_formula(self, formula: ExistsFormula):
+        self.non_atomic_variables.add(formula.in_variable)
+        if formula.bind_expression is not None:
+            self.non_atomic_variables.add(formula.bound_variable)
+
+    def visit_predicate_formula(self, formula: PredicateFormula):
+        if formula.predicate != BEFORE_PREDICATE:
+            self.non_atomic_variables.update(formula.free_variables())
+
+    def visit_smt_formula(self, formula: SMTFormula):
+        # TODO: This is still quite arbitrary and ad-hoc, should be fundamentally investigated and reworked.
+
+        if str(formula.formula.decl()) == "==" and any(not is_z3_var(child)
+                                                       for child in formula.formula.children()):
+            # In equations like "Var == 'asdf'", it slows down the process to first fuzz Var.
+            # Thus, we have to leave Var's type concrete.
+            self.non_atomic_variables.update(formula.free_variables())
+
+        for expr in visit_z3_expr(formula.formula):
+            # Any non-trivial string expression, e.g., substring computations
+            # or regex operations, exclude the involved variables from atomic
+            # representations, since their internal structure matters.
+            # TODO: Have to more thoroughly test whether this suffices.
+            if expr.decl().name() == "str.in_re":
+                self.non_atomic_variables.update(formula.free_variables())
+
+            if z3.is_string(expr) and not z3.is_string_value(expr) and not z3.is_const(expr):
+                self.non_atomic_variables.update(formula.free_variables())
+
+
+def compute_atomic_string_nonterminals(
+        grammar: Grammar,
+        formula: 'Formula',
+        used_variables: OrderedSet['Variable'],
+        numeric_nonterminals: Iterable[str]
+) -> OrderedSet[str]:
+    # TODO: We should not consider as atomic nonterminals with a simple domain, e.g., a brief enumeration.
+    # TODO: It also makes sense to constrain the numeric domains of atomic nonterminals if there are
+    #       fewer options available than the given maximum domain element.
+
+    def reachable(nonterminal: str) -> Set[str]:
+        graph = GrammarGraph.from_grammar(grammar)
+        dist = graph.dijkstra(graph.get_node(nonterminal))[0]
+        return set([node.symbol for node in dist.keys()
+                    if dist[node] < sys.maxsize
+                    and node.symbol != nonterminal
+                    and type(node) is NonterminalNode])
+
+    used_nonterminals = OrderedSet([variable.n_type
+                                    for variable in used_variables
+                                    if is_nonterminal(variable.n_type)])
+
+    non_atomic_nonterminals = OrderedSet([])
+
+    # Only consider nonterminals that don't reach other used nonterminals
+    used_proxy_nonterminals: OrderedSet[str] = OrderedSet([
+        used_nonterminal
+        for used_nonterminal in
+        used_nonterminals.difference(set(numeric_nonterminals))
+        if reachable(used_nonterminal).intersection(used_nonterminals)
+    ])
+
+    non_atomic_nonterminals |= used_proxy_nonterminals
+
+    unused_sink_nonterminals: OrderedSet[str] = OrderedSet([
+        unused_nonterminal
+        for unused_nonterminal in
+        OrderedSet(grammar.keys())
+            .difference(used_nonterminals)
+            .difference(set(numeric_nonterminals))
+        if not reachable(unused_nonterminal).intersection(used_nonterminals)
+    ])
+
+    v = NonAtomicVisitor()
+    formula.accept(v)
+
+    non_atomic_nonterminals |= [variable.n_type for variable in v.non_atomic_variables]
+
+    return OrderedSet([nonterminal
+                       for nonterminal in used_nonterminals
+                      .difference(non_atomic_nonterminals)
+                      .union(unused_sink_nonterminals)])
