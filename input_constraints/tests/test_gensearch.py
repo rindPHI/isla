@@ -40,7 +40,7 @@ class TestGensearch(unittest.TestCase):
             self.assertNotEqual(assignment[var1], assignment[var3])
 
     def test_simple_universal_formula(self):
-        logging.basicConfig(level=logging.DEBUG)
+        # logging.basicConfig(level=logging.DEBUG)
         start = isla.Constant("$start", "<start>")
         var1 = isla.BoundVariable("$var", "<var>")
 

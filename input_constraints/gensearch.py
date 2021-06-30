@@ -1,11 +1,11 @@
 import copy
 import heapq
 import logging
-import operator
-from typing import Union, Optional, Dict, Tuple, List, Generator, cast, Set
-import z3
-from fuzzingbook.GrammarFuzzer import GrammarFuzzer
+import random
+from typing import Union, Optional, Dict, Tuple, List, Generator, Set
 
+import z3
+from fuzzingbook.GrammarFuzzer import GrammarFuzzer, tree_to_string
 from fuzzingbook.Grammars import is_nonterminal
 from fuzzingbook.Parser import canonical, non_canonical, EarleyParser
 from grammar_to_regex.cfg2regex import RegexConverter
@@ -13,7 +13,7 @@ from orderedset import OrderedSet
 
 from input_constraints import isla
 from input_constraints.helpers import is_canonical_grammar, compute_numeric_nonterminals, path_iterator, \
-    replace_tree_path, delete_unreachable, replace_tree
+    replace_tree_path, delete_unreachable, replace_tree, tree_to_tuples
 from input_constraints.isla import compute_atomic_string_nonterminals, VariablesCollector
 from input_constraints.type_defs import CanonicalGrammar, Grammar, ParseTree, Path, AbstractTree
 
@@ -21,14 +21,35 @@ SolutionState = List[Tuple[isla.Constant, isla.Formula, AbstractTree]]
 SingletonSolutionState = Tuple[isla.Constant, isla.Formula, AbstractTree]
 
 
-def is_concrete_tree(tree: AbstractTree) -> bool:
+def is_complete_tree(tree: AbstractTree) -> bool:
     return all(sub_tree[1] is not None for _, sub_tree in path_iterator(tree))
 
 
-def open_leaves(tree: AbstractTree) -> List[Tuple[Path, AbstractTree]]:
-    return [(path, sub_tree)
+def is_concrete_tree(tree: AbstractTree) -> bool:
+    return all(not isinstance(sub_tree[0], isla.Variable) for _, sub_tree in path_iterator(tree))
+
+
+def open_leaves(tree: AbstractTree) -> Generator[Tuple[Path, AbstractTree], None, None]:
+    return ((path, sub_tree)
             for path, sub_tree in path_iterator(tree)
-            if type(sub_tree[0]) is str and sub_tree[1] is None]
+            if type(sub_tree[0]) is str and sub_tree[1] is None)
+
+
+def substitute_assignment(in_state: SolutionState, assignment: Dict[isla.Constant, ParseTree]) -> SolutionState:
+    result: SolutionState = copy.deepcopy(in_state)
+    for idx in range(len(in_state)):
+        for constant, tree in assignment.items():
+            assignment_const, assignment_formula, assignment_tree = result[idx]
+
+            if assignment_const == constant:
+                continue
+
+            result[idx] = (assignment_const,
+                           assignment_formula.substitute_expressions(
+                               {constant: z3.StringVal(tree_to_string(tree))}),
+                           inline_var_in_tree(assignment_tree, constant, tree))
+
+    return result
 
 
 def inline_state_element(state: SolutionState, state_to_inline: SingletonSolutionState) -> SolutionState:
@@ -42,8 +63,11 @@ def inline_state_element(state: SolutionState, state_to_inline: SingletonSolutio
 
 def inline_var_in_tree(in_tree: AbstractTree, variable: isla.Variable, inst: AbstractTree) -> AbstractTree:
     node, children = in_tree
-    if node == variable and children is None:
-        return inst
+    if children is None:
+        if node == variable:
+            return inst
+        else:
+            return in_tree
 
     return node, [inline_var_in_tree(child, variable, inst) for child in children]
 
@@ -58,7 +82,13 @@ def merge_state_elements(state: SolutionState) -> SingletonSolutionState:
     return state_elements[0]
 
 
-def fresh_constant(used: Set[isla.Constant], proposal: isla.Constant, add: bool = True) -> isla.Constant:
+def is_semantic_formula(formula: isla.Formula) -> bool:
+    pred_for_visitor = isla.FilterVisitor(lambda f: type(f) is isla.PredicateFormula)
+    return (not isinstance(formula, isla.QuantifiedFormula) and
+            not pred_for_visitor.collect(formula))
+
+
+def fresh_constant(used: Set[isla.Variable], proposal: isla.Constant, add: bool = True) -> isla.Constant:
     base_name, n_type = proposal.name, proposal.n_type
 
     name = base_name
@@ -72,6 +102,21 @@ def fresh_constant(used: Set[isla.Constant], proposal: isla.Constant, add: bool 
         used.add(result)
 
     return result
+
+
+def all_variables(state: SolutionState) -> Set[isla.Variable]:
+    result: Set[isla.Variable] = set()
+    for constant, formula, _ in state:
+        result.add(constant)
+        result.update(isla.VariablesCollector().collect(formula))
+    return result
+
+
+def complete_state(state: SolutionState) -> bool:
+    return all((tree := assgn[2],
+                is_concrete_tree(tree) and
+                not any(open_leaves(tree)))[1]
+               for assgn in state)
 
 
 class ISLaSolver:
@@ -104,109 +149,97 @@ class ISLaSolver:
         self.logger = logging.getLogger(type(self).__name__)
 
     def find_solution(self) -> Generator[Dict[isla.Constant, ParseTree], None, None]:
-        # TODO: Use SMT-based generation equipped with regular expressions for atomic formulas
         constant_collector = VariablesCollector()
-        constants = [c for c in constant_collector.collect(self.formula) if type(c) is isla.Constant]
-        assert len(constants) > 0
-        assert len(constants) == 1 or not issubclass(type(self.formula), isla.QuantifiedFormula)
+        top_constants = set([c for c in constant_collector.collect(self.formula) if type(c) is isla.Constant])
+        assert len(top_constants) > 0
+        assert len(top_constants) == 1 or not isinstance(self.formula, isla.QuantifiedFormula)
 
         queue: List[Tuple[int, SolutionStateWrapper]] = []
 
         heapq.heappush(queue, (0, SolutionStateWrapper(
-            [(constant, self.formula, (constant.n_type, None)) for constant in constants])))
+            [(constant, self.formula, (constant.n_type, None)) for constant in top_constants])))
 
         while queue:
             _, state_wrapper = heapq.heappop(queue)
             state = state_wrapper.state
 
-            # 1. Take all state elements with open leaves
-            assignments: List[Tuple[Dict[isla.Constant, ParseTree], int]] = []
+            # Choose the first assignment with a non-abstract tree and an open leaf.
+            assignment = next((assgn for assgn in state
+                               if (tree := assgn[2],
+                                   is_concrete_tree(tree) and any(open_leaves(tree)))[1]))
+            constant, formula, tree = assignment
 
-            for idx, state_element in enumerate(state):
-                constant, formula, tree = state_element
+            if is_semantic_formula(formula):
+                # TODO: Might have to stall such a formula if other, quantified,
+                #       formulas referring to variables in this formula are not
+                #       yet instantiated. We first process quantifiers, then the atoms.
+                # TODO: Check whether this is actually true, find example!
 
-                # If formula quantifier-free and does not include syntactic predicates,
-                # use SMT-based instantiation to solve it
-                pred_for_visitor = isla.FilterVisitor(lambda f: type(f) is isla.PredicateFormula)
+                solution = self.solve_quantifier_free_formula(formula)
+                if not solution:
+                    # Unsolvable constraint... Nothing more to do here.
+                    continue
 
-                if not issubclass(type(formula), isla.QuantifiedFormula) and not pred_for_visitor.collect(formula):
-                    # TODO: Might have to stall such a formula if other, quantified, formulas referring to variables
-                    #       in this formula are not yet instantiated. We first process quantifiers, then the atoms.
+                new_state: SolutionState = [(c, isla.SMTFormula(z3.BoolVal(True)), solution[c])
+                                            for c in solution
+                                            if c in top_constants]
 
-                    assignments.append((self.solve_quantifier_free_formula(formula), 0))
-                else:
-                    for open_leaf in open_leaves(tree):
-                        path, (leaf_node, _) = open_leaf
-                        assert is_nonterminal(leaf_node)
+                new_state.extend(substitute_assignment([assgn for assgn in state
+                                                        if assgn[0] not in solution], solution))
 
-                        # 2. Compute all expansions for all open leaves.
-                        #    For existential formulas, compute all trees embedding the
-                        #    existentially quantified tree (TODO).
+                yield from self.process_new_state(new_state, queue, top_constants)
+                continue
 
-                        for expansion in self.grammar[leaf_node]:
-                            expanded_tree = \
-                                replace_tree_path(tree, path, (leaf_node, [
-                                    (child, None if is_nonterminal(child) else []) for child in expansion
-                                ]))
+            leaf_path, (leaf_node, _) = next(open_leaves(tree))
 
-                            # 3. Compute priorities based on greedy completion & length of shortest complete path
-                            heuristic_value = 100 - self.compute_heuristic_value(
-                                (constant, formula, expanded_tree), expansion)
+            if isinstance(formula, isla.ForallFormula):
+                # Expand the leaf, check matching instantiations
+                for expansion in self.grammar[leaf_node]:
+                    expanded_tree = replace_tree_path(tree, leaf_path, (leaf_node, [
+                        (child, None if is_nonterminal(child) else []) for child in expansion
+                    ]))
 
-                            assignments.append(({constant: expanded_tree}, heuristic_value))
+                    matches: List[Dict[isla.Variable, Tuple[Path, ParseTree]]] = \
+                        isla.matches_for_quantified_variable(formula, expanded_tree)
 
-            for assgn_w_prio in assignments:
-                assignment, prio = assgn_w_prio
-                new_state = []
-                all_constants = set(constants)
+                    # Only consider open leaves. Others are validly instantiated.
+                    matches = [{c: p for c, p in match.items() if p[1][1] is None} for match in matches]
 
-                for state_element in state:
-                    constant, formula, tree = state_element
+                    new_state = [assgn for assgn in state if assgn is not assignment]
 
-                    # 4. If resulting tree is concrete & valid, inline variable value into all other state elements
-                    # TODO: Checking if valid is generally too hard, if constraints are not monotone, i.e., can be
-                    #       satisfied later on. Would be nice to formalize that...
-                    concretized_tree = tree
-                    for assgn_constant, new_tree in assignment.items():
-                        if constant == assgn_constant:
-                            concretized_tree = new_tree
+                    for match in matches:
+                        constant_subst_map = {}
+                        all_vars = all_variables(state)
+                        for variable in match:
+                            fresh_c = fresh_constant(all_vars, isla.Constant(variable.name, variable.n_type))
+                            constant_subst_map[variable] = fresh_c
+                            all_vars.add(fresh_c)
 
-                            if type(formula) is isla.ForallFormula:
-                                formula: isla.ForallFormula
-                                matches: List[Dict[isla.Variable, Tuple[Path, ParseTree]]] = \
-                                    isla.matches_for_quantified_variable(formula, new_tree)
+                        inst_formula = formula.inner_formula.substitute_variables(constant_subst_map)
 
-                                for match in matches:
-                                    constant_subst_map = {
-                                        variable: fresh_constant(all_constants,
-                                                                 isla.Constant(variable.name, variable.n_type))
-                                        for variable in match}
+                        for variable, (match_path, match_tree) in match.items():
+                            # TODO: Deal with bind expressions! Have to replace within matched tree
+                            new_constant = constant_subst_map[variable]
+                            new_state.append((new_constant, inst_formula, match_tree))
+                            expanded_tree = replace_tree_path(expanded_tree, match_path, (new_constant, None))
 
-                                    inst_formula = formula.inner_formula.substitute_variables(constant_subst_map)
+                    new_state.append((constant, formula, expanded_tree))
+                    yield from self.process_new_state(new_state, queue, top_constants)
+                    continue
 
-                                    for variable, path_and_tree in match.items():
-                                        # TODO: Deal with bind expressions! Have to replace within matched tree
-                                        new_constant = constant_subst_map[variable]
-                                        new_state.append((new_constant, inst_formula, path_and_tree[1]))
-                                        concretized_tree = replace_tree_path(
-                                            concretized_tree,
-                                            path_and_tree[0],
-                                            (new_constant, None))
+    def process_new_state(self, new_state, queue, top_constants):
+        if complete_state(new_state):
+            yield {c: t for c, _, t in new_state}
+            return
 
-                        else:
-                            concretized_tree = replace_tree(concretized_tree, (assgn_constant, None), new_tree)
+        top_constant_assignments = [assgn for assgn in new_state if assgn[0] in top_constants]
+        heuristic_value = sum([100 - self.compute_heuristic_value(assgn)
+                               for assgn in top_constant_assignments]
+                              ) // len(top_constant_assignments)
+        heapq.heappush(queue, (heuristic_value, SolutionStateWrapper(new_state)))
 
-                    if constant in constants or not is_concrete_tree(concretized_tree):
-                        new_state.append((constant, formula, concretized_tree))
-
-                if len(new_state) == len(constants) and all(is_concrete_tree(tree) for _, _, tree in new_state):
-                    # 5. If whole state is concrete, yield result
-                    yield {constant: tree for constant, _, tree in new_state}
-                else:
-                    # 6. Add all resulting non-concrete states w/ priorities to queue
-                    heapq.heappush(queue, (prio, SolutionStateWrapper(new_state)))
-                    self.logger.debug(f"Pushing new state {new_state}")
-                    self.logger.debug(f"Queue length: {len(queue)}")
+        self.logger.debug(f"Pushing new state {new_state}")
+        self.logger.debug(f"Queue length: {len(queue)}")
 
     def solve_quantifier_free_formula(self, formula: isla.Formula) -> Optional[Dict[isla.Constant, ParseTree]]:
         solver = z3.Solver()
@@ -239,16 +272,36 @@ class ISLaSolver:
         parser = EarleyParser(grammar)
         return list(parser.parse(input))[0][1][0]
 
-    def compute_heuristic_value(self, state: SingletonSolutionState, expansion: List[str]) -> int:
+    def compute_heuristic_value(self, state: SingletonSolutionState) -> int:
         """
         Computes a heuristic value between 0 (worst) and 100 (best) describing the quality of the present solution.
         Criteria are the cost of the expansion, and to what degree the constraint is satisfied (TODO).
         """
         constant, formula, tree = state
+        symbols = set([pair[1][0] for pair in open_leaves(tree)])
 
-        leaf_nonterminals = [leaf[0] if type(leaf[0]) is str else leaf[0].n_type
-                             for _, leaf in path_iterator(tree)
-                             if leaf[1] is None]
+        if not symbols:
+            return 100
+
+        fuzzer = GrammarFuzzer(non_canonical(self.grammar))
+        expansion_cost = max([fuzzer.symbol_cost(symbol) for symbol in symbols])
+
+        # Normalization: We assume a maximum expansion cost of 20, and normalize with respect to that.
+        # The result is scaled to the range 0 -- 100 and inverted, since 100 should be a "good" value
+        max_value = 20
+        normalized_depth_value = 100 - round((min(expansion_cost, max_value) / max_value) * 100)
+        assert 0 <= normalized_depth_value <= 100
+
+        # TODO: Add heuristics based on formula
+
+        return normalized_depth_value
+
+    def compute_heuristic_value_1(self, state: SingletonSolutionState, expansion: List[str]) -> int:
+        """
+        Computes a heuristic value between 0 (worst) and 100 (best) describing the quality of the present solution.
+        Criteria are the cost of the expansion, and to what degree the constraint is satisfied (TODO).
+        """
+        constant, formula, tree = state
 
         expansion_cost = GrammarFuzzer(non_canonical(self.grammar)).expansion_cost("".join(expansion))
 
@@ -267,26 +320,23 @@ class SolutionStateWrapper:
     def __init__(self, state: SolutionState):
         self.state = state
 
-        self.__cmp_state = []
-        for constant, formula, tree in state:
-            new_tree = tree
-            for path, sub_tree in path_iterator(tree):
-                node, children = sub_tree
-                if children is None:
-                    new_tree = replace_tree_path(new_tree, path, (str(node), []))
-                else:
-                    new_tree = replace_tree_path(new_tree, path, (str(node), children))
+    def __hash__(self):
+        return hash(tuple([(elem[0], elem[1], tree_to_tuples(elem[2])) for elem in self.state]))
 
-            self.__cmp_state.append((constant, formula, new_tree))
+    def __str__(self):
+        return str(self.state)
+
+    def __repr__(self):
+        return f"SolutionStateWrapper({repr(self.state)})"
 
     def __lt__(self, other: 'SolutionStateWrapper'):
-        return self.__cmp_state < other.__cmp_state
+        return random.choice([True, False])
 
     def __le__(self, other: 'SolutionStateWrapper'):
-        return self.__cmp_state <= other.__cmp_state
+        return random.choice([True, False])
 
     def __gt__(self, other: 'SolutionStateWrapper'):
-        return self.__cmp_state > other.__cmp_state
+        return random.choice([True, False])
 
     def __ge__(self, other: 'SolutionStateWrapper'):
-        return self.__cmp_state >= other.__cmp_state
+        return random.choice([True, False])

@@ -5,7 +5,7 @@ from typing import Optional, Set, Callable, Generator, Tuple, List, Dict, Union,
 import pyswip.easy
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
-from fuzzingbook.GrammarFuzzer import GrammarFuzzer, all_terminals
+from fuzzingbook.GrammarFuzzer import GrammarFuzzer, all_terminals, tree_to_string
 from fuzzingbook.Grammars import unreachable_nonterminals, is_nonterminal
 from grammar_graph.gg import GrammarGraph, NonterminalNode
 from orderedset import OrderedSet
@@ -457,3 +457,20 @@ def compute_numeric_nonterminals(grammar: Grammar) -> Dict[str, Tuple[int, int]]
             result[nonterminal] = (lower_bound, upper_bound)
 
     return result
+
+
+def tree_to_tuples(tree: AbstractTree) -> Tuple[Union[str, 'isla.Variable'], Optional[Tuple]]:
+    node, children = tree
+    if children is None:
+        return node, None
+    else:
+        return node, tuple([tree_to_tuples(child) for child in children])
+
+
+def z3_subst_assgn(inp: z3.ExprRef, subst_map: Dict['isla.Variable', ParseTree]) -> z3.ExprRef:
+    return z3_subst(inp, {v.to_smt(): z3.StringVal(tree_to_string(t))
+                          for v, t in subst_map.items()})
+
+
+def z3_subst(inp: z3.ExprRef, subst_map: Dict[z3.ExprRef, z3.ExprRef]) -> z3.ExprRef:
+    return z3.substitute(inp, *tuple(subst_map.items()))

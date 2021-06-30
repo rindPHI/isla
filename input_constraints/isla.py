@@ -1,6 +1,6 @@
 import copy
 import sys
-from typing import Union, List, Optional, Dict, Tuple, Callable, Iterable, Set
+from typing import Union, List, Optional, Dict, Tuple, Callable, Iterable, Set, cast
 
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string
@@ -9,7 +9,7 @@ from grammar_graph.gg import GrammarGraph, NonterminalNode
 from orderedset import OrderedSet
 
 from input_constraints.helpers import get_subtree, next_path, get_symbols, traverse_tree, is_before, TreeExpander, \
-    tree_depth, visit_z3_expr, is_z3_var
+    tree_depth, visit_z3_expr, is_z3_var, z3_subst
 from input_constraints.type_defs import ParseTree, Path, Grammar
 
 
@@ -151,6 +151,12 @@ class BindExpression:
     def __str__(self):
         return ' '.join(map(lambda e: f'"{e}"' if type(e) is str else str(e), self.bound_elements))
 
+    def __hash__(self):
+        return hash(self.bound_elements)
+
+    def __eq__(self, other):
+        return self.bound_elements == other.bound_elements
+
 
 class FormulaVisitor:
     def visit_predicate_formula(self, formula: 'PredicateFormula'):
@@ -187,6 +193,9 @@ class Formula:
     def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> 'Formula':
         pass
 
+    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> 'Formula':
+        pass
+
     def __and__(self, other):
         return ConjunctiveFormula(self, other)
 
@@ -212,6 +221,9 @@ class Predicate:
     def __eq__(self, other):
         return type(other) is Predicate and (self.name, self.arity) == (other.name, other.arity)
 
+    def hash(self):
+        return hash((self.name, self.arity))
+
     def __repr__(self):
         return f"Predicate({self.name}, {self.arity})"
 
@@ -234,6 +246,9 @@ class PredicateFormula(Formula):
         return PredicateFormula(self.predicate,
                                 *[arg if arg not in subst_map else subst_map[arg] for arg in self.args])
 
+    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> Formula:
+        return self
+
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([])
 
@@ -242,6 +257,12 @@ class PredicateFormula(Formula):
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_predicate_formula(self)
+
+    def __hash__(self):
+        return hash((self.predicate, self.args))
+
+    def __eq__(self, other):
+        return (self.predicate, self.args) == (other.predicate, other.args)
 
     def __str__(self):
         return f"{self.predicate}({', '.join(map(str, self.args))})"
@@ -257,6 +278,9 @@ class PropositionalCombinator(Formula):
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return PropositionalCombinator(*[arg.substitute_variables(subst_map) for arg in self.args])
 
+    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> Formula:
+        return PropositionalCombinator(*[arg.substitute_expressions(subst_map) for arg in self.args])
+
     def free_variables(self) -> OrderedSet[Variable]:
         result: OrderedSet[Variable] = OrderedSet([])
         for arg in self.args:
@@ -265,6 +289,12 @@ class PropositionalCombinator(Formula):
 
     def __repr__(self):
         return f"{type(self).__name__}({', '.join(map(repr, self.args))})"
+
+    def __hash__(self):
+        return hash(self.args)
+
+    def __eq__(self, other):
+        return type(self) == type(other) and self.args == other.args
 
 
 class NegatedFormula(PropositionalCombinator):
@@ -327,17 +357,25 @@ class SMTFormula(Formula):
         self.free_variables_ = OrderedSet(free_variables)
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
-        new_smt_formula = z3.substitute(
-            self.formula,
-            *tuple({
-                       z3.String(free_var.name): z3.String(free_var.name) if free_var not in subst_map
-                       else z3.String(subst_map[free_var].name)
-                       for free_var in self.free_variables_
-                   }.items()))
+        new_smt_formula = z3_subst(self.formula, {v1.to_smt(): v2.to_smt() for v1, v2 in subst_map.items()})
+        # new_smt_formula = z3.substitute(
+        #     self.formula,
+        #     *tuple({
+        #                z3.String(free_var.name): z3.String(free_var.name) if free_var not in subst_map
+        #                else z3.String(subst_map[free_var].name)
+        #                for free_var in self.free_variables_
+        #            }.items()))
 
-        return SMTFormula(new_smt_formula,
+        return SMTFormula(cast(z3.BoolRef, new_smt_formula),
                           *[variable if variable not in subst_map else subst_map[variable]
                             for variable in self.free_variables_])
+
+    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> 'Formula':
+        new_smt_formula = z3_subst(self.formula, {v1.to_smt(): expr for v1, expr in subst_map.items()})
+
+        return SMTFormula(cast(z3.BoolRef, new_smt_formula),
+                          *[variable for variable in self.free_variables_
+                            if variable not in subst_map])
 
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([])
@@ -353,6 +391,12 @@ class SMTFormula(Formula):
 
     def __str__(self):
         return str(self.formula)
+
+    def __eq__(self, other):
+        return self.formula == other.formula
+
+    def __hash__(self):
+        return hash(self.formula)
 
 
 class QuantifiedFormula(Formula):
@@ -377,6 +421,11 @@ class QuantifiedFormula(Formula):
         return f'{type(self).__name__}({repr(self.bound_variable)}, {repr(self.in_variable)}, ' \
                f'{repr(self.inner_formula)}{"" if self.bind_expression is None else ", " + repr(self.bind_expression)})'
 
+    def __eq__(self, other):
+        return type(self) == type(other) and \
+               (self.bound_variable, self.in_variable, self.inner_formula, self.bind_expression) == \
+               (other.bound_variable, other.in_variable, other.inner_formula, other.bind_expression)
+
 
 class ForallFormula(QuantifiedFormula):
     def __init__(self,
@@ -393,6 +442,13 @@ class ForallFormula(QuantifiedFormula):
             self.inner_formula.substitute_variables(subst_map),
             self.bind_expression)
 
+    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> Formula:
+        return ForallFormula(
+            self.bound_variable,
+            self.in_variable if self.in_variable not in subst_map else subst_map[self.in_variable],
+            self.inner_formula.substitute_expressions(subst_map),
+            self.bind_expression)
+
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_forall_formula(self)
         self.inner_formula.accept(visitor)
@@ -401,6 +457,12 @@ class ForallFormula(QuantifiedFormula):
         quote = "'"
         return f'∀ {"" if not self.bind_expression else quote + str(self.bind_expression) + quote + " = "}' \
                f'{str(self.bound_variable)} ∈ {str(self.in_variable)}: ({str(self.inner_formula)})'
+
+    def __eq__(self, other):
+        return super.__eq__(self, other)
+
+    def __hash__(self):
+        return super.__hash__(self)
 
 
 class ExistsFormula(QuantifiedFormula):
@@ -418,6 +480,13 @@ class ExistsFormula(QuantifiedFormula):
             self.inner_formula.substitute_variables(subst_map),
             self.bind_expression)
 
+    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> Formula:
+        return ExistsFormula(
+            self.bound_variable,
+            self.in_variable if self.in_variable not in subst_map else subst_map[self.in_variable],
+            self.inner_formula.substitute_expressions(subst_map),
+            self.bind_expression)
+
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_exists_formula(self)
         self.inner_formula.accept(visitor)
@@ -426,6 +495,12 @@ class ExistsFormula(QuantifiedFormula):
         quote = "'"
         return f'∃ {"" if not self.bind_expression else quote + str(self.bind_expression) + quote + " = "}' \
                f'{str(self.bound_variable)} ∈ {str(self.in_variable)}: ({str(self.inner_formula)})'
+
+    def __eq__(self, other):
+        return super.__eq__(self, other)
+
+    def __hash__(self):
+        return super.__hash__(self)
 
 
 class VariablesCollector(FormulaVisitor):
