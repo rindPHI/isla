@@ -19,6 +19,7 @@ from input_constraints.helpers import is_canonical_grammar, compute_numeric_nont
 from input_constraints.isla import compute_atomic_string_nonterminals, VariablesCollector
 from input_constraints.type_defs import CanonicalGrammar, Grammar, ParseTree, Path, AbstractTree
 
+
 SolutionState = List[Tuple[isla.Constant, isla.Formula, AbstractTree]]
 Assignment = Tuple[isla.Constant, isla.Formula, AbstractTree]
 
@@ -152,6 +153,8 @@ class ISLaSolver:
 
         self.formula = formula
         self.max_number_free_instantiations = max_number_free_instantiations
+        self.queue_size_limit = 80
+        self.queue_no_removed_items = 40
         self.used_variables: OrderedSet[isla.Variable] = isla.VariablesCollector().collect(formula)
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -269,6 +272,14 @@ class ISLaSolver:
         heuristic_value = sum([100 - self.compute_heuristic_value(assgn)
                                for assgn in top_constant_assignments]
                               ) // len(top_constant_assignments)
+
+        if len(queue) > self.queue_size_limit:
+            self.logger.debug(f"Balancing queue")
+            nlargest = heapq.nlargest(self.queue_no_removed_items, queue)
+            for elem in nlargest:
+                queue.remove(elem)
+            heapq.heapify(queue)
+
         heapq.heappush(queue, (heuristic_value, SolutionStateWrapper(state)))
 
         self.logger.debug(f"Pushing new state {state_to_string(state)}")
