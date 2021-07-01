@@ -152,9 +152,11 @@ class ISLaSolver:
             self.grammar = canonical(grammar)
 
         self.formula = formula
-        self.max_number_free_instantiations = max_number_free_instantiations
-        self.queue_size_limit = 80
-        self.queue_no_removed_items = 40
+
+        self.max_number_free_instantiations: int = max_number_free_instantiations
+        self.queue_size_limit: Optional[int] = 80
+        self.queue_no_removed_items: int = 40
+
         self.used_variables: OrderedSet[isla.Variable] = isla.VariablesCollector().collect(formula)
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -273,7 +275,7 @@ class ISLaSolver:
                                for assgn in top_constant_assignments]
                               ) // len(top_constant_assignments)
 
-        if len(queue) > self.queue_size_limit:
+        if self.queue_size_limit is not None and len(queue) > self.queue_size_limit:
             self.logger.debug(f"Balancing queue")
             nlargest = heapq.nlargest(self.queue_no_removed_items, queue)
             for elem in nlargest:
