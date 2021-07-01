@@ -14,11 +14,11 @@ from grammar_to_regex.cfg2regex import RegexConverter
 from orderedset import OrderedSet
 
 from input_constraints import isla
-from input_constraints.helpers import is_canonical_grammar, compute_numeric_nonterminals, path_iterator, \
-    replace_tree_path, delete_unreachable, replace_tree, tree_to_tuples
-from input_constraints.isla import compute_atomic_string_nonterminals, VariablesCollector
+from input_constraints.existential_helpers import insert_tree
+from input_constraints.helpers import is_canonical_grammar, path_iterator, \
+    replace_tree_path, delete_unreachable, tree_to_tuples, open_leaves
+from input_constraints.isla import VariablesCollector
 from input_constraints.type_defs import CanonicalGrammar, Grammar, ParseTree, Path, AbstractTree
-
 
 SolutionState = List[Tuple[isla.Constant, isla.Formula, AbstractTree]]
 Assignment = Tuple[isla.Constant, isla.Formula, AbstractTree]
@@ -30,12 +30,6 @@ def is_complete_tree(tree: AbstractTree) -> bool:
 
 def is_concrete_tree(tree: AbstractTree) -> bool:
     return all(not isinstance(sub_tree[0], isla.Variable) for _, sub_tree in path_iterator(tree))
-
-
-def open_leaves(tree: AbstractTree) -> Generator[Tuple[Path, AbstractTree], None, None]:
-    return ((path, sub_tree)
-            for path, sub_tree in path_iterator(tree)
-            if type(sub_tree[0]) is str and sub_tree[1] is None)
 
 
 def substitute_assignment(in_state: SolutionState, assignment: Dict[isla.Constant, ParseTree]) -> SolutionState:
@@ -204,7 +198,29 @@ class ISLaSolver:
                 yield from self.process_new_state(new_state, queue, top_constants)
                 continue
 
-            leaf_path, (leaf_node, _) = next(open_leaves(tree))
+            if isinstance(formula, isla.ExistsFormula):
+                # TODO: Bind expressions
+                fresh_c = fresh_constant(all_variables(state),
+                                         isla.Constant(formula.bound_variable.name, formula.bound_variable.n_type))
+                possible_trees = insert_tree(self.grammar, (fresh_c, None), tree)
+                if possible_trees:
+                    # TODO If an expansion path contains multiple occurrences of the nonterminal that should
+                    #      be embedded, there might be returned possible trees that are more expanded than
+                    #      necessary. We have to check whether this affects universal quantifiers!
+                    continue  # TODO
+
+                open_relevant_leaves = (pair for pair in open_leaves(tree)
+                                        if (leaf_node := pair[1][0],
+                                            self.reachable(leaf_node, formula.bound_variable.n_type))[1])
+                leaf_path, (leaf_node, _) = next(open_relevant_leaves)
+
+                expanded_trees = self.expand_tree_at(tree, leaf_path, leaf_node)
+
+                for expanded_tree in expanded_trees:
+                    new_state = [assgn for assgn in state if assgn is not assignment]
+                    new_state.append((constant, formula, expanded_tree))
+                    yield from self.process_new_state(new_state, queue, top_constants)
+                    continue
 
             if isinstance(formula, isla.ForallFormula):
                 open_relevant_leaves = (pair for pair in open_leaves(tree)
@@ -213,13 +229,9 @@ class ISLaSolver:
                 leaf_path, (leaf_node, _) = next(open_relevant_leaves)
 
                 # Expand the leaf, check matching instantiations
-                for expansion in self.grammar[leaf_node]:
-                    # TODO: Only expand nonterminals from which the nonterminal of the quantified variable
-                    #       can be reached. Also inline incomplete trees in that case. Batch-expand later on.
-                    expanded_tree = replace_tree_path(tree, leaf_path, (leaf_node, [
-                        (child, None if is_nonterminal(child) else []) for child in expansion
-                    ]))
+                expanded_trees = self.expand_tree_at(tree, leaf_path, leaf_node)
 
+                for expanded_tree in expanded_trees:
                     matches: List[Dict[isla.Variable, Tuple[Path, ParseTree]]] = \
                         isla.matches_for_quantified_variable(formula, expanded_tree)
 
@@ -247,6 +259,16 @@ class ISLaSolver:
                     new_state.append((constant, formula, expanded_tree))
                     yield from self.process_new_state(new_state, queue, top_constants)
                     continue
+
+    def expand_tree_at(self, tree, leaf_path, leaf_node):
+        expanded_trees = []
+        for expansion in self.grammar[leaf_node]:
+            # TODO: Only expand nonterminals from which the nonterminal of the quantified variable
+            #       can be reached. Also inline incomplete trees in that case. Batch-expand later on.
+            expanded_trees.append(replace_tree_path(tree, leaf_path, (leaf_node, [
+                (child, None if is_nonterminal(child) else []) for child in expansion
+            ])))
+        return expanded_trees
 
     def process_new_state(self, state, queue, top_constants):
         if complete_state(state):

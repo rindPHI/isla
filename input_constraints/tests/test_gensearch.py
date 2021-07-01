@@ -1,6 +1,6 @@
 import logging
 import unittest
-from typing import cast
+from typing import cast, List
 
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string
@@ -18,9 +18,7 @@ class TestGensearch(unittest.TestCase):
 
         formula = isla.SMTFormula(cast(z3.BoolRef, var1.to_smt() == var2.to_smt()), var1, var2)
 
-        solver = ISLaSolver(LANG_GRAMMAR, formula)
-        for assignment in solver.find_solution():
-            self.assertEqual(assignment[var1], assignment[var2])
+        self.execute_generation_test(formula, [var1, var2], num_solutions=1)
 
     def test_conjunctive_formula(self):
         var1 = isla.Constant("$var1", "<var>")
@@ -32,11 +30,7 @@ class TestGensearch(unittest.TestCase):
                  z3.And(var1.to_smt() == var2.to_smt(), z3.Not(var3.to_smt() == var1.to_smt()))
                  ), var1, var2, var3)
 
-        solver = ISLaSolver(LANG_GRAMMAR, formula)
-
-        for assignment in solver.find_solution():
-            self.assertEqual(assignment[var1], assignment[var2])
-            self.assertNotEqual(assignment[var1], assignment[var3])
+        self.execute_generation_test(formula, [var1, var2, var3], num_solutions=1)
 
     def test_simple_universal_formula(self):
         # logging.basicConfig(level=logging.DEBUG)
@@ -47,15 +41,7 @@ class TestGensearch(unittest.TestCase):
             var1, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        solver = ISLaSolver(LANG_GRAMMAR, formula, 1)
-
-        it = solver.find_solution()
-        for _ in range(50):
-            try:
-                assignment = next(it)
-                self.assertTrue(isla.evaluate(formula, {start: (tuple(), assignment[start])}))
-            except StopIteration:
-                self.fail()
+        self.execute_generation_test(formula, [start])
 
     def test_simple_existential_formula(self):
         # logging.basicConfig(level=logging.DEBUG)
@@ -66,13 +52,26 @@ class TestGensearch(unittest.TestCase):
             var1, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        solver = ISLaSolver(LANG_GRAMMAR, formula, 1)
+        self.execute_generation_test(formula, [start], print_solutions=True)
+
+    def execute_generation_test(self,
+                                formula: isla.Formula,
+                                constants: List[isla.Constant],
+                                num_solutions=50,
+                                print_solutions=False,
+                                max_number_free_instantiations=1
+                                ):
+        solver = ISLaSolver(LANG_GRAMMAR, formula, max_number_free_instantiations)
 
         it = solver.find_solution()
-        for _ in range(50):
+        for _ in range(num_solutions):
             try:
                 assignment = next(it)
-                self.assertTrue(isla.evaluate(formula, {start: (tuple(), assignment[start])}))
+                if print_solutions:
+                    print(", ".join([tree_to_string(assignment[c]) for c in constants]))
+                self.assertTrue(isla.evaluate(formula, {
+                    c: (tuple(), assignment[c]) for c in constants
+                }))
             except StopIteration:
                 self.fail()
 

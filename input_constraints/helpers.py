@@ -27,6 +27,16 @@ def path_iterator(tree: AbstractTree, path: Path = ()) -> Generator[Tuple[Path, 
             yield from path_iterator(child, path + (i,))
 
 
+def last_path(tree: AbstractTree) -> Path:
+    result: List[int] = []
+    curr_tree = tree
+    while curr_tree[1]:
+        last_idx = len(curr_tree[1]) - 1
+        result.append(last_idx)
+        curr_tree = curr_tree[1][last_idx]
+    return tuple(result)
+
+
 def get_path_of_subtree(tree: ParseTree, subtree: ParseTree, path: Path = tuple()) -> Optional[Path]:
     current_subtree = get_subtree(path, tree)
     if current_subtree is subtree:
@@ -474,3 +484,14 @@ def z3_subst_assgn(inp: z3.ExprRef, subst_map: Dict['isla.Variable', ParseTree])
 
 def z3_subst(inp: z3.ExprRef, subst_map: Dict[z3.ExprRef, z3.ExprRef]) -> z3.ExprRef:
     return z3.substitute(inp, *tuple(subst_map.items()))
+
+
+def open_leaves(tree: AbstractTree) -> Generator[Tuple[Path, AbstractTree], None, None]:
+    return ((path, sub_tree)
+            for path, sub_tree in path_iterator(tree)
+            if type(sub_tree[0]) is str and sub_tree[1] is None)
+
+
+def reachable(grammar: Grammar, nonterminal: str, to_nonterminal: str) -> bool:
+    graph = GrammarGraph.from_grammar(grammar)
+    return graph.get_node(nonterminal).reachable(graph.get_node(to_nonterminal))
