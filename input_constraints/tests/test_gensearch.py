@@ -49,8 +49,32 @@ class TestGensearch(unittest.TestCase):
 
         solver = ISLaSolver(LANG_GRAMMAR, formula, 1)
 
-        for assignment in solver.find_solution():
-            print(tree_to_string(assignment[start]))
+        it = solver.find_solution()
+        for _ in range(50):
+            try:
+                assignment = next(it)
+                self.assertTrue(isla.evaluate(formula, {start: (tuple(), assignment[start])}))
+            except StopIteration:
+                self.fail()
+
+    def test_simple_existential_formula(self):
+        # logging.basicConfig(level=logging.DEBUG)
+        start = isla.Constant("$start", "<start>")
+        var1 = isla.BoundVariable("$var", "<var>")
+
+        formula = sc.exists(
+            var1, start,
+            sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
+
+        solver = ISLaSolver(LANG_GRAMMAR, formula, 1)
+
+        it = solver.find_solution()
+        for _ in range(50):
+            try:
+                assignment = next(it)
+                self.assertTrue(isla.evaluate(formula, {start: (tuple(), assignment[start])}))
+            except StopIteration:
+                self.fail()
 
 
 if __name__ == '__main__':
