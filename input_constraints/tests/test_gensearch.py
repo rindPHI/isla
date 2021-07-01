@@ -1,10 +1,8 @@
-import logging
 import unittest
 from typing import cast
 
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string
-from orderedset import OrderedSet
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
@@ -19,7 +17,7 @@ class TestGensearch(unittest.TestCase):
 
         formula = isla.SMTFormula(cast(z3.BoolRef, var1.to_smt() == var2.to_smt()), var1, var2)
 
-        solver = ISLaSolver(LANG_GRAMMAR, formula, OrderedSet([]), OrderedSet([]))
+        solver = ISLaSolver(LANG_GRAMMAR, formula)
         for assignment in solver.find_solution():
             self.assertEqual(assignment[var1], assignment[var2])
 
@@ -33,7 +31,7 @@ class TestGensearch(unittest.TestCase):
                  z3.And(var1.to_smt() == var2.to_smt(), z3.Not(var3.to_smt() == var1.to_smt()))
                  ), var1, var2, var3)
 
-        solver = ISLaSolver(LANG_GRAMMAR, formula, OrderedSet([]), OrderedSet([]))
+        solver = ISLaSolver(LANG_GRAMMAR, formula)
 
         for assignment in solver.find_solution():
             self.assertEqual(assignment[var1], assignment[var2])
@@ -48,7 +46,7 @@ class TestGensearch(unittest.TestCase):
             var1, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        solver = ISLaSolver(LANG_GRAMMAR, formula, OrderedSet([]), OrderedSet([]))
+        solver = ISLaSolver(LANG_GRAMMAR, formula, 1)
 
         for assignment in solver.find_solution():
             print(tree_to_string(assignment[start]))

@@ -5,9 +5,11 @@ import random
 from typing import Union, Optional, Dict, Tuple, List, Generator, Set
 
 import z3
+from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.GrammarFuzzer import GrammarFuzzer, tree_to_string
 from fuzzingbook.Grammars import is_nonterminal
 from fuzzingbook.Parser import canonical, non_canonical, EarleyParser
+from grammar_graph.gg import GrammarGraph
 from grammar_to_regex.cfg2regex import RegexConverter
 from orderedset import OrderedSet
 
@@ -18,7 +20,7 @@ from input_constraints.isla import compute_atomic_string_nonterminals, Variables
 from input_constraints.type_defs import CanonicalGrammar, Grammar, ParseTree, Path, AbstractTree
 
 SolutionState = List[Tuple[isla.Constant, isla.Formula, AbstractTree]]
-SingletonSolutionState = Tuple[isla.Constant, isla.Formula, AbstractTree]
+Assignment = Tuple[isla.Constant, isla.Formula, AbstractTree]
 
 
 def is_complete_tree(tree: AbstractTree) -> bool:
@@ -52,7 +54,7 @@ def substitute_assignment(in_state: SolutionState, assignment: Dict[isla.Constan
     return result
 
 
-def inline_state_element(state: SolutionState, state_to_inline: SingletonSolutionState) -> SolutionState:
+def inline_state_element(state: SolutionState, state_to_inline: Assignment) -> SolutionState:
     result: SolutionState = []
     variable, _, tree = state_to_inline
     for state_element in state:
@@ -72,7 +74,7 @@ def inline_var_in_tree(in_tree: AbstractTree, variable: isla.Variable, inst: Abs
     return node, [inline_var_in_tree(child, variable, inst) for child in children]
 
 
-def merge_state_elements(state: SolutionState) -> SingletonSolutionState:
+def merge_state_elements(state: SolutionState) -> Assignment:
     # TODO: If we have more than one initial constant, we won't end up in a singleton state
     state_elements: SolutionState = copy.deepcopy(state)
 
@@ -112,19 +114,35 @@ def all_variables(state: SolutionState) -> Set[isla.Variable]:
     return result
 
 
+def complete_assignment(assignment: Assignment) -> bool:
+    _, _, tree = assignment
+    return is_concrete_tree(tree) and not any(open_leaves(tree))
+
+
 def complete_state(state: SolutionState) -> bool:
-    return all((tree := assgn[2],
-                is_concrete_tree(tree) and
-                not any(open_leaves(tree)))[1]
-               for assgn in state)
+    return all(complete_assignment(assgn) for assgn in state)
+
+
+def abstract_tree_to_string(tree: AbstractTree) -> str:
+    symbol, children, *_ = tree
+    if children:
+        return ''.join(abstract_tree_to_string(c) for c in children)
+    else:
+        if isinstance(symbol, isla.Variable):
+            return symbol.name
+        return symbol
+
+
+def state_to_string(state: SolutionState) -> str:
+    return "{(" + "), (".join(map(str, [f"{constant.name}, {formula}, \"{abstract_tree_to_string(tree)}\""
+                                        for constant, formula, tree in state])) + ")}"
 
 
 class ISLaSolver:
     def __init__(self,
                  grammar: Union[Grammar, CanonicalGrammar],
                  formula: isla.Formula,
-                 numeric_nonterminals: Optional[OrderedSet[str, Tuple[int, int]]] = None,
-                 atomic_string_nonterminals: Optional[OrderedSet[str]] = None
+                 max_number_free_instantiations: int = 10
                  ):
         self.grammar = grammar
         if is_canonical_grammar(grammar):
@@ -133,19 +151,8 @@ class ISLaSolver:
             self.grammar = canonical(grammar)
 
         self.formula = formula
-
+        self.max_number_free_instantiations = max_number_free_instantiations
         self.used_variables: OrderedSet[isla.Variable] = isla.VariablesCollector().collect(formula)
-
-        self.numeric_nonterminals: Dict[str, Tuple[int, int]] = numeric_nonterminals \
-            if numeric_nonterminals is not None \
-            else compute_numeric_nonterminals(non_canonical(grammar))
-        self.atomic_string_nonterminals: OrderedSet[str] = atomic_string_nonterminals \
-            if atomic_string_nonterminals is not None \
-            else compute_atomic_string_nonterminals(non_canonical(grammar),
-                                                    formula,
-                                                    self.used_variables,
-                                                    self.numeric_nonterminals)
-
         self.logger = logging.getLogger(type(self).__name__)
 
     def find_solution(self) -> Generator[Dict[isla.Constant, ParseTree], None, None]:
@@ -162,6 +169,8 @@ class ISLaSolver:
         while queue:
             _, state_wrapper = heapq.heappop(queue)
             state = state_wrapper.state
+            self.logger.debug(f"Polling new state {state_to_string(state)}")
+            self.logger.debug(f"Queue length: {len(queue)}")
 
             # Choose the first assignment with a non-abstract tree and an open leaf.
             assignment = next((assgn for assgn in state
@@ -193,8 +202,15 @@ class ISLaSolver:
             leaf_path, (leaf_node, _) = next(open_leaves(tree))
 
             if isinstance(formula, isla.ForallFormula):
+                open_relevant_leaves = (pair for pair in open_leaves(tree)
+                                        if (leaf_node := pair[1][0],
+                                            self.reachable(leaf_node, formula.bound_variable.n_type))[1])
+                leaf_path, (leaf_node, _) = next(open_relevant_leaves)
+
                 # Expand the leaf, check matching instantiations
                 for expansion in self.grammar[leaf_node]:
+                    # TODO: Only expand nonterminals from which the nonterminal of the quantified variable
+                    #       can be reached. Also inline incomplete trees in that case. Batch-expand later on.
                     expanded_tree = replace_tree_path(tree, leaf_path, (leaf_node, [
                         (child, None if is_nonterminal(child) else []) for child in expansion
                     ]))
@@ -227,19 +243,69 @@ class ISLaSolver:
                     yield from self.process_new_state(new_state, queue, top_constants)
                     continue
 
-    def process_new_state(self, new_state, queue, top_constants):
-        if complete_state(new_state):
-            yield {c: t for c, _, t in new_state}
+    def process_new_state(self, state, queue, top_constants):
+        if complete_state(state):
+            yield {c: t for c, _, t in state}
             return
 
-        top_constant_assignments = [assgn for assgn in new_state if assgn[0] in top_constants]
+        complete_assignments = [assgn for assgn in state if complete_assignment(assgn)]
+        satisfied_assignments = [assgn for assgn in state
+                                 if assgn not in complete_assignments and
+                                 self.formula_satisfied(assgn)]
+
+        if len(complete_assignments) + len(satisfied_assignments) == len(state):
+            fuzzer = GrammarCoverageFuzzer(non_canonical(self.grammar))
+            for _ in range(self.max_number_free_instantiations):
+                all_complete_assignments = copy.deepcopy(complete_assignments)
+                all_complete_assignments.extend([
+                    (constant, isla.SMTFormula(z3.BoolVal(True)), fuzzer.expand_tree(copy.deepcopy(tree)))
+                    for constant, _, tree in satisfied_assignments
+                ])
+
+                yield {c: t for c, _, t in all_complete_assignments}
+            return
+
+        top_constant_assignments = [assgn for assgn in state if assgn[0] in top_constants]
         heuristic_value = sum([100 - self.compute_heuristic_value(assgn)
                                for assgn in top_constant_assignments]
                               ) // len(top_constant_assignments)
-        heapq.heappush(queue, (heuristic_value, SolutionStateWrapper(new_state)))
+        heapq.heappush(queue, (heuristic_value, SolutionStateWrapper(state)))
 
-        self.logger.debug(f"Pushing new state {new_state}")
+        self.logger.debug(f"Pushing new state {state_to_string(state)}")
         self.logger.debug(f"Queue length: {len(queue)}")
+
+    def reachable(self, nonterminal: str, to_nonterminal: str) -> bool:
+        graph = GrammarGraph.from_grammar(non_canonical(self.grammar))
+        return graph.get_node(nonterminal).reachable(graph.get_node(to_nonterminal))
+
+    def formula_satisfied(self, assignment: Assignment) -> bool:
+        _, formula, tree = assignment
+
+        if not is_concrete_tree(tree):
+            # Have to instantiate variables first
+            return False
+
+        if is_complete_tree(tree):
+            # We assume that all instantiations are valid, therefore
+            # the formula is trivially satisfied for all concrete trees
+            return True
+
+        if isinstance(formula, isla.ForallFormula):
+            nonterminals = set([pair[1][0] for pair in open_leaves(tree)])
+            qfd_nonterminal = formula.bound_variable.n_type
+
+            # if qfd_nonterminal is not reachable from any nonterminal, we
+            # already know that formula is vacuously satisfied!
+            graph = GrammarGraph.from_grammar(non_canonical(self.grammar))
+            return not any(graph.get_node(nonterminal).reachable(graph.get_node(qfd_nonterminal))
+                           for nonterminal in nonterminals)
+        elif isinstance(formula, isla.SMTFormula):
+            s = z3.Solver()
+            s.add(z3.Not(formula.formula))
+            s.set("timeout", 1000)
+            return s.check() == z3.unsat
+
+        return False
 
     def solve_quantifier_free_formula(self, formula: isla.Formula) -> Optional[Dict[isla.Constant, ParseTree]]:
         solver = z3.Solver()
@@ -272,7 +338,7 @@ class ISLaSolver:
         parser = EarleyParser(grammar)
         return list(parser.parse(input))[0][1][0]
 
-    def compute_heuristic_value(self, state: SingletonSolutionState) -> int:
+    def compute_heuristic_value(self, state: Assignment) -> int:
         """
         Computes a heuristic value between 0 (worst) and 100 (best) describing the quality of the present solution.
         Criteria are the cost of the expansion, and to what degree the constraint is satisfied (TODO).
@@ -296,7 +362,7 @@ class ISLaSolver:
 
         return normalized_depth_value
 
-    def compute_heuristic_value_1(self, state: SingletonSolutionState, expansion: List[str]) -> int:
+    def compute_heuristic_value_1(self, state: Assignment, expansion: List[str]) -> int:
         """
         Computes a heuristic value between 0 (worst) and 100 (best) describing the quality of the present solution.
         Criteria are the cost of the expansion, and to what degree the constraint is satisfied (TODO).
