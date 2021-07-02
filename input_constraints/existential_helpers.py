@@ -6,8 +6,10 @@ from fuzzingbook.Parser import non_canonical
 from grammar_graph.gg import GrammarGraph, NonterminalNode, Node, ChoiceNode
 from orderedset import OrderedSet
 
+from input_constraints import isla
 from input_constraints.helpers import get_subtree, prev_path_complete, replace_tree_path, \
-    reverse_tree_iterator, get_path_of_subtree, geometric_sequence, last_path, open_leaves
+    reverse_tree_iterator, get_path_of_subtree, geometric_sequence, last_path, open_leaves, path_iterator
+from input_constraints.isla import abstract_tree_to_string
 from input_constraints.type_defs import ParseTree, Path, CanonicalGrammar, CanonicalExpansionAlternative, AbstractTree
 
 
@@ -135,6 +137,7 @@ def insert_tree(grammar: CanonicalGrammar,
                                         if insert_leaf_nonterm == to_insert_nonterminal:
                                             instantiated_connecting_tree = \
                                                 replace_tree_path(connecting_tree, insert_leaf_path, tree)
+                                            instantiated_connecting_tree = shrink_tree(instantiated_connecting_tree)
                                             new_tree_for_parent = replace_tree_path(self_embedding_tree,
                                                                                     leaf_path,
                                                                                     instantiated_connecting_tree)
@@ -177,6 +180,24 @@ def insert_tree(grammar: CanonicalGrammar,
         return result
     else:
         return add_to_result(insert_tree(grammar, tree, in_tree, before_path, graph, next_path))
+
+
+def shrink_tree(tree: AbstractTree) -> AbstractTree:
+    node, children = tree
+
+    if type(node) is str and not is_nonterminal(node):
+        return tree
+
+    contains_constant = False
+    for _, subtree in path_iterator(tree):
+        if isinstance(subtree[0], isla.Constant):
+            contains_constant = True
+            break
+
+    if contains_constant:
+        return node, None if children is None else [shrink_tree(child) for child in children]
+    else:
+        return node, None
 
 
 def wrap_in_tree_starting_in(start_nonterminal: str,

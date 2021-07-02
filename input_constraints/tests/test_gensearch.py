@@ -52,7 +52,9 @@ class TestGensearch(unittest.TestCase):
             var1, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        self.execute_generation_test(formula, [start], print_solutions=True)
+        self.execute_generation_test(formula, [start],
+                                     num_solutions=10,
+                                     max_number_free_instantiations=5)
 
     def execute_generation_test(self,
                                 formula: isla.Formula,

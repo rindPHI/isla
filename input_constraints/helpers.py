@@ -1,17 +1,16 @@
 import copy
 import sys
-from typing import Optional, Set, Callable, Generator, Tuple, List, Dict, Union, Iterable
+from typing import Optional, Set, Callable, Generator, Tuple, List, Dict, Union
 
 import pyswip.easy
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.GrammarFuzzer import GrammarFuzzer, all_terminals, tree_to_string
 from fuzzingbook.Grammars import unreachable_nonterminals, is_nonterminal
-from grammar_graph.gg import GrammarGraph, NonterminalNode
-from orderedset import OrderedSet
+from grammar_graph.gg import GrammarGraph
 
-import input_constraints.prolog_structs as pl
 import input_constraints.prolog_shortcuts as psc
+import input_constraints.prolog_structs as pl
 from input_constraints.type_defs import Path, ParseTree, Grammar, CanonicalGrammar, AbstractTree
 
 

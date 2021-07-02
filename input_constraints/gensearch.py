@@ -17,11 +17,8 @@ from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import is_canonical_grammar, path_iterator, \
     replace_tree_path, delete_unreachable, tree_to_tuples, open_leaves
-from input_constraints.isla import VariablesCollector
+from input_constraints.isla import VariablesCollector, state_to_string, SolutionState, Assignment
 from input_constraints.type_defs import CanonicalGrammar, Grammar, ParseTree, Path, AbstractTree
-
-SolutionState = List[Tuple[isla.Constant, isla.Formula, AbstractTree]]
-Assignment = Tuple[isla.Constant, isla.Formula, AbstractTree]
 
 
 def is_complete_tree(tree: AbstractTree) -> bool:
@@ -118,21 +115,6 @@ def complete_state(state: SolutionState) -> bool:
     return all(complete_assignment(assgn) for assgn in state)
 
 
-def abstract_tree_to_string(tree: AbstractTree) -> str:
-    symbol, children, *_ = tree
-    if children:
-        return ''.join(abstract_tree_to_string(c) for c in children)
-    else:
-        if isinstance(symbol, isla.Variable):
-            return symbol.name
-        return symbol
-
-
-def state_to_string(state: SolutionState) -> str:
-    return "{(" + "), (".join(map(str, [f"{constant.name}, {formula}, \"{abstract_tree_to_string(tree)}\""
-                                        for constant, formula, tree in state])) + ")}"
-
-
 class ISLaSolver:
     def __init__(self,
                  grammar: Union[Grammar, CanonicalGrammar],
@@ -200,14 +182,17 @@ class ISLaSolver:
 
             if isinstance(formula, isla.ExistsFormula):
                 # TODO: Bind expressions
-                fresh_c = fresh_constant(all_variables(state),
+                new_constant = fresh_constant(all_variables(state),
                                          isla.Constant(formula.bound_variable.name, formula.bound_variable.n_type))
-                possible_trees = insert_tree(self.grammar, (fresh_c, None), tree)
+                possible_trees = insert_tree(self.grammar, (new_constant, None), tree)
                 if possible_trees:
-                    # TODO If an expansion path contains multiple occurrences of the nonterminal that should
-                    #      be embedded, there might be returned possible trees that are more expanded than
-                    #      necessary. We have to check whether this affects universal quantifiers!
-                    continue  # TODO
+                    for possible_tree in possible_trees:
+                        new_state = [assgn for assgn in state if assgn is not assignment]
+                        inst_formula = formula.inner_formula.substitute_variables({formula.bound_variable: new_constant})
+                        new_state.append((constant, inst_formula, possible_tree))
+                        new_state.append((new_constant, inst_formula, (new_constant.n_type, None)))
+                        yield from self.process_new_state(new_state, queue, top_constants)
+                    continue
 
                 open_relevant_leaves = (pair for pair in open_leaves(tree)
                                         if (leaf_node := pair[1][0],
@@ -244,9 +229,9 @@ class ISLaSolver:
                         constant_subst_map = {}
                         all_vars = all_variables(state)
                         for variable in match:
-                            fresh_c = fresh_constant(all_vars, isla.Constant(variable.name, variable.n_type))
-                            constant_subst_map[variable] = fresh_c
-                            all_vars.add(fresh_c)
+                            new_constant = fresh_constant(all_vars, isla.Constant(variable.name, variable.n_type))
+                            constant_subst_map[variable] = new_constant
+                            all_vars.add(new_constant)
 
                         inst_formula = formula.inner_formula.substitute_variables(constant_subst_map)
 

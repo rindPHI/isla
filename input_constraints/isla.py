@@ -10,8 +10,10 @@ from orderedset import OrderedSet
 
 from input_constraints.helpers import get_subtree, next_path, get_symbols, traverse_tree, is_before, TreeExpander, \
     tree_depth, visit_z3_expr, is_z3_var, z3_subst
-from input_constraints.type_defs import ParseTree, Path, Grammar
+from input_constraints.type_defs import ParseTree, Path, Grammar, AbstractTree
 
+SolutionState = List[Tuple['Constant', 'Formula', AbstractTree]]
+Assignment = Tuple['Constant', 'Formula', AbstractTree]
 
 class Variable:
     def __init__(self, name: str, n_type: str):
@@ -804,3 +806,21 @@ def compute_atomic_string_nonterminals(
                        for nonterminal in used_nonterminals
                       .difference(non_atomic_nonterminals)
                       .union(unused_sink_nonterminals)])
+
+
+def abstract_tree_to_string(tree: AbstractTree) -> str:
+    symbol, children, *_ = tree
+    if children:
+        return ''.join(abstract_tree_to_string(c) for c in children)
+    else:
+        if isinstance(symbol, Variable):
+            return symbol.name
+        return symbol
+
+
+
+
+def state_to_string(state: SolutionState) -> str:
+    return "{(" + "), (".join(map(str, [f"{constant.name}, {formula}, \"{abstract_tree_to_string(tree)}\""
+                                        for constant, formula, tree in state])) + ")}"
+
