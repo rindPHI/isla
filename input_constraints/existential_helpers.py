@@ -1,5 +1,4 @@
-import random
-from typing import Optional, List, Tuple, Dict, cast, Union, Set, Generator, Iterable
+from typing import Optional, List, Tuple, Dict, cast, Union, Set, Generator
 
 from fuzzingbook.Grammars import is_nonterminal
 from fuzzingbook.Parser import non_canonical
@@ -8,8 +7,7 @@ from orderedset import OrderedSet
 
 from input_constraints import isla
 from input_constraints.helpers import get_subtree, prev_path_complete, replace_tree_path, \
-    reverse_tree_iterator, get_path_of_subtree, geometric_sequence, last_path, open_leaves, path_iterator
-from input_constraints.isla import abstract_tree_to_string
+    reverse_tree_iterator, last_path, open_leaves, path_iterator
 from input_constraints.type_defs import ParseTree, Path, CanonicalGrammar, CanonicalExpansionAlternative, AbstractTree
 
 

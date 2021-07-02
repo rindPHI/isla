@@ -5,8 +5,9 @@ import pyswip.easy
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
-from input_constraints.helpers import pyswip_output_to_str, pyswip_var_mapping, pyswip_clp_constraints_to_str, \
-    pyswip_output_to_python, tree_list_to_str
+from input_constraints.helpers import tree_list_to_str
+from input_constraints.prolog_helpers import pyswip_clp_constraints_to_str, pyswip_output_to_python, \
+    pyswip_output_to_str, pyswip_var_mapping
 from input_constraints.prolog import Translator
 from input_constraints.tests import minipy
 from input_constraints.tests.minipy import to_real_python

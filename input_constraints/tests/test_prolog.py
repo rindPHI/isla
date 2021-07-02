@@ -11,7 +11,7 @@ from fuzzingbook.Parser import canonical, EarleyParser
 
 import input_constraints.isla as isla
 from input_constraints import isla_shortcuts as sc
-from input_constraints.helpers import pyswip_output_to_str, pyswip_clp_constraints_to_str, pyswip_var_mapping
+from input_constraints.prolog_helpers import pyswip_clp_constraints_to_str, pyswip_output_to_str, pyswip_var_mapping
 from input_constraints.isla import Constant, BoundVariable, Formula, SMTFormula
 from input_constraints.prolog import Translator
 from input_constraints.tests.test_data import LANG_GRAMMAR, eval_lang

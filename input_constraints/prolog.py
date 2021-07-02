@@ -17,8 +17,9 @@ import input_constraints.isla as isla
 import input_constraints.prolog_shortcuts as psc
 import input_constraints.prolog_structs as pl
 from input_constraints import helpers
-from input_constraints.helpers import visit_z3_expr, is_canonical_grammar, is_z3_var, pyswip_output_to_str, \
-    pyswip_output_to_python, python_to_prolog_tree, python_list_to_prolog_list, var_to_pl_nsym
+from input_constraints.helpers import visit_z3_expr, is_canonical_grammar, is_z3_var, var_to_pl_nsym
+from input_constraints.prolog_helpers import pyswip_output_to_python, pyswip_output_to_str, python_list_to_prolog_list, \
+    python_to_prolog_tree
 from input_constraints.type_defs import CanonicalGrammar, Grammar
 
 # A TranslationResult for a constraint is a list of Prolog rules together with a list of foreign foreign predicates,
