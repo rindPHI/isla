@@ -202,7 +202,6 @@ class ISLaSolver:
                 continue
 
             elif isinstance(formula, isla.ExistsFormula):
-                # TODO: Bind expressions
                 all_vars = all_variables(state)
                 const_subst_map = {}
                 new_constant = fresh_constant(
