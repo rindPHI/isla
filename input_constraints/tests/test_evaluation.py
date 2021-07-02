@@ -250,7 +250,7 @@ class TestEvaluation(unittest.TestCase):
 
         bind_expr: BindExpression = lhs + " := " + rhs
         tree, bindings = bind_expr.to_tree_prefix(assgn.n_type, LANG_GRAMMAR)
-        self.assertEqual(("<assgn>", [("<var>", None), (" := ", []), ("<rhs>", None)]), tree)
+        self.assertEqual(("<assgn>", [(lhs, None), (" := ", []), (rhs, None)]), tree)
         self.assertEqual((0,), bindings[lhs])
         self.assertEqual((2,), bindings[rhs])
 
@@ -262,9 +262,9 @@ class TestEvaluation(unittest.TestCase):
         bind_expr: BindExpression = lhs + " := " + rhs + semicolon + lhs_2 + " := " + rhs_2
         tree, bindings = bind_expr.to_tree_prefix(prog.n_type, LANG_GRAMMAR)
         self.assertEqual(('<stmt>', [
-            ('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', None)]),
-            (' ; ', []),
-            ('<stmt>', [('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', None)])])]), tree)
+            ('<assgn>', [(lhs, None), (' := ', []), (rhs, None)]),
+            (semicolon, None),
+            ('<stmt>', [('<assgn>', [(lhs_2, None), (' := ', []), (rhs_2, None)])])]), tree)
 
         self.assertEqual((1,), bindings[semicolon])
         self.assertEqual((0, 0), bindings[lhs])

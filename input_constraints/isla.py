@@ -3,17 +3,20 @@ import sys
 from typing import Union, List, Optional, Dict, Tuple, Callable, Iterable, Set, cast
 
 import z3
-from fuzzingbook.GrammarFuzzer import tree_to_string
+from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
+from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
 from fuzzingbook.Grammars import is_nonterminal
+from fuzzingbook.Parser import EarleyParser
 from grammar_graph.gg import GrammarGraph, NonterminalNode
 from orderedset import OrderedSet
 
 from input_constraints.helpers import get_subtree, next_path, get_symbols, traverse_tree, is_before, TreeExpander, \
-    tree_depth, visit_z3_expr, is_z3_var, z3_subst
+    tree_depth, visit_z3_expr, is_z3_var, z3_subst, path_iterator, replace_tree_path
 from input_constraints.type_defs import ParseTree, Path, Grammar, AbstractTree
 
 SolutionState = List[Tuple['Constant', 'Formula', AbstractTree]]
 Assignment = Tuple['Constant', 'Formula', AbstractTree]
+
 
 class Variable:
     def __init__(self, name: str, n_type: str):
@@ -90,31 +93,69 @@ class BindExpression:
         result.bound_elements.append(other)
         return result
 
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        return BindExpression(*[elem if elem not in subst_map else subst_map[elem]
+                                for elem in self.bound_elements])
+
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([var for var in self.bound_elements if type(var) is BoundVariable])
 
-    def to_tree_prefix(self, in_nonterminal: str, grammar: Grammar, max_depth=4) -> \
-            Tuple[ParseTree, Dict[BoundVariable, Path]]:
-        # TODO: Possible optimization which would also allow to check deeper nestings within
-        #       reasonable time: Check whether a candidate cannot possibly match. This is the case,
-        #       e.g., if the first path is concrete and the first bound variable (non)terminal does
-        #       not occur along that path, and similarly for all subsequent paths and variables.
+    def to_tree_prefix(self, in_nonterminal: str, grammar: Grammar, to_abstract_tree: bool = True) -> \
+            Tuple[AbstractTree, Dict[BoundVariable, Path]]:
+        fuzzer = GrammarFuzzer(grammar)
 
-        queue: List[ParseTree] = [(in_nonterminal, None)]
-        expander = TreeExpander(grammar)
-        while queue:
-            expanded = expander.expand_tree_once(queue.pop())
+        placeholder_map: Dict[Union[str, BoundVariable], str] = {}
+        tree_placeholder_map: Dict[Union[str, BoundVariable], ParseTree] = {}
 
-            for tree in expanded:
-                if (match_res := self.match(tree)) is not None:
-                    match_res: Dict[BoundVariable, Tuple[Path, ParseTree]]
-                    return tree, {bv: match_res[bv][0] for bv in match_res}
+        for bound_element in self.bound_elements:
+            if isinstance(bound_element, str):
+                placeholder_map[bound_element] = bound_element
+            elif not is_nonterminal(bound_element.n_type):
+                placeholder_map[bound_element] = bound_element.n_type
+            else:
+                ph_candidate = None
+                while ph_candidate is None or ph_candidate in tree_placeholder_map.values():
+                    ph_candidate = fuzzer.expand_tree((bound_element.n_type, None))
 
-            queue.extend([tree for tree in expanded if tree_depth(tree) < max_depth])
+                placeholder_map[bound_element] = tree_to_string(ph_candidate)
+                tree_placeholder_map[bound_element] = ph_candidate
 
-        assert False, f"Bind expression {str(self)} does does not match with grammar, " \
-                      f"or does not occur under scope of nonterminal {in_nonterminal}, " \
-                      f"or requires max_depth > {max_depth}"
+        inp = "".join(list(map(lambda elem: placeholder_map[elem], self.bound_elements)))
+
+        graph = GrammarGraph.from_grammar(grammar)
+        subgrammar = graph.subgraph(graph.get_node(in_nonterminal)).to_grammar()
+        parser = EarleyParser(subgrammar)
+        tree = list(parser.parse(inp))[0][1][0]
+
+        positions: Dict[BoundVariable, Path] = {}
+        bound_elements = copy.deepcopy(self.bound_elements)
+        for path, subtree in path_iterator(tree):
+            if not bound_elements:
+                break
+
+            if isinstance(bound_elements[0], str):
+                if tree_to_string(subtree) == bound_elements[0]:
+                    bound_elements = bound_elements[1:]
+                continue
+
+            if is_nonterminal(bound_elements[0].n_type):
+                if subtree == tree_placeholder_map[bound_elements[0]]:
+                    positions[bound_elements[0]] = path
+                    tree = replace_tree_path(tree, path, (bound_elements[0] if to_abstract_tree
+                                                          else bound_elements[0].n_type,
+                                                          None))
+                    bound_elements = bound_elements[1:]
+                continue
+
+            if tree_to_string(subtree) == bound_elements[0].n_type:
+                positions[bound_elements[0]] = path
+                tree = replace_tree_path(tree, path, ((bound_elements[0], None) if to_abstract_tree
+                                                      else (bound_elements[0].n_type, [])))
+                bound_elements = bound_elements[1:]
+
+        assert not bound_elements
+
+        return tree, positions
 
     def match(self, tree: ParseTree) -> Optional[Dict[BoundVariable, Tuple[Path, ParseTree]]]:
         result: Dict[BoundVariable, Tuple[Path, ParseTree]] = {}
@@ -818,9 +859,6 @@ def abstract_tree_to_string(tree: AbstractTree) -> str:
         return symbol
 
 
-
-
 def state_to_string(state: SolutionState) -> str:
     return "{(" + "), (".join(map(str, [f"{constant.name}, {formula}, \"{abstract_tree_to_string(tree)}\""
                                         for constant, formula, tree in state])) + ")}"
-

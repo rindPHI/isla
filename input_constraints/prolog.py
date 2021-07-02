@@ -17,9 +17,9 @@ import input_constraints.isla as isla
 import input_constraints.prolog_shortcuts as psc
 import input_constraints.prolog_structs as pl
 from input_constraints import helpers
-from input_constraints.helpers import visit_z3_expr, is_canonical_grammar, is_z3_var, var_to_pl_nsym
+from input_constraints.helpers import visit_z3_expr, is_canonical_grammar, is_z3_var
 from input_constraints.prolog_helpers import pyswip_output_to_python, pyswip_output_to_str, python_list_to_prolog_list, \
-    python_to_prolog_tree
+    python_to_prolog_tree, var_to_pl_nsym
 from input_constraints.type_defs import CanonicalGrammar, Grammar
 
 # A TranslationResult for a constraint is a list of Prolog rules together with a list of foreign foreign predicates,
@@ -149,7 +149,8 @@ class Translator:
         rel_paths = None
         if formula.bind_expression is not None:
             prefix_tree, rel_paths = formula.bind_expression.to_tree_prefix(formula.bound_variable.n_type,
-                                                                            non_canonical(self.grammar))
+                                                                            non_canonical(self.grammar),
+                                                                            to_abstract_tree=False)
             pl_tree = python_to_prolog_tree(prefix_tree)
             goals.append(psc.pred("find_subtrees", in_var_tree_var, pl_tree, qfd_var_paths))
         else:

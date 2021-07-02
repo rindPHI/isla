@@ -5,10 +5,9 @@ from typing import Optional, Set, Callable, Generator, Tuple, List, Dict, Union
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.GrammarFuzzer import GrammarFuzzer, all_terminals, tree_to_string
-from fuzzingbook.Grammars import unreachable_nonterminals, is_nonterminal
+from fuzzingbook.Grammars import unreachable_nonterminals
 from grammar_graph.gg import GrammarGraph
 
-import input_constraints.prolog_structs as pl
 from input_constraints.type_defs import Path, ParseTree, Grammar, CanonicalGrammar, AbstractTree
 
 
@@ -257,15 +256,6 @@ def tree_depth(tree: ParseTree, depth: int = 1) -> int:
         return depth
     else:
         return max([tree_depth(child, depth + 1) for child in children])
-
-
-def var_to_pl_nsym(variable):
-    # variable is either isla.Variable (not imported to avoid circular inputs) or str
-    ntype = variable if type(variable) is str else variable.n_type
-    if is_nonterminal(ntype):
-        return pl.Atom(ntype[1:-1].lower())
-    else:
-        return pl.StringTerm(ntype)
 
 
 class TreeExpander(GrammarFuzzer):

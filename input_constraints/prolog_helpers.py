@@ -1,9 +1,9 @@
 from typing import Dict, List, Optional, Union, Tuple
 
 import pyswip.easy
+from fuzzingbook.Grammars import is_nonterminal
 
 from input_constraints import prolog_structs as pl, prolog_shortcuts as psc
-from input_constraints.helpers import var_to_pl_nsym
 from input_constraints.type_defs import ParseTree
 
 
@@ -135,3 +135,12 @@ def python_to_prolog_tree(tree: ParseTree) -> pl.ListTerm:
         return psc.list_term(pl.StringTerm(node), psc.list_term())
     else:
         return psc.list_term(pl.Atom(node[1:-1]), psc.list_term(*[python_to_prolog_tree(child) for child in children]))
+
+
+def var_to_pl_nsym(variable):
+    # variable is either isla.Variable (not imported to avoid circular inputs) or str
+    ntype = variable if type(variable) is str else variable.n_type
+    if is_nonterminal(ntype):
+        return pl.Atom(ntype[1:-1].lower())
+    else:
+        return pl.StringTerm(ntype)

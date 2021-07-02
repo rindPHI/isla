@@ -191,8 +191,7 @@ class ISLaSolver:
                     continue
 
                 new_state: SolutionState = [(c, isla.SMTFormula(z3.BoolVal(True)), solution[c])
-                                            for c in solution
-                                            if c in top_constants]
+                                            for c in solution]
 
                 new_state.extend(substitute_assignment([assgn for assgn in state
                                                         if assgn[0] not in solution], solution))
@@ -204,16 +203,35 @@ class ISLaSolver:
 
             elif isinstance(formula, isla.ExistsFormula):
                 # TODO: Bind expressions
-                new_constant = fresh_constant(all_variables(state),
-                                              isla.Constant(formula.bound_variable.name, formula.bound_variable.n_type))
+                all_vars = all_variables(state)
+                const_subst_map = {}
+                new_constant = fresh_constant(
+                    all_vars, isla.Constant(formula.bound_variable.name, formula.bound_variable.n_type))
+                const_subst_map[formula.bound_variable] = new_constant
+                if formula.bind_expression is not None:
+                    for bv in formula.bound_variables():
+                        const_subst_map[bv] = fresh_constant(all_vars, isla.Constant(bv.name, bv.n_type))
+
                 possible_trees = insert_tree(self.grammar, (new_constant, None), tree)
                 if possible_trees:
                     for possible_tree in possible_trees:
                         new_state = [assgn for assgn in state if assgn is not assignment]
-                        inst_formula = formula.inner_formula.substitute_variables(
-                            {formula.bound_variable: new_constant})
+                        inst_formula = formula.inner_formula.substitute_variables(const_subst_map)
                         new_state.append((constant, inst_formula, possible_tree))
-                        new_state.append((new_constant, inst_formula, (new_constant.n_type, None)))
+
+                        if formula.bind_expression is None:
+                            new_state.append((new_constant, inst_formula, (new_constant.n_type, None)))
+                        else:
+                            bind_expr_tree, _ = formula.bind_expression \
+                                .substitute_variables(const_subst_map) \
+                                .to_tree_prefix(
+                                formula.bound_variable.n_type,
+                                non_canonical(self.grammar))
+                            new_state.append((new_constant, inst_formula, bind_expr_tree))
+                            for bound_variable in formula.bind_expression.bound_variables():
+                                const_for_bv = const_subst_map[bound_variable]
+                                new_state.append((const_for_bv, inst_formula, (const_for_bv.n_type, None)))
+
                         yield from self.process_new_state(new_state, queue, top_constants)
                         # NOTE: The implemented procedure implies that we only yield a finite amount of instantiations,
                         #       which may come unexpected if the top-level formula is existential. To avoid this, we
