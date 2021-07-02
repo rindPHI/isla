@@ -704,7 +704,7 @@ def matches_for_quantified_variable(
                 if maybe_match is not None:
                     new_assignment = copy.copy(initial_assignments)
                     new_assignment[qfd_var] = path, tree
-                    new_assignment.update(maybe_match)
+                    new_assignment.update({v: (path + p[0], p[1]) for v, p in maybe_match.items()})
                     new_assignments.append(new_assignment)
             else:
                 new_assignment = copy.copy(initial_assignments)

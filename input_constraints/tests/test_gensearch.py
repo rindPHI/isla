@@ -43,6 +43,18 @@ class TestGensearch(unittest.TestCase):
 
         self.execute_generation_test(formula, [start])
 
+    def test_simple_universal_formula_with_bind(self):
+        start = isla.Constant("$start", "<start>")
+        rhs = isla.BoundVariable("$rhs", "<rhs>")
+        var1 = isla.BoundVariable("$var", "<var>")
+
+        formula = sc.forall_bind(
+            isla.BindExpression(var1),
+            rhs, start,
+            sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
+
+        self.execute_generation_test(formula, [start], print_solutions=True)
+
     def test_simple_existential_formula(self):
         # NOTE: Existential quantifier instantiation currently does not produce an infinite stream,
         #       since we basically look for paths through the grammar without repetition, which
