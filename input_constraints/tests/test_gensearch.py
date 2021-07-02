@@ -44,6 +44,10 @@ class TestGensearch(unittest.TestCase):
         self.execute_generation_test(formula, [start])
 
     def test_simple_existential_formula(self):
+        # NOTE: Existential quantifier instantiation currently does not produce an infinite stream,
+        #       since we basically look for paths through the grammar without repetition, which
+        #       yields a finite (usually small) number of solutions. Check whether that's a problem.
+        #       Usually, we will have universal quantifiers at top level in any case.
         # logging.basicConfig(level=logging.DEBUG)
         start = isla.Constant("$start", "<start>")
         var1 = isla.BoundVariable("$var", "<var>")

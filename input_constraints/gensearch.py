@@ -192,6 +192,11 @@ class ISLaSolver:
                         new_state.append((constant, inst_formula, possible_tree))
                         new_state.append((new_constant, inst_formula, (new_constant.n_type, None)))
                         yield from self.process_new_state(new_state, queue, top_constants)
+                        # NOTE: The implemented procedure implies that we only yield a finite amount of instantiations,
+                        #       which may come unexpected if the top-level formula is existential. To avoid this, we
+                        #       have to add further expansions of the quantified formula, and make sure to only yield
+                        #       formulas after an additional validity check. This is because the expanded tree might
+                        #       be complete and therefore yielded without further check.
                     continue
 
                 open_relevant_leaves = (pair for pair in open_leaves(tree)
@@ -205,7 +210,8 @@ class ISLaSolver:
                     new_state = [assgn for assgn in state if assgn is not assignment]
                     new_state.append((constant, formula, expanded_tree))
                     yield from self.process_new_state(new_state, queue, top_constants)
-                    continue
+
+                continue
 
             if isinstance(formula, isla.ForallFormula):
                 open_relevant_leaves = (pair for pair in open_leaves(tree)
