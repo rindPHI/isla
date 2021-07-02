@@ -318,12 +318,6 @@ class PropositionalCombinator(Formula):
     def __init__(self, *args: Formula):
         self.args = list(args)
 
-    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
-        return PropositionalCombinator(*[arg.substitute_variables(subst_map) for arg in self.args])
-
-    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> Formula:
-        return PropositionalCombinator(*[arg.substitute_expressions(subst_map) for arg in self.args])
-
     def free_variables(self) -> OrderedSet[Variable]:
         result: OrderedSet[Variable] = OrderedSet([])
         for arg in self.args:
@@ -349,6 +343,12 @@ class NegatedFormula(PropositionalCombinator):
         for formula in self.args:
             formula.accept(visitor)
 
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        return NegatedFormula(*[arg.substitute_variables(subst_map) for arg in self.args])
+
+    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> Formula:
+        return NegatedFormula(*[arg.substitute_expressions(subst_map) for arg in self.args])
+
     def __str__(self):
         return f"¬({self.args[0]})"
 
@@ -358,6 +358,12 @@ class ConjunctiveFormula(PropositionalCombinator):
         if len(args) < 2:
             raise RuntimeError(f"Conjunction needs at least two arguments, {len(args)} given.")
         super().__init__(*args)
+
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        return ConjunctiveFormula(*[arg.substitute_variables(subst_map) for arg in self.args])
+
+    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> Formula:
+        return ConjunctiveFormula(*[arg.substitute_expressions(subst_map) for arg in self.args])
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_conjunctive_formula(self)
@@ -373,6 +379,12 @@ class DisjunctiveFormula(PropositionalCombinator):
         if len(args) < 2:
             raise RuntimeError(f"Disjunction needs at least two arguments, {len(args)} given.")
         super().__init__(*args)
+
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        return DisjunctiveFormula(*[arg.substitute_variables(subst_map) for arg in self.args])
+
+    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> Formula:
+        return DisjunctiveFormula(*[arg.substitute_expressions(subst_map) for arg in self.args])
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_disjunctive_formula(self)
@@ -448,6 +460,8 @@ class QuantifiedFormula(Formula):
                  in_variable: Variable,
                  inner_formula: Formula,
                  bind_expression: Optional[BindExpression] = None):
+        assert inner_formula is not None
+
         self.bound_variable = bound_variable
         self.in_variable = in_variable
         self.inner_formula = inner_formula

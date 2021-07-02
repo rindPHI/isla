@@ -16,9 +16,8 @@ from orderedset import OrderedSet
 from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import is_canonical_grammar, path_iterator, \
-    replace_tree_path, delete_unreachable, tree_to_tuples, open_leaves
-from input_constraints.isla import VariablesCollector, state_to_string, SolutionState, Assignment, \
-    abstract_tree_to_string
+    replace_tree_path, delete_unreachable, tree_to_tuples, open_leaves, dfs
+from input_constraints.isla import VariablesCollector, state_to_string, SolutionState, Assignment
 from input_constraints.type_defs import CanonicalGrammar, Grammar, ParseTree, Path, AbstractTree
 
 
@@ -51,8 +50,8 @@ def inline_state_element(state: SolutionState, state_to_inline: Assignment) -> S
     result: SolutionState = []
     variable, _, tree = state_to_inline
     for state_element in state:
-        other_var, formula, other_tree = state_element
-        result.append((other_var, formula, inline_var_in_tree(other_tree, variable, tree)))
+        other_var, other_formula, other_tree = state_element
+        result.append((other_var, other_formula, inline_var_in_tree(other_tree, variable, tree)))
     return result
 
 
@@ -116,16 +115,73 @@ def complete_state(state: SolutionState) -> bool:
     return all(complete_assignment(assgn) for assgn in state)
 
 
-def cleanup_state(state: SolutionState, top_constants: Set[isla.Constant]) -> SolutionState:
-    """Inline all complete non-top-level assignments.
-    TODO: Remove formula conjuncts if unrelated to assignment constant"""
-    new_state: SolutionState = state
+def split_conjunction(formula: isla.Formula) -> List[isla.Formula]:
+    if not type(formula) is isla.ConjunctiveFormula:
+        return [formula]
+    else:
+        formula: isla.ConjunctiveFormula
+        return [elem for arg in formula.args for elem in split_conjunction(arg)]
 
+
+def get_tree_constants(tree: AbstractTree) -> OrderedSet[isla.Constant]:
+    result: OrderedSet[isla.Constant] = OrderedSet([])
+
+    def action(arg: AbstractTree):
+        node, children = arg
+        if isinstance(node, isla.Constant):
+            result.add(node)
+
+    dfs(tree, action)
+
+    return result
+
+
+def cleanup_state(state: SolutionState, top_constants: Set[isla.Constant]) -> SolutionState:
+    """Inlines all complete non-top-level assignments and removes formula conjuncts
+    if unrelated to assignment constant"""
+    new_state: SolutionState = copy.deepcopy(state)
+
+    # Simplify formulas
+    # TODO: Remove universal formula if quantified nonterminal is not reachable in tree
+    for idx, (constant, formula, tree) in enumerate(new_state):
+        # tree_constants = get_tree_constants(tree)
+
+        new_conjunctions: List[isla.Formula] = []
+        changed = False
+        for conjunct in split_conjunction(formula):
+            if isinstance(conjunct, isla.ExistsFormula) or \
+                    constant in conjunct.free_variables():  # .intersection(tree_constants | {constant}):
+                # Existential formulas may also refer to other constants and must be kept.
+                # TODO: Have to change inlining then! We inline such existential formulas since
+                #       they talk about a higher-level context!
+                #       Example: ∀ $var ∈ $rhs_1_0:
+                #                  (∃ '$lhs_2 " := " $rhs_2' = $assgn_2 ∈ $start:
+                #                     ((before($assgn_2, $assgn_1_0) ∧ $lhs_2 == $var)))
+                #       After var is instantiated in $rhs_1_0, the existential quantifier refers to the
+                #       constant $start of the outer level. So we must not remove the formula, and instead
+                #       inline it.
+                # TODO: Can the same thing also occur for universal formulas?
+                new_conjunctions.append(conjunct)
+            else:
+                changed = True
+            continue
+
+        if changed:
+            if len(new_conjunctions) == 0:
+                new_state[idx] = (constant, isla.SMTFormula(z3.BoolVal(True)), tree)
+            elif len(new_conjunctions) == 1:
+                new_state[idx] = (constant, new_conjunctions[0], tree)
+            else:
+                new_state[idx] = (constant, isla.ConjunctiveFormula(*new_conjunctions), tree)
+
+    # Inline all complete non-top-level assignments with trivial formula
     try:
         while True:
             idx, to_inline = next(((idx, assgn)
                                    for idx, assgn in enumerate(new_state)
                                    if assgn[0] not in top_constants
+                                   and type(assgn[1]) is isla.SMTFormula
+                                   and z3.is_true(cast(isla.SMTFormula, assgn[1]).formula)
                                    and is_complete_tree(assgn[2])))
             new_state = inline_state_element(new_state[:idx] + new_state[idx + 1:], to_inline)
     except StopIteration:
@@ -195,8 +251,6 @@ class ISLaSolver:
 
                 new_state.extend(substitute_assignment([assgn for assgn in state
                                                         if assgn[0] not in solution], solution))
-
-                new_state = cleanup_state(new_state, top_constants)
 
                 yield from self.process_new_state(new_state, queue, top_constants)
                 continue
@@ -325,22 +379,21 @@ class ISLaSolver:
     def process_new_state(self, state: SolutionState,
                           queue: List[Tuple[int, 'SolutionStateWrapper']],
                           top_constants: Set[isla.Constant]):
-        if complete_state(state):
-            yield {c: t for c, _, t in state}
-            return
+        state = cleanup_state(state, top_constants)
 
-        complete_assignments = [assgn for assgn in state if complete_assignment(assgn)]
-        satisfied_assignments = [assgn for assgn in state
-                                 if assgn not in complete_assignments and
-                                 self.formula_satisfied(assgn)]
+        if all(self.formula_satisfied(assgn) for assgn in state):
+            if complete_state(state):
+                yield {c: t for c, _, t in state}
+                return
 
-        if len(complete_assignments) + len(satisfied_assignments) == len(state):
+            complete_assignments = [assgn for assgn in state if complete_assignment(assgn)]
+
             fuzzer = GrammarCoverageFuzzer(non_canonical(self.grammar))
             for _ in range(self.max_number_free_instantiations):
                 all_complete_assignments = copy.deepcopy(complete_assignments)
                 all_complete_assignments.extend([
                     (constant, isla.SMTFormula(z3.BoolVal(True)), fuzzer.expand_tree(copy.deepcopy(tree)))
-                    for constant, _, tree in satisfied_assignments
+                    for constant, _, tree in [assgn for assgn in state if assgn not in complete_assignments]
                 ])
 
                 yield {c: t for c, _, t in all_complete_assignments}

@@ -202,11 +202,12 @@ def get_symbols(formula: z3.BoolRef) -> Set[z3.Symbol]:
     return result
 
 
-def dfs(tree: ParseTree, action=print):
+def dfs(tree: AbstractTree, action: Callable[[AbstractTree], None] = print):
     node, children = tree
     action(tree)
-    for child in children:
-        dfs(child, action)
+    if children is not None:
+        for child in children:
+            dfs(child, action)
 
 
 def geometric_sequence(length: int, base: float = 1.1) -> List[int]:
