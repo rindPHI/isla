@@ -7,7 +7,7 @@ from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
 from fuzzingbook.Grammars import is_nonterminal
 from fuzzingbook.Parser import EarleyParser
-from grammar_graph.gg import GrammarGraph, NonterminalNode
+from grammar_graph.gg import GrammarGraph
 from orderedset import OrderedSet
 
 from input_constraints.helpers import get_subtree, next_path, get_symbols, traverse_tree, is_before, TreeExpander, \
@@ -807,60 +807,6 @@ class NonAtomicVisitor(FormulaVisitor):
 
             if z3.is_string(expr) and not z3.is_string_value(expr) and not z3.is_const(expr):
                 self.non_atomic_variables.update(formula.free_variables())
-
-
-def compute_atomic_string_nonterminals(
-        grammar: Grammar,
-        formula: 'Formula',
-        used_variables: OrderedSet['Variable'],
-        numeric_nonterminals: Iterable[str]
-) -> OrderedSet[str]:
-    # TODO: We should not consider as atomic nonterminals with a simple domain, e.g., a brief enumeration.
-    # TODO: It also makes sense to constrain the numeric domains of atomic nonterminals if there are
-    #       fewer options available than the given maximum domain element.
-
-    def reachable(nonterminal: str) -> Set[str]:
-        graph = GrammarGraph.from_grammar(grammar)
-        dist = graph.dijkstra(graph.get_node(nonterminal))[0]
-        return set([node.symbol for node in dist.keys()
-                    if dist[node] < sys.maxsize
-                    and node.symbol != nonterminal
-                    and type(node) is NonterminalNode])
-
-    used_nonterminals = OrderedSet([variable.n_type
-                                    for variable in used_variables
-                                    if is_nonterminal(variable.n_type)])
-
-    non_atomic_nonterminals = OrderedSet([])
-
-    # Only consider nonterminals that don't reach other used nonterminals
-    used_proxy_nonterminals: OrderedSet[str] = OrderedSet([
-        used_nonterminal
-        for used_nonterminal in
-        used_nonterminals.difference(set(numeric_nonterminals))
-        if reachable(used_nonterminal).intersection(used_nonterminals)
-    ])
-
-    non_atomic_nonterminals |= used_proxy_nonterminals
-
-    unused_sink_nonterminals: OrderedSet[str] = OrderedSet([
-        unused_nonterminal
-        for unused_nonterminal in
-        OrderedSet(grammar.keys())
-            .difference(used_nonterminals)
-            .difference(set(numeric_nonterminals))
-        if not reachable(unused_nonterminal).intersection(used_nonterminals)
-    ])
-
-    v = NonAtomicVisitor()
-    formula.accept(v)
-
-    non_atomic_nonterminals |= [variable.n_type for variable in v.non_atomic_variables]
-
-    return OrderedSet([nonterminal
-                       for nonterminal in used_nonterminals
-                      .difference(non_atomic_nonterminals)
-                      .union(unused_sink_nonterminals)])
 
 
 def abstract_tree_to_string(tree: AbstractTree) -> str:

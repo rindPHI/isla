@@ -1,10 +1,14 @@
-from typing import Dict, List, Optional, Union, Tuple
+import sys
+from typing import Dict, List, Optional, Union, Tuple, Iterable, Set
 
 import pyswip.easy
 from fuzzingbook.Grammars import is_nonterminal
+from grammar_graph.gg import GrammarGraph, NonterminalNode
+from orderedset import OrderedSet
 
 from input_constraints import prolog_structs as pl, prolog_shortcuts as psc
-from input_constraints.type_defs import ParseTree
+from input_constraints.isla import NonAtomicVisitor
+from input_constraints.type_defs import ParseTree, Grammar
 
 
 def pyswip_clp_constraint_to_str(constraint: pyswip.easy.Functor,
@@ -144,3 +148,57 @@ def var_to_pl_nsym(variable):
         return pl.Atom(ntype[1:-1].lower())
     else:
         return pl.StringTerm(ntype)
+
+
+def compute_atomic_string_nonterminals(
+        grammar: Grammar,
+        formula: 'Formula',
+        used_variables: OrderedSet['Variable'],
+        numeric_nonterminals: Iterable[str]
+) -> OrderedSet[str]:
+    # TODO: We should not consider as atomic nonterminals with a simple domain, e.g., a brief enumeration.
+    # TODO: It also makes sense to constrain the numeric domains of atomic nonterminals if there are
+    #       fewer options available than the given maximum domain element.
+
+    def reachable(nonterminal: str) -> Set[str]:
+        graph = GrammarGraph.from_grammar(grammar)
+        dist = graph.dijkstra(graph.get_node(nonterminal))[0]
+        return set([node.symbol for node in dist.keys()
+                    if dist[node] < sys.maxsize
+                    and node.symbol != nonterminal
+                    and type(node) is NonterminalNode])
+
+    used_nonterminals = OrderedSet([variable.n_type
+                                    for variable in used_variables
+                                    if is_nonterminal(variable.n_type)])
+
+    non_atomic_nonterminals = OrderedSet([])
+
+    # Only consider nonterminals that don't reach other used nonterminals
+    used_proxy_nonterminals: OrderedSet[str] = OrderedSet([
+        used_nonterminal
+        for used_nonterminal in
+        used_nonterminals.difference(set(numeric_nonterminals))
+        if reachable(used_nonterminal).intersection(used_nonterminals)
+    ])
+
+    non_atomic_nonterminals |= used_proxy_nonterminals
+
+    unused_sink_nonterminals: OrderedSet[str] = OrderedSet([
+        unused_nonterminal
+        for unused_nonterminal in
+        OrderedSet(grammar.keys())
+            .difference(used_nonterminals)
+            .difference(set(numeric_nonterminals))
+        if not reachable(unused_nonterminal).intersection(used_nonterminals)
+    ])
+
+    v = NonAtomicVisitor()
+    formula.accept(v)
+
+    non_atomic_nonterminals |= [variable.n_type for variable in v.non_atomic_variables]
+
+    return OrderedSet([nonterminal
+                       for nonterminal in used_nonterminals
+                      .difference(non_atomic_nonterminals)
+                      .union(unused_sink_nonterminals)])

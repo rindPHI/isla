@@ -14,6 +14,7 @@ from orderedset import OrderedSet
 from pyswip import Prolog, registerForeign
 
 import input_constraints.isla as isla
+import input_constraints.prolog_helpers
 import input_constraints.prolog_shortcuts as psc
 import input_constraints.prolog_structs as pl
 from input_constraints import helpers
@@ -59,10 +60,10 @@ class Translator:
         self.atomic_string_nonterminals: Dict[str, int] = atomic_string_nonterminals \
             if atomic_string_nonterminals is not None \
             else {nonterminal: Translator.FUZZING_DEPTH_ATOMIC_STRING_NONTERMINALS
-                  for nonterminal in isla.compute_atomic_string_nonterminals(non_canonical(grammar),
-                                                                             formula,
-                                                                             self.used_variables,
-                                                                             self.numeric_nonterminals)}
+                  for nonterminal in input_constraints.prolog_helpers.compute_atomic_string_nonterminals(non_canonical(grammar),
+                                                                                                         formula,
+                                                                                                         self.used_variables,
+                                                                                                         self.numeric_nonterminals)}
 
         self.logger = logging.getLogger(type(self).__name__)
 
