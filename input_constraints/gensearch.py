@@ -2,6 +2,7 @@ import copy
 import heapq
 import logging
 import random
+from functools import lru_cache
 from typing import Union, Optional, Dict, Tuple, List, Generator, Set, cast
 
 import z3
@@ -139,6 +140,7 @@ def get_tree_constants(tree: AbstractTree) -> OrderedSet[isla.Constant]:
 def cleanup_state(state: SolutionState, top_constants: Set[isla.Constant]) -> SolutionState:
     """Inlines all complete non-top-level assignments and removes formula conjuncts
     if unrelated to assignment constant"""
+    # TODO: Convert formulas into PNF
     new_state: SolutionState = copy.deepcopy(state)
 
     # Simplify formulas
@@ -194,7 +196,8 @@ class ISLaSolver:
     def __init__(self,
                  grammar: Union[Grammar, CanonicalGrammar],
                  formula: isla.Formula,
-                 max_number_free_instantiations: int = 10
+                 max_number_free_instantiations: int = 10,
+                 max_number_smt_instantiations: int = 10
                  ):
         self.grammar = grammar
         if is_canonical_grammar(grammar):
@@ -205,6 +208,7 @@ class ISLaSolver:
         self.formula = formula
 
         self.max_number_free_instantiations: int = max_number_free_instantiations
+        self.max_number_smt_instantiations: int = max_number_smt_instantiations
         self.queue_size_limit: Optional[int] = 80
         self.queue_no_removed_items: int = 40
 
@@ -235,24 +239,37 @@ class ISLaSolver:
                                    is_concrete_tree(tree) and any(open_leaves(tree)))[1]))
             constant, formula, tree = assignment
 
+            # Inariant: Formula is in prenex normal form.
+            assert isla.is_pnf(formula)
+
+            # First, instantiate all top-level predicate formulas.
+            formula = instantiate_predicates(formula)
+
             if is_semantic_formula(formula):
                 # TODO: Might have to stall such a formula if other, quantified,
                 #       formulas referring to variables in this formula are not
                 #       yet instantiated. We first process quantifiers, then the atoms.
                 # TODO: Check whether this is actually true, find example!
 
-                solution = self.solve_quantifier_free_formula(formula)
-                if not solution:
+                solutions = self.solve_quantifier_free_formula(formula)
+                if solutions is None:
                     # Unsolvable constraint... Nothing more to do here.
                     continue
 
-                new_state: SolutionState = [(c, isla.SMTFormula(z3.BoolVal(True)), solution[c])
-                                            for c in solution]
+                for solution in solutions:
+                    if solution:
+                        new_state: SolutionState = [(c, isla.SMTFormula(z3.BoolVal(True)), solution[c])
+                                                    for c in solution]
 
-                new_state.extend(substitute_assignment([assgn for assgn in state
-                                                        if assgn[0] not in solution], solution))
+                        new_state.extend(substitute_assignment([assgn for assgn in state
+                                                                if assgn[0] not in solution], solution))
+                    else:
+                        new_state: SolutionState = [(constant, isla.SMTFormula(z3.BoolVal(True)), tree)]
 
-                yield from self.process_new_state(new_state, queue, top_constants)
+                        new_state.extend(substitute_assignment([assgn for assgn in state
+                                                                if assgn[0] is not constant], solution))
+
+                    yield from self.process_new_state(new_state, queue, top_constants)
                 continue
 
             elif isinstance(formula, isla.ExistsFormula):
@@ -452,29 +469,47 @@ class ISLaSolver:
 
         return False
 
-    def solve_quantifier_free_formula(self, formula: isla.Formula) -> Optional[Dict[isla.Constant, ParseTree]]:
-        solver = z3.Solver()
-        constant_collector = VariablesCollector()
-        constants: List[isla.Constant] = [c for c in constant_collector.collect(formula) if
-                                          type(c) is isla.Constant]
+    def solve_quantifier_free_formula(self, formula: isla.Formula) -> Optional[List[Dict[isla.Constant, ParseTree]]]:
+        solutions: List[Dict[isla.Constant, ParseTree]] = []
 
-        for constant in constants:
-            # TODO: Cache regular expressions?
-            regex_conv = RegexConverter(non_canonical(self.grammar))
-            regex = regex_conv.to_regex(constant.n_type)
-            solver.add(z3.InRe(z3.String(constant.name), regex))
+        for _ in range(self.max_number_smt_instantiations):
+            solver = z3.Solver()
+            constant_collector = VariablesCollector()
+            constants: List[isla.Constant] = [c for c in constant_collector.collect(formula) if
+                                              type(c) is isla.Constant]
 
-        formula: isla.SMTFormula  # TODO: Conjunctions, Disjunctions
-        solver.add(formula.formula)
+            for constant in constants:
+                regex = self.extract_regular_expression(constant.n_type)
+                solver.add(z3.InRe(z3.String(constant.name), regex))
 
-        if solver.check() != z3.sat:
-            return None
+            for prev_solution in solutions:
+                for constant in prev_solution:
+                    solver.add(z3.Not(constant.to_smt() == z3.StringVal(tree_to_string(prev_solution[constant]))))
 
-        # TODO: Make configurable to find more assignments
-        return {
-            constant: self.parse(constant.n_type, solver.model()[z3.String(constant.name)].as_string())
-            for constant in constants
-        }
+            solver.add(qfr_free_formula_to_z3_formula(formula))
+
+            if solver.check() != z3.sat:
+                if not solutions:
+                    return None
+                else:
+                    return solutions
+
+            new_solution = {constant: self.parse(constant.n_type, solver.model()[z3.String(constant.name)].as_string())
+                            for constant in constants}
+
+            if new_solution in solutions:
+                # This can happen for trivial solutions, i.e., if the formula is logically valid.
+                # Then, the assignment for that constant will always be {}
+                return solutions
+            else:
+                solutions.append(new_solution)
+
+        return solutions
+
+    @lru_cache()
+    def extract_regular_expression(self, nonterminal: str) -> z3.ReRef:
+        regex_conv = RegexConverter(non_canonical(self.grammar))
+        return regex_conv.to_regex(nonterminal)
 
     def parse(self, nonterminal: str, input: str) -> ParseTree:
         grammar = copy.deepcopy(non_canonical(self.grammar))
@@ -525,6 +560,33 @@ class ISLaSolver:
         # TODO: Add heuristics based on formula
 
         return normalized_depth_value
+
+
+def instantiate_predicates(formula: isla.Formula) -> isla.Formula:
+    if isinstance(formula, isla.PredicateFormula):
+        assert all(isinstance(arg, isla.Constant) for arg in formula.args)
+        constant: isla.Constant
+        inst_result: bool = formula.predicate.evaluate(*[(constant.path, constant) for constant in formula.args])
+        return isla.SMTFormula(z3.BoolVal(inst_result))
+    elif isinstance(formula, isla.ConjunctiveFormula):
+        return isla.ConjunctiveFormula(*[instantiate_predicates(child) for child in formula.args])
+    elif isinstance(formula, isla.DisjunctiveFormula):
+        return isla.DisjunctiveFormula(*[instantiate_predicates(child) for child in formula.args])
+
+    return formula
+
+
+def qfr_free_formula_to_z3_formula(formula: isla.Formula) -> z3.BoolRef:
+    if isinstance(formula, isla.SMTFormula):
+        return formula.formula
+    elif isinstance(formula, isla.NegatedFormula):
+        return z3.Not(qfr_free_formula_to_z3_formula(formula.args[0]))
+    if isinstance(formula, isla.ConjunctiveFormula):
+        return z3.And(*[qfr_free_formula_to_z3_formula(child) for child in formula.args])
+    elif isinstance(formula, isla.DisjunctiveFormula):
+        return z3.Or(*[qfr_free_formula_to_z3_formula(child) for child in formula.args])
+
+    assert False
 
 
 class SolutionStateWrapper:

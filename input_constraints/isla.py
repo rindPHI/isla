@@ -54,14 +54,16 @@ class Variable:
 
 
 class Constant(Variable):
-    def __init__(self, name: str, n_type: str):
+    def __init__(self, name: str, n_type: str, path: Optional[Path] = None):
         """
         A constant is a "free variable" in a formula.
 
         :param name: The name of the constant.
         :param n_type: The nonterminal type of the constant, e.g., "<var>".
+        :param path: An optional path relative to a root element. Used in generation.
         """
         super().__init__(name, n_type)
+        self.path = path
 
 
 class BoundVariable(Variable):
@@ -593,8 +595,8 @@ class FilterVisitor(FormulaVisitor):
         self.filter = filter
         self.result: List[Formula] = []
 
-    def collect(self, formula: Formula) -> OrderedSet[Variable]:
-        self.result = OrderedSet([])
+    def collect(self, formula: Formula) -> List[Variable]:
+        self.result = []
         formula.accept(self)
         return self.result
 
@@ -822,3 +824,43 @@ def abstract_tree_to_string(tree: AbstractTree) -> str:
 def state_to_string(state: SolutionState) -> str:
     return "{(" + "), (".join(map(str, [f"{constant.name}, {formula}, \"{abstract_tree_to_string(tree)}\""
                                         for constant, formula, tree in state])) + ")}"
+
+
+def is_pnf(formula: Formula) -> bool:
+    class QuantifierVisitor(FormulaVisitor):
+        def __init__(self):
+            super().__init__()
+            self.contains_quantifiers = False
+
+        def visit_exists_formula(self, formula: 'ExistsFormula'):
+            self.contains_quantifiers = True
+
+        def visit_forall_formula(self, formula: 'ForallFormula'):
+            self.contains_quantifiers = True
+
+    class PNFVisitor(FormulaVisitor):
+        def __init__(self):
+            super().__init__()
+            self.is_pnf = True
+
+        def visit_disjunctive_formula(self, formula: 'DisjunctiveFormula'):
+            qfr_visitor = QuantifierVisitor()
+            formula.accept(qfr_visitor)
+            if self.is_pnf:
+                self.is_pnf = not qfr_visitor.contains_quantifiers
+
+        def visit_conjunctive_formula(self, formula: 'ConjunctiveFormula'):
+            qfr_visitor = QuantifierVisitor()
+            formula.accept(qfr_visitor)
+            if self.is_pnf:
+                self.is_pnf = not qfr_visitor.contains_quantifiers
+
+        def visit_negated_formula(self, formula: 'NegatedFormula'):
+            qfr_visitor = QuantifierVisitor()
+            formula.accept(qfr_visitor)
+            if self.is_pnf:
+                self.is_pnf = not qfr_visitor.contains_quantifiers
+
+    pnf_visitor = PNFVisitor()
+    formula.accept(pnf_visitor)
+    return pnf_visitor.is_pnf

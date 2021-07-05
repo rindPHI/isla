@@ -4,6 +4,7 @@ from typing import cast, List
 
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string
+from fuzzingbook.Parser import EarleyParser
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
@@ -20,7 +21,7 @@ class TestGensearch(unittest.TestCase):
 
         self.execute_generation_test(formula, [var1, var2], num_solutions=1)
 
-    def test_conjunctive_formula(self):
+    def test_semantic_conjunctive_formula(self):
         var1 = isla.Constant("$var1", "<var>")
         var2 = isla.Constant("$var2", "<var>")
         var3 = isla.Constant("$var3", "<var>")
@@ -31,6 +32,20 @@ class TestGensearch(unittest.TestCase):
                  ), var1, var2, var3)
 
         self.execute_generation_test(formula, [var1, var2, var3], num_solutions=1)
+
+    def test_simple_predicate_conjunction(self):
+        # Idea: part of an assignment "var := rhs"
+        var = isla.Constant("$var", "<var>", (0, 0, 0))
+        rhs = isla.Constant("$rhs", "<rhs>", (0, 0, 2))
+
+        formula = isla.ConjunctiveFormula(
+            isla.SMTFormula(cast(z3.BoolRef, var.to_smt() == z3.StringVal("x")), var),
+            sc.before(var, rhs))
+
+        self.execute_generation_test(formula, [var, rhs],
+                                     max_number_smt_instantiations=2,
+                                     max_number_free_instantiations=10,
+                                     num_solutions=10)
 
     def test_simple_universal_formula(self):
         # logging.basicConfig(level=logging.DEBUG)
@@ -118,21 +133,28 @@ class TestGensearch(unittest.TestCase):
                                 constants: List[isla.Constant],
                                 num_solutions=50,
                                 print_solutions=False,
-                                max_number_free_instantiations=1
+                                max_number_free_instantiations=1,
+                                max_number_smt_instantiations=1
                                 ):
-        solver = ISLaSolver(LANG_GRAMMAR, formula, max_number_free_instantiations)
+        solver = ISLaSolver(
+            grammar=LANG_GRAMMAR,
+            formula=formula,
+            max_number_free_instantiations=max_number_free_instantiations,
+            max_number_smt_instantiations=max_number_smt_instantiations)
 
         it = solver.find_solution()
-        for _ in range(num_solutions):
+        for idx in range(num_solutions):
             try:
                 assignment = next(it)
                 if print_solutions:
                     print(", ".join([tree_to_string(assignment[c]) for c in constants]))
                 self.assertTrue(isla.evaluate(formula, {
-                    c: (tuple(), assignment[c]) for c in constants
+                    c: (tuple() if c.path is None else c.path, assignment[c]) for c in constants
                 }))
             except StopIteration:
-                self.fail()
+                if idx == 0:
+                    self.fail("No solution found.")
+                self.fail(f"Only found {idx} solutions")
 
 
 if __name__ == '__main__':
