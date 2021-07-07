@@ -4,7 +4,6 @@ from typing import cast, List
 
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string
-from fuzzingbook.Parser import EarleyParser
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
@@ -48,7 +47,6 @@ class TestGensearch(unittest.TestCase):
                                      num_solutions=10)
 
     def test_simple_universal_formula(self):
-        # logging.basicConfig(level=logging.DEBUG)
         start = isla.Constant("$start", "<start>")
         var1 = isla.BoundVariable("$var", "<var>")
 
@@ -56,7 +54,8 @@ class TestGensearch(unittest.TestCase):
             var1, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        self.execute_generation_test(formula, [start])
+        self.execute_generation_test(formula, [start], num_solutions=10)
+        # More solutions possible, but want to safe time. TODO Have to do profiling!
 
     def test_simple_universal_formula_with_bind(self):
         start = isla.Constant("$start", "<start>")
@@ -99,7 +98,40 @@ class TestGensearch(unittest.TestCase):
 
         self.execute_generation_test(formula, [start], num_solutions=10, max_number_free_instantiations=10)
 
+    def test_conjunction_of_qfd_formulas(self):
+        start = isla.Constant("$start", "<start>")
+        assgn = isla.BoundVariable("$assgn", "<assgn>")
+        rhs_1 = isla.BoundVariable("$rhs1", "<rhs>")
+        rhs_2 = isla.BoundVariable("$rhs2", "<rhs>")
+        var_1 = isla.BoundVariable("$var1", "<var>")
+        var_2 = isla.BoundVariable("$var2", "<var>")
+
+        # Below formula violates the normal form
+        # formula = \
+        #     sc.forall_bind(
+        #         isla.BindExpression(var_1),
+        #         rhs_1, start,
+        #         sc.smt_for(cast(z3.BoolRef, var_1.to_smt() == z3.StringVal("x")), var_1)) & \
+        #     sc.forall_bind(
+        #         var_2 + " := " + rhs_2,
+        #         assgn, start,
+        #         sc.smt_for(cast(z3.BoolRef, var_2.to_smt() == z3.StringVal("y")), var_2))
+
+        formula = \
+            sc.forall_bind(
+                var_2 + " := " + rhs_2,
+                assgn, start,
+                (sc.smt_for(cast(z3.BoolRef, var_2.to_smt() == z3.StringVal("y")), var_2) &
+                 sc.forall(
+                     var_1, rhs_2,
+                     sc.smt_for(cast(z3.BoolRef, var_1.to_smt() == z3.StringVal("x")), var_1))
+                 ))
+
+        self.execute_generation_test(formula, [start], num_solutions=1, print_solutions=True)
+
     def test_declared_before_used(self):
+        logging.basicConfig(level=logging.DEBUG)
+
         start = isla.Constant("$start", "<start>")
         lhs_1 = isla.BoundVariable("$lhs_1", "<var>")
         lhs_2 = isla.BoundVariable("$lhs_2", "<var>")

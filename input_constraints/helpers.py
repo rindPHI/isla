@@ -344,10 +344,16 @@ def z3_subst(inp: z3.ExprRef, subst_map: Dict[z3.ExprRef, z3.ExprRef]) -> z3.Exp
     return z3.substitute(inp, *tuple(subst_map.items()))
 
 
-def open_leaves(tree: AbstractTree) -> Generator[Tuple[Path, AbstractTree], None, None]:
+def open_concrete_leaves(tree: AbstractTree) -> Generator[Tuple[Path, AbstractTree], None, None]:
     return ((path, sub_tree)
             for path, sub_tree in path_iterator(tree)
             if type(sub_tree[0]) is str and sub_tree[1] is None)
+
+
+def all_open_leaves(tree: AbstractTree) -> Generator[Tuple[Path, AbstractTree], None, None]:
+    return ((path, sub_tree)
+            for path, sub_tree in path_iterator(tree)
+            if sub_tree[1] is None)
 
 
 def reachable(grammar: Grammar, nonterminal: str, to_nonterminal: str) -> bool:

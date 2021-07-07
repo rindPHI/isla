@@ -1,17 +1,15 @@
 import copy
-import sys
-from typing import Union, List, Optional, Dict, Tuple, Callable, Iterable, Set, cast
+from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator
 
 import z3
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
 from fuzzingbook.Grammars import is_nonterminal
 from fuzzingbook.Parser import EarleyParser
 from grammar_graph.gg import GrammarGraph
 from orderedset import OrderedSet
 
-from input_constraints.helpers import get_subtree, next_path, get_symbols, traverse_tree, is_before, TreeExpander, \
-    tree_depth, visit_z3_expr, is_z3_var, z3_subst, path_iterator, replace_tree_path
+from input_constraints.helpers import get_subtree, next_path, get_symbols, traverse_tree, is_before, visit_z3_expr, \
+    is_z3_var, z3_subst, path_iterator, replace_tree_path
 from input_constraints.type_defs import ParseTree, Path, Grammar, AbstractTree
 
 SolutionState = List[Tuple['Constant', 'Formula', AbstractTree]]
@@ -242,9 +240,39 @@ class Formula:
         pass
 
     def __and__(self, other):
+        if self == other:
+            return self
+
+        if isinstance(self, SMTFormula) and z3.is_false(self.formula):
+            return self
+
+        if isinstance(other, SMTFormula) and z3.is_false(other):
+            return other
+
+        if isinstance(self, SMTFormula) and z3.is_true(self.formula):
+            return other
+
+        if isinstance(other, SMTFormula) and z3.is_true(other):
+            return self
+
         return ConjunctiveFormula(self, other)
 
     def __or__(self, other):
+        if self == other:
+            return self
+
+        if isinstance(self, SMTFormula) and z3.is_true(self.formula):
+            return self
+
+        if isinstance(other, SMTFormula) and z3.is_true(other):
+            return other
+
+        if isinstance(self, SMTFormula) and z3.is_false(self.formula):
+            return other
+
+        if isinstance(other, SMTFormula) and z3.is_false(other):
+            return self
+
         return DisjunctiveFormula(self, other)
 
     def __neg__(self):
@@ -307,7 +335,7 @@ class PredicateFormula(Formula):
         return hash((self.predicate, self.args))
 
     def __eq__(self, other):
-        return (self.predicate, self.args) == (other.predicate, other.args)
+        return type(self) is type(other) and (self.predicate, self.args) == (other.predicate, other.args)
 
     def __str__(self):
         return f"{self.predicate}({', '.join(map(str, self.args))})"
@@ -450,7 +478,7 @@ class SMTFormula(Formula):
         return str(self.formula)
 
     def __eq__(self, other):
-        return self.formula == other.formula
+        return type(self) == type(other) and self.formula == other.formula
 
     def __hash__(self):
         return hash(self.formula)
@@ -821,46 +849,12 @@ def abstract_tree_to_string(tree: AbstractTree) -> str:
         return symbol
 
 
+def tree_variables(tree: AbstractTree) -> Generator[Variable, None, None]:
+    return (sub_tree[0]
+            for _, sub_tree in path_iterator(tree)
+            if isinstance(sub_tree[0], Variable))
+
+
 def state_to_string(state: SolutionState) -> str:
     return "{(" + "), (".join(map(str, [f"{constant.name}, {formula}, \"{abstract_tree_to_string(tree)}\""
                                         for constant, formula, tree in state])) + ")}"
-
-
-def is_pnf(formula: Formula) -> bool:
-    class QuantifierVisitor(FormulaVisitor):
-        def __init__(self):
-            super().__init__()
-            self.contains_quantifiers = False
-
-        def visit_exists_formula(self, formula: 'ExistsFormula'):
-            self.contains_quantifiers = True
-
-        def visit_forall_formula(self, formula: 'ForallFormula'):
-            self.contains_quantifiers = True
-
-    class PNFVisitor(FormulaVisitor):
-        def __init__(self):
-            super().__init__()
-            self.is_pnf = True
-
-        def visit_disjunctive_formula(self, formula: 'DisjunctiveFormula'):
-            qfr_visitor = QuantifierVisitor()
-            formula.accept(qfr_visitor)
-            if self.is_pnf:
-                self.is_pnf = not qfr_visitor.contains_quantifiers
-
-        def visit_conjunctive_formula(self, formula: 'ConjunctiveFormula'):
-            qfr_visitor = QuantifierVisitor()
-            formula.accept(qfr_visitor)
-            if self.is_pnf:
-                self.is_pnf = not qfr_visitor.contains_quantifiers
-
-        def visit_negated_formula(self, formula: 'NegatedFormula'):
-            qfr_visitor = QuantifierVisitor()
-            formula.accept(qfr_visitor)
-            if self.is_pnf:
-                self.is_pnf = not qfr_visitor.contains_quantifiers
-
-    pnf_visitor = PNFVisitor()
-    formula.accept(pnf_visitor)
-    return pnf_visitor.is_pnf

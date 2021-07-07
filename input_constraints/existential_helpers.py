@@ -7,7 +7,7 @@ from orderedset import OrderedSet
 
 from input_constraints import isla
 from input_constraints.helpers import get_subtree, prev_path_complete, replace_tree_path, \
-    reverse_tree_iterator, last_path, open_leaves, path_iterator
+    reverse_tree_iterator, last_path, open_concrete_leaves, path_iterator
 from input_constraints.type_defs import ParseTree, Path, CanonicalGrammar, CanonicalExpansionAlternative, AbstractTree
 
 
@@ -116,9 +116,9 @@ def insert_tree(grammar: CanonicalGrammar,
         if current_graph_node.reachable(current_graph_node):
             for self_embedding_path in paths_between(graph, curr_node, curr_node):
                 for self_embedding_tree in path_to_tree(grammar, self_embedding_path):
-                    leaves = list(open_leaves(self_embedding_tree))
+                    leaves = list(open_concrete_leaves(self_embedding_tree))
                     curr_node_occs = len([leaf for leaf in leaves if leaf[1][0] == curr_node])
-                    for leaf_path, (leaf_nonterm, _) in open_leaves(self_embedding_tree):
+                    for leaf_path, (leaf_nonterm, _) in open_concrete_leaves(self_embedding_tree):
                         to_insert_graph_node = graph.get_node(to_insert_nonterminal)
                         if leaf_nonterm == curr_node and curr_node_occs < 2:
                             continue
@@ -131,7 +131,7 @@ def insert_tree(grammar: CanonicalGrammar,
                         if graph.get_node(leaf_nonterm).reachable(to_insert_graph_node):
                             for connecting_path in paths_between(graph, leaf_nonterm, to_insert_nonterminal):
                                 for connecting_tree in path_to_tree(grammar, connecting_path):
-                                    for insert_leaf_path, (insert_leaf_nonterm, _) in open_leaves(connecting_tree):
+                                    for insert_leaf_path, (insert_leaf_nonterm, _) in open_concrete_leaves(connecting_tree):
                                         if insert_leaf_nonterm == to_insert_nonterminal:
                                             instantiated_connecting_tree = \
                                                 replace_tree_path(connecting_tree, insert_leaf_path, tree)
@@ -244,7 +244,7 @@ def path_to_tree(grammar: CanonicalGrammar, path: Union[Tuple[str], List[str]]) 
         next_nonterminal = path[0]
         for _ in range(len(candidates)):
             candidate = candidates.pop(0)
-            leaf_path, (leaf_node, _) = next(open_leaves(candidate))
+            leaf_path, (leaf_node, _) = next(open_concrete_leaves(candidate))
             matching_expansions = [expansion for expansion in grammar[leaf_node]
                                    if next_nonterminal in expansion]
             if not matching_expansions:
