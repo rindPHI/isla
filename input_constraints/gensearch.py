@@ -3,7 +3,7 @@ import heapq
 import logging
 import random
 from functools import lru_cache, reduce
-from typing import Union, Optional, Dict, Tuple, List, Generator, Set, cast
+from typing import Union, Optional, Dict, Tuple, List, Generator, Set, cast, Callable
 
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
@@ -229,12 +229,25 @@ def cleanup_state(state: SolutionState, grammar: Grammar, top_constants: Set[isl
         pass
 
     # Remove non-top level constant assignments that do not occur in any other tree
+
+    obsolete_constants = {constant for constant, _, _ in new_state
+                          if constant not in top_constants and
+                          all(constant not in isla.tree_variables(other_tree)
+                              for other_const, _, other_tree in new_state
+                              if constant != other_const)}
+
     new_state = [(constant, formula, tree)
                  for constant, formula, tree in new_state
-                 if constant in top_constants
-                 or any(constant in isla.tree_variables(other_tree)
-                        for other_const, _, other_tree in new_state
-                        if constant != other_const)]
+                 if constant not in obsolete_constants]
+
+    for idx, (constant, formula, tree) in enumerate(new_state):
+        old_formula = formula
+        formula = replace_formula(formula,
+                                  lambda f: (isinstance(f, isla.QuantifiedFormula)
+                                             and f.in_variable in obsolete_constants),
+                                  isla.SMTFormula(z3.BoolVal(True)))
+        if old_formula != formula:
+            new_state[idx] = (constant, formula, tree)
 
     # TODO: Enforce invariant (see find_solution function)
 
@@ -331,7 +344,7 @@ class ISLaSolver:
                 continue
 
             for disjunctive_element in split_disjunction(formula):
-                qfd_formula_matched = False
+                tree_changed = False
 
                 for conjunctive_element in split_conjunction(disjunctive_element):
                     # TODO: Should we also enforce in the normal form that SMT formulas come before
@@ -340,6 +353,7 @@ class ISLaSolver:
                         new_states = self.handle_semantic_formula(constant, conjunctive_element, disjunctive_element,
                                                                   tree, state)
                         for new_state in new_states:
+                            tree_changed = True
                             for result in self.process_new_state(new_state, queue, top_constants):
                                 yield result
 
@@ -358,7 +372,7 @@ class ISLaSolver:
 
                         possible_trees = insert_tree(self.grammar, (new_constant, None), tree)
                         if possible_trees:
-                            qfd_formula_matched = True
+                            tree_changed = True
 
                             for possible_tree in possible_trees:
                                 new_state = [assgn for assgn in state if assgn is not assignment]
@@ -401,7 +415,7 @@ class ISLaSolver:
                         matches = [match for match in matches if any(p[1][1] is None for _, p in match.items())]
 
                         if matches:
-                            qfd_formula_matched = True
+                            tree_changed = True
 
                             new_state = [assgn for assgn in state if assgn is not assignment]
 
@@ -443,11 +457,11 @@ class ISLaSolver:
                     else:
                         assert False, f"Unsupported formula type {type(formula).__name__}"
 
-                if qfd_formula_matched:
+                if tree_changed:
                     continue
 
-                # TODO: Compute all expansions (for all open leaves) at once! Otherwise,
-                #       we might obtain double output.
+                # Expand.
+
                 expanded_trees = [tree]
                 for leaf_path, (leaf_node, _) in open_concrete_leaves(tree):
                     # We do not expand nonterminals for which we are sure that they can be freely instantiated,
@@ -477,7 +491,7 @@ class ISLaSolver:
                         continue
                     new_state: SolutionState = [assgn for assgn in state if assgn[0] != constant]
                     new_state.append((constant, disjunctive_element, expanded_tree))
-                    # Must not yield here, since quantifiers might match!
+                    # Must not yield here, since quantifiers have to be matched before!
                     self.process_new_state(new_state, queue, top_constants)
 
     def handle_semantic_formula(self,
@@ -595,6 +609,9 @@ class ISLaSolver:
             return False
 
         if is_complete_tree(tree):
+            formula = replace_formula(formula,
+                                      lambda f: isinstance(f, isla.QuantifiedFormula) and f.in_variable != constant,
+                                      isla.SMTFormula(z3.BoolVal(True)))
             result = isla.evaluate(formula, {constant: (tuple() if constant.path is None else constant.path, tree)})
             return result
 
@@ -699,11 +716,17 @@ def instantiate_predicates(formula: isla.Formula) -> isla.Formula:
     return formula
 
 
-def replace_formula(in_formula: isla.Formula, to_replace: isla.Formula, replace_with: isla.Formula) -> isla.Formula:
+def replace_formula(in_formula: isla.Formula,
+                    to_replace: Union[isla.Formula, Callable[[isla.Formula], bool]],
+                    replace_with: isla.Formula) -> isla.Formula:
     """Replaces a formula inside a conjunction or disjunction"""
 
-    if in_formula == to_replace:
-        return replace_with
+    if callable(to_replace):
+        if to_replace(in_formula):
+            return replace_with
+    else:
+        if in_formula == to_replace:
+            return replace_with
 
     if isinstance(in_formula, isla.ConjunctiveFormula):
         return reduce(lambda a, b: a & b, [replace_formula(child, to_replace, replace_with)

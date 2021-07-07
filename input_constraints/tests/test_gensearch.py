@@ -74,7 +74,6 @@ class TestGensearch(unittest.TestCase):
         #       since we basically look for paths through the grammar without repetition, which
         #       yields a finite (usually small) number of solutions. Check whether that's a problem.
         #       Usually, we will have universal quantifiers at top level in any case.
-        # logging.basicConfig(level=logging.DEBUG)
         start = isla.Constant("$start", "<start>")
         var1 = isla.BoundVariable("$var", "<var>")
 
@@ -101,8 +100,7 @@ class TestGensearch(unittest.TestCase):
     def test_conjunction_of_qfd_formulas(self):
         start = isla.Constant("$start", "<start>")
         assgn = isla.BoundVariable("$assgn", "<assgn>")
-        rhs_1 = isla.BoundVariable("$rhs1", "<rhs>")
-        rhs_2 = isla.BoundVariable("$rhs2", "<rhs>")
+        rhs = isla.BoundVariable("$rhs", "<rhs>")
         var_1 = isla.BoundVariable("$var1", "<var>")
         var_2 = isla.BoundVariable("$var2", "<var>")
 
@@ -119,15 +117,16 @@ class TestGensearch(unittest.TestCase):
 
         formula = \
             sc.forall_bind(
-                var_2 + " := " + rhs_2,
+                var_1 + " := " + rhs,
                 assgn, start,
-                (sc.smt_for(cast(z3.BoolRef, var_2.to_smt() == z3.StringVal("y")), var_2) &
+                (sc.smt_for(cast(z3.BoolRef, var_1.to_smt() == z3.StringVal("y")), var_1) &
                  sc.forall(
-                     var_1, rhs_2,
-                     sc.smt_for(cast(z3.BoolRef, var_1.to_smt() == z3.StringVal("x")), var_1))
+                     var_2, rhs,
+                     sc.smt_for(cast(z3.BoolRef, var_2.to_smt() == z3.StringVal("x")), var_2))
                  ))
 
-        self.execute_generation_test(formula, [start], num_solutions=1, print_solutions=True)
+        # TODO: Nontermination for num_solutions > 1! Can we fix that?
+        self.execute_generation_test(formula, [start], num_solutions=1)
 
     def test_declared_before_used(self):
         logging.basicConfig(level=logging.DEBUG)
