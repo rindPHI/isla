@@ -1,12 +1,15 @@
+import copy
 import unittest
+from typing import Optional
 
 from fuzzingbook.Parser import EarleyParser, canonical
 from grammar_graph.gg import GrammarGraph
 
 from input_constraints.existential_helpers import path_to_tree, paths_between
 from input_constraints.helpers import get_subtree, next_path, get_path_of_subtree, is_before, is_prefix, is_after, \
-    prev_path_complete, path_iterator
+    prev_path_complete, path_iterator, next_path_complete, delete_unreachable
 from input_constraints.tests.test_data import LANG_GRAMMAR
+from input_constraints.type_defs import Grammar, ParseTree
 
 
 class TestHelpers(unittest.TestCase):
@@ -74,6 +77,49 @@ class TestHelpers(unittest.TestCase):
             ('1', [('2', [('4', [])]), ('3', [('5', [('7', [])]), ('6', [])])])],
             subtrees)
 
+    def test_next_path_complete(self):
+        tree = ("1", [
+            ("2", [("4", [])]),
+            ("3", [
+                ("5", [("7", [])]),
+                ("6", [])
+            ])
+        ])
+
+        subtrees = []
+        nxt = next_path_complete((0, 0), tree)
+        while nxt is not None:
+            subtrees.append(get_subtree(nxt, tree))
+            nxt = next_path_complete(nxt, tree)
+
+        self.assertEqual([('3', [('5', [('7', [])]), ('6', [])]),
+                          ('5', [('7', [])]),
+                          ('7', []),
+                          ('6', [])], subtrees)
+
+        paths = []
+        nxt = next_path_complete(tuple(), tree)
+        while nxt is not None:
+            paths.append(nxt)
+            nxt = next_path_complete(nxt, tree)
+
+        all_paths = [path for path, _ in path_iterator(tree)]
+
+        self.assertEqual(all_paths, [tuple()] + paths)
+
+    def test_next_path_complete_2(self):
+        inp = "x := 1 ; y := z"
+        tree = parse(inp, LANG_GRAMMAR)
+        paths = []
+        nxt = next_path_complete(tuple(), tree)
+        while nxt is not None:
+            paths.append(nxt)
+            nxt = next_path_complete(nxt, tree)
+
+        all_paths = [path for path, _ in path_iterator(tree)]
+
+        self.assertEqual(all_paths, [tuple()] + paths)
+
     def test_get_path_of_subtree(self):
         subtree = ("1", [])
         tree = ("2", [subtree, ("1", [])])
@@ -133,3 +179,13 @@ class TestHelpers(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def parse(inp: str, grammar: Grammar, start_symbol: Optional[str] = None) -> ParseTree:
+    if start_symbol is None:
+        return next(EarleyParser(grammar).parse(inp))
+    else:
+        grammar = copy.deepcopy(grammar)
+        grammar["<start>"] = [start_symbol]
+        delete_unreachable(grammar)
+        return next(EarleyParser(grammar).parse(inp))[1][0]

@@ -38,5 +38,13 @@ def before(
     return PredicateFormula(BEFORE_PREDICATE, var, before_var)
 
 
+def true():
+    return SMTFormula(z3.BoolVal(True))
+
+
+def false():
+    return SMTFormula(z3.BoolVal(False))
+
+
 def smt_for(formula: z3.BoolRef, *free_variables: Variable) -> SMTFormula:
     return SMTFormula(formula, *free_variables)

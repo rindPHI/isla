@@ -17,8 +17,9 @@ from orderedset import OrderedSet
 from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import is_canonical_grammar, path_iterator, \
-    replace_tree_path, delete_unreachable, tree_to_tuples, open_concrete_leaves, dfs, all_open_leaves
+    replace_tree_path, delete_unreachable, tree_to_tuples, open_concrete_leaves, dfs
 from input_constraints.isla import VariablesCollector, state_to_string, SolutionState, Assignment
+from input_constraints import isla_shortcuts as sc
 from input_constraints.type_defs import CanonicalGrammar, Grammar, ParseTree, Path, AbstractTree
 
 
@@ -145,113 +146,6 @@ def get_tree_constants(tree: AbstractTree) -> OrderedSet[isla.Constant]:
     dfs(tree, action)
 
     return result
-
-
-def cleanup_state(state: SolutionState, grammar: Grammar, top_constants: Set[isla.Constant]) -> SolutionState:
-    """Inlines all complete non-top-level assignments and removes formula conjuncts
-    if unrelated to assignment constant"""
-    new_state: SolutionState = copy.deepcopy(state)
-
-    # Simplify formulas:
-    # - Remove universal formulas if nonterminal of the "in" variable is not reachable in the tree and
-    #   either the constant is top-level, or equals the "in" variable.
-    # - Remove existential formula if already satisfied, or replace with false if quantified nonterminal
-    #   is not reachable in tree, and (in both cases) either the constant is top-level, or equals the "in" variable.
-    # - Remove any quantified formula (replacement with true for universal formulas, and false for existential)
-    #   if the assignment constant is top, and the "in" variable of the formula neither equals the assignment
-    #   constant nor appears in the tree.
-    for idx, assignment in enumerate(state):
-        constant, formula, tree = assignment
-
-        if not isinstance(formula, isla.QuantifiedFormula):
-            continue
-
-        if constant not in top_constants and constant != formula.in_variable:
-            continue
-
-        # Remove formula (true for univ, false for exist) if constant is top and "in" variable is not present in tree.
-        if constant in top_constants and formula.in_variable != constant and constant not in isla.tree_variables(tree):
-            new_state[idx] = constant, \
-                             isla.SMTFormula(z3.BoolVal(isinstance(formula, isla.ForallFormula))), \
-                             tree
-            continue
-
-        formula: isla.QuantifiedFormula
-        qfd_nonterm_reachable = quantified_nonterminals_reachable(grammar, formula, tree)
-
-        if isinstance(formula, isla.ForallFormula):
-            if not qfd_nonterm_reachable:
-                new_state[idx] = constant, isla.SMTFormula(z3.BoolVal(True)), tree
-
-        if isinstance(formula, isla.ExistsFormula):
-            # TODO Check satisfaction (on potentially abstract tree!)
-            if not qfd_nonterm_reachable:
-                # TODO Should we rather not return a state instead of one with a False constraint?
-                new_state[idx] = constant, isla.SMTFormula(z3.BoolVal(False)), tree
-
-    def can_inline(constant: isla.Constant, formula: isla.Formula, tree: AbstractTree,
-                   into_constant: isla.Constant, into_formula: isla.Formula, into_tree: AbstractTree) -> bool:
-        if constant in top_constants:
-            return False
-
-        if not constant in isla.tree_variables(into_tree):
-            return False
-
-        if is_complete_tree(tree) and not (isinstance(formula, isla.ExistsFormula)
-                                           and cast(isla.ExistsFormula, formula).in_variable == constant
-                                           and tree == (constant, None)):
-            return True
-
-        # TODO Also do something similar for universal formulas! E.g.,:
-        #      ($lhs_1_0, ∀ $var ∈ $rhs_1_0: (∃ '$lhs_2 " := " $rhs_2' = $assgn_2 ∈ $start:
-        #          ((before($assgn_2, $assgn_1_0) ∧ $lhs_2 == $var))), "<var>")
-        if (isinstance(formula, isla.ExistsFormula)
-                and cast(isla.ExistsFormula, formula).in_variable != constant
-                and tree == (constant.n_type, None)):
-            return True
-
-        return False
-
-    try:
-        while True:
-            idx, to_inline, into_idx, into = next(((idx, assgn, into_idx, into_assgn)
-                                                   for idx, assgn in enumerate(new_state)
-                                                   for into_idx, into_assgn in enumerate(new_state)
-                                                   if idx != into_idx and can_inline(*assgn, *into_assgn)))
-            if to_inline[2] == (to_inline[0].n_type, None):
-                new_state[into_idx] = inline_state_element([into], (to_inline[0],
-                                                                    to_inline[1],
-                                                                    (to_inline[0], None)))[0]
-            else:
-                new_state[into_idx] = inline_state_element([into], to_inline)[0]
-            del new_state[idx]
-    except StopIteration:
-        pass
-
-    # Remove non-top level constant assignments that do not occur in any other tree
-
-    obsolete_constants = {constant for constant, _, _ in new_state
-                          if constant not in top_constants and
-                          all(constant not in isla.tree_variables(other_tree)
-                              for other_const, _, other_tree in new_state
-                              if constant != other_const)}
-
-    new_state = [(constant, formula, tree)
-                 for constant, formula, tree in new_state
-                 if constant not in obsolete_constants]
-
-    for idx, (constant, formula, tree) in enumerate(new_state):
-        old_formula = formula
-        formula = replace_formula(formula,
-                                  lambda f: (isinstance(f, isla.QuantifiedFormula)
-                                             and f.in_variable in obsolete_constants),
-                                  isla.SMTFormula(z3.BoolVal(True)))
-        if old_formula != formula:
-            new_state[idx] = (constant, formula, tree)
-
-    # TODO: Enforce invariant (see find_solution function)
-
-    return new_state
 
 
 def quantified_nonterminals_reachable(grammar: Grammar, formula: isla.QuantifiedFormula, tree: AbstractTree) -> bool:
@@ -407,6 +301,9 @@ class ISLaSolver:
                         continue
 
                     elif isinstance(conjunctive_element, isla.ForallFormula):
+                        if conjunctive_element.in_variable != constant:
+                            continue
+
                         matches: List[Dict[isla.Variable, Tuple[Path, ParseTree]]] = \
                             isla.matches_for_quantified_variable(conjunctive_element, tree)
                         new_tree = copy.deepcopy(tree)
@@ -467,13 +364,7 @@ class ISLaSolver:
                     # We do not expand nonterminals for which we are sure that they can be freely instantiated,
                     # which are those that are not reachable by nonterminals quantified over by any top level
                     # quantifier in disjunctive_element
-                    qfd_nonterminals = {conj.bound_variable.n_type
-                                        for conj in split_conjunction(disjunctive_element)
-                                        if isinstance(conj, isla.QuantifiedFormula)}
-
-                    if not any(qfd_nonterminal == leaf_node or
-                               self.reachable(leaf_node, qfd_nonterminal)
-                               for qfd_nonterminal in qfd_nonterminals):
+                    if self.can_be_freely_instantiated(leaf_node, disjunctive_element, constant):
                         continue
 
                     # Expand the leaf, check matching instantiations
@@ -493,6 +384,16 @@ class ISLaSolver:
                     new_state.append((constant, disjunctive_element, expanded_tree))
                     # Must not yield here, since quantifiers have to be matched before!
                     self.process_new_state(new_state, queue, top_constants)
+
+    def can_be_freely_instantiated(self, nonterminal: str, conjunctive_formula: isla.Formula,
+                                   constant: isla.Constant) -> bool:
+        qfd_nonterminals = {conj.bound_variable.n_type
+                            for conj in split_conjunction(conjunctive_formula)
+                            if isinstance(conj, isla.QuantifiedFormula) and conj.in_variable == constant}
+        can_be_freely_instantiated = (not any(qfd_nonterminal == nonterminal or
+                                              self.reachable(nonterminal, qfd_nonterminal)
+                                              for qfd_nonterminal in qfd_nonterminals))
+        return can_be_freely_instantiated
 
     def handle_semantic_formula(self,
                                 constant: isla.Constant,
@@ -558,7 +459,7 @@ class ISLaSolver:
     def process_new_state(self, state: SolutionState,
                           queue: List[Tuple[int, 'SolutionStateWrapper']],
                           top_constants: Set[isla.Constant]) -> List[Dict[isla.Constant, ParseTree]]:
-        state = cleanup_state(state, non_canonical(self.grammar), top_constants)
+        state = self.cleanup_state(state, top_constants)
 
         if all(self.formula_satisfied(assgn) for assgn in state):
             if complete_state(state):
@@ -596,6 +497,123 @@ class ISLaSolver:
         self.logger.debug(f"Pushing new state {state_to_string(state)}")
         self.logger.debug(f"Queue length: {len(queue)}")
         return []
+
+    def cleanup_state(self, state: SolutionState, top_constants: Set[isla.Constant]) -> SolutionState:
+        """Inlines all complete non-top-level assignments and removes formula conjuncts
+        if unrelated to assignment constant"""
+        new_state: SolutionState = copy.deepcopy(state)
+
+        # Simplify formulas:
+        # - Remove universal formulas if nonterminal of the "in" variable is not reachable in the tree and
+        #   either the constant is top-level, or equals the "in" variable.
+        # - Remove existential formula if already satisfied, or replace with false if quantified nonterminal
+        #   is not reachable in tree, and (in both cases) either the constant is top-level, or equals the "in" variable.
+        # - Remove any quantified formula (replacement with true for universal formulas, and false for existential)
+        #   if the assignment constant is top, and the "in" variable of the formula neither equals the assignment
+        #   constant nor appears in the tree.
+        for idx, assignment in enumerate(state):
+            constant, formula, tree = assignment
+
+            for conjunctive_element in split_conjunction(formula):
+                if not isinstance(conjunctive_element, isla.QuantifiedFormula):
+                    continue
+
+                if constant not in top_constants and constant != conjunctive_element.in_variable:
+                    continue
+
+                # Remove formula (true for univ, false for exist) if constant is top
+                # and "in" variable is not present in tree.
+                if (constant in top_constants
+                        and conjunctive_element.in_variable != constant
+                        and constant not in isla.tree_variables(tree)):
+                    new_state[idx] = (constant,
+                                      replace_formula(formula, conjunctive_element,
+                                                      isla.SMTFormula(
+                                                          z3.BoolVal(isinstance(conjunctive_element,
+                                                                                isla.ForallFormula)))),
+                                      tree)
+                    continue
+
+                qfd_nonterm_reachable = quantified_nonterminals_reachable(non_canonical(self.grammar),
+                                                                          conjunctive_element, tree)
+
+                if isinstance(conjunctive_element, isla.ForallFormula):
+                    if not qfd_nonterm_reachable:
+                        new_state[idx] = constant, replace_formula(formula, conjunctive_element, sc.true()), tree
+
+                if isinstance(formula, isla.ExistsFormula):
+                    # TODO Check satisfaction (on potentially abstract tree!)
+                    if not qfd_nonterm_reachable:
+                        # TODO Should we rather not return a state instead of one with a False constraint?
+                        new_state[idx] = constant, replace_formula(formula, conjunctive_element, sc.false()), tree
+
+        def can_inline(constant: isla.Constant, formula: isla.Formula, tree: AbstractTree,
+                       into_constant: isla.Constant, into_formula: isla.Formula, into_tree: AbstractTree) -> bool:
+            if constant in top_constants:
+                return False
+
+            if constant not in isla.tree_variables(into_tree):
+                return False
+
+            if is_concrete_tree(tree) and all(self.can_be_freely_instantiated(leaf_node, formula, constant)
+                                              for _, (leaf_node, _) in open_concrete_leaves(tree)):
+                return True
+
+            if is_complete_tree(tree) and not (isinstance(formula, isla.ExistsFormula)
+                                               and cast(isla.ExistsFormula, formula).in_variable == constant
+                                               and tree == (constant, None)):
+                return True
+
+            # TODO Also do something similar for universal formulas! E.g.,:
+            #      ($lhs_1_0, ∀ $var ∈ $rhs_1_0: (∃ '$lhs_2 " := " $rhs_2' = $assgn_2 ∈ $start:
+            #          ((before($assgn_2, $assgn_1_0) ∧ $lhs_2 == $var))), "<var>")
+            if (isinstance(formula, isla.ExistsFormula)
+                    and cast(isla.ExistsFormula, formula).in_variable != constant
+                    and tree == (constant.n_type, None)):
+                return True
+
+            return False
+
+        try:
+            while True:
+                idx, to_inline, into_idx, into = next(((idx, assgn, into_idx, into_assgn)
+                                                       for idx, assgn in enumerate(new_state)
+                                                       for into_idx, into_assgn in enumerate(new_state)
+                                                       if idx != into_idx and can_inline(*assgn, *into_assgn)))
+                # if to_inline[2] == (to_inline[0].n_type, None):
+                #     new_state[into_idx] = inline_state_element([into], (to_inline[0],
+                #                                                         to_inline[1],
+                #                                                         (to_inline[0], None)))[0]
+                # else:
+                new_state[into_idx] = inline_state_element([into], to_inline)[0]
+                del new_state[idx]
+        except StopIteration:
+            pass
+
+        # Remove non-top level constant assignments that do not occur in any other tree
+
+        obsolete_constants = {constant for constant, _, _ in new_state
+                              if constant not in top_constants and
+                              all(constant not in isla.tree_variables(other_tree)
+                                  for other_const, _, other_tree in new_state
+                                  if constant != other_const)}
+
+        new_state = [(constant, formula, tree)
+                     for constant, formula, tree in new_state
+                     if constant not in obsolete_constants]
+
+        for idx, (constant, formula, tree) in enumerate(new_state):
+            old_formula = formula
+            formula = replace_formula(formula,
+                                      lambda f: (isinstance(f, isla.QuantifiedFormula)
+                                                 and f.in_variable in obsolete_constants),
+                                      isla.SMTFormula(z3.BoolVal(True)))
+            if old_formula != formula:
+                new_state[idx] = (constant, formula, tree)
+
+        # TODO: Enforce invariant (see find_solution function)
+
+        return new_state
 
     def reachable(self, nonterminal: str, to_nonterminal: str) -> bool:
         graph = GrammarGraph.from_grammar(non_canonical(self.grammar))

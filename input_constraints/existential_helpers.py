@@ -7,7 +7,8 @@ from orderedset import OrderedSet
 
 from input_constraints import isla
 from input_constraints.helpers import get_subtree, prev_path_complete, replace_tree_path, \
-    reverse_tree_iterator, last_path, open_concrete_leaves, path_iterator
+    reverse_tree_iterator, last_path, open_concrete_leaves, path_iterator, next_path, get_leaves, next_path_complete, \
+    tree_to_tuples
 from input_constraints.type_defs import ParseTree, Path, CanonicalGrammar, CanonicalExpansionAlternative, AbstractTree
 
 
@@ -50,9 +51,134 @@ def match_expansions(graph: GrammarGraph,
 def insert_tree(grammar: CanonicalGrammar,
                 tree: AbstractTree,
                 in_tree: AbstractTree,
-                before_path: Optional[Path] = None,
                 graph: Optional[GrammarGraph] = None,
                 current_path: Optional[Path] = None) -> List[AbstractTree]:
+    if current_path is None:
+        current_path = tuple()
+
+    if graph is None:
+        graph = GrammarGraph.from_grammar(non_canonical(grammar))
+
+    to_insert_node, to_insert_children = tree
+    to_insert_nonterminal = to_insert_node if isinstance(to_insert_node, str) else to_insert_node.n_type
+
+    # We first check whether there are holes in the (incomplete) tree which we can exploit.
+    # If so, we do this.
+    perfect_matches: List[Path] = []
+    embeddable_matches: List[Tuple[Path, ParseTree]] = []
+    for subtree_path, subtree in path_iterator(tree):
+        node, children = subtree
+        if not isinstance(node, str):
+            continue
+
+        if children is not None:
+            continue
+
+        if node == to_insert_nonterminal:
+            perfect_matches.append(subtree_path)
+        elif graph.get_node(node).reachable(graph.get_node(to_insert_nonterminal)):
+            embeddable_matches.append((subtree_path, subtree))
+
+    result: List[AbstractTree] = []
+    hashes: Set[int] = set()
+
+    def add_to_result(new_tree: Union[AbstractTree, List[AbstractTree]]) -> List[AbstractTree]:
+        if type(new_tree) is list:
+            for t in new_tree:
+                add_to_result(t)
+            return result
+
+        # Trees are not hashable, since they contain lists...
+        hash_value = hash(str(new_tree))
+        if hash_value not in hashes:
+            result.append(new_tree)
+            hashes.add(hash_value)
+
+        return result
+
+    for match_path_perfect in perfect_matches:
+        add_to_result(replace_tree_path(in_tree, match_path_perfect, tree))
+
+    for match_path_embeddable, match_tree in embeddable_matches:
+        t = wrap_in_tree_starting_in(match_tree[0], tree, grammar, graph)
+        add_to_result(replace_tree_path(in_tree, match_path_embeddable, t))
+
+    # Next, we check whether we can take another alternative at the parent node.
+
+    curr_tree = get_subtree(current_path, in_tree)
+    curr_node, curr_children = curr_tree
+
+    if is_nonterminal(curr_node):
+        # Finally, we try a self-embedding: embed the current node into a tree starting
+        # with the same nonterminal, such that `tree` can be added somewhere before
+        # the place where `current_tree` is added.
+
+        current_graph_node: NonterminalNode = graph.get_node(curr_node)
+        if current_graph_node.reachable(current_graph_node):
+            for self_embedding_path in paths_between(graph, curr_node, curr_node):
+                for self_embedding_tree in path_to_tree(grammar, self_embedding_path):
+                    # For each the curr_tree and the tree to insert, have to find one leaf s.t. either
+                    # (1) we can replace the leaf with that tree, or
+                    # (2) we can add that tree somewhere below that leaf.
+
+                    def insert(trees_to_insert: List[AbstractTree], into_tree: AbstractTree) -> List[AbstractTree]:
+                        if not trees_to_insert:
+                            return [into_tree]
+
+                        result: List[AbstractTree] = []
+                        leaves = list(open_concrete_leaves(into_tree))
+
+                        for leaf_idx, (leaf_path, (leaf_nonterm, _)) in enumerate(leaves):
+                            for insert_tree_idx, tree_to_insert in enumerate(trees_to_insert):
+                                nonterm_to_insert = (tree_to_insert[0] if isinstance(tree_to_insert[0], str)
+                                                     else tree_to_insert[0].n_type)
+                                if leaf_nonterm == nonterm_to_insert:
+                                    result += insert(trees_to_insert[:insert_tree_idx] +
+                                                     trees_to_insert[insert_tree_idx + 1:],
+                                                     replace_tree_path(into_tree, leaf_path, tree_to_insert))
+                                elif (tree_to_insert[1] is not None
+                                      and len(tree_to_insert[1]) == 1
+                                      and tree_to_insert[1][0][0] == leaf_nonterm):
+                                    result += insert(trees_to_insert[:insert_tree_idx] +
+                                                     trees_to_insert[insert_tree_idx + 1:],
+                                                     replace_tree_path(into_tree, leaf_path, tree_to_insert[1][0]))
+                                else:
+                                    leaf_nonterm_node = graph.get_node(leaf_nonterm)
+                                    to_insert_nonterm_node = graph.get_node(nonterm_to_insert)
+                                    if leaf_nonterm_node.reachable(to_insert_nonterm_node):
+                                        for connecting_path in paths_between(graph, leaf_nonterm, nonterm_to_insert):
+                                            for connecting_tree in path_to_tree(grammar, connecting_path):
+                                                for insert_leaf_path, (insert_leaf_nonterm, _) in open_concrete_leaves(
+                                                        connecting_tree):
+                                                    if insert_leaf_nonterm == nonterm_to_insert:
+                                                        instantiated_connecting_tree = \
+                                                            replace_tree_path(connecting_tree, insert_leaf_path, tree_to_insert)
+                                                        result += insert(
+                                                            trees_to_insert[:insert_tree_idx] +
+                                                            trees_to_insert[insert_tree_idx + 1:],
+                                                            replace_tree_path(into_tree, leaf_path,
+                                                                              instantiated_connecting_tree)
+                                                        )
+
+                        return result
+
+                    instantiated_trees = insert([curr_tree, tree], self_embedding_tree)
+                    for instantiated_tree in instantiated_trees:
+                        add_to_result(replace_tree_path(in_tree, current_path, instantiated_tree))
+
+    np = next_path_complete(current_path, in_tree)
+    if np is None:
+        return result
+    else:
+        return add_to_result(insert_tree(grammar, tree, in_tree, graph, np))
+
+
+def insert_tree_before(grammar: CanonicalGrammar,
+                       tree: AbstractTree,
+                       in_tree: AbstractTree,
+                       before_path: Optional[Path] = None,
+                       graph: Optional[GrammarGraph] = None,
+                       current_path: Optional[Path] = None) -> List[AbstractTree]:
     # TODO: The updated implementation does not necessarily maintain the insertion-before criterion;
     #       we might actually consider abolishing it and check syntactic predicates by filtering,
     #       which should be cheap enough and yield a simpler implementation.
@@ -131,7 +257,8 @@ def insert_tree(grammar: CanonicalGrammar,
                         if graph.get_node(leaf_nonterm).reachable(to_insert_graph_node):
                             for connecting_path in paths_between(graph, leaf_nonterm, to_insert_nonterminal):
                                 for connecting_tree in path_to_tree(grammar, connecting_path):
-                                    for insert_leaf_path, (insert_leaf_nonterm, _) in open_concrete_leaves(connecting_tree):
+                                    for insert_leaf_path, (insert_leaf_nonterm, _) in open_concrete_leaves(
+                                            connecting_tree):
                                         if insert_leaf_nonterm == to_insert_nonterminal:
                                             instantiated_connecting_tree = \
                                                 replace_tree_path(connecting_tree, insert_leaf_path, tree)
@@ -177,7 +304,7 @@ def insert_tree(grammar: CanonicalGrammar,
     if next_path is None:
         return result
     else:
-        return add_to_result(insert_tree(grammar, tree, in_tree, before_path, graph, next_path))
+        return add_to_result(insert_tree_before(grammar, tree, in_tree, before_path, graph, next_path))
 
 
 def shrink_tree(tree: AbstractTree) -> AbstractTree:

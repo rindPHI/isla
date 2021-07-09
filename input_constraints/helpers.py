@@ -144,7 +144,9 @@ def get_subtree(path: Path, tree: ParseTree) -> ParseTree:
 
 
 def next_path(path: Path, tree: ParseTree) -> Optional[Path]:
-    """Returns the next path in the tree; does not proceed towards leaves!"""
+    """Returns the next path in the tree; does not proceed towards leaves!
+
+    TODO: Check whether next_path actually makes sense, or whether we should use next_path_complete..."""
     if not path:
         return None
 
@@ -153,6 +155,46 @@ def next_path(path: Path, tree: ParseTree) -> Optional[Path]:
         return path[:-1] + (path[-1] + 1,)
     else:
         return next_path(path[:-1], tree)
+
+
+def next_path_complete(path: Path, tree: ParseTree) -> Optional[Path]:
+    """
+    Returns the next path in the tree. Repeated calls result in an iterator over
+    the paths in the tree, unlike next_path.
+    """
+
+    def num_children(path: Path) -> int:
+        _, children = get_subtree(path, tree)
+        if children is None:
+            return 0
+        return len(children)
+
+    # Descent towards left-most child leaf
+    if num_children(path) > 0:
+        return path + (0,)
+
+    # Find next sibling
+    for i in range(1, len(path)):
+        if path[-i] + 1 < num_children(path[:-i]):
+            return path[:-i] + (path[-i] + 1,)
+
+    # Proceed to next root child
+    if path[0] + 1 < num_children(tuple()):
+        return path[0] + 1,
+
+    # path already is the last path.
+    assert list(path_iterator(tree))[-1][0] == path
+    return None
+
+    # last_child_idx = path[-1]
+    # while path and path[-1] + 1 >= num_children(path):
+    #     last_child_idx = path[-1]
+    #     path = path[:-1]
+    #
+    # if last_child_idx + 1 < num_children(path):
+    #     return path + (last_child_idx + 1,)
+    # else:
+    #     return None
 
 
 def prev_path_complete(path: Path, tree: ParseTree) -> Optional[Path]:
@@ -165,7 +207,7 @@ def prev_path_complete(path: Path, tree: ParseTree) -> Optional[Path]:
 
     if path[-1] - 1 >= 0:
         new_path = path[:-1] + (path[-1] - 1,)
-        # Proceed right-most leave
+        # Proceed right-most leaf
         _, children = get_subtree(new_path, tree)
         while children:
             new_path = new_path + (len(children) - 1,)
@@ -342,6 +384,12 @@ def z3_subst_assgn(inp: z3.ExprRef, subst_map: Dict['isla.Variable', ParseTree])
 
 def z3_subst(inp: z3.ExprRef, subst_map: Dict[z3.ExprRef, z3.ExprRef]) -> z3.ExprRef:
     return z3.substitute(inp, *tuple(subst_map.items()))
+
+
+def get_leaves(tree: AbstractTree) -> Generator[Tuple[Path, AbstractTree], None, None]:
+    return ((path, sub_tree)
+            for path, sub_tree in path_iterator(tree)
+            if not sub_tree[1])
 
 
 def open_concrete_leaves(tree: AbstractTree) -> Generator[Tuple[Path, AbstractTree], None, None]:
