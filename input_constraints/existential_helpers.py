@@ -1,3 +1,4 @@
+import operator
 from typing import Optional, List, Tuple, Dict, cast, Union, Set, Generator
 
 from fuzzingbook.Grammars import is_nonterminal
@@ -52,7 +53,7 @@ def insert_tree(grammar: CanonicalGrammar,
                 tree: AbstractTree,
                 in_tree: AbstractTree,
                 graph: Optional[GrammarGraph] = None,
-                current_path: Optional[Path] = None) -> List[AbstractTree]:
+                current_path: Optional[Path] = None) -> List[Tuple[Path, AbstractTree]]:
     if current_path is None:
         current_path = tuple()
 
@@ -79,17 +80,18 @@ def insert_tree(grammar: CanonicalGrammar,
         elif graph.get_node(node).reachable(graph.get_node(to_insert_nonterminal)):
             embeddable_matches.append((subtree_path, subtree))
 
-    result: List[AbstractTree] = []
+    result: List[Tuple[Path, AbstractTree]] = []
     hashes: Set[int] = set()
 
-    def add_to_result(new_tree: Union[AbstractTree, List[AbstractTree]]) -> List[AbstractTree]:
+    def add_to_result(new_tree: Union[Tuple[Path, AbstractTree],
+                                      List[Tuple[Path, AbstractTree]]]) -> List[Tuple[Path, AbstractTree]]:
         if type(new_tree) is list:
             for t in new_tree:
                 add_to_result(t)
             return result
 
         # Trees are not hashable, since they contain lists...
-        hash_value = hash(str(new_tree))
+        hash_value = hash(str(new_tree[1]))
         if hash_value not in hashes:
             result.append(new_tree)
             hashes.add(hash_value)
@@ -97,18 +99,18 @@ def insert_tree(grammar: CanonicalGrammar,
         return result
 
     for match_path_perfect in perfect_matches:
-        add_to_result(replace_tree_path(in_tree, match_path_perfect, tree))
+        add_to_result((match_path_perfect, replace_tree_path(in_tree, match_path_perfect, tree)))
 
     for match_path_embeddable, match_tree in embeddable_matches:
         t = wrap_in_tree_starting_in(match_tree[0], tree, grammar, graph)
-        add_to_result(replace_tree_path(in_tree, match_path_embeddable, t))
+        add_to_result((match_path_embeddable, replace_tree_path(in_tree, match_path_embeddable, t)))
 
     # Next, we check whether we can take another alternative at the parent node.
 
     curr_tree = get_subtree(current_path, in_tree)
     curr_node, curr_children = curr_tree
 
-    if is_nonterminal(curr_node):
+    if isinstance(curr_node, str) and is_nonterminal(curr_node):
         # Finally, we try a self-embedding: embed the current node into a tree starting
         # with the same nonterminal, such that `tree` can be added somewhere before
         # the place where `current_tree` is added.
@@ -121,11 +123,19 @@ def insert_tree(grammar: CanonicalGrammar,
                     # (1) we can replace the leaf with that tree, or
                     # (2) we can add that tree somewhere below that leaf.
 
-                    def insert(trees_to_insert: List[AbstractTree], into_tree: AbstractTree) -> List[AbstractTree]:
+                    def insert(trees_to_insert: List[AbstractTree],
+                               into_tree: AbstractTree,
+                               insert_paths: Optional[List[Tuple[AbstractTree, Path]]] = None) -> \
+                            List[Tuple[List[Tuple[AbstractTree, Path]], AbstractTree]]:
                         if not trees_to_insert:
-                            return [into_tree]
+                            assert insert_paths is not None
+                            return [(insert_paths, into_tree)]
 
-                        result: List[AbstractTree] = []
+                        if not insert_paths:
+                            insert_paths = []
+
+                        result: List[Tuple[List[Tuple[AbstractTree, Path]], AbstractTree]] = []
+
                         leaves = list(open_concrete_leaves(into_tree))
 
                         for leaf_idx, (leaf_path, (leaf_nonterm, _)) in enumerate(leaves):
@@ -135,13 +145,16 @@ def insert_tree(grammar: CanonicalGrammar,
                                 if leaf_nonterm == nonterm_to_insert:
                                     result += insert(trees_to_insert[:insert_tree_idx] +
                                                      trees_to_insert[insert_tree_idx + 1:],
-                                                     replace_tree_path(into_tree, leaf_path, tree_to_insert))
+                                                     replace_tree_path(into_tree, leaf_path, tree_to_insert),
+                                                     insert_paths + [(tree_to_insert, leaf_path)])
                                 elif (tree_to_insert[1] is not None
                                       and len(tree_to_insert[1]) == 1
                                       and tree_to_insert[1][0][0] == leaf_nonterm):
                                     result += insert(trees_to_insert[:insert_tree_idx] +
                                                      trees_to_insert[insert_tree_idx + 1:],
-                                                     replace_tree_path(into_tree, leaf_path, tree_to_insert[1][0]))
+                                                     replace_tree_path(into_tree, leaf_path,
+                                                                       tree_to_insert[1][0]),
+                                                     insert_paths + [(tree_to_insert, leaf_path)])
                                 else:
                                     leaf_nonterm_node = graph.get_node(leaf_nonterm)
                                     to_insert_nonterm_node = graph.get_node(nonterm_to_insert)
@@ -152,19 +165,23 @@ def insert_tree(grammar: CanonicalGrammar,
                                                         connecting_tree):
                                                     if insert_leaf_nonterm == nonterm_to_insert:
                                                         instantiated_connecting_tree = \
-                                                            replace_tree_path(connecting_tree, insert_leaf_path, tree_to_insert)
+                                                            replace_tree_path(connecting_tree, insert_leaf_path,
+                                                                              tree_to_insert)
                                                         result += insert(
                                                             trees_to_insert[:insert_tree_idx] +
                                                             trees_to_insert[insert_tree_idx + 1:],
                                                             replace_tree_path(into_tree, leaf_path,
-                                                                              instantiated_connecting_tree)
-                                                        )
+                                                                              instantiated_connecting_tree),
+                                                            insert_paths + [(tree_to_insert,
+                                                                             leaf_path + insert_leaf_path)])
 
                         return result
 
-                    instantiated_trees = insert([curr_tree, tree], self_embedding_tree)
-                    for instantiated_tree in instantiated_trees:
-                        add_to_result(replace_tree_path(in_tree, current_path, instantiated_tree))
+                    results = insert([curr_tree, tree], self_embedding_tree)
+                    for insertion_paths, instantiated_tree in results:
+                        add_to_result((current_path + [path for idx_tree, path in insertion_paths
+                                                       if idx_tree == tree][0],
+                                       replace_tree_path(in_tree, current_path, instantiated_tree)))
 
     np = next_path_complete(current_path, in_tree)
     if np is None:

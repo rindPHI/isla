@@ -131,7 +131,7 @@ class TestGensearch(unittest.TestCase):
     def test_declared_before_used(self):
         logging.basicConfig(level=logging.DEBUG)
 
-        start = isla.Constant("$start", "<start>")
+        start = isla.Constant("$start", "<start>", tuple())
         lhs_1 = isla.BoundVariable("$lhs_1", "<var>")
         lhs_2 = isla.BoundVariable("$lhs_2", "<var>")
         rhs_1 = isla.BoundVariable("$rhs_1", "<rhs>")

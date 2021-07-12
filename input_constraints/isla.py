@@ -62,6 +62,7 @@ class Constant(Variable):
         """
         super().__init__(name, n_type)
         self.path = path
+        assert self.path is not None
 
 
 class BoundVariable(Variable):
@@ -236,7 +237,7 @@ class Formula:
     def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> 'Formula':
         pass
 
-    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> 'Formula':
+    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, ParseTree]]) -> 'Formula':
         pass
 
     def __and__(self, other):
@@ -310,17 +311,26 @@ BEFORE_PREDICATE = Predicate(
 
 
 class PredicateFormula(Formula):
-    def __init__(self, predicate: Predicate, *args: Variable):
+    def __init__(self, predicate: Predicate, *args: Union[Variable, Tuple[Path, ParseTree]]):
         assert len(args) == predicate.arity
         self.predicate = predicate
-        self.args: List[Variable] = list(args)
+        self.args: List[Union[Variable, Tuple[Path, ParseTree]]] = list(args)
+
+    def evaluate(self):
+        if any(isinstance(arg, Variable) for arg in self.args):
+            raise RuntimeError(f"Cannot evaluate predicate with partially instantiated arguments "
+                               f"{self.args}")
+
+        return self.predicate.eval_fun(*self.args)
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return PredicateFormula(self.predicate,
                                 *[arg if arg not in subst_map else subst_map[arg] for arg in self.args])
 
-    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> Formula:
-        return self
+    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, ParseTree]]) -> Formula:
+        return PredicateFormula(self.predicate,
+                                *[arg if not isinstance(arg, Variable) or arg not in subst_map
+                                  else subst_map[arg] for arg in self.args])
 
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([])
@@ -376,7 +386,7 @@ class NegatedFormula(PropositionalCombinator):
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return NegatedFormula(*[arg.substitute_variables(subst_map) for arg in self.args])
 
-    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> Formula:
+    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, ParseTree]]) -> Formula:
         return NegatedFormula(*[arg.substitute_expressions(subst_map) for arg in self.args])
 
     def __str__(self):
@@ -392,7 +402,7 @@ class ConjunctiveFormula(PropositionalCombinator):
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return ConjunctiveFormula(*[arg.substitute_variables(subst_map) for arg in self.args])
 
-    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> Formula:
+    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, ParseTree]]) -> Formula:
         return ConjunctiveFormula(*[arg.substitute_expressions(subst_map) for arg in self.args])
 
     def accept(self, visitor: FormulaVisitor):
@@ -413,7 +423,7 @@ class DisjunctiveFormula(PropositionalCombinator):
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return DisjunctiveFormula(*[arg.substitute_variables(subst_map) for arg in self.args])
 
-    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> Formula:
+    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, ParseTree]]) -> Formula:
         return DisjunctiveFormula(*[arg.substitute_expressions(subst_map) for arg in self.args])
 
     def accept(self, visitor: FormulaVisitor):
@@ -443,20 +453,14 @@ class SMTFormula(Formula):
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         new_smt_formula = z3_subst(self.formula, {v1.to_smt(): v2.to_smt() for v1, v2 in subst_map.items()})
-        # new_smt_formula = z3.substitute(
-        #     self.formula,
-        #     *tuple({
-        #                z3.String(free_var.name): z3.String(free_var.name) if free_var not in subst_map
-        #                else z3.String(subst_map[free_var].name)
-        #                for free_var in self.free_variables_
-        #            }.items()))
 
         return SMTFormula(cast(z3.BoolRef, new_smt_formula),
                           *[variable if variable not in subst_map else subst_map[variable]
                             for variable in self.free_variables_])
 
-    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> 'Formula':
-        new_smt_formula = z3_subst(self.formula, {v1.to_smt(): expr for v1, expr in subst_map.items()})
+    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, ParseTree]]) -> Formula:
+        new_smt_formula = z3_subst(self.formula, {variable.to_smt(): z3.StringVal(tree_to_string(tree))
+                                                  for variable, (_, tree) in subst_map.items()})
 
         return SMTFormula(cast(z3.BoolRef, new_smt_formula),
                           *[variable for variable in self.free_variables_
@@ -529,10 +533,13 @@ class ForallFormula(QuantifiedFormula):
             self.inner_formula.substitute_variables(subst_map),
             self.bind_expression)
 
-    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> Formula:
+    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, ParseTree]]) -> Formula:
+        # Quantification over concrete values (no variables) is not allowed.
+        assert self.in_variable not in subst_map
+
         return ForallFormula(
             self.bound_variable,
-            self.in_variable if self.in_variable not in subst_map else subst_map[self.in_variable],
+            self.in_variable,
             self.inner_formula.substitute_expressions(subst_map),
             self.bind_expression)
 
@@ -567,10 +574,13 @@ class ExistsFormula(QuantifiedFormula):
             self.inner_formula.substitute_variables(subst_map),
             self.bind_expression)
 
-    def substitute_expressions(self, subst_map: Dict[Variable, z3.ExprRef]) -> Formula:
+    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, ParseTree]]) -> Formula:
+        # Quantification over concrete values (no variables) is not allowed.
+        assert self.in_variable not in subst_map
+
         return ExistsFormula(
             self.bound_variable,
-            self.in_variable if self.in_variable not in subst_map else subst_map[self.in_variable],
+            self.in_variable,
             self.inner_formula.substitute_expressions(subst_map),
             self.bind_expression)
 

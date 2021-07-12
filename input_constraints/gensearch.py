@@ -40,9 +40,11 @@ def substitute_assignment(in_state: SolutionState, assignment: Dict[isla.Constan
             if assignment_const == constant:
                 continue
 
+            assert all(constant.path is not None for constant in assignment)
+
             result[idx] = (assignment_const,
                            assignment_formula.substitute_expressions(
-                               {constant: z3.StringVal(tree_to_string(tree))}),
+                               {constant: (constant.path, tree)}),
                            inline_var_in_tree(assignment_tree, constant, tree))
 
     return result
@@ -87,7 +89,7 @@ def is_semantic_formula(formula: isla.Formula) -> bool:
 
 
 def fresh_constant(used: Set[isla.Variable], proposal: isla.Constant, add: bool = True) -> isla.Constant:
-    base_name, n_type = proposal.name, proposal.n_type
+    base_name, n_type, path = proposal.name, proposal.n_type, proposal.path
 
     name = base_name
     idx = 0
@@ -95,7 +97,7 @@ def fresh_constant(used: Set[isla.Variable], proposal: isla.Constant, add: bool 
         name = f"{base_name}_{idx}"
         idx += 1
 
-    result = isla.Constant(name, n_type)
+    result = isla.Constant(name, n_type, path)
     if add:
         used.add(result)
 
@@ -217,9 +219,12 @@ class ISLaSolver:
             self.logger.debug(f"Queue length: {len(queue)}")
 
             # Choose the first assignment with a non-abstract tree and an open leaf.
-            assignment = next((assgn for assgn in state
-                               if (tree := assgn[2],
-                                   is_concrete_tree(tree) and any(open_concrete_leaves(tree)))[1]))
+            if len(state) == 1:
+                assignment = state[0]
+            else:
+                assignment = next((assgn for assgn in state
+                                   if (tree := assgn[2],
+                                       is_concrete_tree(tree) and any(open_concrete_leaves(tree)))[-1]))
             constant, formula, tree = assignment
 
             # Invariant: Formula is in DNF, and in each disjunction, exactly one quantifier of each type
@@ -321,7 +326,8 @@ class ISLaSolver:
                                 all_vars = all_variables(state)
                                 for variable in match:
                                     new_constant = fresh_constant(all_vars,
-                                                                  isla.Constant(variable.name, variable.n_type))
+                                                                  isla.Constant(variable.name, variable.n_type,
+                                                                                match[variable][0]))
                                     constant_subst_map[variable] = new_constant
                                     all_vars.add(new_constant)
 
@@ -406,7 +412,9 @@ class ISLaSolver:
         #       yet instantiated. We first process quantifiers, then the atoms.
         # TODO: Check whether this is actually true, find example!
 
-        solutions = self.solve_quantifier_free_formula(formula)
+        free_constants = [c for c in get_tree_constants(tree)
+                          if c not in state]
+        solutions = self.solve_quantifier_free_formula(formula, OrderedSet(free_constants))
 
         # None solution ==> Unsolvable constraint... Nothing more to do here.
         solutions = [] if solutions is None else solutions
@@ -547,7 +555,7 @@ class ISLaSolver:
                         # TODO Should we rather not return a state instead of one with a False constraint?
                         new_state[idx] = constant, replace_formula(formula, conjunctive_element, sc.false()), tree
 
-        def can_inline(constant: isla.Constant, formula: isla.Formula, tree: AbstractTree,
+        def can_inline(state: SolutionState, constant: isla.Constant, formula: isla.Formula, tree: AbstractTree,
                        into_constant: isla.Constant, into_formula: isla.Formula, into_tree: AbstractTree) -> bool:
             if constant in top_constants:
                 return False
@@ -555,8 +563,11 @@ class ISLaSolver:
             if constant not in isla.tree_variables(into_tree):
                 return False
 
-            if is_concrete_tree(tree) and all(self.can_be_freely_instantiated(leaf_node, formula, constant)
-                                              for _, (leaf_node, _) in open_concrete_leaves(tree)):
+            state_constants = [const for const, _, _ in state]
+            if ((is_concrete_tree(tree) or all(tree_constant not in state_constants
+                                               for tree_constant in get_tree_constants(tree)))
+                    and all(self.can_be_freely_instantiated(leaf_node, formula, constant)
+                            for _, (leaf_node, _) in open_concrete_leaves(tree))):
                 return True
 
             if is_complete_tree(tree) and not (isinstance(formula, isla.ExistsFormula)
@@ -579,13 +590,14 @@ class ISLaSolver:
                 idx, to_inline, into_idx, into = next(((idx, assgn, into_idx, into_assgn)
                                                        for idx, assgn in enumerate(new_state)
                                                        for into_idx, into_assgn in enumerate(new_state)
-                                                       if idx != into_idx and can_inline(*assgn, *into_assgn)))
-                # if to_inline[2] == (to_inline[0].n_type, None):
-                #     new_state[into_idx] = inline_state_element([into], (to_inline[0],
-                #                                                         to_inline[1],
-                #                                                         (to_inline[0], None)))[0]
-                # else:
-                new_state[into_idx] = inline_state_element([into], to_inline)[0]
+                                                       if idx != into_idx
+                                                       and can_inline(new_state, *assgn, *into_assgn)))
+                if to_inline[2] == (to_inline[0].n_type, None):
+                    new_state[into_idx] = inline_state_element([into], (to_inline[0],
+                                                                        to_inline[1],
+                                                                        (to_inline[0], None)))[0]
+                else:
+                    new_state[into_idx] = inline_state_element([into], to_inline)[0]
                 del new_state[idx]
         except StopIteration:
             pass
@@ -646,14 +658,16 @@ class ISLaSolver:
 
         return False
 
-    def solve_quantifier_free_formula(self, formula: isla.Formula) -> Optional[List[Dict[isla.Constant, ParseTree]]]:
+    def solve_quantifier_free_formula(self, formula: isla.Formula,
+                                      free_constants: OrderedSet[isla.Constant]) -> \
+            Optional[List[Dict[isla.Constant, ParseTree]]]:
         solutions: List[Dict[isla.Constant, ParseTree]] = []
 
         for _ in range(self.max_number_smt_instantiations):
             solver = z3.Solver()
             constant_collector = VariablesCollector()
-            constants: List[isla.Constant] = [c for c in constant_collector.collect(formula) if
-                                              type(c) is isla.Constant]
+            constants: OrderedSet[isla.Constant] = OrderedSet([c for c in constant_collector.collect(formula) if
+                                                               type(c) is isla.Constant]) | free_constants
 
             for constant in constants:
                 regex = self.extract_regular_expression(constant.n_type)
