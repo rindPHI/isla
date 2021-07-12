@@ -9,7 +9,7 @@ from orderedset import OrderedSet
 from input_constraints import isla
 from input_constraints.helpers import get_subtree, prev_path_complete, replace_tree_path, \
     reverse_tree_iterator, last_path, open_concrete_leaves, path_iterator, next_path, get_leaves, next_path_complete, \
-    tree_to_tuples
+    tree_to_tuples, is_prefix
 from input_constraints.type_defs import ParseTree, Path, CanonicalGrammar, CanonicalExpansionAlternative, AbstractTree
 
 
@@ -67,7 +67,7 @@ def insert_tree(grammar: CanonicalGrammar,
     # If so, we do this.
     perfect_matches: List[Path] = []
     embeddable_matches: List[Tuple[Path, ParseTree]] = []
-    for subtree_path, subtree in path_iterator(tree):
+    for subtree_path, subtree in path_iterator(in_tree):
         node, children = subtree
         if not isinstance(node, str):
             continue
@@ -91,6 +91,7 @@ def insert_tree(grammar: CanonicalGrammar,
             return result
 
         # Trees are not hashable, since they contain lists...
+        assert new_tree[1][0] == in_tree[0], f"{new_tree[1][0]} != {in_tree[0]}"
         hash_value = hash(str(new_tree[1]))
         if hash_value not in hashes:
             result.append(new_tree)
@@ -139,6 +140,9 @@ def insert_tree(grammar: CanonicalGrammar,
                         leaves = list(open_concrete_leaves(into_tree))
 
                         for leaf_idx, (leaf_path, (leaf_nonterm, _)) in enumerate(leaves):
+                            if any(is_prefix(insert_path, leaf_path) for _, insert_path in insert_paths):
+                                continue
+
                             for insert_tree_idx, tree_to_insert in enumerate(trees_to_insert):
                                 nonterm_to_insert = (tree_to_insert[0] if isinstance(tree_to_insert[0], str)
                                                      else tree_to_insert[0].n_type)

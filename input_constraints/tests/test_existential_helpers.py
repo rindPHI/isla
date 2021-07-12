@@ -103,6 +103,23 @@ class TestExistentialHelpers(unittest.TestCase):
             list(map(abstract_tree_to_string, [result[1] for result in results]))
         )
 
+    def test_insert_assignment_2(self):
+        lhs = isla.Constant("$lhs", "<var>", tuple())
+        var = isla.Constant("$var", "<var>", tuple())
+
+        tree = ('<start>', [('<stmt>', [('<assgn>', [(lhs, None), (' := ', []), ('<rhs>', [(var, None)])])])])
+
+        results = insert_tree(canonical(LANG_GRAMMAR), ("<assgn>", None), tree)
+
+        self.assertEqual(
+            [((0, 2, 0), '$lhs := $var ; <assgn>'),
+             ((0, 2, 0), '$lhs := $var ; <assgn> ; <stmt>'),
+             ((0, 0), '<assgn> ; $lhs := $var'),
+             ((0, 2, 0), '<assgn> ; <assgn> ; $lhs := $var')
+             ],
+            [(path, abstract_tree_to_string(tree)) for path, tree in results]
+        )
+
 
 if __name__ == '__main__':
     unittest.main()
