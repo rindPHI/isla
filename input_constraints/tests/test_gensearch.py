@@ -39,7 +39,7 @@ class TestGensearch(unittest.TestCase):
 
         formula = isla.ConjunctiveFormula(
             isla.SMTFormula(cast(z3.BoolRef, var.to_smt() == z3.StringVal("x")), var),
-            sc.before(var, rhs))
+            sc.before(((0, 0, 0), (var, None)), ((0, 0, 2), (rhs, None))))
 
         self.execute_generation_test(formula, [var, rhs],
                                      max_number_smt_instantiations=2,
@@ -129,7 +129,7 @@ class TestGensearch(unittest.TestCase):
         self.execute_generation_test(formula, [start], num_solutions=1)
 
     def test_declared_before_used(self):
-        logging.basicConfig(level=logging.ERROR)
+        logging.basicConfig(level=logging.DEBUG)
 
         start = isla.Constant("$start", "<start>", tuple())
         lhs_1 = isla.BoundVariable("$lhs_1", "<var>")

@@ -66,7 +66,7 @@ class Constant(Variable):
         """
         super().__init__(name, n_type)
         self.path = path
-        assert self.path is not None
+        # assert self.path is not None
 
 
 class BoundVariable(Variable):

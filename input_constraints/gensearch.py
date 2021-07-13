@@ -231,6 +231,7 @@ class ISLaSolver:
                               and c not in formula.free_variables()]
             tree = isla.substitute_variables_in_tree(tree, {c: (c.n_type, None) for c in free_constants})
 
+            # Check if we can just freely instantiate
             # TODO Extend to situation where there is more than one top constant
             if len(state) == 1 and is_concrete_tree(tree):
                 fuzzer = GrammarCoverageFuzzer(non_canonical(self.grammar))
@@ -251,7 +252,7 @@ class ISLaSolver:
             if is_semantic_formula(formula):
                 new_states = self.handle_semantic_formula(constant, formula, formula, tree, state)
                 for new_state in new_states:
-                    for result in self.process_new_state(new_state, queue, top_constants):
+                    for result in self.process_new_state(state, new_state, queue, top_constants):
                         yield result
 
                 continue
@@ -267,7 +268,7 @@ class ISLaSolver:
                                                                   tree, state)
                         for new_state in new_states:
                             tree_changed = True
-                            for result in self.process_new_state(new_state, queue, top_constants):
+                            for result in self.process_new_state(state, new_state, queue, top_constants):
                                 yield result
 
                         break
@@ -323,7 +324,7 @@ class ISLaSolver:
                                 #       check. This is because the expanded tree might be complete and therefore
                                 #       yielded without further check.
 
-                                for result in self.process_new_state(new_state, queue, top_constants):
+                                for result in self.process_new_state(state, new_state, queue, top_constants):
                                     yield result
 
                             break
@@ -378,7 +379,7 @@ class ISLaSolver:
                                 new_state.append((qfd_var_const, inst_formula, qfd_var_tree))
 
                             new_state.append((constant, formula, new_tree))
-                            for result in self.process_new_state(new_state, queue, top_constants):
+                            for result in self.process_new_state(state, new_state, queue, top_constants):
                                 yield result
 
                             continue
@@ -414,7 +415,7 @@ class ISLaSolver:
                     new_state: SolutionState = [assgn for assgn in state if assgn[0] != constant]
                     new_state.append((constant, disjunctive_element, expanded_tree))
                     # Must not yield here, since quantifiers have to be matched before!
-                    self.process_new_state(new_state, queue, top_constants)
+                    self.process_new_state(state, new_state, queue, top_constants)
 
     def can_be_freely_instantiated(self, nonterminal: str, conjunctive_formula: isla.Formula,
                                    constant: isla.Constant) -> bool:
@@ -493,7 +494,7 @@ class ISLaSolver:
             ])))
         return expanded_trees
 
-    def process_new_state(self, state: SolutionState,
+    def process_new_state(self, orig_state: SolutionState, state: SolutionState,
                           queue: List[Tuple[int, 'SolutionStateWrapper']],
                           top_constants: Set[isla.Constant]) -> List[Dict[isla.Constant, ParseTree]]:
         state = self.cleanup_state(state, top_constants)
@@ -516,6 +517,9 @@ class ISLaSolver:
                 result.append({c: t for c, _, t in all_complete_assignments})
 
             return result
+
+        if state == orig_state:
+            return []
 
         top_constant_assignments = [assgn for assgn in state if assgn[0] in top_constants]
         heuristic_value = sum([100 - self.compute_heuristic_value(assgn)
