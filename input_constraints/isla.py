@@ -1,4 +1,6 @@
 import copy
+import logging
+from functools import reduce
 from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator
 
 import z3
@@ -14,6 +16,8 @@ from input_constraints.type_defs import ParseTree, Path, Grammar, AbstractTree
 
 SolutionState = List[Tuple['Constant', 'Formula', AbstractTree]]
 Assignment = Tuple['Constant', 'Formula', AbstractTree]
+
+isla_logger = logging.getLogger("isla")
 
 
 class Variable:
@@ -247,13 +251,13 @@ class Formula:
         if isinstance(self, SMTFormula) and z3.is_false(self.formula):
             return self
 
-        if isinstance(other, SMTFormula) and z3.is_false(other):
+        if isinstance(other, SMTFormula) and z3.is_false(other.formula):
             return other
 
         if isinstance(self, SMTFormula) and z3.is_true(self.formula):
             return other
 
-        if isinstance(other, SMTFormula) and z3.is_true(other):
+        if isinstance(other, SMTFormula) and z3.is_true(other.formula):
             return self
 
         return ConjunctiveFormula(self, other)
@@ -265,13 +269,13 @@ class Formula:
         if isinstance(self, SMTFormula) and z3.is_true(self.formula):
             return self
 
-        if isinstance(other, SMTFormula) and z3.is_true(other):
+        if isinstance(other, SMTFormula) and z3.is_true(other.formula):
             return other
 
         if isinstance(self, SMTFormula) and z3.is_false(self.formula):
             return other
 
-        if isinstance(other, SMTFormula) and z3.is_false(other):
+        if isinstance(other, SMTFormula) and z3.is_false(other.formula):
             return self
 
         return DisjunctiveFormula(self, other)
@@ -325,18 +329,32 @@ class PredicateFormula(Formula):
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return PredicateFormula(self.predicate,
-                                *[arg if arg not in subst_map else subst_map[arg] for arg in self.args])
-
-    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, ParseTree]]) -> Formula:
-        return PredicateFormula(self.predicate,
                                 *[arg if not isinstance(arg, Variable) or arg not in subst_map
                                   else subst_map[arg] for arg in self.args])
+
+    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, ParseTree]]) -> Formula:
+        new_args = []
+        for arg in self.args:
+            if isinstance(arg, Variable):
+                if arg in subst_map:
+                    new_args.append(subst_map[arg])
+                else:
+                    new_args.append(arg)
+                continue
+
+            new_args.append((arg[0], substitute_variables_in_tree(arg[1], {k: v[1] for k, v in subst_map.items()})))
+
+        return PredicateFormula(self.predicate, *new_args)
 
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([])
 
     def free_variables(self) -> OrderedSet[Variable]:
-        return OrderedSet(self.args)
+        try:
+            return OrderedSet([arg for arg in self.args if isinstance(arg, Variable)])
+        except:
+            x = 17
+            pass
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_predicate_formula(self)
@@ -348,7 +366,14 @@ class PredicateFormula(Formula):
         return type(self) is type(other) and (self.predicate, self.args) == (other.predicate, other.args)
 
     def __str__(self):
-        return f"{self.predicate}({', '.join(map(str, self.args))})"
+        arg_strings = []
+        for arg in self.args:
+            if isinstance(arg, Variable):
+                arg_strings.append(str(arg))
+            else:
+                arg_strings.append(f"({arg[0]}, {abstract_tree_to_string(arg[1])})")
+
+        return f"{self.predicate}({', '.join(arg_strings)})"
 
     def __repr__(self):
         return f'PredicateFormula({repr(self.predicate), ", ".join(map(repr, self.args))})'
@@ -400,10 +425,10 @@ class ConjunctiveFormula(PropositionalCombinator):
         super().__init__(*args)
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
-        return ConjunctiveFormula(*[arg.substitute_variables(subst_map) for arg in self.args])
+        return reduce(lambda a, b: a & b, [arg.substitute_variables(subst_map) for arg in self.args])
 
     def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, ParseTree]]) -> Formula:
-        return ConjunctiveFormula(*[arg.substitute_expressions(subst_map) for arg in self.args])
+        return reduce(lambda a, b: a & b, [arg.substitute_expressions(subst_map) for arg in self.args])
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_conjunctive_formula(self)
@@ -421,10 +446,10 @@ class DisjunctiveFormula(PropositionalCombinator):
         super().__init__(*args)
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
-        return DisjunctiveFormula(*[arg.substitute_variables(subst_map) for arg in self.args])
+        return reduce(lambda a, b: a | b, [arg.substitute_variables(subst_map) for arg in self.args])
 
     def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, ParseTree]]) -> Formula:
-        return DisjunctiveFormula(*[arg.substitute_expressions(subst_map) for arg in self.args])
+        return reduce(lambda a, b: a | b, [arg.substitute_expressions(subst_map) for arg in self.args])
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_disjunctive_formula(self)
@@ -459,12 +484,33 @@ class SMTFormula(Formula):
                             for variable in self.free_variables_])
 
     def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, ParseTree]]) -> Formula:
-        new_smt_formula = z3_subst(self.formula, {variable.to_smt(): z3.StringVal(tree_to_string(tree))
-                                                  for variable, (_, tree) in subst_map.items()})
+        subst_map = {k: v for k, v in subst_map.items() if k in self.free_variables_}
 
-        return SMTFormula(cast(z3.BoolRef, new_smt_formula),
-                          *[variable for variable in self.free_variables_
-                            if variable not in subst_map])
+        new_free_variables = OrderedSet([variable for variable in self.free_variables_
+                                         if variable not in subst_map])
+
+        for key, (path, tree) in subst_map.items():
+            if isinstance(tree, tuple) and isinstance(tree[0], Variable) and tree[1] is None:
+                subst_map[key] = path, tree[0]
+                new_free_variables.add(tree[0])
+                continue
+
+            if isinstance(tree, Variable):
+                new_free_variables.add(tree)
+                continue
+
+            assert not list(tree_variables(tree))
+            subst_map[key] = path, tree_to_string(tree)
+
+        assert all(isinstance(rhs, str) or isinstance(rhs, Variable) for _, rhs in subst_map.values())
+
+        new_smt_formula = z3_subst(self.formula, {
+            variable.to_smt():
+                tree.to_smt() if isinstance(tree, Variable)
+                else z3.StringVal(tree)
+            for variable, (_, tree) in subst_map.items()})
+
+        return SMTFormula(cast(z3.BoolRef, new_smt_formula), *new_free_variables)
 
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([])
@@ -534,8 +580,26 @@ class ForallFormula(QuantifiedFormula):
             self.bind_expression)
 
     def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, ParseTree]]) -> Formula:
-        # Quantification over concrete values (no variables) is not allowed.
-        assert self.in_variable not in subst_map
+        if self.in_variable in subst_map:
+            # Instantiate quantifier
+            matches: List[Dict[Variable, Tuple[Path, ParseTree]]] = \
+                matches_for_quantified_variable(self, subst_map[self.in_variable][1])
+
+            # NOTE: We assume that if there are no matches, the quantified expression is not feasible
+            #       also in incomplete parse tree instantiations. Otherwise, it is not correct to remove
+            #       the quantified formula!
+
+            if not matches:
+                isla_logger.debug(f"Replacing universal formula with True since quantified expression does not "
+                                  f"match parse tree\n"
+                                  f"  (tree: {abstract_tree_to_string(subst_map[self.in_variable][1])}, "
+                                  f"formula: {self})")
+                return SMTFormula(z3.BoolVal(True))
+
+            result = self.inner_formula.substitute_expressions(subst_map)
+            for match in matches:
+                result = result.substitute_expressions(match)
+            return result
 
         return ForallFormula(
             self.bound_variable,
@@ -622,7 +686,11 @@ class VariablesCollector(FormulaVisitor):
             self.result.update(formula.bind_expression.bound_variables())
 
     def visit_predicate_formula(self, formula: PredicateFormula):
-        self.result.update(formula.args)
+        for arg in formula.args:
+            if isinstance(arg, Variable):
+                self.result.add(arg)
+            else:
+                self.result.update(tree_variables(arg[1]))
 
     def visit_smt_formula(self, formula: SMTFormula):
         self.result.update(formula.free_variables())
@@ -762,7 +830,7 @@ def evaluate(formula: Formula, assignments: Dict[Variable, Tuple[Path, ParseTree
                 return any(evaluate_(formula.inner_formula, new_assignment) for new_assignment in new_assignments)
         elif t is PredicateFormula:
             formula: PredicateFormula
-            arg_insts = [assignments[arg] for arg in formula.args]
+            arg_insts = [arg if not isinstance(arg, Variable) else assignments[arg] for arg in formula.args]
             return formula.predicate.evaluate(*arg_insts)
         elif t is NegatedFormula:
             formula: NegatedFormula
@@ -868,3 +936,25 @@ def tree_variables(tree: AbstractTree) -> Generator[Variable, None, None]:
 def state_to_string(state: SolutionState) -> str:
     return "{(" + "), (".join(map(str, [f"{constant.name}, {formula}, \"{abstract_tree_to_string(tree)}\""
                                         for constant, formula, tree in state])) + ")}"
+
+
+def substitute_variables_in_tree(in_tree: AbstractTree, subst_map: Dict[Variable, AbstractTree]) -> AbstractTree:
+    node, children = in_tree
+    if children is None:
+        if isinstance(node, Variable) and node in subst_map:
+            return subst_map[node]
+        else:
+            return in_tree
+
+    return node, [substitute_variables_in_tree(child, subst_map) for child in children]
+
+
+def inline_var_in_tree(in_tree: AbstractTree, variable: Variable, inst: AbstractTree) -> AbstractTree:
+    node, children = in_tree
+    if children is None:
+        if node == variable:
+            return inst
+        else:
+            return in_tree
+
+    return node, [inline_var_in_tree(child, variable, inst) for child in children]

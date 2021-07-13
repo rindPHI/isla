@@ -183,9 +183,11 @@ def insert_tree(grammar: CanonicalGrammar,
 
                     results = insert([curr_tree, tree], self_embedding_tree)
                     for insertion_paths, instantiated_tree in results:
-                        add_to_result((current_path + [path for idx_tree, path in insertion_paths
-                                                       if idx_tree == tree][0],
-                                       replace_tree_path(in_tree, current_path, instantiated_tree)))
+                        new_tree = replace_tree_path(in_tree, current_path, instantiated_tree)
+                        insert_tree_path_extension = [path for idx_tree, path in insertion_paths
+                                                      if idx_tree == tree][0]
+
+                        add_to_result((current_path + insert_tree_path_extension, new_tree))
 
     np = next_path_complete(current_path, in_tree)
     if np is None:

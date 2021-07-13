@@ -17,10 +17,12 @@ from orderedset import OrderedSet
 from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import is_canonical_grammar, path_iterator, \
-    replace_tree_path, delete_unreachable, tree_to_tuples, open_concrete_leaves, dfs
-from input_constraints.isla import VariablesCollector, state_to_string, SolutionState, Assignment
+    replace_tree_path, delete_unreachable, tree_to_tuples, open_concrete_leaves, dfs, find_subtree
+from input_constraints.isla import VariablesCollector, state_to_string, SolutionState, Assignment, inline_var_in_tree
 from input_constraints import isla_shortcuts as sc
 from input_constraints.type_defs import CanonicalGrammar, Grammar, ParseTree, Path, AbstractTree
+
+gensearch_logger = logging.getLogger("gensearch")
 
 
 def is_complete_tree(tree: AbstractTree) -> bool:
@@ -56,19 +58,12 @@ def inline_state_element(state: SolutionState, state_to_inline: Assignment) -> S
     variable, formula, tree = state_to_inline
     for state_element in state:
         other_var, other_formula, other_tree = state_element
-        result.append((other_var, formula & other_formula, inline_var_in_tree(other_tree, variable, tree)))
+        new_formula = (formula.substitute_expressions({variable: (variable.path, tree)}) &
+                       other_formula.substitute_expressions({variable: (variable.path, tree)}))
+        new_tree = inline_var_in_tree(other_tree, variable, tree)
+
+        result.append((other_var, new_formula, new_tree))
     return result
-
-
-def inline_var_in_tree(in_tree: AbstractTree, variable: isla.Variable, inst: AbstractTree) -> AbstractTree:
-    node, children = in_tree
-    if children is None:
-        if node == variable:
-            return inst
-        else:
-            return in_tree
-
-    return node, [inline_var_in_tree(child, variable, inst) for child in children]
 
 
 def merge_state_elements(state: SolutionState) -> Assignment:
@@ -232,7 +227,7 @@ class ISLaSolver:
             # TODO: Check and enforce invariant
 
             # First, instantiate all top-level predicate formulas.
-            formula = instantiate_predicates(formula)
+            formula = instantiate_predicates(formula, tree)
 
             if is_semantic_formula(formula):
                 new_states = self.handle_semantic_formula(constant, formula, formula, tree, state)
@@ -260,20 +255,28 @@ class ISLaSolver:
 
                     elif isinstance(conjunctive_element, isla.ExistsFormula):
                         all_vars = all_variables(state)
-                        const_subst_map = {}
-                        new_constant = fresh_constant(
-                            all_vars, isla.Constant(conjunctive_element.bound_variable.name,
-                                                    conjunctive_element.bound_variable.n_type))
-                        const_subst_map[conjunctive_element.bound_variable] = new_constant
-                        if conjunctive_element.bind_expression is not None:
-                            for bv in conjunctive_element.bound_variables():
-                                const_subst_map[bv] = fresh_constant(all_vars, isla.Constant(bv.name, bv.n_type))
 
-                        possible_trees = insert_tree(self.grammar, (new_constant, None), tree)
-                        if possible_trees:
+                        insertion_result = insert_tree(self.grammar,
+                                                       (conjunctive_element.bound_variable.n_type, None),
+                                                       tree)
+                        if insertion_result:
                             tree_changed = True
 
-                            for possible_tree in possible_trees:
+                            for position, possible_tree in insertion_result:
+                                new_constant = fresh_constant(
+                                    all_vars, isla.Constant(conjunctive_element.bound_variable.name,
+                                                            conjunctive_element.bound_variable.n_type,
+                                                            position))
+                                const_subst_map = {conjunctive_element.bound_variable: new_constant}
+                                possible_tree = replace_tree_path(possible_tree, position, (new_constant, None))
+
+                                if conjunctive_element.bind_expression is not None:
+                                    _, bind_expr_paths = conjunctive_element.bind_expression.to_tree_prefix(
+                                        conjunctive_element.bound_variable.n_type, non_canonical(self.grammar))
+                                    for bv in conjunctive_element.bind_expression.bound_variables():
+                                        const_subst_map[bv] = fresh_constant(
+                                            all_vars, isla.Constant(bv.name, bv.n_type, position + bind_expr_paths[bv]))
+
                                 new_state = [assgn for assgn in state if assgn is not assignment]
                                 inst_formula = conjunctive_element.inner_formula.substitute_variables(const_subst_map)
                                 new_state.append((constant, inst_formula, possible_tree))
@@ -325,6 +328,7 @@ class ISLaSolver:
                                 constant_subst_map = {}
                                 all_vars = all_variables(state)
                                 for variable in match:
+                                    # TODO: Check correctness of paths!
                                     new_constant = fresh_constant(all_vars,
                                                                   isla.Constant(variable.name, variable.n_type,
                                                                                 match[variable][0]))
@@ -356,7 +360,6 @@ class ISLaSolver:
                                 yield result
 
                             continue
-
                     else:
                         assert False, f"Unsupported formula type {type(formula).__name__}"
 
@@ -459,6 +462,7 @@ class ISLaSolver:
         for expansion in self.grammar[leaf_node]:
             # TODO: Only expand nonterminals from which the nonterminal of the quantified variable
             #       can be reached. Also inline incomplete trees in that case. Batch-expand later on.
+            tree = copy.deepcopy(tree)
             expanded_trees.append(replace_tree_path(tree, leaf_path, (leaf_node, [
                 (child, None if is_nonterminal(child) else []) for child in expansion
             ])))
@@ -734,27 +738,62 @@ class ISLaSolver:
         return normalized_depth_value
 
 
-def instantiate_predicates(formula: isla.Formula) -> isla.Formula:
+def instantiate_predicates(formula: isla.Formula, tree: AbstractTree) -> isla.Formula:
     if isinstance(formula, isla.PredicateFormula):
-        assert all(isinstance(arg, isla.Constant) for arg in formula.args)
-        constant: isla.Constant
-        inst_result: bool = formula.predicate.evaluate(*[(constant.path, constant) for constant in formula.args])
-        return isla.SMTFormula(z3.BoolVal(inst_result))
-    elif isinstance(formula, isla.ConjunctiveFormula):
-        return isla.ConjunctiveFormula(*[instantiate_predicates(child) for child in formula.args])
-    elif isinstance(formula, isla.DisjunctiveFormula):
-        return isla.DisjunctiveFormula(*[instantiate_predicates(child) for child in formula.args])
+        new_args = []
+        for arg in formula.args:
+            if isinstance(arg, isla.Variable):
+                new_args.append(arg)
+            else:
+                path = arg[0]
+                subtree = arg[1]
+
+                subtree_positions = find_subtree(tree, subtree)
+                if len(subtree_positions) != 1:
+                    gensearch_logger.warning(f"Cannot find unique position of argument tree "
+                                             f"{isla.abstract_tree_to_string(subtree)} "
+                                             f"in predicate application {formula} in tree "
+                                             f"{isla.abstract_tree_to_string(tree)}. Found {len(subtree_positions)} "
+                                             f"positions.")
+                    new_args.append(arg)
+                    continue
+
+                if path != subtree_positions[0]:
+                    gensearch_logger.debug(f"Updating position {path} to {subtree_positions[0]} in predicate "
+                                           f"application {formula}")
+
+                new_args.append((subtree_positions[0], subtree))
+
+        return isla.SMTFormula(z3.BoolVal(isla.PredicateFormula(formula.predicate, *new_args).evaluate()))
+
+    if isinstance(formula, isla.ConjunctiveFormula):
+        return reduce(lambda a, b: a & b, [instantiate_predicates(child, tree) for child in formula.args])
+
+    if isinstance(formula, isla.DisjunctiveFormula):
+        return reduce(lambda a, b: a | b, [instantiate_predicates(child, tree) for child in formula.args])
 
     return formula
 
 
 def replace_formula(in_formula: isla.Formula,
-                    to_replace: Union[isla.Formula, Callable[[isla.Formula], bool]],
-                    replace_with: isla.Formula) -> isla.Formula:
-    """Replaces a formula inside a conjunction or disjunction"""
+                    to_replace: Union[isla.Formula, Callable[[isla.Formula], Union[bool, isla.Formula]]],
+                    replace_with: Optional[isla.Formula] = None) -> isla.Formula:
+    """
+    Replaces a formula inside a conjunction or disjunction.
+    to_replace is either (1) a formula to replace, or (2) a predicate which holds if the given formula
+    should been replaced (if it returns True, replace_with must not be None), or (3) a function returning
+    the formula to replace if the subformula should be replaced, or False otherwise. For (3), replace_with
+    may be None (it is irrelevant).
+    """
 
     if callable(to_replace):
+        result = to_replace(in_formula)
+        if isinstance(result, isla.Formula):
+            return result
+
+        assert type(result) is bool
         if to_replace(in_formula):
+            assert replace_with is not None
             return replace_with
     else:
         if in_formula == to_replace:

@@ -33,6 +33,24 @@ def last_path(tree: AbstractTree) -> Path:
     return tuple(result)
 
 
+def find_subtree(tree: ParseTree, subtree: ParseTree, path: Path = tuple()) -> List[Path]:
+    current_subtree = get_subtree(path, tree)
+    if current_subtree == subtree:
+        return [path]
+
+    node, children = current_subtree
+    if not children:
+        return []
+
+    result = []
+    for idx in range(len(children)):
+        child_result = find_subtree(tree, subtree, path + (idx,))
+        if child_result is not None:
+            result.extend(child_result)
+
+    return result
+
+
 def get_path_of_subtree(tree: ParseTree, subtree: ParseTree, path: Path = tuple()) -> Optional[Path]:
     current_subtree = get_subtree(path, tree)
     if current_subtree is subtree:
@@ -75,22 +93,39 @@ def replace_tree(in_tree: AbstractTree,
 
 
 def replace_tree_path(in_tree: AbstractTree, path: Path, replacement_tree: AbstractTree) -> AbstractTree:
-    """Returns a symbolic input with a new tree where replacement_tree has been inserted at `path`"""
+    """Returns tree where replacement_tree has been inserted at `path` instead of the original subtree"""
+    node, children = in_tree
 
-    def recurse(_tree, _path):
-        node, children = _tree
+    if not path:
+        return replacement_tree
 
-        if not _path:
-            return replacement_tree
+    head = path[0]
+    new_children = (children[:head] +
+                    [replace_tree_path(children[head], path[1:], replacement_tree)] +
+                    children[head + 1:])
 
-        head = _path[0]
-        new_children = (children[:head] +
-                        [recurse(children[head], _path[1:])] +
-                        children[head + 1:])
+    return node, new_children
 
-        return node, new_children
 
-    return recurse(in_tree, path)
+def id_prsrv_replace_tree_path(in_tree: AbstractTree, path: Path, replacement_tree: AbstractTree) -> AbstractTree:
+    """In-place subtree replacement preserving identity of other subtrees."""
+    if not path:
+        return replacement_tree
+
+    curr_parent = in_tree
+    last_idx = path[0]
+    curr_tree = curr_parent[1][last_idx]
+    path = path[1:]
+
+    while path:
+        last_idx = path[0]
+        path = path[1:]
+        curr_parent = curr_tree
+        curr_tree = curr_tree[1][last_idx]
+
+    curr_parent[1][last_idx] = replacement_tree
+
+    return in_tree
 
 
 def is_after(path_1: Path, path_2: Path) -> bool:
