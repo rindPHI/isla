@@ -129,7 +129,7 @@ class TestGensearch(unittest.TestCase):
         self.execute_generation_test(formula, [start], num_solutions=1)
 
     def test_declared_before_used(self):
-        logging.basicConfig(level=logging.DEBUG)
+        logging.basicConfig(level=logging.ERROR)
 
         start = isla.Constant("$start", "<start>", tuple())
         lhs_1 = isla.BoundVariable("$lhs_1", "<var>")
@@ -157,7 +157,8 @@ class TestGensearch(unittest.TestCase):
             )
         )
 
-        self.execute_generation_test(formula, [start], print_solutions=True)
+        self.execute_generation_test(formula, [start], print_solutions=True,
+                                     max_number_free_instantiations=1, max_number_smt_instantiations=1)
 
     def execute_generation_test(self,
                                 formula: isla.Formula,

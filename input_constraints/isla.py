@@ -350,11 +350,11 @@ class PredicateFormula(Formula):
         return OrderedSet([])
 
     def free_variables(self) -> OrderedSet[Variable]:
-        try:
-            return OrderedSet([arg for arg in self.args if isinstance(arg, Variable)])
-        except:
-            x = 17
-            pass
+        result = OrderedSet([])
+        result.update([arg for arg in self.args if isinstance(arg, Variable)])
+        vars_in_concrete_args = [v for arg in self.args if isinstance(arg, tuple) for v in tree_variables(arg[1])]
+        result.update(vars_in_concrete_args)
+        return result
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_predicate_formula(self)
