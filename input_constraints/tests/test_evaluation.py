@@ -5,7 +5,8 @@ import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
 import input_constraints.isla_shortcuts as sc
-from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression
+from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
+    DerivationTree
 from test_data import *
 
 
@@ -160,12 +161,16 @@ class TestEvaluation(unittest.TestCase):
 
         parser = EarleyParser(LANG_GRAMMAR)
 
-        self.assertTrue(evaluate(formula, {prog: ((), next(parser.parse(valid_prog_1)))}))
+        tree = DerivationTree.from_parse_tree(next(parser.parse(valid_prog_1)))
+        self.assertTrue(evaluate(formula, {prog: ((), tree)}))
+
         for valid_prog in [valid_prog_1, valid_prog_2]:
-            self.assertTrue(evaluate(formula, {prog: ((), next(parser.parse(valid_prog)))}))
+            tree = DerivationTree.from_parse_tree(next(parser.parse(valid_prog)))
+            self.assertTrue(evaluate(formula, {prog: ((), tree)}))
 
         for invalid_prog in [invalid_prog_1, invalid_prog_2, invalid_prog_3, invalid_prog_4]:
-            self.assertFalse(evaluate(formula, {prog: ((), next(parser.parse(invalid_prog)))}))
+            tree = DerivationTree.from_parse_tree(next(parser.parse(invalid_prog)))
+            self.assertFalse(evaluate(formula, {prog: ((), tree)}))
 
     def test_match(self):
         parser = EarleyParser(LANG_GRAMMAR)
@@ -174,23 +179,23 @@ class TestEvaluation(unittest.TestCase):
         rhs = BoundVariable("$rhs", "<var>")
 
         bind_expr = lhs + " := " + rhs
-        tree = next(parser.parse("x := y"))
+        tree = DerivationTree.from_parse_tree(next(parser.parse("x := y")))
 
         match = bind_expr.match(tree)
-        self.assertEqual(('<var>', [('x', [])]), match[lhs][1])
-        self.assertEqual(('<var>', [('y', [])]), match[rhs][1])
+        self.assertEqual(('<var>', [('x', [])]), match[lhs][1].to_parse_tree())
+        self.assertEqual(('<var>', [('y', [])]), match[rhs][1].to_parse_tree())
 
         assgn_1 = BoundVariable("$assgn_1", "<assgn>")
         assgn_2 = BoundVariable("$assgn_2", "<assgn>")
         stmt = BoundVariable("$stmt", "<stmt>")
 
         bind_expr = assgn_1 + " ; " + assgn_2 + " ; " + stmt
-        tree = next(parser.parse("x := y ; x := x ; y := z ; z := z"))
+        tree = DerivationTree.from_parse_tree(next(parser.parse("x := y ; x := x ; y := z ; z := z")))
 
         match = bind_expr.match(tree)
-        self.assertEqual(tree_to_string(match[assgn_1][1]), "x := y")
-        self.assertEqual(tree_to_string(match[assgn_2][1]), "x := x")
-        self.assertEqual(tree_to_string(match[stmt][1]), "y := z ; z := z")
+        self.assertEqual(str(match[assgn_1][1]), "x := y")
+        self.assertEqual(str(match[assgn_2][1]), "x := x")
+        self.assertEqual(str(match[stmt][1]), "y := z ; z := z")
 
         # The stmt variable matches the whole remaining program; assgn2 can no longer be matched
         bind_expr = assgn_1 + " ; " + stmt + " ; " + assgn_2
@@ -229,7 +234,7 @@ class TestEvaluation(unittest.TestCase):
         success = 0
         fail = 0
         for _ in range(100):
-            tree = fuzzer.expand_tree(("<start>", None))
+            tree = DerivationTree.from_parse_tree(fuzzer.expand_tree(("<start>", None)))
             if evaluate(formula, {prog: (tuple(), tree)}):
                 inp = tree_to_string(tree)
                 try:
@@ -244,13 +249,13 @@ class TestEvaluation(unittest.TestCase):
         self.assertGreater(success_rate, .3)
 
     def test_bind_expression_to_tree(self):
-        lhs = BoundVariable("$lhs ", "<var>")
+        lhs = BoundVariable("$lhs", "<var>")
         rhs = BoundVariable("$rhs", "<rhs>")
         assgn = BoundVariable("$assgn", "<assgn>")
 
         bind_expr: BindExpression = lhs + " := " + rhs
         tree, bindings = bind_expr.to_tree_prefix(assgn.n_type, LANG_GRAMMAR)
-        self.assertEqual(("<assgn>", [(lhs, None), (" := ", []), (rhs, None)]), tree)
+        self.assertEqual("$lhs := $rhs", str(tree))
         self.assertEqual((0,), bindings[lhs])
         self.assertEqual((2,), bindings[rhs])
 
@@ -261,10 +266,7 @@ class TestEvaluation(unittest.TestCase):
 
         bind_expr: BindExpression = lhs + " := " + rhs + semicolon + lhs_2 + " := " + rhs_2
         tree, bindings = bind_expr.to_tree_prefix(prog.n_type, LANG_GRAMMAR)
-        self.assertEqual(('<stmt>', [
-            ('<assgn>', [(lhs, None), (' := ', []), (rhs, None)]),
-            (semicolon, None),
-            ('<stmt>', [('<assgn>', [(lhs_2, None), (' := ', []), (rhs_2, None)])])]), tree)
+        self.assertEqual("$lhs := $rhs$semi$lhs_2  := $rhs_2", str(tree))
 
         self.assertEqual((1,), bindings[semicolon])
         self.assertEqual((0, 0), bindings[lhs])

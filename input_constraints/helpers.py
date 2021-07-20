@@ -221,16 +221,6 @@ def next_path_complete(path: Path, tree: ParseTree) -> Optional[Path]:
     assert list(path_iterator(tree))[-1][0] == path
     return None
 
-    # last_child_idx = path[-1]
-    # while path and path[-1] + 1 >= num_children(path):
-    #     last_child_idx = path[-1]
-    #     path = path[:-1]
-    #
-    # if last_child_idx + 1 < num_children(path):
-    #     return path + (last_child_idx + 1,)
-    # else:
-    #     return None
-
 
 def prev_path_complete(path: Path, tree: ParseTree) -> Optional[Path]:
     """

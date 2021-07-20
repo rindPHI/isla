@@ -1,5 +1,4 @@
 from input_constraints.isla import *
-import input_constraints.prolog_structs as pl
 
 
 def forall_bind(
