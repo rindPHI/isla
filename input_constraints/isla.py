@@ -74,12 +74,24 @@ class DerivationTree:
                  id: Optional[int] = None):
         assert isinstance(value, str) or isinstance(value, Variable)
         assert not isinstance(value, Variable) or not children
+        assert children is None or all(isinstance(child, DerivationTree) for child in children)
+
         self.value = value
         self.children = children
         self.id = id if id is not None else random.randint(0, sys.maxsize)
 
     def add_child(self, child: 'DerivationTree'):
         self.children.append(child)
+
+    def root_nonterminal(self) -> str:
+        if isinstance(self.value, Variable):
+            return self.value.n_type
+
+        assert is_nonterminal(self.value)
+        return self.value
+
+    def num_children(self) -> int:
+        return 0 if self.children is None else len(self.children)
 
     def is_abstract(self):
         return isinstance(self.value, Variable) or (self.children is not None
@@ -100,6 +112,18 @@ class DerivationTree:
         if self.children is not None:
             for i, child in enumerate(self.children):
                 yield from child.path_iterator(path + (i,))
+
+    def find_node(self, node_or_id: Union['DerivationTree', int]) -> Optional[Path]:
+        """Finds a node by its (assumed unique) ID. Returns the path relative to this node."""
+
+        if isinstance(node_or_id, DerivationTree):
+            node_or_id = node_or_id.id
+
+        for path, node in self.path_iterator():
+            if node.id == node_or_id:
+                return path
+
+        return None
 
     def traverse(self, action: Callable[[Path, 'DerivationTree'], None]) -> None:
         for path, subtree in self.path_iterator():
@@ -132,6 +156,26 @@ class DerivationTree:
         # path already is the last path.
         assert skip_children or list(self.path_iterator())[-1][0] == path
         return None
+
+    def replace_path(self, path: Path, replacement_tree: 'DerivationTree') -> 'DerivationTree':
+        """Returns tree where replacement_tree has been inserted at `path` instead of the original subtree"""
+        node, children = self
+        assert isinstance(replacement_tree, DerivationTree)
+
+        if not path:
+            return replacement_tree
+
+        head = path[0]
+        new_children = (children[:head] +
+                        [children[head].replace_path(path[1:], replacement_tree)] +
+                        children[head + 1:])
+
+        return DerivationTree(node, new_children, id=self.id)
+
+    def open_concrete_leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
+        return ((path, sub_tree)
+                for path, sub_tree in self.path_iterator()
+                if sub_tree.children is None and not sub_tree.is_abstract())
 
     def tree_variables(self) -> Generator[Variable, None, None]:
         return (sub_tree.value
@@ -181,14 +225,18 @@ class DerivationTree:
                 and self.value == other.value
                 and self.children == other.children)
 
-    def __str__(self) -> str:
+    def to_string(self, show_open_leaves: bool = False):
         value, children = self
         if children:
-            return ''.join(str(c) for c in children)
+            return ''.join(c.to_string(show_open_leaves) for c in children)
         else:
             if isinstance(value, Variable):
                 return value.name
-            return value
+
+            return value if show_open_leaves or not is_nonterminal(value) else ""
+
+    def __str__(self) -> str:
+        return self.to_string(show_open_leaves=True)
 
 
 class BoundVariable(Variable):

@@ -5,8 +5,8 @@ from fuzzingbook.Parser import canonical
 from grammar_graph.gg import GrammarGraph
 
 from input_constraints import isla
-from input_constraints.existential_helpers import insert_tree, match_expansions
-from input_constraints.isla import abstract_tree_to_string
+from input_constraints.existential_helpers import insert_tree
+from input_constraints.isla import abstract_tree_to_string, DerivationTree
 from input_constraints.tests.test_data import *
 from input_constraints.tests.test_helpers import parse
 
@@ -16,30 +16,24 @@ class TestExistentialHelpers(unittest.TestCase):
         canonical_grammar = canonical(LANG_GRAMMAR)
 
         inp = "x := 1 ; y := z"
-        tree = parse(inp, LANG_GRAMMAR)
+        tree = DerivationTree.from_parse_tree(parse(inp, LANG_GRAMMAR))
 
-        to_insert = parse("y := 0", LANG_GRAMMAR, "<assgn>")
+        to_insert = DerivationTree.from_parse_tree(parse("y := 0", LANG_GRAMMAR, "<assgn>"))
         results = insert_tree(canonical_grammar, to_insert, tree)
-        self.assertIn("x := 1 ; y := 0 ; y := z", [tree_to_string(result[1]) for result in results])
-        for path, a_tree in results:
-            self.assertEqual(to_insert, get_subtree(path, a_tree))
+        self.assertIn("x := 1 ; y := 0 ; y := z", map(str, results))
 
         results = insert_tree(canonical_grammar, to_insert, tree)
-        self.assertIn("y := 0 ; x := 1 ; y := z", [tree_to_string(result[1]) for result in results])
-        for path, a_tree in results:
-            self.assertEqual(to_insert, get_subtree(path, a_tree))
+        self.assertIn("y := 0 ; x := 1 ; y := z", map(str, results))
 
         inp = "x := 1 ; y := 2 ; y := z"
-        tree = parse(inp, LANG_GRAMMAR)
+        tree = DerivationTree.from_parse_tree(parse(inp, LANG_GRAMMAR))
         results = insert_tree(canonical_grammar, to_insert, tree)
-        self.assertIn("x := 1 ; y := 2 ; y := 0 ; y := z", [tree_to_string(result[1]) for result in results])
-        for path, a_tree in results:
-            self.assertEqual(to_insert, get_subtree(path, a_tree))
+        self.assertIn("x := 1 ; y := 2 ; y := 0 ; y := z", map(str, results))
 
     def test_insert_json_1(self):
         inp = ' { "T" : { "I" : true , "" : [ false , "salami" ] , "" : true , "" : null , "" : false } } '
-        tree = parse(inp, JSON_GRAMMAR)
-        to_insert = parse(' "key" : { "key" : null } ', JSON_GRAMMAR, "<member>")
+        tree = DerivationTree.from_parse_tree(parse(inp, JSON_GRAMMAR))
+        to_insert = DerivationTree.from_parse_tree(parse(' "key" : { "key" : null } ', JSON_GRAMMAR, "<member>"))
 
         results = insert_tree(canonical(JSON_GRAMMAR), to_insert, tree)
 
@@ -47,52 +41,25 @@ class TestExistentialHelpers(unittest.TestCase):
             ' { "T" : { "I" : true , '
             '"key" : { "key" : null } , '
             '"" : [ false , "salami" ] , "" : true , "" : null , "" : false } } ',
-            [tree_to_string(r[1]) for r in results])
-
-        for path, a_tree in results:
-            self.assertEqual(to_insert, get_subtree(path, a_tree))
+            [result.to_string() for result in results])
 
     def test_insert_json_2(self):
         inp = ' { "T" : { "I" : true , "" : [ false , "salami" ] , "" : true , "" : null , "" : false } } '
-        tree = parse(inp, JSON_GRAMMAR)
-        to_insert = parse(' "cheese" ', JSON_GRAMMAR, "<element>")
+        tree = DerivationTree.from_parse_tree(parse(inp, JSON_GRAMMAR))
+        to_insert = DerivationTree.from_parse_tree(parse(' "cheese" ', JSON_GRAMMAR, "<element>"))
 
         results = insert_tree(canonical(JSON_GRAMMAR), to_insert, tree)
         self.assertIn(
             ' { "T" : { "I" : true , "" : [ false , "cheese" , "salami" ] , "" : true , "" : null , "" : false } } ',
-            [tree_to_string(result[1]) for result in results])
-
-        for path, a_tree in results:
-            self.assertEqual(to_insert, get_subtree(path, a_tree))
-
-    def test_match_nonterminal_lists(self):
-        result = match_expansions(
-            GrammarGraph.from_grammar(LANG_GRAMMAR),
-            ["<assgn>"],
-            ["<assgn>", " ; ", "<stmt>"])
-
-        self.assertEqual([{0: 0}, {0: 2}], result)
-
-        result = match_expansions(
-            GrammarGraph.from_grammar(LANG_GRAMMAR),
-            ["<assgn>", " ; "],
-            ["<assgn>", " ; ", "<stmt>"])
-
-        self.assertEqual([{0: 0}], result)
-
-        result = match_expansions(
-            GrammarGraph.from_grammar(LANG_GRAMMAR),
-            ["<assgn>", " ; ", "<stmt>"],
-            ["<assgn>"])
-
-        self.assertEqual([], result)
+            [result.to_string() for result in results])
 
     def test_insert_assignment(self):
-        assgn = isla.Constant("$assgn", "<assgn>", tuple())
+        assgn = isla.Constant("$assgn", "<assgn>")
+        tree = ('<start>', [('<stmt>', [('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', [('<var>', None)])])])])
         results = insert_tree(
             canonical(LANG_GRAMMAR),
-            (assgn, None),
-            ('<start>', [('<stmt>', [('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', [('<var>', None)])])])]))
+            DerivationTree(assgn),
+            DerivationTree.from_parse_tree(tree))
 
         self.assertEqual(
             ['<var> := <var> ; $assgn',
@@ -100,24 +67,25 @@ class TestExistentialHelpers(unittest.TestCase):
              '$assgn ; <var> := <var>',
              '<assgn> ; $assgn ; <var> := <var>',
              ],
-            list(map(abstract_tree_to_string, [result[1] for result in results]))
+            list(map(str, results))
         )
 
     def test_insert_assignment_2(self):
-        lhs = isla.Constant("$lhs", "<var>", tuple())
-        var = isla.Constant("$var", "<var>", tuple())
+        lhs = isla.Constant("$lhs", "<var>")
+        var = isla.Constant("$var", "<var>")
 
         tree = ('<start>', [('<stmt>', [('<assgn>', [(lhs, None), (' := ', []), ('<rhs>', [(var, None)])])])])
 
-        results = insert_tree(canonical(LANG_GRAMMAR), ("<assgn>", None), tree)
+        results = insert_tree(canonical(LANG_GRAMMAR),
+                              DerivationTree("<assgn>", None),
+                              DerivationTree.from_parse_tree(tree))
 
         self.assertEqual(
-            [((0, 2, 0), '$lhs := $var ; <assgn>'),
-             ((0, 2, 0), '$lhs := $var ; <assgn> ; <stmt>'),
-             ((0, 0), '<assgn> ; $lhs := $var'),
-             ((0, 2, 0), '<assgn> ; <assgn> ; $lhs := $var')
-             ],
-            [(path, abstract_tree_to_string(tree)) for path, tree in results]
+            ['$lhs := $var ; <assgn>',
+             '$lhs := $var ; <assgn> ; <stmt>',
+             '<assgn> ; $lhs := $var',
+             '<assgn> ; <assgn> ; $lhs := $var'],
+            list(map(str, results))
         )
 
 
