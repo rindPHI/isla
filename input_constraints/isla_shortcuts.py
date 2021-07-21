@@ -32,8 +32,8 @@ def exists(
 
 
 def before(
-        var: Variable,
-        before_var: Variable) -> PredicateFormula:
+        var: Union[Variable, Tuple[Path, DerivationTree]],
+        before_var: Union[Variable, Tuple[Path, DerivationTree]]) -> PredicateFormula:
     return PredicateFormula(BEFORE_PREDICATE, var, before_var)
 
 

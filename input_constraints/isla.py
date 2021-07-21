@@ -1,10 +1,10 @@
 import copy
 import logging
 import random
+import sys
 from functools import reduce
 from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator
 
-import sys
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
 from fuzzingbook.Grammars import is_nonterminal
@@ -12,12 +12,12 @@ from fuzzingbook.Parser import EarleyParser
 from grammar_graph.gg import GrammarGraph
 from orderedset import OrderedSet
 
-from input_constraints.helpers import get_subtree, next_path, get_symbols, traverse_tree, is_before, visit_z3_expr, \
+from input_constraints.helpers import get_symbols, is_before, visit_z3_expr, \
     is_z3_var, z3_subst, path_iterator, replace_tree_path
 from input_constraints.type_defs import ParseTree, Path, Grammar, AbstractTree
 
-SolutionState = List[Tuple['Constant', 'Formula', AbstractTree]]
-Assignment = Tuple['Constant', 'Formula', AbstractTree]
+SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
+Assignment = Tuple['Constant', 'Formula', 'DerivationTree']
 
 isla_logger = logging.getLogger("isla")
 
@@ -100,6 +100,11 @@ class DerivationTree:
     def is_open(self):
         return self.children is None or any(child.is_open() for child in self.children)
 
+    def is_complete(self):
+        result = not self.is_open()
+        assert not result or not self.is_abstract()
+        return result
+
     def get_subtree(self, path: Path) -> 'DerivationTree':
         """Access a subtree based on `path` (a list of children numbers)"""
         if not path:
@@ -150,7 +155,7 @@ class DerivationTree:
                 return path[:-i] + (path[-i] + 1,)
 
         # Proceed to next root child
-        if path[0] + 1 < num_children(tuple()):
+        if path and path[0] + 1 < num_children(tuple()):
             return path[0] + 1,
 
         # path already is the last path.
@@ -177,10 +182,11 @@ class DerivationTree:
                 for path, sub_tree in self.path_iterator()
                 if sub_tree.children is None and not sub_tree.is_abstract())
 
-    def tree_variables(self) -> Generator[Variable, None, None]:
-        return (sub_tree.value
-                for _, sub_tree in self.path_iterator()
-                if isinstance(sub_tree.value, Variable))
+    def tree_variables(self) -> OrderedSet[Variable]:
+        return OrderedSet([
+            sub_tree.value
+            for _, sub_tree in self.path_iterator()
+            if isinstance(sub_tree.value, Variable)])
 
     def substitute_variables(self, subst_map: Dict[Variable, 'DerivationTree']) -> 'DerivationTree':
         value, children = self
@@ -192,8 +198,30 @@ class DerivationTree:
 
         return DerivationTree(
             value,
-            [child.substitute_variables_in_tree(subst_map) for child in children],
+            [child.substitute_variables(subst_map) for child in children],
             id=self.id)
+
+    def is_prefix(self, other: 'DerivationTree') -> bool:
+        if self.value != other.value:
+            return False
+
+        if self.children is None:
+            return True
+
+        if not self.children:
+            if other.children is None:
+                return False
+            else:
+                return True
+
+        if not other.children:
+            return False
+
+        if len(self.children) != len(other.children):
+            return False
+
+        return all(self.children[idx].is_prefix(other.children[idx])
+                   for idx, _ in enumerate(self.children))
 
     @staticmethod
     def from_parse_tree(tree: ParseTree):
@@ -412,7 +440,7 @@ class Formula:
     def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> 'Formula':
         pass
 
-    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, DerivationTree]]) -> 'Formula':
+    def substitute_expressions(self, subst_map: Dict[Variable, DerivationTree]) -> 'Formula':
         pass
 
     def __and__(self, other):
@@ -464,7 +492,7 @@ class Predicate:
         self.arity = arity
         self.eval_fun = eval_fun
 
-    def evaluate(self, *instantiations: Tuple[Path, ParseTree]):
+    def evaluate(self, *instantiations: Tuple[Path, DerivationTree]):
         return self.eval_fun(*instantiations)
 
     def __eq__(self, other):
@@ -486,24 +514,30 @@ BEFORE_PREDICATE = Predicate(
 
 
 class PredicateFormula(Formula):
-    def __init__(self, predicate: Predicate, *args: Union[Variable, Tuple[Path, DerivationTree]]):
+    def __init__(self, predicate: Predicate, *args: Union[Variable, DerivationTree]):
         assert len(args) == predicate.arity
         self.predicate = predicate
-        self.args: List[Union[Variable, Tuple[Path, DerivationTree]]] = list(args)
+        self.args: List[Union[Variable, DerivationTree]] = list(args)
 
-    def evaluate(self):
+    def evaluate(self, context_tree: DerivationTree):
         if any(isinstance(arg, Variable) for arg in self.args):
             raise RuntimeError(f"Cannot evaluate predicate with partially instantiated arguments "
                                f"{self.args}")
 
-        return self.predicate.eval_fun(*self.args)
+        args_with_paths: List[Tuple[Path, DerivationTree]] = \
+            [(context_tree.find_node(tree), tree) for tree in self.args]
+
+        if any(path is None for path, _ in args_with_paths):
+            raise RuntimeError(f"Could not find paths for all predicate arguments in context tree.")
+
+        return self.predicate.eval_fun(*args_with_paths)
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return PredicateFormula(self.predicate,
                                 *[arg if not isinstance(arg, Variable) or arg not in subst_map
                                   else subst_map[arg] for arg in self.args])
 
-    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, DerivationTree]]) -> Formula:
+    def substitute_expressions(self, subst_map: Dict[Variable, DerivationTree]) -> Formula:
         new_args = []
         for arg in self.args:
             if isinstance(arg, Variable):
@@ -513,8 +547,8 @@ class PredicateFormula(Formula):
                     new_args.append(arg)
                 continue
 
-            path, tree = arg[0], arg[1]
-            new_args.append((arg[0], tree.substitute_variables({k: v[1] for k, v in subst_map.items()})))
+            tree: DerivationTree = arg
+            new_args.append(tree.substitute_variables({k: v for k, v in subst_map.items()}))
 
         return PredicateFormula(self.predicate, *new_args)
 
@@ -584,7 +618,7 @@ class NegatedFormula(PropositionalCombinator):
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return NegatedFormula(*[arg.substitute_variables(subst_map) for arg in self.args])
 
-    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, DerivationTree]]) -> Formula:
+    def substitute_expressions(self, subst_map: Dict[Variable, DerivationTree]) -> Formula:
         return NegatedFormula(*[arg.substitute_expressions(subst_map) for arg in self.args])
 
     def __str__(self):
@@ -600,7 +634,7 @@ class ConjunctiveFormula(PropositionalCombinator):
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return reduce(lambda a, b: a & b, [arg.substitute_variables(subst_map) for arg in self.args])
 
-    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, DerivationTree]]) -> Formula:
+    def substitute_expressions(self, subst_map: Dict[Variable, DerivationTree]) -> Formula:
         return reduce(lambda a, b: a & b, [arg.substitute_expressions(subst_map) for arg in self.args])
 
     def accept(self, visitor: FormulaVisitor):
@@ -621,7 +655,7 @@ class DisjunctiveFormula(PropositionalCombinator):
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return reduce(lambda a, b: a | b, [arg.substitute_variables(subst_map) for arg in self.args])
 
-    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, DerivationTree]]) -> Formula:
+    def substitute_expressions(self, subst_map: Dict[Variable, DerivationTree]) -> Formula:
         return reduce(lambda a, b: a | b, [arg.substitute_expressions(subst_map) for arg in self.args])
 
     def accept(self, visitor: FormulaVisitor):
@@ -656,13 +690,13 @@ class SMTFormula(Formula):
                           *[variable if variable not in subst_map else subst_map[variable]
                             for variable in self.free_variables_])
 
-    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, DerivationTree]]) -> Formula:
+    def substitute_expressions(self, subst_map: Dict[Variable, DerivationTree]) -> Formula:
         subst_map = {k: v for k, v in subst_map.items() if k in self.free_variables_}
 
         new_free_variables = OrderedSet([variable for variable in self.free_variables_
                                          if variable not in subst_map])
 
-        for key, (path, tree) in subst_map.items():
+        for key, tree in subst_map.items():
             if isinstance(tree, DerivationTree) and tree.children is None and tree.is_abstract():
                 subst_map[key] = path, tree.value
                 new_free_variables.add(tree.value)
@@ -674,15 +708,15 @@ class SMTFormula(Formula):
                 continue
 
             assert not tree.is_abstract()
-            subst_map[key] = path, str(tree)
+            subst_map[key] = str(tree)
 
-        assert all(isinstance(rhs, str) or isinstance(rhs, Variable) for _, rhs in subst_map.values())
+        assert all(isinstance(rhs, str) or isinstance(rhs, Variable) for rhs in subst_map.values())
 
         new_smt_formula = z3_subst(self.formula, {
             variable.to_smt():
                 var_or_str.to_smt() if isinstance(var_or_str, Variable)
                 else z3.StringVal(var_or_str)
-            for variable, (_, var_or_str) in subst_map.items()})
+            for variable, var_or_str in subst_map.items()})
 
         return SMTFormula(cast(z3.BoolRef, new_smt_formula), *new_free_variables)
 
@@ -753,7 +787,7 @@ class ForallFormula(QuantifiedFormula):
             self.inner_formula.substitute_variables(subst_map),
             self.bind_expression)
 
-    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, DerivationTree]]) -> Formula:
+    def substitute_expressions(self, subst_map: Dict[Variable, DerivationTree]) -> Formula:
         if self.in_variable in subst_map:
             # Instantiate quantifier
             matches: List[Dict[Variable, Tuple[Path, DerivationTree]]] = \
@@ -812,7 +846,7 @@ class ExistsFormula(QuantifiedFormula):
             self.inner_formula.substitute_variables(subst_map),
             self.bind_expression)
 
-    def substitute_expressions(self, subst_map: Dict[Variable, Tuple[Path, DerivationTree]]) -> Formula:
+    def substitute_expressions(self, subst_map: Dict[Variable, DerivationTree]) -> Formula:
         # Quantification over concrete values (no variables) is not allowed.
         assert self.in_variable not in subst_map
 
@@ -876,7 +910,7 @@ class FilterVisitor(FormulaVisitor):
         self.filter = filter
         self.result: List[Formula] = []
 
-    def collect(self, formula: Formula) -> List[Variable]:
+    def collect(self, formula: Formula) -> List[Formula]:
         self.result = []
         formula.accept(self)
         return self.result
@@ -1124,7 +1158,7 @@ def substitute_variables_in_tree(in_tree: AbstractTree, subst_map: Dict[Variable
     return node, [substitute_variables_in_tree(child, subst_map) for child in children]
 
 
-def inline_var_in_tree(in_tree: AbstractTree, variable: Variable, inst: AbstractTree) -> AbstractTree:
+def inline_var_in_tree(in_tree: DerivationTree, variable: Variable, inst: DerivationTree) -> DerivationTree:
     node, children = in_tree
     if children is None:
         if node == variable:
@@ -1132,4 +1166,38 @@ def inline_var_in_tree(in_tree: AbstractTree, variable: Variable, inst: Abstract
         else:
             return in_tree
 
-    return node, [inline_var_in_tree(child, variable, inst) for child in children]
+    return DerivationTree(node, [inline_var_in_tree(child, variable, inst) for child in children], id=in_tree.id)
+
+
+def replace_formula(in_formula: Formula,
+                    to_replace: Union[Formula, Callable[[Formula], Union[bool, Formula]]],
+                    replace_with: Optional[Formula] = None) -> Formula:
+    """
+    Replaces a formula inside a conjunction or disjunction.
+    to_replace is either (1) a formula to replace, or (2) a predicate which holds if the given formula
+    should been replaced (if it returns True, replace_with must not be None), or (3) a function returning
+    the formula to replace if the subformula should be replaced, or False otherwise. For (3), replace_with
+    may be None (it is irrelevant).
+    """
+
+    if callable(to_replace):
+        result = to_replace(in_formula)
+        if isinstance(result, Formula):
+            return result
+
+        assert type(result) is bool
+        if to_replace(in_formula):
+            assert replace_with is not None
+            return replace_with
+    else:
+        if in_formula == to_replace:
+            return replace_with
+
+    if isinstance(in_formula, ConjunctiveFormula):
+        return reduce(lambda a, b: a & b, [replace_formula(child, to_replace, replace_with)
+                                           for child in in_formula.args])
+    elif isinstance(in_formula, DisjunctiveFormula):
+        return reduce(lambda a, b: a | b, [replace_formula(child, to_replace, replace_with)
+                                           for child in in_formula.args])
+
+    return in_formula

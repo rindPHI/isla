@@ -1,6 +1,6 @@
 import logging
 import unittest
-from typing import cast, List
+from typing import cast, List, Optional
 
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string
@@ -8,7 +8,9 @@ from fuzzingbook.GrammarFuzzer import tree_to_string
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 from input_constraints.gensearch import ISLaSolver
+from input_constraints.isla import DerivationTree
 from input_constraints.tests.test_data import LANG_GRAMMAR
+from input_constraints.type_defs import Path
 
 
 class TestGensearch(unittest.TestCase):
@@ -34,12 +36,12 @@ class TestGensearch(unittest.TestCase):
 
     def test_simple_predicate_conjunction(self):
         # Idea: part of an assignment "var := rhs"
-        var = isla.Constant("$var", "<var>", (0, 0, 0))
-        rhs = isla.Constant("$rhs", "<rhs>", (0, 0, 2))
+        var = isla.Constant("$var", "<var>")
+        rhs = isla.Constant("$rhs", "<rhs>")
 
         formula = isla.ConjunctiveFormula(
             isla.SMTFormula(cast(z3.BoolRef, var.to_smt() == z3.StringVal("x")), var),
-            sc.before(((0, 0, 0), (var, None)), ((0, 0, 2), (rhs, None))))
+            sc.before(((0, 0, 0), DerivationTree(var, None)), ((0, 0, 2), DerivationTree(rhs, None))))
 
         self.execute_generation_test(formula, [var, rhs],
                                      max_number_smt_instantiations=2,
@@ -54,8 +56,7 @@ class TestGensearch(unittest.TestCase):
             var1, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        self.execute_generation_test(formula, [start], num_solutions=10)
-        # More solutions possible, but want to safe time. TODO Have to do profiling!
+        self.execute_generation_test(formula, [start])
 
     def test_simple_universal_formula_with_bind(self):
         start = isla.Constant("$start", "<start>")
@@ -70,6 +71,7 @@ class TestGensearch(unittest.TestCase):
         self.execute_generation_test(formula, [start])
 
     def test_simple_existential_formula(self):
+        logging.basicConfig(level=logging.DEBUG)
         # NOTE: Existential quantifier instantiation currently does not produce an infinite stream,
         #       since we basically look for paths through the grammar without repetition, which
         #       yields a finite (usually small) number of solutions. Check whether that's a problem.
@@ -82,8 +84,9 @@ class TestGensearch(unittest.TestCase):
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
         self.execute_generation_test(formula, [start],
-                                     num_solutions=10,
-                                     max_number_free_instantiations=5)
+                                     num_solutions=100,
+                                     max_number_free_instantiations=1,
+                                     print_solutions=True)
 
     def test_simple_existential_formula_with_bind(self):
         start = isla.Constant("$start", "<start>")
@@ -131,7 +134,7 @@ class TestGensearch(unittest.TestCase):
     def test_declared_before_used(self):
         logging.basicConfig(level=logging.DEBUG)
 
-        start = isla.Constant("$start", "<start>", tuple())
+        start = isla.Constant("$start", "<start>")
         lhs_1 = isla.BoundVariable("$lhs_1", "<var>")
         lhs_2 = isla.BoundVariable("$lhs_2", "<var>")
         rhs_1 = isla.BoundVariable("$rhs_1", "<rhs>")
@@ -163,6 +166,7 @@ class TestGensearch(unittest.TestCase):
     def execute_generation_test(self,
                                 formula: isla.Formula,
                                 constants: List[isla.Constant],
+                                constant_paths: Optional[List[Path]]=None,
                                 num_solutions=50,
                                 print_solutions=False,
                                 max_number_free_instantiations=1,
@@ -174,6 +178,9 @@ class TestGensearch(unittest.TestCase):
             max_number_free_instantiations=max_number_free_instantiations,
             max_number_smt_instantiations=max_number_smt_instantiations)
 
+        if constant_paths is None:
+            constant_paths = [tuple() for _ in constants]
+
         it = solver.find_solution()
         for idx in range(num_solutions):
             try:
@@ -181,7 +188,8 @@ class TestGensearch(unittest.TestCase):
                 if print_solutions:
                     print(", ".join([tree_to_string(assignment[c]) for c in constants]))
                 self.assertTrue(isla.evaluate(formula, {
-                    c: (tuple() if c.path is None else c.path, assignment[c]) for c in constants
+                    c: (constant_paths[idx], assignment[c])
+                    for idx, c in enumerate(constants)
                 }))
             except StopIteration:
                 if idx == 0:

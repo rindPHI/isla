@@ -16,24 +16,15 @@ from orderedset import OrderedSet
 
 from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
-from input_constraints.helpers import is_canonical_grammar, path_iterator, \
-    replace_tree_path, delete_unreachable, tree_to_tuples, open_concrete_leaves, dfs, find_subtree
-from input_constraints.isla import VariablesCollector, state_to_string, SolutionState, Assignment, inline_var_in_tree
-from input_constraints import isla_shortcuts as sc
-from input_constraints.type_defs import CanonicalGrammar, Grammar, ParseTree, Path, AbstractTree
+from input_constraints.helpers import is_canonical_grammar, delete_unreachable, open_concrete_leaves, dfs
+from input_constraints.isla import VariablesCollector, state_to_string, SolutionState, Assignment, inline_var_in_tree, \
+    DerivationTree
+from input_constraints.type_defs import CanonicalGrammar, Grammar, Path, AbstractTree
 
 gensearch_logger = logging.getLogger("gensearch")
 
 
-def is_complete_tree(tree: AbstractTree) -> bool:
-    return all(sub_tree[1] is not None for _, sub_tree in path_iterator(tree))
-
-
-def is_concrete_tree(tree: AbstractTree) -> bool:
-    return all(not isinstance(sub_tree[0], isla.Variable) for _, sub_tree in path_iterator(tree))
-
-
-def substitute_assignment(in_state: SolutionState, assignment: Dict[isla.Constant, ParseTree]) -> SolutionState:
+def substitute_assignment(in_state: SolutionState, assignment: Dict[isla.Constant, DerivationTree]) -> SolutionState:
     result: SolutionState = copy.deepcopy(in_state)
     for idx in range(len(in_state)):
         for constant, tree in assignment.items():
@@ -42,11 +33,8 @@ def substitute_assignment(in_state: SolutionState, assignment: Dict[isla.Constan
             if assignment_const == constant:
                 continue
 
-            assert all(constant.path is not None for constant in assignment)
-
             result[idx] = (assignment_const,
-                           assignment_formula.substitute_expressions(
-                               {constant: (constant.path, tree)}),
+                           assignment_formula.substitute_expressions({constant: tree}),
                            inline_var_in_tree(assignment_tree, constant, tree))
 
     return result
@@ -58,8 +46,8 @@ def inline_state_element(state: SolutionState, state_to_inline: Assignment) -> S
     variable, formula, tree = state_to_inline
     for state_element in state:
         other_var, other_formula, other_tree = state_element
-        new_formula = (formula.substitute_expressions({variable: (variable.path, tree)}) &
-                       other_formula.substitute_expressions({variable: (variable.path, tree)}))
+        new_formula = (formula.substitute_expressions({variable: tree}) &
+                       other_formula.substitute_expressions({variable: tree}))
         new_tree = inline_var_in_tree(other_tree, variable, tree)
 
         result.append((other_var, new_formula, new_tree))
@@ -84,7 +72,7 @@ def is_semantic_formula(formula: isla.Formula) -> bool:
 
 
 def fresh_constant(used: Set[isla.Variable], proposal: isla.Constant, add: bool = True) -> isla.Constant:
-    base_name, n_type, path = proposal.name, proposal.n_type, proposal.path
+    base_name, n_type = proposal.name, proposal.n_type
 
     name = base_name
     idx = 0
@@ -92,7 +80,7 @@ def fresh_constant(used: Set[isla.Variable], proposal: isla.Constant, add: bool 
         name = f"{base_name}_{idx}"
         idx += 1
 
-    result = isla.Constant(name, n_type, path)
+    result = isla.Constant(name, n_type)
     if add:
         used.add(result)
 
@@ -109,7 +97,7 @@ def all_variables(state: SolutionState) -> Set[isla.Variable]:
 
 def complete_assignment(assignment: Assignment) -> bool:
     _, _, tree = assignment
-    return is_concrete_tree(tree) and not any(open_concrete_leaves(tree))
+    return not tree.is_abstract() and not tree.is_open()
 
 
 def complete_state(state: SolutionState) -> bool:
@@ -145,12 +133,12 @@ def get_tree_constants(tree: AbstractTree) -> OrderedSet[isla.Constant]:
     return result
 
 
-def quantified_nonterminals_reachable(grammar: Grammar, formula: isla.QuantifiedFormula, tree: AbstractTree) -> bool:
+def quantified_nonterminals_reachable(grammar: Grammar, formula: isla.QuantifiedFormula, tree: DerivationTree) -> bool:
     graph = GrammarGraph.from_grammar(grammar)
 
     if any(formula.bound_variable.n_type == leaf or
            graph.get_node(leaf).reachable(graph.get_node(formula.bound_variable.n_type))
-           for _, (leaf, _) in open_concrete_leaves(tree)):
+           for _, (leaf, _) in tree.open_concrete_leaves()):
         # If the bound variable is reachable from a leaf, we return True also for formulas with bind expression,
         # since we assume that bind expressions yield feasible subtrees.
         return True
@@ -161,13 +149,13 @@ def quantified_nonterminals_reachable(grammar: Grammar, formula: isla.Quantified
     # For formulas with bind expressions, it is possible that we have a subtree with the bound variable nonterminal
     # as inner node and leaves from which the bound nonterminals from the bind expression are reachable.
 
-    subtrees = [subtree for _, subtree in path_iterator(tree)
-                if subtree[0] == formula.bound_variable.n_type]
+    subtrees = [subtree for _, subtree in tree.path_iterator()
+                if subtree.value == formula.bound_variable.n_type]
     interesting_nonterminals = [variable.n_type for variable in formula.bind_expression.bound_variables()]
 
     return all(any(any(nonterminal == leaf
                        or graph.get_node(leaf).reachable(graph.get_node(nonterminal))
-                       for _, (leaf, _) in open_concrete_leaves(subtree))
+                       for _, (leaf, _) in subtree.open_concrete_leaves())
                    for subtree in subtrees)
                for nonterminal in interesting_nonterminals)
 
@@ -192,10 +180,9 @@ class ISLaSolver:
         self.queue_size_limit: Optional[int] = 80
         self.queue_no_removed_items: int = 40
 
-        self.used_variables: OrderedSet[isla.Variable] = isla.VariablesCollector().collect(formula)
         self.logger = logging.getLogger(type(self).__name__)
 
-    def find_solution(self) -> Generator[Dict[isla.Constant, ParseTree], None, None]:
+    def find_solution(self) -> Generator[Dict[isla.Constant, DerivationTree], None, None]:
         constant_collector = VariablesCollector()
         top_constants: Set[isla.Constant] = set(
             [c for c in constant_collector.collect(self.formula) if type(c) is isla.Constant])
@@ -205,7 +192,8 @@ class ISLaSolver:
         queue: List[Tuple[int, SolutionStateWrapper]] = []
 
         heapq.heappush(queue, (0, SolutionStateWrapper(
-            [(constant, self.formula, (constant.n_type, None)) for constant in top_constants])))
+            [(constant, self.formula, DerivationTree(constant.n_type, None))
+             for constant in top_constants])))
 
         while queue:
             _, state_wrapper = heapq.heappop(queue)
@@ -218,25 +206,24 @@ class ISLaSolver:
                 assignment = state[0]
             else:
                 assignment = next((assgn for assgn in state
-                                   if (tree := assgn[2],
-                                       is_concrete_tree(tree) and any(open_concrete_leaves(tree)))[-1]))
+                                   if (tree := assgn[2], not tree.is_abstract() and tree.is_open())[-1]))
             constant, formula, tree = assignment
 
             # First, instantiate all top-level predicate formulas.
             formula = instantiate_predicates(formula, tree)
 
             # Release free tree constants
-            free_constants = [c for c in get_tree_constants(tree)
+            free_constants = [c for c in tree.tree_variables()
                               if not any(assgn_const == c for assgn_const, _, _ in state)
                               and c not in formula.free_variables()]
-            tree = isla.substitute_variables_in_tree(tree, {c: (c.n_type, None) for c in free_constants})
+            tree = tree.substitute_variables({c: (c.n_type, None) for c in free_constants})
 
             # Check if we can just freely instantiate
             # TODO Extend to situation where there is more than one top constant
-            if len(state) == 1 and is_concrete_tree(tree):
+            if len(state) == 1 and not tree.is_abstract():
                 fuzzer = GrammarCoverageFuzzer(non_canonical(self.grammar))
                 for _ in range(self.max_number_free_instantiations):
-                    inst_tree = fuzzer.expand_tree(copy.deepcopy(tree))
+                    inst_tree = DerivationTree.from_parse_tree(fuzzer.expand_tree(copy.deepcopy(tree)))
                     if isla.evaluate(formula, {constant: (tuple(), inst_tree)}):
                         yield {constant: inst_tree}
                     else:
@@ -276,26 +263,24 @@ class ISLaSolver:
                     elif isinstance(conjunctive_element, isla.ExistsFormula):
                         all_vars = all_variables(state)
 
-                        insertion_result = insert_tree(self.grammar,
-                                                       (conjunctive_element.bound_variable.n_type, None),
-                                                       tree)
-                        if insertion_result:
-                            tree_changed = True
+                        new_constant = fresh_constant(
+                            all_vars, isla.Constant(conjunctive_element.bound_variable.name,
+                                                    conjunctive_element.bound_variable.n_type))
+                        inserted_tree = DerivationTree(new_constant, None)
+                        insertion_result = insert_tree(self.grammar, inserted_tree, tree)
 
-                            for position, possible_tree in insertion_result:
-                                new_constant = fresh_constant(
-                                    all_vars, isla.Constant(conjunctive_element.bound_variable.name,
-                                                            conjunctive_element.bound_variable.n_type,
-                                                            position))
+                        if insertion_result:
+                            # tree_changed = True
+
+                            for possible_tree in insertion_result:
                                 const_subst_map = {conjunctive_element.bound_variable: new_constant}
-                                possible_tree = replace_tree_path(possible_tree, position, (new_constant, None))
 
                                 if conjunctive_element.bind_expression is not None:
                                     _, bind_expr_paths = conjunctive_element.bind_expression.to_tree_prefix(
                                         conjunctive_element.bound_variable.n_type, non_canonical(self.grammar))
                                     for bv in conjunctive_element.bind_expression.bound_variables():
                                         const_subst_map[bv] = fresh_constant(
-                                            all_vars, isla.Constant(bv.name, bv.n_type, position + bind_expr_paths[bv]))
+                                            all_vars, isla.Constant(bv.name, bv.n_type))
 
                                 new_state = [assgn for assgn in state if assgn is not assignment]
                                 inst_formula = conjunctive_element.inner_formula.substitute_variables(const_subst_map)
@@ -305,7 +290,8 @@ class ISLaSolver:
                                      possible_tree))
 
                                 if conjunctive_element.bind_expression is None:
-                                    new_state.append((new_constant, inst_formula, (new_constant.n_type, None)))
+                                    new_state.append((new_constant, inst_formula,
+                                                      DerivationTree(new_constant.n_type, None)))
                                 else:
                                     bind_expr_tree, _ = conjunctive_element.bind_expression \
                                         .substitute_variables(const_subst_map) \
@@ -315,7 +301,8 @@ class ISLaSolver:
                                     new_state.append((new_constant, inst_formula, bind_expr_tree))
                                     for bound_variable in conjunctive_element.bind_expression.bound_variables():
                                         const_for_bv = const_subst_map[bound_variable]
-                                        new_state.append((const_for_bv, inst_formula, (const_for_bv.n_type, None)))
+                                        new_state.append((const_for_bv, inst_formula,
+                                                          DerivationTree(const_for_bv.n_type, None)))
 
                                 # NOTE: The implemented procedure implies that we only yield a finite amount of
                                 #       instantiations, which may come unexpected if the top-level formula is
@@ -335,12 +322,13 @@ class ISLaSolver:
                         if conjunctive_element.in_variable != constant:
                             continue
 
-                        matches: List[Dict[isla.Variable, Tuple[Path, ParseTree]]] = \
+                        matches: List[Dict[isla.Variable, Tuple[Path, DerivationTree]]] = \
                             isla.matches_for_quantified_variable(conjunctive_element, tree)
                         new_tree = copy.deepcopy(tree)
 
                         # Only consider open leaves. Others are validly instantiated.
-                        matches = [match for match in matches if any(p[1][1] is None for _, p in match.items())]
+                        # TODO: Maybe we have to generalize this
+                        matches = [match for match in matches if any(p[1].children is None for _, p in match.items())]
 
                         if matches:
                             tree_changed = True
@@ -351,16 +339,14 @@ class ISLaSolver:
                                 constant_subst_map = {}
                                 all_vars = all_variables(state)
                                 for variable in match:
-                                    # TODO: Check correctness of paths!
                                     new_constant = fresh_constant(all_vars,
-                                                                  isla.Constant(variable.name, variable.n_type,
-                                                                                match[variable][0]))
+                                                                  isla.Constant(variable.name, variable.n_type))
                                     constant_subst_map[variable] = new_constant
                                     all_vars.add(new_constant)
 
                                 qfd_var_path = match[conjunctive_element.bound_variable][0]
                                 qfd_var_const = constant_subst_map[conjunctive_element.bound_variable]
-                                new_tree = replace_tree_path(new_tree, qfd_var_path, (qfd_var_const, None))
+                                new_tree = new_tree.replace_path(qfd_var_path, DerivationTree(qfd_var_const, None))
 
                                 inst_formula = conjunctive_element.inner_formula.substitute_variables(
                                     constant_subst_map)
@@ -374,7 +360,8 @@ class ISLaSolver:
                                                           match_tree))
 
                                         rel_path = match_path[len(qfd_var_path):]
-                                        qfd_var_tree = replace_tree_path(qfd_var_tree, rel_path, (new_constant, None))
+                                        qfd_var_tree = qfd_var_tree.replace_path(
+                                            rel_path, DerivationTree(new_constant, None))
 
                                 new_state.append((qfd_var_const, inst_formula, qfd_var_tree))
 
@@ -392,7 +379,7 @@ class ISLaSolver:
                 # Expand.
 
                 expanded_trees = [tree]
-                for leaf_path, (leaf_node, _) in open_concrete_leaves(tree):
+                for leaf_path, (leaf_node, _) in tree.open_concrete_leaves():
                     # We do not expand nonterminals for which we are sure that they can be freely instantiated,
                     # which are those that are not reachable by nonterminals quantified over by any top level
                     # quantifier in disjunctive_element
@@ -431,7 +418,7 @@ class ISLaSolver:
                                 constant: isla.Constant,
                                 formula: isla.Formula,
                                 context_formula: isla.Formula,
-                                tree: AbstractTree,
+                                tree: DerivationTree,
                                 state: SolutionState) -> List[SolutionState]:
         # TODO: Might have to stall such a formula if other, quantified,
         #       formulas referring to variables in this formula are not
@@ -470,6 +457,46 @@ class ISLaSolver:
 
         return results
 
+    def solve_quantifier_free_formula(self, formula: isla.Formula,
+                                      free_constants: OrderedSet[isla.Constant]) -> \
+            Optional[List[Dict[isla.Constant, DerivationTree]]]:
+        solutions: List[Dict[isla.Constant, DerivationTree]] = []
+
+        for _ in range(self.max_number_smt_instantiations):
+            solver = z3.Solver()
+            constant_collector = VariablesCollector()
+            constants: OrderedSet[isla.Constant] = OrderedSet([c for c in constant_collector.collect(formula) if
+                                                               type(c) is isla.Constant]) | free_constants
+
+            for constant in constants:
+                regex = self.extract_regular_expression(constant.n_type)
+                solver.add(z3.InRe(z3.String(constant.name), regex))
+
+            for prev_solution in solutions:
+                for constant in prev_solution:
+                    solver.add(z3.Not(constant.to_smt() == z3.StringVal(tree_to_string(prev_solution[constant]))))
+
+            solver.add(qfr_free_formula_to_z3_formula(formula))
+
+            if solver.check() != z3.sat:
+                if not solutions:
+                    return None
+                else:
+                    return solutions
+
+            new_solution = {
+                constant: self.parse(constant.n_type, solver.model()[z3.String(constant.name)].as_string())
+                for constant in constants}
+
+            if new_solution in solutions:
+                # This can happen for trivial solutions, i.e., if the formula is logically valid.
+                # Then, the assignment for that constant will always be {}
+                return solutions
+            else:
+                solutions.append(new_solution)
+
+        return solutions
+
     def get_open_relevant_leaves(self, formula: isla.QuantifiedFormula, tree: AbstractTree) -> \
             Generator[Tuple[Path, AbstractTree], None, None]:
         assert isinstance(formula, isla.QuantifiedFormula)
@@ -483,20 +510,22 @@ class ISLaSolver:
             if any(self.reachable(node, qfd_nonterminal) for qfd_nonterminal in qfd_nonterminals):
                 yield pair
 
-    def expand_tree_at(self, tree, leaf_path, leaf_node):
-        expanded_trees = []
+    def expand_tree_at(self, tree, leaf_path, leaf_node) -> List[DerivationTree]:
+        expanded_trees: List[DerivationTree] = []
+
         for expansion in self.grammar[leaf_node]:
             # TODO: Only expand nonterminals from which the nonterminal of the quantified variable
             #       can be reached. Also inline incomplete trees in that case. Batch-expand later on.
             tree = copy.deepcopy(tree)
-            expanded_trees.append(replace_tree_path(tree, leaf_path, (leaf_node, [
+            expanded_trees.append(tree.replace_path(leaf_path, DerivationTree.from_parse_tree((leaf_node, [
                 (child, None if is_nonterminal(child) else []) for child in expansion
-            ])))
+            ]))))
+
         return expanded_trees
 
     def process_new_state(self, orig_state: SolutionState, state: SolutionState,
                           queue: List[Tuple[int, 'SolutionStateWrapper']],
-                          top_constants: Set[isla.Constant]) -> List[Dict[isla.Constant, ParseTree]]:
+                          top_constants: Set[isla.Constant]) -> List[Dict[isla.Constant, DerivationTree]]:
         state = self.cleanup_state(state, top_constants)
 
         if all(self.formula_satisfied(assgn) for assgn in state):
@@ -592,24 +621,27 @@ class ISLaSolver:
         #                # TODO Should we rather not return a state instead of one with a False constraint?
         #                new_state[idx] = constant, replace_formula(formula, conjunctive_element, sc.false()), tree
 
-        def can_inline(state: SolutionState, constant: isla.Constant, formula: isla.Formula, tree: AbstractTree,
-                       into_constant: isla.Constant, into_formula: isla.Formula, into_tree: AbstractTree) -> bool:
+        def can_inline(state: SolutionState, constant: isla.Constant, formula: isla.Formula, tree: DerivationTree,
+                       into_constant: isla.Constant, into_formula: isla.Formula, into_tree: DerivationTree) -> bool:
+            # TODO: We must only inline if 1) tree is concrete and formula is not an existential quantifier
+            #       which can be solved at the level of the given assignment, and 2) the constraint cannot
+            #       be solved at that level, e.g., because the quantifier refers to another constant.
             if constant in top_constants:
                 return False
 
-            if constant not in isla.tree_variables(into_tree):
+            if constant not in into_tree.tree_variables():
                 return False
 
-            state_constants = [const for const, _, _ in state]
-            if ((is_concrete_tree(tree) or all(tree_constant not in state_constants
-                                               for tree_constant in get_tree_constants(tree)))
-                    and all(self.can_be_freely_instantiated(leaf_node, formula, constant)
-                            for _, (leaf_node, _) in open_concrete_leaves(tree))):
-                return True
+            # state_constants = [const for const, _, _ in state]
+            # if ((not tree.is_abstract() or all(tree_constant not in state_constants
+            #                                   for tree_constant in tree.tree_variables()))
+            #        and all(self.can_be_freely_instantiated(leaf_node, formula, constant)
+            #                for _, (leaf_node, _) in tree.open_concrete_leaves())):
+            #    return True
 
-            if is_complete_tree(tree) and not (isinstance(formula, isla.ExistsFormula)
-                                               and cast(isla.ExistsFormula, formula).in_variable == constant
-                                               and tree == (constant, None)):
+            if tree.is_complete() and not (isinstance(formula, isla.ExistsFormula)
+                                           and cast(isla.ExistsFormula, formula).in_variable == constant
+                                           and tree == (constant, None)):
                 return True
 
             # TODO Also do something similar for universal formulas! E.g.,:
@@ -632,7 +664,7 @@ class ISLaSolver:
                 if to_inline[2] == (to_inline[0].n_type, None):
                     new_state[into_idx] = inline_state_element([into], (to_inline[0],
                                                                         to_inline[1],
-                                                                        (to_inline[0], None)))[0]
+                                                                        DerivationTree(to_inline[0], None)))[0]
                 else:
                     new_state[into_idx] = inline_state_element([into], to_inline)[0]
                 del new_state[idx]
@@ -643,7 +675,7 @@ class ISLaSolver:
 
         obsolete_constants = {constant for constant, _, _ in new_state
                               if constant not in top_constants and
-                              all(constant not in isla.tree_variables(other_tree)
+                              all(constant not in other_tree.tree_variables()
                                   for other_const, _, other_tree in new_state
                                   if constant != other_const)}
 
@@ -671,15 +703,16 @@ class ISLaSolver:
     def formula_satisfied(self, assignment: Assignment) -> bool:
         constant, formula, tree = assignment
 
-        if not is_concrete_tree(tree):
+        if tree.is_open():
             # Have to instantiate variables first
             return False
 
-        if is_complete_tree(tree):
+        if tree.is_complete():
             formula = replace_formula(formula,
                                       lambda f: isinstance(f, isla.QuantifiedFormula) and f.in_variable != constant,
                                       isla.SMTFormula(z3.BoolVal(True)))
-            result = isla.evaluate(formula, {constant: (tuple() if constant.path is None else constant.path, tree)})
+            # TODO: Check if we need a non-trivial path here...
+            result = isla.evaluate(formula, {constant: (tuple(), tree)})
             return result
 
         if isinstance(formula, isla.ForallFormula):
@@ -695,56 +728,17 @@ class ISLaSolver:
 
         return False
 
-    def solve_quantifier_free_formula(self, formula: isla.Formula,
-                                      free_constants: OrderedSet[isla.Constant]) -> \
-            Optional[List[Dict[isla.Constant, ParseTree]]]:
-        solutions: List[Dict[isla.Constant, ParseTree]] = []
-
-        for _ in range(self.max_number_smt_instantiations):
-            solver = z3.Solver()
-            constant_collector = VariablesCollector()
-            constants: OrderedSet[isla.Constant] = OrderedSet([c for c in constant_collector.collect(formula) if
-                                                               type(c) is isla.Constant]) | free_constants
-
-            for constant in constants:
-                regex = self.extract_regular_expression(constant.n_type)
-                solver.add(z3.InRe(z3.String(constant.name), regex))
-
-            for prev_solution in solutions:
-                for constant in prev_solution:
-                    solver.add(z3.Not(constant.to_smt() == z3.StringVal(tree_to_string(prev_solution[constant]))))
-
-            solver.add(qfr_free_formula_to_z3_formula(formula))
-
-            if solver.check() != z3.sat:
-                if not solutions:
-                    return None
-                else:
-                    return solutions
-
-            new_solution = {constant: self.parse(constant.n_type, solver.model()[z3.String(constant.name)].as_string())
-                            for constant in constants}
-
-            if new_solution in solutions:
-                # This can happen for trivial solutions, i.e., if the formula is logically valid.
-                # Then, the assignment for that constant will always be {}
-                return solutions
-            else:
-                solutions.append(new_solution)
-
-        return solutions
-
     @lru_cache()
     def extract_regular_expression(self, nonterminal: str) -> z3.ReRef:
         regex_conv = RegexConverter(non_canonical(self.grammar))
         return regex_conv.to_regex(nonterminal)
 
-    def parse(self, nonterminal: str, input: str) -> ParseTree:
+    def parse(self, nonterminal: str, input: str) -> DerivationTree:
         grammar = copy.deepcopy(non_canonical(self.grammar))
         grammar["<start>"] = [nonterminal]
         delete_unreachable(grammar)
         parser = EarleyParser(grammar)
-        return list(parser.parse(input))[0][1][0]
+        return DerivationTree.from_parse_tree(list(parser.parse(input))[0][1][0])
 
     def compute_heuristic_value(self, state: Assignment) -> int:
         """
@@ -752,7 +746,7 @@ class ISLaSolver:
         Criteria are the cost of the expansion, and to what degree the constraint is satisfied (TODO).
         """
         constant, formula, tree = state
-        symbols = set([pair[1][0] for pair in open_concrete_leaves(tree)])
+        symbols = set([pair[1].value for pair in tree.open_concrete_leaves()])
 
         if not symbols:
             return 100
@@ -771,33 +765,12 @@ class ISLaSolver:
         return normalized_depth_value
 
 
-def instantiate_predicates(formula: isla.Formula, tree: AbstractTree) -> isla.Formula:
+def instantiate_predicates(formula: isla.Formula, tree: DerivationTree) -> isla.Formula:
     if isinstance(formula, isla.PredicateFormula):
-        new_args = []
-        for arg in formula.args:
-            if isinstance(arg, isla.Variable):
-                new_args.append(arg)
-            else:
-                path = arg[0]
-                subtree = arg[1]
+        if any(isinstance(arg, isla.Variable) for arg in formula.args):
+            return formula
 
-                subtree_positions = find_subtree(tree, subtree)
-                if len(subtree_positions) != 1:
-                    gensearch_logger.warning(f"Cannot find unique position of argument tree "
-                                             f"{isla.abstract_tree_to_string(subtree)} "
-                                             f"in predicate application {formula} in tree "
-                                             f"{isla.abstract_tree_to_string(tree)}. Found {len(subtree_positions)} "
-                                             f"positions.")
-                    new_args.append(arg)
-                    continue
-
-                if path != subtree_positions[0]:
-                    gensearch_logger.debug(f"Updating position {path} to {subtree_positions[0]} in predicate "
-                                           f"application {formula}")
-
-                new_args.append((subtree_positions[0], subtree))
-
-        return isla.SMTFormula(z3.BoolVal(isla.PredicateFormula(formula.predicate, *new_args).evaluate()))
+        return isla.SMTFormula(z3.BoolVal(formula.evaluate(tree)))
 
     if isinstance(formula, isla.ConjunctiveFormula):
         return reduce(lambda a, b: a & b, [instantiate_predicates(child, tree) for child in formula.args])
@@ -860,7 +833,7 @@ class SolutionStateWrapper:
         self.state = state
 
     def __hash__(self):
-        return hash(tuple([(elem[0], elem[1], tree_to_tuples(elem[2])) for elem in self.state]))
+        return hash(tuple(self.state))
 
     def __str__(self):
         return str(self.state)

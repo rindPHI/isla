@@ -407,6 +407,15 @@ def z3_subst_assgn(inp: z3.ExprRef, subst_map: Dict['isla.Variable', ParseTree])
                           for v, t in subst_map.items()})
 
 
+def z3_and(*formulas: z3.BoolRef) -> z3.BoolRef:
+    if len(formulas) == 0:
+        return z3.BoolVal(True)
+    elif len(formulas) == 1:
+        return formulas[0]
+    else:
+        return z3.And(*formulas)
+
+
 def z3_subst(inp: z3.ExprRef, subst_map: Dict[z3.ExprRef, z3.ExprRef]) -> z3.ExprRef:
     return z3.substitute(inp, *tuple(subst_map.items()))
 
