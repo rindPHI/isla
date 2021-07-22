@@ -191,7 +191,7 @@ class ISLaSolver:
 
             # If the formula is already a semantic formula, evaluate directly
             if is_semantic_formula(formula):
-                new_states = self.eliminate_semantic_formula(constant, formula, formula, tree, state)
+                new_states = self.eliminate_semantic_formula(constant, formula, formula, tree, state, top_constants)
                 for new_state in new_states:
                     for result in self.process_new_state(new_state, queue, top_constants):
                         yield result
@@ -211,8 +211,8 @@ class ISLaSolver:
                     prefix_conjunction = reduce(lambda a, b: a & b, semantic_prefix)
                     new_disjunct = prefix_conjunction & reduce(lambda a, b: a & b, non_semantic_postfix)
 
-                    new_states = self.eliminate_semantic_formula(
-                        constant, prefix_conjunction, new_disjunct, tree, state)
+                    new_states = self.eliminate_semantic_formula(constant, prefix_conjunction, new_disjunct, tree,
+                                                                 state, top_constants)
                     for new_state in new_states:
                         for result in self.process_new_state(new_state, queue, top_constants):
                             yield result
@@ -440,13 +440,15 @@ class ISLaSolver:
                                    semantic_formula: isla.Formula,
                                    context_formula: isla.Formula,
                                    tree: DerivationTree,
-                                   state: SolutionState) -> List[SolutionState]:
+                                   state: SolutionState,
+                                   top_constants: Set[isla.Constant]) -> List[SolutionState]:
         """
         Solves a semantic formula and, for each solution, substitutes the solution for the respective
         constant in each assignment of the state. Also instantiates all "free" constants in the given
         tree. The SMT solver is passed a regular expression approximating the language of the nonterminal
         of each considered constant. Returns an empty list for unsolvable constraints.
 
+        :param top_constants:
         :param constant: The constant of the current assignment. Relevant for trivial constraints to generate
         the new state.
         :param semantic_formula: The semantic (i.e., only containing logical connectors and SMT Formulas)
@@ -471,7 +473,11 @@ class ISLaSolver:
         results = []
         for solution in solutions:
             if solution:
-                new_state = SolutionState([])
+                new_state = SolutionState([
+                    Assignment(constant, sc.true(), solution[constant])
+                    for constant in solution
+                    if constant in top_constants
+                ])
                 new_state.extend(substitute_assignment(
                     SolutionState([assgn for assgn in state if assgn.constant not in solution]),
                     solution))

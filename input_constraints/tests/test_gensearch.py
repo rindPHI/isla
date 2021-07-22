@@ -72,6 +72,7 @@ class TestGensearch(unittest.TestCase):
 
     def test_simple_existential_formula(self):
         # logging.basicConfig(level=logging.DEBUG)
+        start = isla.Constant("$start", "<start>")
         var1 = isla.BoundVariable("$var", "<var>")
 
         formula = sc.exists(
@@ -122,8 +123,7 @@ class TestGensearch(unittest.TestCase):
                      sc.smt_for(cast(z3.BoolRef, var_2.to_smt() == z3.StringVal("x")), var_2))
                  ))
 
-        # TODO: Nontermination for num_solutions > 1! Can we fix that?
-        self.execute_generation_test(formula, [start], num_solutions=1)
+        self.execute_generation_test(formula, [start], num_solutions=15)
 
     def test_declared_before_used(self):
         logging.basicConfig(level=logging.DEBUG)

@@ -498,7 +498,7 @@ class Predicate:
     def __eq__(self, other):
         return type(other) is Predicate and (self.name, self.arity) == (other.name, other.arity)
 
-    def hash(self):
+    def __hash__(self):
         return hash((self.name, self.arity))
 
     def __repr__(self):
@@ -566,7 +566,7 @@ class PredicateFormula(Formula):
         visitor.visit_predicate_formula(self)
 
     def __hash__(self):
-        return hash((self.predicate, self.args))
+        return hash((self.predicate, tuple(self.args)))
 
     def __eq__(self, other):
         return type(self) is type(other) and (self.predicate, self.args) == (other.predicate, other.args)
@@ -791,7 +791,7 @@ class ForallFormula(QuantifiedFormula):
         if self.in_variable in subst_map:
             # Instantiate quantifier
             matches: List[Dict[Variable, Tuple[Path, DerivationTree]]] = \
-                matches_for_quantified_variable(self, subst_map[self.in_variable][1])
+                matches_for_quantified_variable(self, subst_map[self.in_variable])
 
             # NOTE: We assume that if there are no matches, the quantified expression is not feasible
             #       also in incomplete parse tree instantiations. Otherwise, it is not correct to remove
@@ -800,13 +800,13 @@ class ForallFormula(QuantifiedFormula):
             if not matches:
                 isla_logger.debug(f"Replacing universal formula with True since quantified expression does not "
                                   f"match derivation tree\n"
-                                  f"  (tree: {subst_map[self.in_variable][1]}, "
+                                  f"  (tree: {subst_map[self.in_variable]}, "
                                   f"formula: {self})")
                 return SMTFormula(z3.BoolVal(True))
 
             result = self.inner_formula.substitute_expressions(subst_map)
             for match in matches:
-                result = result.substitute_expressions(match)
+                result = result.substitute_expressions({k: v[1] for k, v in match.items()})
             return result
 
         return ForallFormula(
