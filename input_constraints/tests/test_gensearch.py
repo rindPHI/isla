@@ -68,15 +68,10 @@ class TestGensearch(unittest.TestCase):
             rhs, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        self.execute_generation_test(formula, [start], print_solutions=True)
+        self.execute_generation_test(formula, [start])
 
     def test_simple_existential_formula(self):
-        logging.basicConfig(level=logging.DEBUG)
-        # NOTE: Existential quantifier instantiation currently does not produce an infinite stream,
-        #       since we basically look for paths through the grammar without repetition, which
-        #       yields a finite (usually small) number of solutions. Check whether that's a problem.
-        #       Usually, we will have universal quantifiers at top level in any case.
-        start = isla.Constant("$start", "<start>")
+        # logging.basicConfig(level=logging.DEBUG)
         var1 = isla.BoundVariable("$var", "<var>")
 
         formula = sc.exists(
@@ -85,8 +80,7 @@ class TestGensearch(unittest.TestCase):
 
         self.execute_generation_test(formula, [start],
                                      num_solutions=100,
-                                     max_number_free_instantiations=1,
-                                     print_solutions=True)
+                                     max_number_free_instantiations=1)
 
     def test_simple_existential_formula_with_bind(self):
         start = isla.Constant("$start", "<start>")
@@ -98,7 +92,7 @@ class TestGensearch(unittest.TestCase):
             rhs, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        self.execute_generation_test(formula, [start], num_solutions=10, max_number_free_instantiations=10)
+        self.execute_generation_test(formula, [start])
 
     def test_conjunction_of_qfd_formulas(self):
         start = isla.Constant("$start", "<start>")
