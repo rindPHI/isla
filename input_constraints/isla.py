@@ -588,7 +588,7 @@ class PredicateFormula(Formula):
 
 class PropositionalCombinator(Formula):
     def __init__(self, *args: Formula):
-        self.args = list(args)
+        self.args = args
 
     def free_variables(self) -> OrderedSet[Variable]:
         result: OrderedSet[Variable] = OrderedSet([])

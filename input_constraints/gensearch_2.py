@@ -4,6 +4,7 @@ from functools import reduce, lru_cache
 from typing import Generator, Dict, List, Set, cast, Optional, Iterable, Iterator, Tuple
 
 import z3
+from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.Grammars import is_nonterminal
 from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph.gg import GrammarGraph
@@ -246,9 +247,9 @@ class ISLaSolver:
 
                 new_states = self.expand_tree(constant, disjunct, tree, state)
                 for new_state in new_states:
-                    # Must not yield here, since quantifiers have to be matched before.
-                    result = self.process_new_state(new_state, queue, top_constants)
-                    assert not result, "Free nonterminals should not be expanded here"
+                    for result in self.process_new_state(new_state, queue, top_constants):
+                        yield result
+
 
     def expand_tree(self,
                     constant: isla.Constant,
@@ -259,13 +260,8 @@ class ISLaSolver:
 
         expanded_trees = [tree]
         for leaf_path, (leaf_node, _) in tree.open_concrete_leaves():
-            # We do not expand nonterminals for which we are sure that they can be freely instantiated,
-            # which are those that are not reachable by nonterminals quantified over by any top level
-            # quantifier in disjunctive_element
-            # TODO. Problem: Maybe it cannot be freely instantiated since after inlining in some
-            #       higher-level assignment...
-            # if self.can_be_freely_instantiated(leaf_node, disjunct, constant):
-            #     continue
+            if self.can_be_freely_instantiated(leaf_node, constant, disjunct):
+                continue
 
             # Expand the leaf, check matching instantiations
             old_expanded_trees = copy.deepcopy(expanded_trees)
@@ -290,8 +286,6 @@ class ISLaSolver:
         expanded_trees: List[DerivationTree] = []
 
         for expansion in self.canonical_grammar[leaf_node]:
-            # TODO: Only expand nonterminals from which the nonterminal of the quantified variable
-            #       can be reached. Also inline incomplete trees in that case. Batch-expand later on.
             tree = copy.deepcopy(tree)
             expanded_trees.append(
                 tree.replace_path(leaf_path, DerivationTree.from_parse_tree(
@@ -514,22 +508,73 @@ class ISLaSolver:
             top_constants: Set[isla.Constant]) -> List[Dict[isla.Constant, DerivationTree]]:
         # TODO: Establish invariant
         new_state = self.inline(new_state, top_constants)
+        new_states = self.instantiate_free_nonterminals(new_state, top_constants)
 
-        if new_state.complete() and all(assgn.formula_satisfied(self.grammar) for assgn in new_state):
-            assert {assgn.constant for assgn in new_state} == top_constants
-            return [{c: t for c, _, t in new_state}]
+        result: List[Dict[isla.Constant, DerivationTree]] = []
 
-        if new_state.complete():
-            # If this never happens, we can drop the expensive satisfaction check above
-            self.logger.debug(f"Created state is complete, but constraints not satisfied: {new_state}")
+        for new_state in new_states:
+            if new_state.complete() and all(assgn.formula_satisfied(self.grammar) for assgn in new_state):
+                assert {assgn.constant for assgn in new_state} == top_constants
+                result.append({c: t for c, _, t in new_state})
+                continue
 
-        self.logger.debug(f"Pushing new state {new_state}")
-        self.logger.debug(f"Queue length: {len(queue)}")
-        queue.add(new_state)
+            if new_state.complete():
+                # If this never happens, we can drop the expensive satisfaction check above
+                self.logger.debug(f"Created state is complete, but constraints not satisfied: {new_state}")
 
-        return []
+            self.logger.debug(f"Pushing new state {new_state}")
+            self.logger.debug(f"Queue length: {len(queue)}")
+            queue.add(new_state)
+
+        return result
+
+    def instantiate_free_nonterminals(
+            self, new_state: SolutionState, top_constants: Set[isla.Constant]) -> OrderedSet[SolutionState]:
+        """
+        Instantiates free nonterminals up to the set bound if the state only consists of top assignments.
+
+        :param new_state: The state to expand
+        :param top_constants: The top-level constants
+        :return: A new set of states
+        """
+
+        if new_state.len() != len(top_constants):
+            return OrderedSet([new_state])
+
+        result: OrderedSet[SolutionState] = OrderedSet([])
+        candidates: OrderedSet[SolutionState] = OrderedSet([new_state])
+        fuzzer = GrammarCoverageFuzzer(self.grammar)
+
+        while candidates:
+            candidate: SolutionState = candidates.pop(last=False)
+            assignment: Assignment
+            for idx, assignment in enumerate(candidate):
+                assert assignment.constant in top_constants
+                has_free_leaves = False
+                for path, subtree in assignment.tree.open_concrete_leaves():
+                    if not self.can_be_freely_instantiated(subtree.value, assignment.constant, assignment.constraint):
+                        continue
+
+                    has_free_leaves = True
+
+                    for _ in range(self.max_number_free_instantiations):
+                        nonterminal_instantiation = DerivationTree.from_parse_tree(
+                            fuzzer.expand_tree((subtree.value, None)))
+                        new_tree = assignment.tree.replace_path(path, nonterminal_instantiation)
+                        candidates.add(SolutionState(
+                            candidate.assignments[:idx] +
+                            [Assignment(assignment.constant, assignment.constraint, new_tree)] +
+                            candidate.assignments[idx + 1:]
+                        ))
+
+                if not has_free_leaves:
+                    result.add(candidate)
+
+        return result
 
     def inline(self, new_state: SolutionState, top_constants: Set[isla.Constant]) -> SolutionState:
+        new_state = copy.deepcopy(new_state)
+
         while True:
             inlining_possibilities = [
                 (idx, to_inline, into_idx, into_assgn)
@@ -537,8 +582,8 @@ class ISLaSolver:
                 for into_idx, into_assgn in enumerate(new_state)
                 if idx != into_idx
                    and self.can_inline(
-                    to_inline.constant, to_inline.tree,
-                    into_assgn.tree, top_constants)]
+                    to_inline.constant, to_inline.constraint, to_inline.tree,
+                    into_assgn.constraint, into_assgn.tree, top_constants)]
 
             if not inlining_possibilities:
                 break
@@ -558,12 +603,42 @@ class ISLaSolver:
         return new_state
 
     def can_inline(self,
-                   constant: isla.Constant, tree: DerivationTree,
-                   into_tree: DerivationTree,
+                   constant: isla.Constant, constraint: isla.Formula, tree: DerivationTree,
+                   into_constraint: isla.Formula, into_tree: DerivationTree,
                    top_constants: Set[isla.Constant]) -> bool:
-        return (constant not in top_constants
-                and constant in into_tree.tree_variables()
-                and tree.is_complete())
+        if (constant in top_constants
+                or constant not in into_tree.tree_variables()
+                or tree.is_abstract()):
+            return False
+
+        if tree.is_complete():
+            return True
+
+        if constant in constraint.free_variables() or constant in into_constraint.free_variables():
+            return False
+
+        leaf_nonterminals = OrderedSet([node.value for _, node in tree.open_concrete_leaves()])
+        return all(self.can_be_freely_instantiated(nonterminal, constant, constraint)
+                   for nonterminal in leaf_nonterminals)
+
+    def can_be_freely_instantiated(self, nonterminal: str, in_constant: isla.Constant, formula: isla.Formula) -> bool:
+        qfd_nonterminals = {
+            conjunct.bound_variable.n_type
+            for disjunct in split_disjunction(formula)
+            for conjunct in split_conjunction(disjunct)
+            if isinstance(conjunct, isla.QuantifiedFormula)
+               and conjunct.in_variable == in_constant
+        }
+
+        can_be_freely_instantiated = (not any(qfd_nonterminal == nonterminal or
+                                              self.reachable(nonterminal, qfd_nonterminal)
+                                              for qfd_nonterminal in qfd_nonterminals))
+        return can_be_freely_instantiated
+
+    @lru_cache()
+    def reachable(self, nonterminal: str, to_nonterminal: str) -> bool:
+        graph = GrammarGraph.from_grammar(self.grammar)
+        return graph.get_node(nonterminal).reachable(graph.get_node(to_nonterminal))
 
     @lru_cache()
     def extract_regular_expression(self, nonterminal: str) -> z3.ReRef:
