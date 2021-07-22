@@ -41,7 +41,6 @@ def substitute_assignment(in_state: SolutionState, assignment: Dict[isla.Constan
 
 
 def inline_state_element(state: SolutionState, state_to_inline: Assignment) -> SolutionState:
-    # Caveat: Result not necessarily in PNF!
     result: SolutionState = []
     variable, formula, tree = state_to_inline
     for state_element in state:

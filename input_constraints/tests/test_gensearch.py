@@ -7,7 +7,7 @@ from fuzzingbook.GrammarFuzzer import tree_to_string
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
-from input_constraints.gensearch import ISLaSolver
+from input_constraints.gensearch_2 import ISLaSolver
 from input_constraints.isla import DerivationTree
 from input_constraints.tests.test_data import LANG_GRAMMAR
 from input_constraints.type_defs import Path
@@ -49,6 +49,7 @@ class TestGensearch(unittest.TestCase):
                                      num_solutions=10)
 
     def test_simple_universal_formula(self):
+        logging.basicConfig(level=logging.DEBUG)
         start = isla.Constant("$start", "<start>")
         var1 = isla.BoundVariable("$var", "<var>")
 
@@ -56,7 +57,7 @@ class TestGensearch(unittest.TestCase):
             var1, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        self.execute_generation_test(formula, [start])
+        self.execute_generation_test(formula, [start], print_solutions=True)
 
     def test_simple_universal_formula_with_bind(self):
         start = isla.Constant("$start", "<start>")
@@ -181,7 +182,7 @@ class TestGensearch(unittest.TestCase):
         if constant_paths is None:
             constant_paths = [tuple() for _ in constants]
 
-        it = solver.find_solution()
+        it = solver.solve()
         for idx in range(num_solutions):
             try:
                 assignment = next(it)
