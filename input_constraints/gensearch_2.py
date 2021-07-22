@@ -247,9 +247,15 @@ class ISLaSolver:
 
                 new_states = self.expand_tree(constant, disjunct, tree, state)
                 for new_state in new_states:
-                    for result in self.process_new_state(new_state, queue, top_constants):
-                        yield result
+                    results = self.process_new_state(new_state, queue, top_constants)
+                    assert not results, f"Free nonterminals should not be instantiated here"
 
+                if not new_states:
+                    new_states = self.instantiate_free_nonterminals(state, top_constants)
+
+                    for new_state in new_states:
+                        for result in self.process_new_state(new_state, queue, top_constants):
+                            yield result
 
     def expand_tree(self,
                     constant: isla.Constant,
@@ -508,25 +514,20 @@ class ISLaSolver:
             top_constants: Set[isla.Constant]) -> List[Dict[isla.Constant, DerivationTree]]:
         # TODO: Establish invariant
         new_state = self.inline(new_state, top_constants)
-        new_states = self.instantiate_free_nonterminals(new_state, top_constants)
 
-        result: List[Dict[isla.Constant, DerivationTree]] = []
+        if new_state.complete() and all(assgn.formula_satisfied(self.grammar) for assgn in new_state):
+            assert {assgn.constant for assgn in new_state} == top_constants
+            return [{c: t for c, _, t in new_state}]
 
-        for new_state in new_states:
-            if new_state.complete() and all(assgn.formula_satisfied(self.grammar) for assgn in new_state):
-                assert {assgn.constant for assgn in new_state} == top_constants
-                result.append({c: t for c, _, t in new_state})
-                continue
+        if new_state.complete():
+            # If this never happens, we can drop the expensive satisfaction check above
+            self.logger.debug(f"Created state is complete, but constraints not satisfied: {new_state}")
 
-            if new_state.complete():
-                # If this never happens, we can drop the expensive satisfaction check above
-                self.logger.debug(f"Created state is complete, but constraints not satisfied: {new_state}")
+        self.logger.debug(f"Pushing new state {new_state}")
+        self.logger.debug(f"Queue length: {len(queue)}")
+        queue.add(new_state)
 
-            self.logger.debug(f"Pushing new state {new_state}")
-            self.logger.debug(f"Queue length: {len(queue)}")
-            queue.add(new_state)
-
-        return result
+        return []
 
     def instantiate_free_nonterminals(
             self, new_state: SolutionState, top_constants: Set[isla.Constant]) -> OrderedSet[SolutionState]:
@@ -548,27 +549,32 @@ class ISLaSolver:
         while candidates:
             candidate: SolutionState = candidates.pop(last=False)
             assignment: Assignment
+            has_free_leaves = False
             for idx, assignment in enumerate(candidate):
                 assert assignment.constant in top_constants
-                has_free_leaves = False
-                for path, subtree in assignment.tree.open_concrete_leaves():
-                    if not self.can_be_freely_instantiated(subtree.value, assignment.constant, assignment.constraint):
-                        continue
 
-                    has_free_leaves = True
+                for _ in range(self.max_number_free_instantiations):
+                    new_tree = copy.deepcopy(assignment.tree)
+                    for path, subtree in assignment.tree.open_concrete_leaves():
+                        if not self.can_be_freely_instantiated(
+                                subtree.value, assignment.constant, assignment.constraint):
+                            continue
 
-                    for _ in range(self.max_number_free_instantiations):
+                        has_free_leaves = True
+
                         nonterminal_instantiation = DerivationTree.from_parse_tree(
                             fuzzer.expand_tree((subtree.value, None)))
-                        new_tree = assignment.tree.replace_path(path, nonterminal_instantiation)
+                        new_tree = new_tree.replace_path(path, nonterminal_instantiation)
+
+                    if has_free_leaves:
                         candidates.add(SolutionState(
                             candidate.assignments[:idx] +
                             [Assignment(assignment.constant, assignment.constraint, new_tree)] +
                             candidate.assignments[idx + 1:]
                         ))
 
-                if not has_free_leaves:
-                    result.add(candidate)
+            if not has_free_leaves:
+                result.add(candidate)
 
         return result
 

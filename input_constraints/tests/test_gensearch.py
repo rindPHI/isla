@@ -59,7 +59,6 @@ class TestGensearch(unittest.TestCase):
         self.execute_generation_test(formula, [start])
 
     def test_simple_universal_formula_with_bind(self):
-        # logging.basicConfig(level=logging.DEBUG)
         start = isla.Constant("$start", "<start>")
         rhs = isla.BoundVariable("$rhs", "<rhs>")
         var1 = isla.BoundVariable("$var", "<var>")
@@ -69,7 +68,7 @@ class TestGensearch(unittest.TestCase):
             rhs, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        self.execute_generation_test(formula, [start])
+        self.execute_generation_test(formula, [start], print_solutions=True)
 
     def test_simple_existential_formula(self):
         logging.basicConfig(level=logging.DEBUG)
