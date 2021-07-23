@@ -146,6 +146,7 @@ class ISLaSolver:
     def __init__(self,
                  grammar: Grammar,
                  formula: isla.Formula,
+                 initial_derivation_tree: Optional[DerivationTree] = None,
                  max_number_free_instantiations: int = 10,
                  max_number_smt_instantiations: int = 10
                  ):
@@ -153,6 +154,7 @@ class ISLaSolver:
         self.canonical_grammar = canonical(grammar)
 
         self.formula = formula
+        self.initial_derivation_tree = initial_derivation_tree
 
         self.max_number_free_instantiations: int = max_number_free_instantiations
         self.max_number_smt_instantiations: int = max_number_smt_instantiations
@@ -167,7 +169,10 @@ class ISLaSolver:
 
         queue: OrderedSet[SolutionState] = OrderedSet([
             SolutionState([
-                Assignment(constant, self.formula, DerivationTree(constant.n_type, None))
+                Assignment(
+                    constant,
+                    self.formula,
+                    self.initial_derivation_tree or DerivationTree(constant.n_type, None))
                 for constant in top_constants
             ])])
 
@@ -176,12 +181,13 @@ class ISLaSolver:
             self.logger.debug(f"Polling new state {state}")
             self.logger.debug(f"Queue length: {len(queue)}")
 
-            if state.len() == 1:
-                assignment = state[0]
-            else:
-                # Choose the first assignment with a non-abstract tree and an open leaf.
-                assignment = next((assgn for assgn in state
-                                   if not assgn.tree.is_abstract() and assgn.tree.is_open()))
+            # Choose the first assignment with a non-abstract tree and an open leaf.
+            assignments = ([assgn for assgn in state if not assgn.tree.is_abstract() and assgn.tree.is_open()]
+                           or [assgn for assgn in state if assgn.tree.is_open()]
+                           or state[0]
+                           )
+
+            assignment = assignments[0]
 
             constant, formula, tree = assignment
             assert satisfies_invariant(formula, self.grammar)
@@ -461,14 +467,15 @@ class ISLaSolver:
         from `constant`).
         :return: A list of instantiated SolutionStates.
         """
+
         free_constants = [c for c in tree.tree_variables()
-                          if not any(assgn.constant == c for assgn in state)
-                          and c not in semantic_formula.free_variables()]
+                          if not any(assgn.constant == c for assgn in state if assgn.constant != constant)
+                          and c not in context_formula.free_variables()]
 
         solutions = self.solve_quantifier_free_formula(semantic_formula, OrderedSet(free_constants))
 
         # None solution ==> Unsolvable constraint... Nothing more to do here.
-        solutions = [] if solutions is None else solutions
+        solutions = solutions or []
 
         results = []
         for solution in solutions:
@@ -735,8 +742,7 @@ def satisfies_invariant(formula: isla.Formula, grammar: Grammar) -> bool:
         # SMT formulas must be atoms: No logical connectives & quantifiers inside
         for smt_formula in [formula for formula in conjuncts if isinstance(formula, isla.SMTFormula)]:
             for smt_sub in visit_z3_expr(smt_formula.formula):
-                if (isinstance(smt_sub, z3.QuantifierRef)
-                        or smt_sub.decl().kind() in [z3.Z3_OP_AND, z3.Z3_OP_OR, z3.Z3_OP_IMPLIES, z3.Z3_OP_IFF]):
+                if isinstance(smt_sub, z3.QuantifierRef):
                     return False
 
         # Conjunct order:
@@ -802,17 +808,19 @@ def is_semantic_formula(formula: isla.Formula) -> bool:
 
 
 def instantiate_predicates(formula: isla.Formula, tree: DerivationTree) -> isla.Formula:
-    if isinstance(formula, isla.PredicateFormula):
-        if any(isinstance(arg, isla.Variable) for arg in formula.args):
-            return formula
+    # Note: The current interpretation of these Python (non-SMT) predicates is that they are *structural* predicate,
+    #       i.e., they are only concerned about positions / paths and not about actual parse trees.
+    #       This means that we can already evaluate them when they still contain constants, as long as the constants
+    #       occur in the derivation tree.
+    predicate_formulas = [
+        conjunct
+        for disjunct in split_disjunction(formula)
+        for conjunct in split_conjunction(disjunct)
+        if isinstance(conjunct, isla.PredicateFormula)]
 
-        return isla.SMTFormula(z3.BoolVal(formula.evaluate(tree)))
-
-    if isinstance(formula, isla.ConjunctiveFormula):
-        return reduce(lambda a, b: a & b, [instantiate_predicates(child, tree) for child in formula.args])
-
-    if isinstance(formula, isla.DisjunctiveFormula):
-        return reduce(lambda a, b: a | b, [instantiate_predicates(child, tree) for child in formula.args])
+    for predicate_formula in predicate_formulas:
+        instantiation = isla.SMTFormula(z3.BoolVal(predicate_formula.evaluate(tree)))
+        formula = isla.replace_formula(formula, predicate_formula, instantiation)
 
     return formula
 

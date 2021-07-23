@@ -4,6 +4,7 @@ from typing import cast, List, Optional
 
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string
+from fuzzingbook.Parser import EarleyParser
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
@@ -35,18 +36,24 @@ class TestGensearch(unittest.TestCase):
         self.execute_generation_test(formula, [var1, var2, var3], num_solutions=1)
 
     def test_simple_predicate_conjunction(self):
+        logging.basicConfig(level=logging.DEBUG)
         # Idea: part of an assignment "var := rhs"
         var = isla.Constant("$var", "<var>")
         rhs = isla.Constant("$rhs", "<rhs>")
+        initial_tree = DerivationTree.from_parse_tree(
+            ('<start>', [('<stmt>', [('<assgn>', [(var, None), (' := ', []), (rhs, None)])])]))
 
         formula = isla.ConjunctiveFormula(
             isla.SMTFormula(cast(z3.BoolRef, var.to_smt() == z3.StringVal("x")), var),
-            sc.before(((0, 0, 0), DerivationTree(var, None)), ((0, 0, 2), DerivationTree(rhs, None))))
+            sc.before(var, rhs))
 
         self.execute_generation_test(formula, [var, rhs],
+                                     initial_derivation_tree=initial_tree,
                                      max_number_smt_instantiations=2,
                                      max_number_free_instantiations=10,
-                                     num_solutions=10)
+                                     num_solutions=10,
+                                     print_solutions=True
+                                     )
 
     def test_simple_universal_formula(self):
         start = isla.Constant("$start", "<start>")
@@ -160,7 +167,7 @@ class TestGensearch(unittest.TestCase):
     def execute_generation_test(self,
                                 formula: isla.Formula,
                                 constants: List[isla.Constant],
-                                constant_paths: Optional[List[Path]]=None,
+                                initial_derivation_tree: Optional[DerivationTree] = None,
                                 num_solutions=50,
                                 print_solutions=False,
                                 max_number_free_instantiations=1,
@@ -169,11 +176,15 @@ class TestGensearch(unittest.TestCase):
         solver = ISLaSolver(
             grammar=LANG_GRAMMAR,
             formula=formula,
+            initial_derivation_tree=initial_derivation_tree,
             max_number_free_instantiations=max_number_free_instantiations,
             max_number_smt_instantiations=max_number_smt_instantiations)
 
-        if constant_paths is None:
-            constant_paths = [tuple() for _ in constants]
+        constant_paths = {c: tuple() for c in constants}
+        if initial_derivation_tree is not None:
+            for constant in constants:
+                constant_paths[constant] = initial_derivation_tree.filter(
+                    lambda t: t.value == constant and t.children is None, enforce_unique=True)[0][0]
 
         it = solver.solve()
         for idx in range(num_solutions):
@@ -182,8 +193,8 @@ class TestGensearch(unittest.TestCase):
                 if print_solutions:
                     print(", ".join([tree_to_string(assignment[c]) for c in constants]))
                 self.assertTrue(isla.evaluate(formula, {
-                    c: (constant_paths[idx], assignment[c])
-                    for idx, c in enumerate(constants)
+                    c: (constant_paths[c], assignment[c])
+                    for c in constants
                 }))
             except StopIteration:
                 if idx == 0:

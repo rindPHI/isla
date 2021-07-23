@@ -118,6 +118,19 @@ class DerivationTree:
             for i, child in enumerate(self.children):
                 yield from child.path_iterator(path + (i,))
 
+    def filter(self, f: Callable[['DerivationTree'], bool],
+               enforce_unique: bool = False) -> List[Tuple[Path, 'DerivationTree']]:
+        result: List[Tuple[Path, 'DerivationTree']] = []
+
+        for path, subtree in self.path_iterator():
+            if f(subtree):
+                result.append((path, subtree))
+
+                if enforce_unique and len(result) > 1:
+                    raise RuntimeError(f"Found searched-for element more than once in {self}")
+
+        return result
+
     def find_node(self, node_or_id: Union['DerivationTree', int]) -> Optional[Path]:
         """Finds a node by its (assumed unique) ID. Returns the path relative to this node."""
 
@@ -520,12 +533,11 @@ class PredicateFormula(Formula):
         self.args: List[Union[Variable, DerivationTree]] = list(args)
 
     def evaluate(self, context_tree: DerivationTree):
-        if any(isinstance(arg, Variable) for arg in self.args):
-            raise RuntimeError(f"Cannot evaluate predicate with partially instantiated arguments "
-                               f"{self.args}")
-
         args_with_paths: List[Tuple[Path, DerivationTree]] = \
-            [(context_tree.find_node(tree), tree) for tree in self.args]
+            [(context_tree.find_node(tree), tree) if isinstance(tree, DerivationTree)
+             else context_tree.filter(
+                lambda subtree: subtree.value == tree and subtree.children is None, enforce_unique=True)[0]
+             for tree in self.args]
 
         if any(path is None for path, _ in args_with_paths):
             raise RuntimeError(f"Could not find paths for all predicate arguments in context tree.")
@@ -574,11 +586,7 @@ class PredicateFormula(Formula):
     def __str__(self):
         arg_strings = []
         for arg in self.args:
-            if isinstance(arg, Variable):
-                arg_strings.append(str(arg))
-            else:
-                path, tree = arg
-                arg_strings.append(f"({path}, {tree})")
+            arg_strings.append(str(arg))
 
         return f"{self.predicate}({', '.join(arg_strings)})"
 
