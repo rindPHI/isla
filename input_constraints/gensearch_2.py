@@ -568,14 +568,12 @@ class ISLaSolver:
         result: List[Dict[isla.Constant, DerivationTree]] = []
 
         for new_state in new_states:
-            if new_state.complete() and all(assgn.formula_satisfied(self.grammar) for assgn in new_state):
+            if new_state.complete():
+                assert all(assgn.formula_satisfied(self.grammar) for assgn in new_state), \
+                    f"Created state is complete, but constraints not satisfied: {new_state}"
                 assert {assgn.constant for assgn in new_state} == top_constants
                 result.append({c: t for c, _, t in new_state})
                 continue
-
-            if new_state.complete():
-                # If this never happens, we can drop the expensive satisfaction check above
-                self.logger.debug(f"Created state is complete, but constraints not satisfied: {new_state}")
 
             self.logger.debug(f"Pushing new state {new_state}")
             self.logger.debug(f"Queue length: {len(queue)}")
