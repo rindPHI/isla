@@ -4,14 +4,12 @@ from typing import cast, List, Optional
 
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string
-from fuzzingbook.Parser import EarleyParser
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 from input_constraints.gensearch_2 import ISLaSolver
 from input_constraints.isla import DerivationTree
 from input_constraints.tests.test_data import LANG_GRAMMAR
-from input_constraints.type_defs import Path
 
 
 class TestGensearch(unittest.TestCase):
@@ -36,8 +34,6 @@ class TestGensearch(unittest.TestCase):
         self.execute_generation_test(formula, [var1, var2, var3], num_solutions=1)
 
     def test_simple_predicate_conjunction(self):
-        logging.basicConfig(level=logging.DEBUG)
-        # Idea: part of an assignment "var := rhs"
         var = isla.Constant("$var", "<var>")
         rhs = isla.Constant("$rhs", "<rhs>")
         initial_tree = DerivationTree.from_parse_tree(
@@ -49,10 +45,8 @@ class TestGensearch(unittest.TestCase):
 
         self.execute_generation_test(formula, [var, rhs],
                                      initial_derivation_tree=initial_tree,
-                                     max_number_smt_instantiations=2,
                                      max_number_free_instantiations=10,
                                      num_solutions=10,
-                                     print_solutions=True
                                      )
 
     def test_simple_universal_formula(self):

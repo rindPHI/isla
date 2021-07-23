@@ -468,14 +468,19 @@ class ISLaSolver:
         :return: A list of instantiated SolutionStates.
         """
 
+        solutions = self.solve_quantifier_free_formula(semantic_formula)
+
         free_constants = [c for c in tree.tree_variables()
                           if not any(assgn.constant == c for assgn in state if assgn.constant != constant)
                           and c not in context_formula.free_variables()]
 
-        solutions = self.solve_quantifier_free_formula(semantic_formula, OrderedSet(free_constants))
-
-        # None solution ==> Unsolvable constraint... Nothing more to do here.
-        solutions = solutions or []
+        for _ in range(len(solutions)):
+            solution = solutions.pop(0)
+            fuzzer = GrammarCoverageFuzzer(self.grammar)
+            for _ in range(self.max_number_free_instantiations):
+                solutions.append(
+                    solution | {c: DerivationTree.from_parse_tree(fuzzer.expand_tree((c.n_type, None)))
+                                for c in free_constants})
 
         results = []
         for solution in solutions:
@@ -502,10 +507,8 @@ class ISLaSolver:
 
         return results
 
-    def solve_quantifier_free_formula(self,
-                                      formula: isla.Formula,
-                                      free_constants: OrderedSet[isla.Constant]) -> \
-            Optional[List[Dict[isla.Constant, DerivationTree]]]:
+    def solve_quantifier_free_formula(
+            self, formula: isla.Formula) -> List[Dict[isla.Constant, DerivationTree]]:
         solutions: List[Dict[isla.Constant, DerivationTree]] = []
 
         for _ in range(self.max_number_smt_instantiations):
@@ -513,7 +516,7 @@ class ISLaSolver:
             constant_collector = VariablesCollector()
             constants: OrderedSet[isla.Constant] = OrderedSet(
                 [c for c in constant_collector.collect(formula) if
-                 type(c) is isla.Constant]) | free_constants
+                 type(c) is isla.Constant])
 
             for constant in constants:
                 regex = self.extract_regular_expression(constant.n_type)
@@ -527,7 +530,7 @@ class ISLaSolver:
 
             if solver.check() != z3.sat:
                 if not solutions:
-                    return None
+                    return []
                 else:
                     return solutions
 
