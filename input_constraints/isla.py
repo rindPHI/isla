@@ -190,10 +190,22 @@ class DerivationTree:
 
         return DerivationTree(node, new_children, id=self.id)
 
-    def open_concrete_leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
+    def open_leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
+        """
+        :return: All open leaves of this tree, including concrete and abstract ones.
+        """
         return ((path, sub_tree)
                 for path, sub_tree in self.path_iterator()
+                if sub_tree.children is None)
+
+    def open_concrete_leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
+        return ((path, sub_tree)
+                for path, sub_tree in self.open_leaves()
                 if sub_tree.children is None and not sub_tree.is_abstract())
+
+    def make_concrete(self) -> 'DerivationTree':
+        return self.substitute_variables(
+            {var: DerivationTree(var.n_type, None) for var in self.tree_variables()})
 
     def tree_variables(self) -> OrderedSet[Variable]:
         return OrderedSet([
@@ -705,17 +717,13 @@ class SMTFormula(Formula):
                                          if variable not in subst_map])
 
         for key, tree in subst_map.items():
-            if isinstance(tree, DerivationTree) and tree.children is None and tree.is_abstract():
-                subst_map[key] = path, tree.value
+            assert isinstance(tree, DerivationTree)
+            if tree.children is None and tree.is_abstract():
+                subst_map[key] = tree.value
                 new_free_variables.add(tree.value)
                 continue
 
-            if isinstance(tree, Variable):
-                assert False  # Why should it be a Variable???
-                new_free_variables.add(tree)
-                continue
-
-            assert not tree.is_abstract()
+            assert tree.is_complete()
             subst_map[key] = str(tree)
 
         assert all(isinstance(rhs, str) or isinstance(rhs, Variable) for rhs in subst_map.values())
