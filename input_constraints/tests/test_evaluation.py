@@ -172,6 +172,24 @@ class TestEvaluation(unittest.TestCase):
             tree = DerivationTree.from_parse_tree(next(parser.parse(invalid_prog)))
             self.assertFalse(evaluate(formula, {prog: ((), tree)}))
 
+    def test_evaluate_concrete_in_expr(self):
+        parser = EarleyParser(LANG_GRAMMAR)
+
+        prog = "x := 1 ; x := x"
+        tree = DerivationTree.from_parse_tree(next(parser.parse(prog)))
+        var = BoundVariable("$var", "<var>")
+
+        formula = sc.forall(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("x")), var))
+        self.assertTrue(evaluate(formula, {}))
+        formula = sc.forall(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("y")), var))
+        self.assertFalse(evaluate(formula, {}))
+
+        formula = sc.exists(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("x")), var))
+        self.assertTrue(evaluate(formula, {}))
+        formula = sc.exists(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("y")), var))
+        self.assertFalse(evaluate(formula, {}))
+
+
     def test_match(self):
         parser = EarleyParser(LANG_GRAMMAR)
 
