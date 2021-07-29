@@ -55,7 +55,7 @@ class TestGensearch(unittest.TestCase):
             var1, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        self.execute_generation_test(formula, start)
+        self.execute_generation_test(formula, start, print_solutions=True)
 
     def test_simple_universal_formula_with_bind(self):
         start = isla.Constant("$start", "<start>")

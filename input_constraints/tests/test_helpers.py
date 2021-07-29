@@ -7,7 +7,7 @@ from grammar_graph.gg import GrammarGraph
 
 from input_constraints.existential_helpers import path_to_tree, paths_between
 from input_constraints.helpers import get_subtree, next_path, get_path_of_subtree, is_before, is_prefix, is_after, \
-    prev_path_complete, path_iterator, next_path_complete, delete_unreachable
+    prev_path_complete, path_iterator, next_path_complete, delete_unreachable, dict_of_lists_to_list_of_dicts
 from input_constraints.tests.test_data import LANG_GRAMMAR
 from input_constraints.type_defs import Grammar, ParseTree
 
@@ -175,6 +175,37 @@ class TestHelpers(unittest.TestCase):
         self.assertFalse(list(paths_between(graph, "<assgn>", "<stmt>")))
 
         self.assertFalse(list(paths_between(graph, "<assgn>", "<assgn>")))
+
+    def test_dict_of_lists_to_list_of_dicts(self):
+        self.assertEqual(
+            [{1: 3, 2: 5}, {1: 3, 2: 6}],
+            dict_of_lists_to_list_of_dicts({1: [3], 2: [5, 6]})
+        )
+
+        self.assertEqual(
+            [{1: 3, 2: 5}, {1: 4, 2: 5}],
+            dict_of_lists_to_list_of_dicts({1: [3, 4], 2: [5]})
+        )
+
+        self.assertEqual(
+            [{1: 3, 2: 5}, {1: 3, 2: 6}, {1: 4, 2: 5}, {1: 4, 2: 6}],
+            dict_of_lists_to_list_of_dicts({1: [3, 4], 2: [5, 6]})
+        )
+
+        self.assertEqual(
+            [{1: 3, 2: 5, 7: 8},
+             {1: 3, 2: 5, 7: 9},
+             {1: 3, 2: 5, 7: 10},
+             {1: 3, 2: 6, 7: 8},
+             {1: 3, 2: 6, 7: 9},
+             {1: 3, 2: 6, 7: 10},
+             {1: 4, 2: 5, 7: 8},
+             {1: 4, 2: 5, 7: 9},
+             {1: 4, 2: 5, 7: 10},
+             {1: 4, 2: 6, 7: 8},
+             {1: 4, 2: 6, 7: 9},
+             {1: 4, 2: 6, 7: 10}],
+            dict_of_lists_to_list_of_dicts({1: [3, 4], 2: [5, 6], 7: [8, 9, 10]}))
 
 
 if __name__ == '__main__':

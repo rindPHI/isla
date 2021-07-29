@@ -204,7 +204,7 @@ class DerivationTree:
                 if sub_tree.children is None and not sub_tree.is_abstract())
 
     def make_concrete(self) -> 'DerivationTree':
-        return self.substitute_variables(
+        return self.substitute(
             {var: DerivationTree(var.n_type, None) for var in self.tree_variables()})
 
     def tree_variables(self) -> OrderedSet[Variable]:
@@ -213,8 +213,7 @@ class DerivationTree:
             for _, sub_tree in self.path_iterator()
             if isinstance(sub_tree.value, Variable)])
 
-    def substitute_variables(self, subst_map: Dict[Union[Variable, 'DerivationTree'], 'DerivationTree']) \
-            -> 'DerivationTree':
+    def substitute(self, subst_map: Dict[Union[Variable, 'DerivationTree'], 'DerivationTree']) -> 'DerivationTree':
         if self in subst_map:
             return subst_map[self]
 
@@ -227,7 +226,7 @@ class DerivationTree:
 
         return DerivationTree(
             value,
-            [child.substitute_variables(subst_map) for child in children],
+            [child.substitute(subst_map) for child in children],
             id=self.id)
 
     def is_prefix(self, other: 'DerivationTree') -> bool:
@@ -273,7 +272,7 @@ class DerivationTree:
 
     def __hash__(self):
         if self.children is None:
-            return hash((self.value, None, self.id))
+            return hash((self.value, self.id))
 
         return hash((self.value, self.id) + tuple(self.children))
 
@@ -599,7 +598,7 @@ class PredicateFormula(Formula):
                 new_args.append(subst_map[tree])
                 continue
 
-            new_args.append(tree.substitute_variables({k: v for k, v in subst_map.items()}))
+            new_args.append(tree.substitute({k: v for k, v in subst_map.items()}))
 
         return PredicateFormula(self.predicate, *new_args)
 
@@ -657,7 +656,7 @@ class PropositionalCombinator(Formula):
         return f"{type(self).__name__}({', '.join(map(repr, self.args))})"
 
     def __hash__(self):
-        return hash(self.args)
+        return hash((type(self), self.args))
 
     def __eq__(self, other):
         return type(self) == type(other) and self.args == other.args
@@ -753,15 +752,14 @@ class SMTFormula(Formula):
                           substitutions=self.substitutions)
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
-        tree_subst_map = {k: v for k, v in subst_map.items() if isinstance(k, DerivationTree)}
+        tree_subst_map = {k: v for k, v in subst_map.items()
+                          if isinstance(k, DerivationTree)
+                          and k in self.substitutions.values()}
         var_subst_map: Dict[Variable: DerivationTree] = {
             k: v for k, v in subst_map.items() if k in self.free_variables_}
 
-        assert all(var in self.free_variables_ for var in var_subst_map.keys())
-        assert all(tree in self.substitutions.values() for tree in tree_subst_map.keys())
-
         updated_substitutions: Dict[Variable, DerivationTree] = {
-            var: tree.substitute_variables(tree_subst_map)
+            var: tree.substitute(tree_subst_map)
             for var, tree in self.substitutions.items()
         }
 
@@ -807,16 +805,22 @@ class SMTFormula(Formula):
         visitor.visit_smt_formula(self)
 
     def __repr__(self):
-        return f"SMTFormula({repr(self.formula)}, {', '.join(map(repr, self.free_variables_))})"
+        return f"SMTFormula({repr(self.formula)}, {', '.join(map(repr, self.free_variables_))}, " \
+               f"instantiated_variables={repr(self.instantiated_variables)}, " \
+               f"substitutions={repr(self.substitutions)})"
 
     def __str__(self):
-        return str(self.formula)
+        if not self.substitutions:
+            return str(self.formula)
+        else:
+            subst_string = str({str(var): str(tree) for var, tree in self.substitutions.items()})
+            return f"({self.formula}, {subst_string})"
 
     def __eq__(self, other):
         return type(self) == type(other) and self.formula == other.formula
 
     def __hash__(self):
-        return hash(self.formula)
+        return hash((self.formula, tuple(self.substitutions.items())))
 
 
 class QuantifiedFormula(Formula):
@@ -852,6 +856,9 @@ class QuantifiedFormula(Formula):
         return f'{type(self).__name__}({repr(self.bound_variable)}, {repr(self.in_variable)}, ' \
                f'{repr(self.inner_formula)}{"" if self.bind_expression is None else ", " + repr(self.bind_expression)})'
 
+    def __hash__(self):
+        return hash((type(self), self.bound_variable, self.in_variable, self.inner_formula, self.bind_expression))
+
     def __eq__(self, other):
         return type(self) == type(other) and \
                (self.bound_variable, self.in_variable, self.inner_formula, self.bind_expression) == \
@@ -874,9 +881,15 @@ class ForallFormula(QuantifiedFormula):
             self.bind_expression)
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
+        new_in_variable = self.in_variable
+        if self.in_variable in subst_map:
+            new_in_variable = subst_map[new_in_variable]
+        elif isinstance(new_in_variable, DerivationTree):
+            new_in_variable = new_in_variable.substitute(subst_map)
+
         return ForallFormula(
             self.bound_variable,
-            self.in_variable if self.in_variable not in subst_map else subst_map[self.in_variable],
+            new_in_variable,
             self.inner_formula.substitute_expressions(subst_map),
             self.bind_expression)
 
@@ -888,12 +901,6 @@ class ForallFormula(QuantifiedFormula):
         quote = "'"
         return f'∀ {"" if not self.bind_expression else quote + str(self.bind_expression) + quote + " = "}' \
                f'{str(self.bound_variable)} ∈ {str(self.in_variable)}: ({str(self.inner_formula)})'
-
-    def __eq__(self, other):
-        return super.__eq__(self, other)
-
-    def __hash__(self):
-        return super.__hash__(self)
 
 
 class ExistsFormula(QuantifiedFormula):
@@ -912,9 +919,15 @@ class ExistsFormula(QuantifiedFormula):
             self.bind_expression)
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
+        new_in_variable = self.in_variable
+        if self.in_variable in subst_map:
+            new_in_variable = subst_map[new_in_variable]
+        elif isinstance(new_in_variable, DerivationTree):
+            new_in_variable = new_in_variable.substitute(subst_map)
+
         return ExistsFormula(
             self.bound_variable,
-            self.in_variable if self.in_variable not in subst_map else subst_map[self.in_variable],
+            new_in_variable,
             self.inner_formula.substitute_expressions(subst_map),
             self.bind_expression)
 
@@ -926,12 +939,6 @@ class ExistsFormula(QuantifiedFormula):
         quote = "'"
         return f'∃ {"" if not self.bind_expression else quote + str(self.bind_expression) + quote + " = "}' \
                f'{str(self.bound_variable)} ∈ {str(self.in_variable)}: ({str(self.inner_formula)})'
-
-    def __eq__(self, other):
-        return super.__eq__(self, other)
-
-    def __hash__(self):
-        return super.__hash__(self)
 
 
 class VariablesCollector(FormulaVisitor):
@@ -1128,9 +1135,13 @@ def evaluate(formula: Formula, assignments: Optional[Dict[Variable, Tuple[Path, 
 
 def matches_for_quantified_variable(
         formula: QuantifiedFormula,
-        in_tree: DerivationTree,
+        in_tree: Optional[DerivationTree] = None,
         initial_assignments: Optional[Dict[Variable, Tuple[Path, DerivationTree]]] = None) -> \
         List[Dict[Variable, Tuple[Path, DerivationTree]]]:
+    if in_tree is None:
+        in_tree = formula.in_variable
+        assert isinstance(in_tree, DerivationTree)
+
     qfd_var: BoundVariable = formula.bound_variable
     bind_expr: Optional[BindExpression] = formula.bind_expression
     new_assignments: List[Dict[Variable, Tuple[Path, DerivationTree]]] = []

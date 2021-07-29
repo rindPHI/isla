@@ -215,7 +215,7 @@ class ISLaSolver:
             free_constants = [c for c in tree.tree_variables()
                               if not any(assgn_const == c for assgn_const, _, _ in state)
                               and c not in formula.free_variables()]
-            tree = tree.substitute_variables({c: (c.n_type, None) for c in free_constants})
+            tree = tree.substitute({c: (c.n_type, None) for c in free_constants})
 
             # Check if we can just freely instantiate
             # TODO Extend to situation where there is more than one top constant

@@ -1,7 +1,10 @@
 import copy
+import functools
+import operator
 import sys
-from typing import Optional, Set, Callable, Generator, Tuple, List, Dict, Union
+from typing import Optional, Set, Callable, Generator, Tuple, List, Dict, Union, Any, TypeVar
 
+import itertools
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.GrammarFuzzer import GrammarFuzzer, all_terminals, tree_to_string
@@ -441,3 +444,15 @@ def all_open_leaves(tree: AbstractTree) -> Generator[Tuple[Path, AbstractTree], 
 def reachable(grammar: Grammar, nonterminal: str, to_nonterminal: str) -> bool:
     graph = GrammarGraph.from_grammar(grammar)
     return graph.get_node(nonterminal).reachable(graph.get_node(to_nonterminal))
+
+
+S = TypeVar('S')
+T = TypeVar('T')
+
+
+def dict_of_lists_to_list_of_dicts(dict_of_lists: Dict[S, List[T]]) -> List[Dict[S, T]]:
+    keys = list(dict_of_lists.keys())
+    list_of_values = [dict_of_lists[key] for key in keys]
+    product = list(itertools.product(*list_of_values))
+
+    return [dict(zip(keys, product_elem)) for product_elem in product]
