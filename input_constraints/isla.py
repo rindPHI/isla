@@ -441,7 +441,7 @@ class BindExpression:
         return ' '.join(map(lambda e: f'"{e}"' if type(e) is str else str(e), self.bound_elements))
 
     def __hash__(self):
-        return hash(self.bound_elements)
+        return hash(tuple(self.bound_elements))
 
     def __eq__(self, other):
         return self.bound_elements == other.bound_elements

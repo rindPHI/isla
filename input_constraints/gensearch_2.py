@@ -242,7 +242,6 @@ class ISLaSolver:
                 for expansion in self.canonical_grammar[leaf_node.value]
             ]
             for leaf_path, leaf_node in state.tree.open_concrete_leaves()
-            # TODO: Fix can_be_freely_instantiated
             if not self.can_be_freely_instantiated(leaf_path, disjunct, state.tree)
         })
 
@@ -399,19 +398,6 @@ class ISLaSolver:
         solutions: List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]] = \
             self.solve_quantifier_free_formula(semantic_formula)
 
-        # TODO Move this to dedicated instantiation method
-        # free_constants = [c for c in tree.tree_variables()
-        #                  if not any(assgn.constant == c for assgn in state if assgn.constant != constant)
-        #                  and c not in context_formula.free_variables()]
-
-        # for _ in range(len(solutions)):
-        #    solution = solutions.pop(0)
-        #    fuzzer = GrammarCoverageFuzzer(self.grammar)
-        #    for _ in range(self.max_number_free_instantiations):
-        #        solutions.append(
-        #            solution | {c: DerivationTree.from_parse_tree(fuzzer.expand_tree((c.n_type, None)))
-        #                        for c in free_constants})
-
         results = []
         for solution in solutions:
             if solution:
@@ -482,7 +468,6 @@ class ISLaSolver:
     def process_new_state(
             self, new_state: SolutionState, queue: OrderedSet[SolutionState]) -> List[DerivationTree]:
         # TODO: Establish invariant
-        new_state = self.cleanup_state(new_state)
 
         open_concrete_leaves = list(new_state.tree.open_concrete_leaves())
         if (open_concrete_leaves and
@@ -530,40 +515,6 @@ class ISLaSolver:
                 result.add(substitute_in_state(new_state, substitutions))
 
         return result or OrderedSet([new_state])
-
-    def cleanup_state(self, state: SolutionState) -> SolutionState:
-        return state
-        # new_state = copy.deepcopy(state)
-
-        ## 1. Remove all universal quantifiers over assignment constants that are vacuously satisfied
-        # for idx, (constant, constraint, tree) in enumerate(state):
-        #    new_state[idx] = Assignment(
-        #        constant,
-        #        isla.replace_formula(
-        #            constraint,
-        #            lambda f: (isinstance(f, isla.ForallFormula)
-        #                       and f.in_variable == constant
-        #                       and not any(self.quantified_formula_might_match(f, path, tree)
-        #                                   for path, _ in tree.open_leaves())),
-        #            sc.true()),
-        #        tree
-        #    )
-
-        ## 2. For top constants, remove all quantified formulas over other constants
-        # for idx, (constant, constraint, tree) in enumerate(state):
-        #    if constant not in top_constants:
-        #        continue
-
-        #    new_state[idx] = Assignment(
-        #        constant,
-        #        isla.replace_formula(
-        #            constraint,
-        #            lambda f: isinstance(f, isla.QuantifiedFormula) and f.in_variable != constant,
-        #            sc.true()),
-        #        tree
-        #    )
-
-        # return new_state
 
     def can_be_freely_instantiated(self, path_to_leaf: Path, formula: isla.Formula, in_tree: DerivationTree) -> bool:
         conjuncts = get_conjuncts(formula)
