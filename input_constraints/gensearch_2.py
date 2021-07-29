@@ -273,38 +273,12 @@ class ISLaSolver:
             matches: List[Dict[isla.Variable, Tuple[Path, DerivationTree]]] = \
                 isla.matches_for_quantified_variable(universal_formula)
 
-            # Only consider open leaves. Others are validly instantiated.
-            # TODO: Maybe we have to generalize this
-            # TODO: This is anyway not clean; we only require here that one match is open.
-            #       All is too strong, though, since for formulas with bind expression, the match for the in
-            #       expression has children.
-            matches = [match for match in matches
-                       if any(tree.children is None for _, (_, tree) in match.items())]
-
-            # if not matches:
-            #    # As we generally don't expand nonterminals that match a quantifier, we have to do a manual
-            #    # expansion here to proceed.
-            #    formula_wo_bind_expr = sc.forall(
-            #        universal_formula.bound_variable, universal_formula.in_variable, universal_formula.inner_formula)
-            #    if (universal_formula.bind_expression is not None
-            #            and (matches := isla.matches_for_quantified_variable(formula_wo_bind_expr, tree), matches)[-1]):
-            #        expanded_trees = [new_tree]
-            #        for match in matches:
-            #            leaf_path, leaf_node = match[universal_formula.bound_variable]
-            #            if leaf_node.children is not None:
-            #                continue
-            #
-            #            for expanded_tree in copy.deepcopy(expanded_trees):
-            #                expanded_trees.remove(expanded_tree)
-            #                expanded_trees.extend(self.expand_tree_at(expanded_tree, leaf_path, leaf_node.value))
-            #
-            #        if expanded_trees == [new_tree]:
-            #            return []
-            #
-            #        return [SolutionState(universal_formula, expanded_tree, state.already_matched)
-            #                for expanded_tree in expanded_trees]
-            #
-            #    continue
+            # TODO: Check what happens with matches that have inner nodes as leaves. This might be relevant
+            #       for complex, non-balanced bind expressions.
+            # (Obsolete: Only consider open leaves. Others are validly instantiated.)
+            # matches = [match for match in matches
+            #            if any(tree.children is None for _, (_, tree) in match.items())]
+            matches = [match for match in matches]
 
             for match in matches:
                 bound_var_match_tree = match[universal_formula.bound_variable][1]
