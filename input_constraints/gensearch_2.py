@@ -243,7 +243,7 @@ class ISLaSolver:
             ]
             for leaf_path, leaf_node in state.tree.open_concrete_leaves()
             # TODO: Fix can_be_freely_instantiated
-            # if not self.can_be_freely_instantiated(leaf_path, disjunct, state.tree)
+            if not self.can_be_freely_instantiated(leaf_path, disjunct, state.tree)
         })
 
         result: List[SolutionState] = []
@@ -484,8 +484,10 @@ class ISLaSolver:
         # TODO: Establish invariant
         new_state = self.cleanup_state(new_state)
 
-        if (all(self.can_be_freely_instantiated(path, new_state.constraint, new_state.tree)
-                for path, _ in new_state.tree.open_concrete_leaves())):
+        open_concrete_leaves = list(new_state.tree.open_concrete_leaves())
+        if (open_concrete_leaves and
+                all(self.can_be_freely_instantiated(path, new_state.constraint, new_state.tree)
+                    for path, _ in open_concrete_leaves)):
             new_states = self.instantiate_free_symbols(new_state)
         else:
             new_states = [new_state]
@@ -514,51 +516,20 @@ class ISLaSolver:
         :return: A new set of states
         """
 
-        # TODO
-        return OrderedSet([new_state])
+        result: OrderedSet[SolutionState] = OrderedSet([])
+        fuzzer = GrammarCoverageFuzzer(self.grammar)
 
-        # result: OrderedSet[SolutionState] = OrderedSet([])
-        # candidates: OrderedSet[SolutionState] = OrderedSet([new_state])
-        # fuzzer = GrammarCoverageFuzzer(self.grammar)
+        for _ in range(self.max_number_free_instantiations):
+            substitutions: Dict[DerivationTree, DerivationTree] = {
+                subtree: DerivationTree.from_parse_tree(fuzzer.expand_tree((subtree.value, None)))
+                for path, subtree in new_state.tree.open_leaves()
+                if self.can_be_freely_instantiated(path, new_state.constraint, new_state.tree)
+            }
 
-        # while candidates:
-        #    candidate: SolutionState = candidates.pop(last=False)
-        #    has_free_leaves = False
-        #    for idx, assignment in enumerate(candidate):
-        #        assert assignment.constant in top_constants
+            if substitutions:
+                result.add(substitute_in_state(new_state, substitutions))
 
-        #        for _ in range(self.max_number_free_instantiations):
-        #            new_tree = copy.deepcopy(assignment.tree)
-        #            for path, subtree in assignment.tree.open_leaves():
-        #                if (isinstance(subtree.value, isla.Constant)
-        #                        and (any(assgn.constant == subtree.value
-        #                                 for assgn in new_state if assgn.constant != assignment.constant)
-        #                             or subtree.value in assignment.constraint.free_variables())):
-        #                    continue
-
-        #                if not self.can_be_freely_instantiated(path, assignment.constraint, assignment.tree):
-        #                    continue
-
-        #                has_free_leaves = True
-
-        #                subtree_nontermninal = (subtree.value if isinstance(subtree.value, str)
-        #                                        else cast(isla.Constant, subtree.value).n_type)
-
-        #                nonterminal_instantiation = DerivationTree.from_parse_tree(
-        #                    fuzzer.expand_tree((subtree_nontermninal, None)))
-        #                new_tree = new_tree.replace_path(path, nonterminal_instantiation)
-
-        #            if has_free_leaves:
-        #                candidates.add(SolutionState(
-        #                    candidate.assignments[:idx] +
-        #                    [Assignment(assignment.constant, assignment.constraint, new_tree)] +
-        #                    candidate.assignments[idx + 1:]
-        #                ))
-
-        #    if not has_free_leaves:
-        #        result.add(candidate)
-
-        # return result
+        return result or OrderedSet([new_state])
 
     def cleanup_state(self, state: SolutionState) -> SolutionState:
         return state
@@ -598,13 +569,8 @@ class ISLaSolver:
         conjuncts = get_conjuncts(formula)
         quantified_formulas = [formula for formula in conjuncts if isinstance(formula, isla.QuantifiedFormula)]
 
-        node = in_tree.get_subtree(path_to_leaf)
-
-        return (not any(self.quantified_formula_might_match(qfd_formula, path_to_leaf, in_tree)
-                        for qfd_formula in quantified_formulas) and
-                all(node not in conjunct.tree_arguments() for conjunct in conjuncts) and
-                (not isinstance(node.value, isla.Constant) or
-                 all(node.value not in conjunct.free_variables() for conjunct in conjuncts)))
+        return all(not self.quantified_formula_might_match(qfd_formula, path_to_leaf, in_tree)
+                   for qfd_formula in quantified_formulas)
 
     def quantified_formula_might_match(
             self, qfd_formula: isla.QuantifiedFormula, path_to_nonterminal: Path, in_tree: DerivationTree) -> bool:
