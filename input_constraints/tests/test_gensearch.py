@@ -19,34 +19,6 @@ class TestGensearch(unittest.TestCase):
         formula = isla.SMTFormula(cast(z3.BoolRef, assgn.to_smt() == z3.StringVal("x := x")), assgn)
         self.execute_generation_test(formula, assgn, num_solutions=1)
 
-    #def test_semantic_conjunctive_formula(self):
-    #    var1 = isla.Constant("$var1", "<var>")
-    #    var2 = isla.Constant("$var2", "<var>")
-    #    var3 = isla.Constant("$var3", "<var>")
-
-    #    formula = isla.SMTFormula(
-    #        cast(z3.BoolRef,
-    #             z3.And(var1.to_smt() == var2.to_smt(), z3.Not(var3.to_smt() == var1.to_smt()))
-    #             ), var1, var2, var3)
-
-    #    self.execute_generation_test(formula, [var1, var2, var3], num_solutions=1)
-
-    #def test_simple_predicate_conjunction(self):
-    #    var = isla.Constant("$var", "<var>")
-    #    rhs = isla.Constant("$rhs", "<rhs>")
-    #    initial_tree = DerivationTree.from_parse_tree(
-    #        ('<start>', [('<stmt>', [('<assgn>', [(var, None), (' := ', []), (rhs, None)])])]))
-
-    #    formula = isla.ConjunctiveFormula(
-    #        isla.SMTFormula(cast(z3.BoolRef, var.to_smt() == z3.StringVal("x")), var),
-    #        sc.before(var, rhs))
-
-    #    self.execute_generation_test(formula, [var, rhs],
-    #                                 initial_derivation_tree=initial_tree,
-    #                                 max_number_free_instantiations=10,
-    #                                 num_solutions=10,
-    #                                 )
-
     def test_simple_universal_formula(self):
         start = isla.Constant("$start", "<start>")
         var1 = isla.BoundVariable("$var", "<var>")
