@@ -3,7 +3,7 @@ import logging
 import random
 import sys
 from functools import reduce
-from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator
+from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable
 
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
@@ -79,6 +79,8 @@ class DerivationTree:
         self.value = value
         self.children = children
         self.id = id if id is not None else random.randint(0, sys.maxsize)
+        self.__hash = None
+        self.__structural_hash = None
 
     def add_child(self, child: 'DerivationTree'):
         self.children.append(child)
@@ -111,6 +113,15 @@ class DerivationTree:
             return self
 
         return self.children[path[0]].get_subtree(path[1:])
+
+    def is_valid_path(self, path: Path) -> bool:
+        if not path:
+            return True
+
+        if not self.children:
+            return False
+
+        return self.children[path[0]].is_valid_path(path[1:])
 
     def path_iterator(self, path: Path = ()) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
         yield path, self
@@ -270,11 +281,33 @@ class DerivationTree:
     def __repr__(self):
         return f"DerivationTreeNode({repr(self.value)}, {repr(self.children)})"
 
-    def __hash__(self):
+    def __compute_hash(self):
         if self.children is None:
             return hash((self.value, self.id))
+        else:
+            return hash((self.value, self.id) + tuple(self.children))
 
-        return hash((self.value, self.id) + tuple(self.children))
+    def __hash__(self):
+        if self.__hash is not None:
+            assert self.__hash == self.__compute_hash()
+            return self.__hash
+
+        self.__hash = self.__compute_hash()
+        return self.__hash
+
+    def __compute_structural_hash(self):
+        if self.children is None:
+            return hash(self.value)
+        else:
+            return hash((self.value,) + tuple([child.structural_hash() for child in self.children]))
+
+    def structural_hash(self):
+        if self.__structural_hash is not None:
+            assert self.__structural_hash == self.__compute_structural_hash()
+            return self.__structural_hash
+
+        self.__structural_hash = self.__compute_structural_hash()
+        return self.__structural_hash
 
     def structurally_equal(self, other: 'DerivationTree'):
         return (isinstance(other, DerivationTree)
@@ -817,7 +850,7 @@ class SMTFormula(Formula):
             return f"({self.formula}, {subst_string})"
 
     def __eq__(self, other):
-        return type(self) == type(other) and self.formula == other.formula
+        return type(self) == type(other) and z3.is_true(z3.simplify(self.formula == other.formula))
 
     def __hash__(self):
         return hash((self.formula, tuple(self.substitutions.items())))
@@ -870,15 +903,19 @@ class ForallFormula(QuantifiedFormula):
                  bound_variable: BoundVariable,
                  in_variable: Union[Variable, DerivationTree],
                  inner_formula: Formula,
-                 bind_expression: Optional[BindExpression] = None):
+                 bind_expression: Optional[BindExpression] = None,
+                 already_matched: Optional[Set[int]] = None):
         super().__init__(bound_variable, in_variable, inner_formula, bind_expression)
+        self.already_matched: Set[int] = copy.deepcopy(already_matched) or set()
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return ForallFormula(
             self.bound_variable,
             self.in_variable if self.in_variable not in subst_map else subst_map[self.in_variable],
             self.inner_formula.substitute_variables(subst_map),
-            self.bind_expression)
+            self.bind_expression,
+            self.already_matched
+        )
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         new_in_variable = self.in_variable
@@ -887,11 +924,31 @@ class ForallFormula(QuantifiedFormula):
         elif isinstance(new_in_variable, DerivationTree):
             new_in_variable = new_in_variable.substitute(subst_map)
 
+        new_inner_formula = self.inner_formula.substitute_expressions(subst_map)
+
+        if (self.bound_variable not in new_inner_formula.free_variables()
+                and (self.bind_expression is None or
+                     not any(bv in new_inner_formula.free_variables()
+                             for bv in self.bind_expression.bound_variables()))):
+            return new_inner_formula
+
         return ForallFormula(
             self.bound_variable,
             new_in_variable,
-            self.inner_formula.substitute_expressions(subst_map),
-            self.bind_expression)
+            new_inner_formula,
+            self.bind_expression,
+            self.already_matched)
+
+    def add_already_matched(self, trees: Union[DerivationTree, Iterable[DerivationTree]]) -> 'ForallFormula':
+        return ForallFormula(
+            self.bound_variable,
+            self.in_variable,
+            self.inner_formula,
+            self.bind_expression,
+            self.already_matched | ({trees.id} if isinstance(trees, DerivationTree) else {tree.id for tree in trees}))
+
+    def is_already_matched(self, tree: DerivationTree) -> bool:
+        return tree.id in self.already_matched
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_forall_formula(self)
@@ -924,6 +981,14 @@ class ExistsFormula(QuantifiedFormula):
             new_in_variable = subst_map[new_in_variable]
         elif isinstance(new_in_variable, DerivationTree):
             new_in_variable = new_in_variable.substitute(subst_map)
+
+        new_inner_formula = self.inner_formula.substitute_expressions(subst_map)
+
+        if (self.bound_variable not in new_inner_formula.free_variables()
+                and (self.bind_expression is None or
+                     not any(bv in new_inner_formula.free_variables()
+                             for bv in self.bind_expression.bound_variables()))):
+            return new_inner_formula
 
         return ExistsFormula(
             self.bound_variable,
@@ -1106,7 +1171,7 @@ def evaluate(formula: Formula, assignments: Optional[Dict[Variable, Tuple[Path, 
                 assert formula.in_variable in assignments
                 in_inst: DerivationTree = assignments[formula.in_variable][1]
 
-            new_assignments = matches_for_quantified_variable(formula, in_inst, assignments)
+            new_assignments = matches_for_quantified_formula(formula, in_inst, assignments)
 
             if t is ForallFormula:
                 formula: ForallFormula
@@ -1133,7 +1198,7 @@ def evaluate(formula: Formula, assignments: Optional[Dict[Variable, Tuple[Path, 
     return evaluate_(formula, assignments)
 
 
-def matches_for_quantified_variable(
+def matches_for_quantified_formula(
         formula: QuantifiedFormula,
         in_tree: Optional[DerivationTree] = None,
         initial_assignments: Optional[Dict[Variable, Tuple[Path, DerivationTree]]] = None) -> \
@@ -1280,5 +1345,21 @@ def replace_formula(in_formula: Formula,
     elif isinstance(in_formula, DisjunctiveFormula):
         return reduce(lambda a, b: a | b, [replace_formula(child, to_replace, replace_with)
                                            for child in in_formula.args])
+    elif isinstance(in_formula, NegatedFormula):
+        return NegatedFormula(replace_formula(in_formula.args[0], to_replace, replace_with))
+    elif isinstance(in_formula, ForallFormula):
+        return ForallFormula(
+            in_formula.bound_variable,
+            in_formula.in_variable,
+            replace_formula(in_formula.inner_formula, to_replace, replace_with),
+            in_formula.bind_expression,
+            in_formula.already_matched
+        )
+    elif isinstance(in_formula, ExistsFormula):
+        return ExistsFormula(
+            in_formula.bound_variable,
+            in_formula.in_variable,
+            replace_formula(in_formula.inner_formula, to_replace, replace_with),
+            in_formula.bind_expression)
 
     return in_formula

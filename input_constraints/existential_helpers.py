@@ -45,7 +45,8 @@ def insert_tree(grammar: CanonicalGrammar,
         elif graph.get_node(node).reachable(graph.get_node(to_insert_nonterminal)):
             embeddable_matches.append((subtree_path, subtree))
 
-    result: OrderedSet[DerivationTree] = OrderedSet([])
+    result: List[DerivationTree] = []
+    result_hashes: Set[int] = set()
 
     def add_to_result(new_tree: Union[DerivationTree,
                                       List[DerivationTree]]) -> List[DerivationTree]:
@@ -54,7 +55,9 @@ def insert_tree(grammar: CanonicalGrammar,
                 add_to_result(t)
             return list(result)
 
-        result.add(new_tree)
+        if new_tree.structural_hash() not in result_hashes:
+            result.append(new_tree)
+            result_hashes.add(new_tree.structural_hash())
 
         return list(result)
 
@@ -145,7 +148,7 @@ def insert_tree(grammar: CanonicalGrammar,
 
     np = in_tree.next_path(current_path)
     if np is None:
-        return list(result)
+        return result
     else:
         return add_to_result(insert_tree(grammar, tree, in_tree, graph, np))
 

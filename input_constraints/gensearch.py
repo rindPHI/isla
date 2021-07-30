@@ -322,7 +322,7 @@ class ISLaSolver:
                             continue
 
                         matches: List[Dict[isla.Variable, Tuple[Path, DerivationTree]]] = \
-                            isla.matches_for_quantified_variable(conjunctive_element, tree)
+                            isla.matches_for_quantified_formula(conjunctive_element, tree)
                         new_tree = copy.deepcopy(tree)
 
                         # Only consider open leaves. Others are validly instantiated.

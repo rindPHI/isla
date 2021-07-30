@@ -70,7 +70,6 @@ class TestGensearch(unittest.TestCase):
         self.execute_generation_test(formula, start, print_solutions=True)
 
     def test_simple_existential_formula(self):
-        # logging.basicConfig(level=logging.DEBUG)
         start = isla.Constant("$start", "<start>")
         var1 = isla.BoundVariable("$var", "<var>")
 
@@ -92,41 +91,30 @@ class TestGensearch(unittest.TestCase):
             rhs, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        self.execute_generation_test(formula, start)
+        self.execute_generation_test(formula, start, print_solutions=True)
 
     def test_conjunction_of_qfd_formulas(self):
         start = isla.Constant("$start", "<start>")
         assgn = isla.BoundVariable("$assgn", "<assgn>")
-        rhs = isla.BoundVariable("$rhs", "<rhs>")
+        rhs_1 = isla.BoundVariable("$rhs_1", "<rhs>")
+        rhs_2 = isla.BoundVariable("$rhs_2", "<rhs>")
         var_1 = isla.BoundVariable("$var1", "<var>")
         var_2 = isla.BoundVariable("$var2", "<var>")
 
         # Below formula violates the normal form
-        # formula = \
-        #     sc.forall_bind(
-        #         isla.BindExpression(var_1),
-        #         rhs_1, start,
-        #         sc.smt_for(cast(z3.BoolRef, var_1.to_smt() == z3.StringVal("x")), var_1)) & \
-        #     sc.forall_bind(
-        #         var_2 + " := " + rhs_2,
-        #         assgn, start,
-        #         sc.smt_for(cast(z3.BoolRef, var_2.to_smt() == z3.StringVal("y")), var_2))
-
         formula = \
             sc.forall_bind(
-                var_1 + " := " + rhs,
+                isla.BindExpression(var_1),
+                rhs_1, start,
+                sc.smt_for(cast(z3.BoolRef, var_1.to_smt() == z3.StringVal("x")), var_1)) & \
+            sc.forall_bind(
+                var_2 + " := " + rhs_2,
                 assgn, start,
-                (sc.smt_for(cast(z3.BoolRef, var_1.to_smt() == z3.StringVal("y")), var_1) &
-                 sc.forall(
-                     var_2, rhs,
-                     sc.smt_for(cast(z3.BoolRef, var_2.to_smt() == z3.StringVal("x")), var_2))
-                 ))
+                sc.smt_for(cast(z3.BoolRef, var_2.to_smt() == z3.StringVal("y")), var_2))
 
         self.execute_generation_test(formula, start, num_solutions=15)
 
     def test_declared_before_used(self):
-        logging.basicConfig(level=logging.DEBUG)
-
         start = isla.Constant("$start", "<start>")
         lhs_1 = isla.BoundVariable("$lhs_1", "<var>")
         lhs_2 = isla.BoundVariable("$lhs_2", "<var>")
@@ -174,6 +162,7 @@ class TestGensearch(unittest.TestCase):
         for idx in range(num_solutions):
             try:
                 assignment = next(it)
+                logging.getLogger(type(self).__name__).info(f"Found solution: {assignment}")
                 if print_solutions:
                     print(str(assignment))
                 self.assertTrue(isla.evaluate(formula, {
