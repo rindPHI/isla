@@ -496,9 +496,13 @@ class ISLaSolver:
 
         for new_state in new_states:
             if new_state.complete():
-                assert new_state.formula_satisfied(), \
-                    f"Created state is complete, but constraints not satisfied: {new_state}"
-                result.append(new_state.tree)
+                if new_state.formula_satisfied():
+                    # In certain occasions, it can happen that a complete state does not satisfy the constraint.
+                    # A typical (maybe the only) case is when an existential quantifier is eliminated and the
+                    # original constraint is re-attached. Then, the there might be several options for matching
+                    # the existential quantifier again, some of which will be unsuccessful.
+                    self.logger.debug(f"Discarding state {new_state} (unsatisfied constraint)")
+                    result.append(new_state.tree)
                 continue
 
             assert all(all(new_state.tree.find_node(arg) for arg in predicate_formula.args)

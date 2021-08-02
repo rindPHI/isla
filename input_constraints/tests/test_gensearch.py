@@ -1,15 +1,12 @@
-import copy
 import logging
 import unittest
-from typing import cast, List, Optional
+from typing import cast
 
 import z3
-from fuzzingbook.GrammarFuzzer import tree_to_string
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 from input_constraints.gensearch_2 import ISLaSolver
-from input_constraints.isla import DerivationTree
 from input_constraints.tests.test_data import LANG_GRAMMAR
 
 
