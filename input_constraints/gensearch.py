@@ -109,20 +109,6 @@ class ISLaSolver:
         self.max_number_free_instantiations: int = max_number_free_instantiations
         self.max_number_smt_instantiations: int = max_number_smt_instantiations
 
-    def compute_node_leaf_distances(self) -> Dict[str, int]:
-        self.logger.info("Computing node-to-leaf distances")
-        result: Dict[str, int] = {}
-        graph = GrammarGraph.from_grammar(self.grammar)
-        leaves = [graph.get_node(nonterminal) for nonterminal in self.grammar
-                  if any(len(nonterminals(expansion)) == 0
-                         for expansion in self.grammar[nonterminal])]
-
-        for nonterminal in self.grammar:
-            dist, _ = graph.dijkstra(graph.get_node(nonterminal))
-            result[nonterminal] = min([dist[leaf] for leaf in leaves])
-
-        return result
-
     def solve(self) -> Generator[DerivationTree, None, None]:
         initial_tree = DerivationTree(self.top_constant.n_type, None)
         initial_formula = self.formula.substitute_expressions({self.top_constant: initial_tree})
@@ -173,6 +159,20 @@ class ISLaSolver:
             # Expand the tree
             yield from [result for new_state in self.expand_tree(formula, state)
                         for result in self.process_new_state(new_state, queue)]
+
+    def compute_node_leaf_distances(self) -> Dict[str, int]:
+        self.logger.info("Computing node-to-leaf distances")
+        result: Dict[str, int] = {}
+        graph = GrammarGraph.from_grammar(self.grammar)
+        leaves = [graph.get_node(nonterminal) for nonterminal in self.grammar
+                  if any(len(nonterminals(expansion)) == 0
+                         for expansion in self.grammar[nonterminal])]
+
+        for nonterminal in self.grammar:
+            dist, _ = graph.dijkstra(graph.get_node(nonterminal))
+            result[nonterminal] = min([dist[leaf] for leaf in leaves])
+
+        return result
 
     def eliminate_all_semantic_formulas(self,
                                         formula: isla.Formula,
