@@ -1,9 +1,8 @@
 import copy
 import heapq
 import logging
-import random
 from functools import reduce, lru_cache
-from typing import Generator, Dict, List, Set, cast, Optional, Iterable, Iterator, Tuple, Union
+from typing import Generator, Dict, List, Set, cast, Optional, Tuple, Union
 
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
@@ -17,7 +16,7 @@ import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import visit_z3_expr, delete_unreachable, dict_of_lists_to_list_of_dicts
-from input_constraints.isla import DerivationTree, VariablesCollector, inline_var_in_tree
+from input_constraints.isla import DerivationTree, VariablesCollector
 from input_constraints.type_defs import Grammar, Path
 
 
@@ -97,7 +96,7 @@ class ISLaSolver:
 
         self.grammar = grammar
         self.canonical_grammar = canonical(grammar)
-        self.node_leaf_distances: Dict[str, int] = self.compute_node_leaf_distances()
+        self.node_leaf_distances: Dict[str, int] = {}
 
         self.formula = formula
         top_constants: Set[isla.Constant] = set(
@@ -159,20 +158,6 @@ class ISLaSolver:
             # Expand the tree
             yield from [result for new_state in self.expand_tree(formula, state)
                         for result in self.process_new_state(new_state, queue)]
-
-    def compute_node_leaf_distances(self) -> Dict[str, int]:
-        self.logger.info("Computing node-to-leaf distances")
-        result: Dict[str, int] = {}
-        graph = GrammarGraph.from_grammar(self.grammar)
-        leaves = [graph.get_node(nonterminal) for nonterminal in self.grammar
-                  if any(len(nonterminals(expansion)) == 0
-                         for expansion in self.grammar[nonterminal])]
-
-        for nonterminal in self.grammar:
-            dist, _ = graph.dijkstra(graph.get_node(nonterminal))
-            result[nonterminal] = min([dist[leaf] for leaf in leaves])
-
-        return result
 
     def eliminate_all_semantic_formulas(self,
                                         formula: isla.Formula,
@@ -530,11 +515,29 @@ class ISLaSolver:
 
     def compute_cost(self, state: SolutionState, cost_reduction: float = 1.0) -> float:
         """Cost of state. Best value: 0, Worst: Unbounded"""
-        nonterminals = [leaf.value for _, leaf in state.tree.open_leaves()]
-        return cost_reduction * (
-                len(state.tree) +
-                sum([self.node_leaf_distances[nonterminal] for nonterminal in nonterminals])
-        )
+        return cost_reduction * len(state.tree)
+
+        # if not self.node_leaf_distances:
+        #     self.node_leaf_distances = self.compute_node_leaf_distances()
+        # nonterminals = [leaf.value for _, leaf in state.tree.open_leaves()]
+        # return cost_reduction * (
+        #         len(state.tree) +
+        #         sum([self.node_leaf_distances[nonterminal] for nonterminal in nonterminals])
+        # )
+
+    def compute_node_leaf_distances(self) -> Dict[str, int]:
+        self.logger.info("Computing node-to-leaf distances")
+        result: Dict[str, int] = {}
+        graph = GrammarGraph.from_grammar(self.grammar)
+        leaves = [graph.get_node(nonterminal) for nonterminal in self.grammar
+                  if any(len(nonterminals(expansion)) == 0
+                         for expansion in self.grammar[nonterminal])]
+
+        for nonterminal in self.grammar:
+            dist, _ = graph.dijkstra(graph.get_node(nonterminal))
+            result[nonterminal] = min([dist[leaf] for leaf in leaves])
+
+        return result
 
     def remove_nonmatching_universal_quantifiers(self, state: SolutionState) -> SolutionState:
         conjuncts = get_conjuncts(state.constraint)
