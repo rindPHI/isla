@@ -6,7 +6,7 @@ import z3
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
-from input_constraints.gensearch_2 import ISLaSolver
+from input_constraints.gensearch import ISLaSolver
 from input_constraints.tests.test_data import LANG_GRAMMAR
 
 
