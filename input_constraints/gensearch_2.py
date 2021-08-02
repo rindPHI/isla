@@ -1,5 +1,7 @@
 import copy
+import heapq
 import logging
+import random
 from functools import reduce, lru_cache
 from typing import Generator, Dict, List, Set, cast, Optional, Iterable, Iterator, Tuple, Union
 
@@ -56,6 +58,19 @@ class SolutionState:
         yield self.constraint
         yield self.tree
 
+    # Numeric comparisons are needed for using solution states in the binary heap queue
+    def __lt__(self, other: 'SolutionState'):
+        return str(self) < str(other)
+
+    def __le__(self, other: 'SolutionState'):
+        return str(self) <= str(other)
+
+    def __gt__(self, other: 'SolutionState'):
+        return str(self) > str(other)
+
+    def __ge__(self, other: 'SolutionState'):
+        return str(self) >= str(other)
+
     def __hash__(self):
         return hash((self.constraint, self.tree.structural_hash()))
 
@@ -96,12 +111,14 @@ class ISLaSolver:
     def solve(self) -> Generator[DerivationTree, None, None]:
         initial_tree = DerivationTree(self.top_constant.n_type, None)
         initial_formula = self.formula.substitute_expressions({self.top_constant: initial_tree})
-        queue: OrderedSet[SolutionState] = OrderedSet([
-            SolutionState(initial_formula, initial_tree)
-        ])
+
+        queue: List[Tuple[int, SolutionState]] = []
+        heapq.heappush(queue, (0, SolutionState(initial_formula, initial_tree)))
 
         while queue:
-            state: SolutionState = queue.pop(last=False)
+            cost: int
+            state: SolutionState
+            cost, state = heapq.heappop(queue)
             self.logger.debug(f"Polling new state {state}")
             self.logger.debug(f"Queue length: {len(queue)}")
 
@@ -112,7 +129,8 @@ class ISLaSolver:
 
             # Split disjunctions
             if isinstance(formula, isla.DisjunctiveFormula):
-                queue.update([SolutionState(disjunct, tree) for disjunct in split_disjunction(formula)])
+                for disjunct in split_disjunction(formula):
+                    heapq.heappush(queue, (cost, SolutionState(disjunct, tree)))
                 continue
 
             # Instantiate all top-level predicate formulas.
@@ -144,7 +162,7 @@ class ISLaSolver:
     def eliminate_all_semantic_formulas(self,
                                         formula: isla.Formula,
                                         tree: DerivationTree,
-                                        queue: OrderedSet[SolutionState]) -> Optional[List[DerivationTree]]:
+                                        queue: List[Tuple[int, SolutionState]]) -> Optional[List[DerivationTree]]:
         conjuncts = split_conjunction(formula)
         semantic_formulas = [conjunct for conjunct in conjuncts if isinstance(conjunct, isla.SMTFormula)]
 
@@ -165,7 +183,7 @@ class ISLaSolver:
     def eliminate_first_existential_formula(self,
                                             formula: isla.Formula,
                                             tree: DerivationTree,
-                                            queue: OrderedSet[SolutionState]) -> Optional[List[DerivationTree]]:
+                                            queue: List[Tuple[int, SolutionState]]) -> Optional[List[DerivationTree]]:
         existential_formulas = [
             conjunct for conjunct in split_conjunction(formula)
             if isinstance(conjunct, isla.ExistsFormula)]
@@ -193,7 +211,7 @@ class ISLaSolver:
     def match_all_universal_formulas(self,
                                      formula: isla.Formula,
                                      tree: DerivationTree,
-                                     queue: OrderedSet[SolutionState]) -> Optional[List[DerivationTree]]:
+                                     queue: List[Tuple[int, SolutionState]]) -> Optional[List[DerivationTree]]:
         universal_formulas = [
             conjunct for conjunct in split_conjunction(formula)
             if isinstance(conjunct, isla.ForallFormula)]
@@ -382,7 +400,8 @@ class ISLaSolver:
 
     def solve_quantifier_free_formula(
             self, formula: isla.Formula) -> List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]]:
-        solutions: List[Dict[isla.Constant, DerivationTree]] = []
+        solutions: List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]] = []
+        internal_solutions: List[Dict[isla.Constant, z3.StringVal]] = []
         smt_formula = qfr_free_formula_to_z3_formula(formula)
 
         smt_formulas = [conjunct for conjunct in get_conjuncts(formula)
@@ -408,9 +427,9 @@ class ISLaSolver:
                 regex = self.extract_regular_expression(constant.n_type)
                 solver.add(z3.InRe(z3.String(constant.name), regex))
 
-            for prev_solution in solutions:
-                for constant in prev_solution:
-                    solver.add(z3.Not(constant.to_smt() == z3.StringVal(str(prev_solution[constant]))))
+            for prev_solution in internal_solutions:
+                for constant, string_val in prev_solution.items():
+                    solver.add(z3.Not(constant.to_smt() == string_val))
 
             solver.add(smt_formula)
 
@@ -425,17 +444,22 @@ class ISLaSolver:
                     self.parse(constant.n_type, solver.model()[z3.String(constant.name)].as_string())
                 for constant in constants}
 
+            new_internal_solution = {
+                constant: z3.StringVal(solver.model()[z3.String(constant.name)].as_string())
+                for constant in constants}
+
             if new_solution in solutions:
                 # This can happen for trivial solutions, i.e., if the formula is logically valid.
                 # Then, the assignment for that constant will always be {}
                 return solutions
             else:
                 solutions.append(new_solution)
+                internal_solutions.append(new_internal_solution)
 
         return solutions
 
     def process_new_state(
-            self, new_state: SolutionState, queue: OrderedSet[SolutionState]) -> List[DerivationTree]:
+            self, new_state: SolutionState, queue: List[Tuple[int, SolutionState]]) -> List[DerivationTree]:
         # TODO: Establish invariant
 
         conjuncts = get_conjuncts(new_state.constraint)
@@ -469,9 +493,16 @@ class ISLaSolver:
                        for predicate_formula in get_conjuncts(new_state.constraint)
                        if isinstance(predicate_formula, isla.PredicateFormula))
 
-            queue.add(new_state)
+            heapq.heappush(queue, (self.compute_cost(new_state), new_state))
 
         return result
+
+    def compute_cost(self, state: SolutionState) -> int:
+        """Cost of state. Best value: 0, Worst: Unbounded"""
+        # Simple heuristic for getting started: Return number of open leaves in tree
+        # TODO: Implement stronger heuristic, e.g., based on smallest distance of each nonterminal to a leaf...
+
+        return len(list(state.tree.open_leaves()))
 
     def remove_nonmatching_universal_quantifiers(self, state: SolutionState) -> SolutionState:
         conjuncts = get_conjuncts(state.constraint)

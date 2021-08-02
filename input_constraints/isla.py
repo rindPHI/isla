@@ -192,8 +192,8 @@ class DerivationTree:
         assert isinstance(replacement_tree, DerivationTree)
 
         if not path:
-            if retain_id:
-                return DerivationTree(replacement_tree.value, replacement_tree.children, id=self.id)
+            # if retain_id:
+            #     return DerivationTree(replacement_tree.value, replacement_tree.children, id=self.id)
 
             return replacement_tree
 
