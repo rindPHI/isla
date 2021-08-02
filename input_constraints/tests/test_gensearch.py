@@ -46,9 +46,7 @@ class TestGensearch(unittest.TestCase):
             var1, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        self.execute_generation_test(formula, start,
-                                     num_solutions=100,
-                                     max_number_free_instantiations=1)
+        self.execute_generation_test(formula, start, num_solutions=1, max_number_free_instantiations=1)
 
     def test_simple_existential_formula_with_bind(self):
         start = isla.Constant("$start", "<start>")
@@ -60,7 +58,7 @@ class TestGensearch(unittest.TestCase):
             rhs, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        self.execute_generation_test(formula, start, print_solutions=True)
+        self.execute_generation_test(formula, start, num_solutions=1, print_solutions=True)
 
     def test_conjunction_of_qfd_formulas(self):
         start = isla.Constant("$start", "<start>")
@@ -110,8 +108,7 @@ class TestGensearch(unittest.TestCase):
             )
         )
 
-        self.execute_generation_test(formula, start, print_solutions=True,
-                                     max_number_free_instantiations=1, max_number_smt_instantiations=1)
+        self.execute_generation_test(formula, start, max_number_free_instantiations=2)
 
     def execute_generation_test(self,
                                 formula: isla.Formula,
