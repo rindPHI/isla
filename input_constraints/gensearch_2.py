@@ -501,14 +501,16 @@ class ISLaSolver:
                 result.append(new_state.tree)
                 continue
 
-            self.logger.debug(f"Pushing new state {new_state}")
-            self.logger.debug(f"Queue length: {len(queue)}")
-
             assert all(all(new_state.tree.find_node(arg) for arg in predicate_formula.args)
                        for predicate_formula in get_conjuncts(new_state.constraint)
                        if isinstance(predicate_formula, isla.PredicateFormula))
 
             heapq.heappush(queue, (self.compute_cost(new_state), new_state))
+
+            self.logger.debug(f"Pushing new state {new_state}")
+            self.logger.debug(f"Queue length: {len(queue)}")
+            if len(queue) % 100 == 0:
+                self.logger.info(f"Queue length: {len(queue)}")
 
         return result
 
