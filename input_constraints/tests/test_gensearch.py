@@ -68,7 +68,6 @@ class TestGensearch(unittest.TestCase):
         var_1 = isla.BoundVariable("$var1", "<var>")
         var_2 = isla.BoundVariable("$var2", "<var>")
 
-        # Below formula violates the normal form
         formula = \
             sc.forall_bind(
                 isla.BindExpression(var_1),
