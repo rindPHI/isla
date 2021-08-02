@@ -193,7 +193,7 @@ class ISLaSolver:
 
         return [result
                 for new_state in self.eliminate_semantic_formula(prefix_conjunction, new_disjunct, tree)
-                for result in self.process_new_state(new_state, queue)]
+                for result in self.process_new_state(new_state, queue, cost_reduction=.7)]
 
     def eliminate_first_existential_formula(self,
                                             formula: isla.Formula,
@@ -220,7 +220,7 @@ class ISLaSolver:
         return [
             result
             for new_state in new_states
-            for result in self.process_new_state(new_state, queue)
+            for result in self.process_new_state(new_state, queue, cost_reduction=.95)
         ]
 
     def match_all_universal_formulas(self,
@@ -240,7 +240,7 @@ class ISLaSolver:
             return None
 
         return [result for new_state in new_states
-                for result in self.process_new_state(new_state, queue)]
+                for result in self.process_new_state(new_state, queue, cost_reduction=.99)]
 
     def expand_tree(self, disjunct: isla.Formula, state: SolutionState) -> List[SolutionState]:
         """
@@ -474,7 +474,10 @@ class ISLaSolver:
         return solutions
 
     def process_new_state(
-            self, new_state: SolutionState, queue: List[Tuple[int, SolutionState]]) -> List[DerivationTree]:
+            self, new_state: SolutionState,
+            queue: List[Tuple[float, SolutionState]],
+            cost_reduction: Optional[float] = None,
+    ) -> List[DerivationTree]:
         # TODO: Establish invariant
 
         conjuncts = get_conjuncts(new_state.constraint)
@@ -509,7 +512,7 @@ class ISLaSolver:
                        for predicate_formula in get_conjuncts(new_state.constraint)
                        if isinstance(predicate_formula, isla.PredicateFormula))
 
-            heapq.heappush(queue, (self.compute_cost(new_state), new_state))
+            heapq.heappush(queue, (self.compute_cost(new_state, cost_reduction or 1.0), new_state))
 
             self.logger.debug(f"Pushing new state {new_state}")
             self.logger.debug(f"Queue length: {len(queue)}")
@@ -525,10 +528,13 @@ class ISLaSolver:
 
         return result
 
-    def compute_cost(self, state: SolutionState) -> int:
+    def compute_cost(self, state: SolutionState, cost_reduction: float = 1.0) -> float:
         """Cost of state. Best value: 0, Worst: Unbounded"""
         nonterminals = [leaf.value for _, leaf in state.tree.open_leaves()]
-        return len(state.tree) + sum([self.node_leaf_distances[nonterminal] for nonterminal in nonterminals])
+        return cost_reduction * (
+                len(state.tree) +
+                sum([self.node_leaf_distances[nonterminal] for nonterminal in nonterminals])
+        )
 
     def remove_nonmatching_universal_quantifiers(self, state: SolutionState) -> SolutionState:
         conjuncts = get_conjuncts(state.constraint)
