@@ -41,6 +41,7 @@ class SolutionState:
         return any(all(not isinstance(conjunct, isla.PredicateFormula)
                        and (not isinstance(conjunct, isla.SMTFormula) or conjunct == sc.true())
                        and not isinstance(conjunct, isla.ExistsFormula)
+                       and (not isinstance(conjunct, isla.ForallFormula) or len(conjunct.already_matched) > 0)
                        for conjunct in split_conjunction(disjunct))
                    for disjunct in split_disjunction(self.constraint))
 
@@ -437,13 +438,18 @@ class ISLaSolver:
             self, new_state: SolutionState, queue: OrderedSet[SolutionState]) -> List[DerivationTree]:
         # TODO: Establish invariant
 
+        conjuncts = get_conjuncts(new_state.constraint)
+        new_state = self.remove_nonmatching_universal_quantifiers(new_state)
+
         open_concrete_leaves = list(new_state.tree.open_concrete_leaves())
 
-        if (not any(isinstance(conjunct, isla.ExistsFormula) for conjunct in get_conjuncts(new_state.constraint))
+        if (not any(isinstance(conjunct, isla.ExistsFormula)
+                    for conjunct in conjuncts)
                 and open_concrete_leaves
                 and all(self.can_be_freely_instantiated(path, new_state.constraint, new_state)
                         for path, _ in open_concrete_leaves)):
-            new_states = self.instantiate_free_symbols(new_state)
+            new_states = [self.remove_nonmatching_universal_quantifiers(state)
+                          for state in self.instantiate_free_symbols(new_state)]
         else:
             new_states = [new_state]
 
@@ -458,7 +464,26 @@ class ISLaSolver:
 
             self.logger.debug(f"Pushing new state {new_state}")
             self.logger.debug(f"Queue length: {len(queue)}")
+
+            assert all(all(new_state.tree.find_node(arg) for arg in predicate_formula.args)
+                       for predicate_formula in get_conjuncts(new_state.constraint)
+                       if isinstance(predicate_formula, isla.PredicateFormula))
+
             queue.add(new_state)
+
+        return result
+
+    def remove_nonmatching_universal_quantifiers(self, state: SolutionState) -> SolutionState:
+        conjuncts = get_conjuncts(state.constraint)
+        if any(isinstance(conjunct, isla.ExistsFormula) for conjunct in conjuncts):
+            return state
+
+        result = state
+        for universal_formula in [conjunct for conjunct in conjuncts if isinstance(conjunct, isla.ForallFormula)]:
+            if (universal_formula.in_variable.is_complete()
+                    and not isla.matches_for_quantified_formula(universal_formula)):
+                result = SolutionState(
+                    isla.replace_formula(result.constraint, universal_formula, sc.true()), result.tree)
 
         return result
 

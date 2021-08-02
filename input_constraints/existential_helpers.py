@@ -1,5 +1,4 @@
-import operator
-from typing import Optional, List, Tuple, Dict, cast, Union, Set, Generator
+from typing import Optional, List, Tuple, cast, Union, Set, Generator
 
 from fuzzingbook.Grammars import is_nonterminal
 from fuzzingbook.Parser import non_canonical
@@ -7,11 +6,9 @@ from grammar_graph.gg import GrammarGraph, NonterminalNode, Node, ChoiceNode
 from orderedset import OrderedSet
 
 from input_constraints import isla
-from input_constraints.helpers import get_subtree, prev_path_complete, replace_tree_path, \
-    reverse_tree_iterator, last_path, open_concrete_leaves, path_iterator, next_path, get_leaves, next_path_complete, \
-    tree_to_tuples, is_prefix
+from input_constraints.helpers import is_prefix
 from input_constraints.isla import DerivationTree
-from input_constraints.type_defs import ParseTree, Path, CanonicalGrammar, CanonicalExpansionAlternative, AbstractTree
+from input_constraints.type_defs import Path, CanonicalGrammar
 
 
 def insert_tree(grammar: CanonicalGrammar,
@@ -62,11 +59,17 @@ def insert_tree(grammar: CanonicalGrammar,
         return list(result)
 
     for match_path_perfect in perfect_matches:
-        add_to_result(in_tree.replace_path(match_path_perfect, tree))
+        # orig_node = in_tree.get_subtree(match_path_perfect)
+        # assert tree.value == orig_node.value
+        # tree.id = orig_node.id
+        add_to_result(in_tree.replace_path(match_path_perfect, tree, retain_id=True))
 
     for match_path_embeddable, match_tree in embeddable_matches:
         t = wrap_in_tree_starting_in(match_tree.root_nonterminal(), tree, grammar, graph)
-        add_to_result(in_tree.replace_path(match_path_embeddable, t))
+        # orig_node = in_tree.get_subtree(match_path_embeddable)
+        # assert t.value == orig_node.value
+        # t.id = orig_node.id
+        add_to_result(in_tree.replace_path(match_path_embeddable, t, retain_id=True))
 
     # Next, we check whether we can take another alternative at the parent node.
 
@@ -143,7 +146,7 @@ def insert_tree(grammar: CanonicalGrammar,
 
                     results = insert([curr_tree, tree], self_embedding_tree)
                     for instantiated_tree in results:
-                        new_tree = in_tree.replace_path(current_path, instantiated_tree)
+                        new_tree = in_tree.replace_path(current_path, instantiated_tree, retain_id=True)
                         add_to_result(new_tree)
 
     np = in_tree.next_path(current_path)

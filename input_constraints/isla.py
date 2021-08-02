@@ -186,12 +186,15 @@ class DerivationTree:
         assert skip_children or list(self.path_iterator())[-1][0] == path
         return None
 
-    def replace_path(self, path: Path, replacement_tree: 'DerivationTree') -> 'DerivationTree':
+    def replace_path(self, path: Path, replacement_tree: 'DerivationTree', retain_id=False) -> 'DerivationTree':
         """Returns tree where replacement_tree has been inserted at `path` instead of the original subtree"""
         node, children = self
         assert isinstance(replacement_tree, DerivationTree)
 
         if not path:
+            if retain_id:
+                return DerivationTree(replacement_tree.value, replacement_tree.children, id=self.id)
+
             return replacement_tree
 
         head = path[0]
@@ -607,7 +610,9 @@ class PredicateFormula(Formula):
              for tree in self.args]
 
         if any(path is None for path, _ in args_with_paths):
-            raise RuntimeError(f"Could not find paths for all predicate arguments in context tree.")
+            raise RuntimeError("Could not find paths for all predicate arguments in context tree:\n" +
+                               str([str(tree) for path, tree in args_with_paths if path is None]) +
+                               f"\nContext tree:\n{context_tree}")
 
         return self.predicate.eval_fun(*args_with_paths)
 
