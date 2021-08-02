@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "b12c784b80f1f69b63b04531c93ce799a6f1e754f997ee4f82f6db0930e54d9e"
+            "sha256": "02bca53e4fa113e44d2130028d816c419444c2c8d5a0bb6ac29ac6d13a77bec2"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -182,8 +182,12 @@
             "version": "==0.0.1"
         },
         "grammargraph": {
-            "editable": true,
-            "path": "./../GrammarGraph"
+            "hashes": [
+                "sha256:0564e488b490d64c3b48acc4dba90efc8fbcc6b600be609d695f09b6ef1797a1",
+                "sha256:6c6f7bf709b7bc5d07462d04299ca6b2073dab0ef4468635cab8e26d0fd617a3"
+            ],
+            "path": "./../GrammarGraph/dist/grammargraph-0.0.1.tar.gz",
+            "version": "==0.0.1"
         },
         "graphviz": {
             "hashes": [

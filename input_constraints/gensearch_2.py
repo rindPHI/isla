@@ -7,7 +7,7 @@ from typing import Generator, Dict, List, Set, cast, Optional, Iterable, Iterato
 
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
-from fuzzingbook.Grammars import is_nonterminal
+from fuzzingbook.Grammars import is_nonterminal, nonterminals
 from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph.gg import GrammarGraph
 from grammar_to_regex.cfg2regex import RegexConverter
@@ -31,7 +31,7 @@ class SolutionState:
             # Have to instantiate variables first
             return False
 
-        return isla.evaluate(self.constraint, {})
+        return isla.evaluate(self.constraint, reference_tree=self.tree)
 
     def complete(self) -> bool:
         if not self.tree.is_complete():
@@ -93,8 +93,11 @@ class ISLaSolver:
                  max_number_free_instantiations: int = 10,
                  max_number_smt_instantiations: int = 10
                  ):
+        self.logger = logging.getLogger(type(self).__name__)
+
         self.grammar = grammar
         self.canonical_grammar = canonical(grammar)
+        self.node_leaf_distances: Dict[str, int] = self.compute_node_leaf_distances()
 
         self.formula = formula
         top_constants: Set[isla.Constant] = set(
@@ -106,7 +109,19 @@ class ISLaSolver:
         self.max_number_free_instantiations: int = max_number_free_instantiations
         self.max_number_smt_instantiations: int = max_number_smt_instantiations
 
-        self.logger = logging.getLogger(type(self).__name__)
+    def compute_node_leaf_distances(self) -> Dict[str, int]:
+        self.logger.info("Computing node-to-leaf distances")
+        result: Dict[str, int] = {}
+        graph = GrammarGraph.from_grammar(self.grammar)
+        leaves = [graph.get_node(nonterminal) for nonterminal in self.grammar
+                  if any(len(nonterminals(expansion)) == 0
+                         for expansion in self.grammar[nonterminal])]
+
+        for nonterminal in self.grammar:
+            dist, _ = graph.dijkstra(graph.get_node(nonterminal))
+            result[nonterminal] = min([dist[leaf] for leaf in leaves])
+
+        return result
 
     def solve(self) -> Generator[DerivationTree, None, None]:
         initial_tree = DerivationTree(self.top_constant.n_type, None)
@@ -499,10 +514,8 @@ class ISLaSolver:
 
     def compute_cost(self, state: SolutionState) -> int:
         """Cost of state. Best value: 0, Worst: Unbounded"""
-        # Simple heuristic for getting started: Return number of open leaves in tree
-        # TODO: Implement stronger heuristic, e.g., based on smallest distance of each nonterminal to a leaf...
-
-        return len(list(state.tree.open_leaves()))
+        nonterminals = [leaf.value for _, leaf in state.tree.open_leaves()]
+        return len(state.tree) + sum([self.node_leaf_distances[nonterminal] for nonterminal in nonterminals])
 
     def remove_nonmatching_universal_quantifiers(self, state: SolutionState) -> SolutionState:
         conjuncts = get_conjuncts(state.constraint)

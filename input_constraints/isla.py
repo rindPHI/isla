@@ -212,6 +212,9 @@ class DerivationTree:
                 for path, sub_tree in self.path_iterator()
                 if sub_tree.children is None)
 
+    def __len__(self):
+        return len(list(self.path_iterator()))
+
     def open_concrete_leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
         return ((path, sub_tree)
                 for path, sub_tree in self.open_leaves()
@@ -1146,7 +1149,9 @@ def well_formed(formula: Formula,
         raise NotImplementedError()
 
 
-def evaluate(formula: Formula, assignments: Optional[Dict[Variable, Tuple[Path, DerivationTree]]] = None) -> bool:
+def evaluate(formula: Formula,
+             assignments: Optional[Dict[Variable, Tuple[Path, DerivationTree]]] = None,
+             reference_tree: Optional[DerivationTree] = None) -> bool:
     """Passing `assignments` is deprecated"""
     assert well_formed(formula)
     assignments: Dict[Variable, Tuple[Path, DerivationTree]] = assignments or {}
@@ -1186,7 +1191,11 @@ def evaluate(formula: Formula, assignments: Optional[Dict[Variable, Tuple[Path, 
                 return any(evaluate_(formula.inner_formula, new_assignment) for new_assignment in new_assignments)
         elif t is PredicateFormula:
             formula: PredicateFormula
-            arg_insts = [arg if not isinstance(arg, Variable) else assignments[arg] for arg in formula.args]
+            assert (not any(isinstance(arg, DerivationTree) for arg in formula.args)
+                    or reference_tree is not None)
+            arg_insts = [(reference_tree.find_node(arg), arg) if isinstance(arg, DerivationTree)
+                         else assignments[arg]
+                         for arg in formula.args]
             return formula.predicate.evaluate(*arg_insts)
         elif t is NegatedFormula:
             formula: NegatedFormula
