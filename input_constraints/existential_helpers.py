@@ -59,16 +59,16 @@ def insert_tree(grammar: CanonicalGrammar,
         return list(result)
 
     for match_path_perfect in perfect_matches:
-        # orig_node = in_tree.get_subtree(match_path_perfect)
-        # assert tree.value == orig_node.value
-        # tree.id = orig_node.id
+        orig_node = in_tree.get_subtree(match_path_perfect)
+        assert tree.value == orig_node.value
+        tree.id = orig_node.id
         add_to_result(in_tree.replace_path(match_path_perfect, tree, retain_id=True))
 
     for match_path_embeddable, match_tree in embeddable_matches:
         t = wrap_in_tree_starting_in(match_tree.root_nonterminal(), tree, grammar, graph)
-        # orig_node = in_tree.get_subtree(match_path_embeddable)
-        # assert t.value == orig_node.value
-        # t.id = orig_node.id
+        orig_node = in_tree.get_subtree(match_path_embeddable)
+        assert t.value == orig_node.value
+        t.id = orig_node.id
         add_to_result(in_tree.replace_path(match_path_embeddable, t, retain_id=True))
 
     # Next, we check whether we can take another alternative at the parent node.
@@ -146,7 +146,11 @@ def insert_tree(grammar: CanonicalGrammar,
 
                     results = insert([curr_tree, tree], self_embedding_tree)
                     for instantiated_tree in results:
-                        new_tree = in_tree.replace_path(current_path, instantiated_tree, retain_id=True)
+                        orig_node = in_tree.get_subtree(current_path)
+                        assert instantiated_tree.value == orig_node.value
+                        instantiated_tree.id = orig_node.id
+
+                        new_tree = in_tree.replace_path(current_path, instantiated_tree)
                         add_to_result(new_tree)
 
     np = in_tree.next_path(current_path)

@@ -518,6 +518,7 @@ class ISLaSolver:
         """Cost of state. Best value: 0, Worst: Unbounded"""
         nonterminals = [leaf.value for _, leaf in state.tree.open_leaves()]
         return len(state.tree) + sum([self.node_leaf_distances[nonterminal] for nonterminal in nonterminals])
+        # return random.random() * (len(state.tree) + sum([self.node_leaf_distances[nonterminal] for nonterminal in nonterminals]))
 
     def remove_nonmatching_universal_quantifiers(self, state: SolutionState) -> SolutionState:
         conjuncts = get_conjuncts(state.constraint)
