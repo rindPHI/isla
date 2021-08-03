@@ -1486,18 +1486,22 @@ class VariableManager:
         self.placeholders: Dict[str, Variable] = {}
         self.variables: Dict[str, Variable] = {}
 
-    def __var(self, name: str, n_type: Optional[str], constr: Callable[[str, Optional[str]], Variable]) -> Variable:
+    def __var(self,
+              name: str,
+              n_type: Optional[str],
+              constr: Optional[Callable[[str, Optional[str]], Variable]] = None) -> Variable:
         matching_variables = [var for var_name, var in self.variables.items() if var_name == name]
         if matching_variables:
             return matching_variables[0]
 
-        if n_type:
+        if constr is not None and n_type:
             return self.variables.setdefault(name, constr(name, n_type))
 
         matching_placeholders = [var for var_name, var in self.placeholders.items() if var_name == name]
         if matching_placeholders:
             return matching_placeholders[0]
 
+        assert constr is not None
         return self.placeholders.setdefault(name, constr(name, None))
 
     def const(self, name: str, n_type: Optional[str] = None) -> Constant:
@@ -1505,6 +1509,11 @@ class VariableManager:
 
     def bv(self, name: str, n_type: Optional[str] = None) -> BoundVariable:
         return cast(BoundVariable, self.__var(name, n_type, BoundVariable))
+
+    def smt(self, formula: z3.BoolRef) -> SMTFormula:
+        z3_symbols = get_symbols(formula)
+        isla_variables = [self.__var(str(z3_symbol), None) for z3_symbol in z3_symbols]
+        return SMTFormula(formula, *isla_variables)
 
     def create(self, formula: Formula) -> Formula:
         assert all(any(var_name == ph_name for var_name in self.variables)

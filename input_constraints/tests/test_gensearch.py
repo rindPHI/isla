@@ -6,7 +6,7 @@ import z3
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
-from input_constraints.gensearch import ISLaSolver
+from input_constraints.solver import ISLaSolver
 from input_constraints.tests.test_data import LANG_GRAMMAR
 
 
@@ -32,7 +32,7 @@ class TestGensearch(unittest.TestCase):
             sc.forall_bind(
                 isla.BindExpression(mgr.bv("$var1", "<var>")),
                 mgr.bv("$rhs", "<rhs>"), mgr.const("$start", "<start>"),
-                sc.smt_for(cast(z3.BoolRef, mgr.bv("$var1").to_smt() == z3.StringVal("x")), mgr.bv("$var1")))
+                mgr.smt(cast(z3.BoolRef, mgr.bv("$var1").to_smt() == z3.StringVal("x"))))
         )
 
         self.execute_generation_test(formula, mgr.const("$start"), print_solutions=True)
@@ -93,8 +93,7 @@ class TestGensearch(unittest.TestCase):
                     mgr.bv("$assgn_2", "<assgn>"),
                     mgr.const("$start"),
                     sc.before(mgr.bv("$assgn_2"), mgr.bv("$assgn_1")) &
-                    sc.smt_for(cast(z3.BoolRef, mgr.bv("$lhs_2").to_smt() == mgr.bv("$var").to_smt()),
-                               mgr.bv("$lhs_2"), mgr.bv("$var"))
+                    mgr.smt(cast(z3.BoolRef, mgr.bv("$lhs_2").to_smt() == mgr.bv("$var").to_smt()))
                 )
             )
         ))
