@@ -33,7 +33,7 @@ test:
   script:
     #- python setup.py test
     - pip install tox
-    - tox -e py36
+    - tox -e py39
 
 run:
   script:

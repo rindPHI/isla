@@ -6,7 +6,7 @@ from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
 import input_constraints.isla_shortcuts as sc
 from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
-    DerivationTree, convert_to_dnf, convert_to_nnf
+    DerivationTree, convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables
 from input_constraints.tests.test_data import *
 
 
@@ -314,6 +314,24 @@ class TestEvaluation(unittest.TestCase):
 
         formula = -((w | x) & (y | z))
         self.assertEqual(-w & -x | -y & -z, formula)
+
+    def test_ensure_unique_bound_variables(self):
+        start = Constant("$start", "<start>")
+        assgn = BoundVariable("$assgn", "<assgn>")
+        rhs_1 = BoundVariable("$rhs_1", "<rhs>")
+        var_1 = BoundVariable("$var1", "<var>")
+
+        formula = \
+            sc.forall_bind(
+                BindExpression(var_1),
+                rhs_1, start,
+                sc.smt_for(cast(z3.BoolRef, var_1.to_smt() == z3.StringVal("x")), var_1)) & \
+            sc.forall_bind(
+                var_1 + " := " + rhs_1,
+                assgn, start,
+                sc.smt_for(cast(z3.BoolRef, var_1.to_smt() == z3.StringVal("y")), var_1))
+
+        print(ensure_unique_bound_variables(formula))
 
 
 if __name__ == '__main__':
