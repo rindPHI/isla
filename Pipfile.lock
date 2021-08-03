@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "55924ce4a340cfe95506f0b0a73846768b37b2a5495842ae7ae6b743a2f628b1"
+            "sha256": "69f10d19d050d091268d3920cf2216767b484aa60537f45a8a4b83806826b97d"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -192,7 +192,7 @@
             "hashes": [
                 "sha256:9f58692cf22359df54d90fe92193d713210cd067ed7c18d17622b1a99e4a7930"
             ],
-            "path": "./../SubGrammarToRegex/dist/grammar2regex-0.0.1.tar.gz",
+            "path": "./libs/grammar2regex-0.0.1.tar.gz",
             "version": "==0.0.1"
         },
         "grammargraph": {
@@ -200,7 +200,7 @@
                 "sha256:0564e488b490d64c3b48acc4dba90efc8fbcc6b600be609d695f09b6ef1797a1",
                 "sha256:6c6f7bf709b7bc5d07462d04299ca6b2073dab0ef4468635cab8e26d0fd617a3"
             ],
-            "path": "./../GrammarGraph/dist/grammargraph-0.0.1.tar.gz",
+            "path": "./libs/grammargraph-0.0.1.tar.gz",
             "version": "==0.0.1"
         },
         "graphviz": {
