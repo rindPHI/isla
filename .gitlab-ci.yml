@@ -30,8 +30,6 @@ before_script:
   - pipenv install --deploy --dev
 
 test:
-  tags:
-    - Dx7wpapq
   script:
     - pipenv run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
     - pipenv run pytest
