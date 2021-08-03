@@ -1415,6 +1415,55 @@ def convert_to_dnf(formula: Formula) -> Formula:
         return formula
 
 
+def ensure_unique_bound_variables(formula: Formula, used_names: Optional[Set[str]] = None) -> Formula:
+    used_names: Set[str] = set() if used_names is None else used_names
+
+    def fresh_vars(orig_vars: OrderedSet[BoundVariable]) -> Dict[BoundVariable, BoundVariable]:
+        nonlocal used_names
+        result: Dict[BoundVariable, BoundVariable] = {}
+
+        for variable in orig_vars:
+            if variable.name not in used_names:
+                result[variable] = variable
+                continue
+
+            idx = 0
+            while f"{variable.name}_{idx}" in used_names:
+                idx += 1
+
+            new_name = f"{variable.name}_{idx}"
+            used_names.add(new_name)
+            result[variable] = BoundVariable(new_name, variable.n_type)
+
+        return result
+
+    if isinstance(formula, ForallFormula):
+        formula = cast(ForallFormula, formula.substitute_variables(fresh_vars(formula.bound_variables())))
+        return ForallFormula(
+            formula.bound_variable,
+            formula.in_variable,
+            ensure_unique_bound_variables(formula.inner_formula, used_names),
+            formula.bind_expression,
+            formula.already_matched
+        )
+    elif isinstance(formula, ExistsFormula):
+        formula = cast(ExistsFormula, formula.substitute_variables(fresh_vars(formula.bound_variables())))
+        return ExistsFormula(
+            formula.bound_variable,
+            formula.in_variable,
+            ensure_unique_bound_variables(formula.inner_formula, used_names),
+            formula.bind_expression,
+        )
+    elif isinstance(formula, NegatedFormula):
+        return NegatedFormula(ensure_unique_bound_variables(formula.args[0], used_names))
+    elif isinstance(formula, ConjunctiveFormula):
+        return reduce(lambda a, b: a & b, [ensure_unique_bound_variables(arg, used_names) for arg in formula.args])
+    elif isinstance(formula, DisjunctiveFormula):
+        return reduce(lambda a, b: a | b, [ensure_unique_bound_variables(arg, used_names) for arg in formula.args])
+    else:
+        return formula
+
+
 def split_conjunction(formula: Formula) -> List[Formula]:
     if not type(formula) is ConjunctiveFormula:
         return [formula]
