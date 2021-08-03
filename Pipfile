@@ -16,6 +16,7 @@ pyswip = "*"
 inflection = "*"
 pytest = "*"
 pytest-profiling = "*"
+flake8 = "*"
 
 [dev-packages]
 
