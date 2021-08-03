@@ -377,6 +377,10 @@ class BindExpression:
         result.bound_elements.append(other)
         return result
 
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        return BindExpression(*[elem if elem not in subst_map else subst_map[elem]
+                                for elem in self.bound_elements])
+
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([var for var in self.bound_elements if type(var) is BoundVariable])
 
@@ -518,6 +522,9 @@ class Formula:
         """Trees that were substituted for variables."""
         raise NotImplementedError()
 
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> 'Formula':
+        raise NotImplementedError()
+
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> 'Formula':
         raise NotImplementedError()
 
@@ -630,6 +637,11 @@ class PredicateFormula(Formula):
 
         return self.predicate.eval_fun(*args_with_paths)
 
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        return PredicateFormula(self.predicate,
+                                *[arg if arg not in subst_map
+                                  else subst_map[arg] for arg in self.args])
+
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         new_args = []
         for arg in self.args:
@@ -718,6 +730,9 @@ class NegatedFormula(PropositionalCombinator):
         for formula in self.args:
             formula.accept(visitor)
 
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        return NegatedFormula(*[arg.substitute_variables(subst_map) for arg in self.args])
+
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         return NegatedFormula(*[arg.substitute_expressions(subst_map) for arg in self.args])
 
@@ -733,6 +748,9 @@ class ConjunctiveFormula(PropositionalCombinator):
         if len(args) < 2:
             raise RuntimeError(f"Conjunction needs at least two arguments, {len(args)} given.")
         super().__init__(*args)
+
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        return reduce(lambda a, b: a & b, [arg.substitute_variables(subst_map) for arg in self.args])
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         return reduce(lambda a, b: a & b, [arg.substitute_expressions(subst_map) for arg in self.args])
@@ -757,6 +775,9 @@ class DisjunctiveFormula(PropositionalCombinator):
         if len(args) < 2:
             raise RuntimeError(f"Disjunction needs at least two arguments, {len(args)} given.")
         super().__init__(*args)
+
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        return reduce(lambda a, b: a | b, [arg.substitute_variables(subst_map) for arg in self.args])
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         return reduce(lambda a, b: a | b, [arg.substitute_expressions(subst_map) for arg in self.args])
@@ -794,6 +815,15 @@ class SMTFormula(Formula):
         if len(self.free_variables_) + len(self.instantiated_variables) != len(actual_symbols):
             raise RuntimeError(f"Supplied number of {len(free_variables)} symbols does not match "
                                f"actual number of symbols {len(actual_symbols)} in formula '{formula}'")
+
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        new_smt_formula = z3_subst(self.formula, {v1.to_smt(): v2.to_smt() for v1, v2 in subst_map.items()})
+
+        return SMTFormula(cast(z3.BoolRef, new_smt_formula),
+                          *[variable if variable not in subst_map else subst_map[variable]
+                            for variable in self.free_variables_],
+                          instantiated_variables=self.instantiated_variables,
+                          substitutions=self.substitutions)
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         tree_subst_map = {k: v for k, v in subst_map.items()
@@ -917,6 +947,15 @@ class ForallFormula(QuantifiedFormula):
         super().__init__(bound_variable, in_variable, inner_formula, bind_expression)
         self.already_matched: Set[int] = copy.deepcopy(already_matched) or set()
 
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        return ForallFormula(
+            self.bound_variable,
+            self.in_variable if self.in_variable not in subst_map else subst_map[self.in_variable],
+            self.inner_formula.substitute_variables(subst_map),
+            self.bind_expression,
+            self.already_matched
+        )
+
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         new_in_variable = self.in_variable
         if self.in_variable in subst_map:
@@ -967,6 +1006,13 @@ class ExistsFormula(QuantifiedFormula):
                  inner_formula: Formula,
                  bind_expression: Optional[BindExpression] = None):
         super().__init__(bound_variable, in_variable, inner_formula, bind_expression)
+
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        return ExistsFormula(
+            self.bound_variable,
+            self.in_variable if self.in_variable not in subst_map else subst_map[self.in_variable],
+            self.inner_formula.substitute_variables(subst_map),
+            self.bind_expression)
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         new_in_variable = self.in_variable
