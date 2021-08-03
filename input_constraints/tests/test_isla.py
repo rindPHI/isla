@@ -254,7 +254,6 @@ class TestEvaluation(unittest.TestCase):
                 inp = tree_to_string(tree)
                 try:
                     eval_lang(inp)
-                    print(inp)
                 except KeyError:
                     self.fail()
                 success += 1
