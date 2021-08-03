@@ -1031,6 +1031,8 @@ class VariablesCollector(FormulaVisitor):
     def visit_quantified_formula(self, formula: QuantifiedFormula):
         if isinstance(formula.in_variable, Variable):
             self.result.add(formula.in_variable)
+        else:
+            self.result.update(formula.in_variable.tree_variables())
         self.result.add(formula.bound_variable)
         if formula.bind_expression is not None:
             self.result.update(formula.bind_expression.bound_variables())

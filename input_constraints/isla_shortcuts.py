@@ -4,7 +4,7 @@ from input_constraints.isla import *
 def forall_bind(
         bind_expression: BindExpression,
         bound_variable: BoundVariable,
-        in_variable: Variable,
+        in_variable: Union[Variable, DerivationTree],
         inner_formula: Formula) -> ForallFormula:
     return ForallFormula(bound_variable, in_variable, inner_formula, bind_expression)
 
@@ -12,21 +12,21 @@ def forall_bind(
 def exists_bind(
         bind_expression: BindExpression,
         bound_variable: BoundVariable,
-        in_variable: Variable,
+        in_variable: Union[Variable, DerivationTree],
         inner_formula: Formula) -> ExistsFormula:
     return ExistsFormula(bound_variable, in_variable, inner_formula, bind_expression)
 
 
 def forall(
         bound_variable: BoundVariable,
-        in_variable: Variable,
+        in_variable: Union[Variable, DerivationTree],
         inner_formula: Formula) -> ForallFormula:
     return ForallFormula(bound_variable, in_variable, inner_formula)
 
 
 def exists(
         bound_variable: BoundVariable,
-        in_variable: Variable,
+        in_variable: Union[Variable, DerivationTree],
         inner_formula: Formula) -> ExistsFormula:
     return ExistsFormula(bound_variable, in_variable, inner_formula)
 
