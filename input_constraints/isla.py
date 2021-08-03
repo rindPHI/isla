@@ -1351,7 +1351,7 @@ def convert_to_dnf(formula: Formula) -> Formula:
             formula.bind_expression,
             formula.already_matched)
     elif isinstance(formula, ExistsFormula):
-        return ForallFormula(
+        return ExistsFormula(
             formula.bound_variable,
             formula.in_variable,
             convert_to_dnf(formula.inner_formula),
