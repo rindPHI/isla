@@ -103,6 +103,7 @@ For development, we recommend to use ISLa inside a virtual environment (virtuale
 ```shell
 virtualenv -p python3 venv
 source venv/bin/activate
+pip install -r requirements.txt
 
 # Run tests
 tox
