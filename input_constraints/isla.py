@@ -819,9 +819,16 @@ class SMTFormula(Formula):
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         new_smt_formula = z3_subst(self.formula, {v1.to_smt(): v2.to_smt() for v1, v2 in subst_map.items()})
 
+        new_free_variables = [variable if variable not in subst_map
+                              else subst_map[variable]
+                              for variable in self.free_variables_]
+
+        # This method is only to be used in ensuring the normal form and not thereafter
+        assert not self.instantiated_variables
+        assert not self.substitutions
+
         return SMTFormula(cast(z3.BoolRef, new_smt_formula),
-                          *[variable if variable not in subst_map else subst_map[variable]
-                            for variable in self.free_variables_],
+                          *new_free_variables,
                           instantiated_variables=self.instantiated_variables,
                           substitutions=self.substitutions)
 
@@ -948,11 +955,13 @@ class ForallFormula(QuantifiedFormula):
         self.already_matched: Set[int] = copy.deepcopy(already_matched) or set()
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        assert not self.already_matched
+
         return ForallFormula(
-            self.bound_variable,
+            self.bound_variable if self.bound_variable not in subst_map else subst_map[self.bound_variable],
             self.in_variable if self.in_variable not in subst_map else subst_map[self.in_variable],
             self.inner_formula.substitute_variables(subst_map),
-            self.bind_expression,
+            self.bind_expression.substitute_variables(subst_map),
             self.already_matched
         )
 
@@ -1009,10 +1018,10 @@ class ExistsFormula(QuantifiedFormula):
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return ExistsFormula(
-            self.bound_variable,
+            self.bound_variable if self.bound_variable not in subst_map else subst_map[self.bound_variable],
             self.in_variable if self.in_variable not in subst_map else subst_map[self.in_variable],
             self.inner_formula.substitute_variables(subst_map),
-            self.bind_expression)
+            self.bind_expression.substitute_variables(subst_map))
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         new_in_variable = self.in_variable
