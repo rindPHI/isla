@@ -2,7 +2,6 @@ import unittest
 
 from fuzzingbook.Grammars import JSON_GRAMMAR
 from fuzzingbook.Parser import canonical
-from grammar_graph.gg import GrammarGraph
 
 from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree

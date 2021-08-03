@@ -95,7 +95,7 @@ class TestEvaluation(unittest.TestCase):
         bad_formula_5: Formula = sc.forall(
             assgn_1,
             prog,
-            sc.SMTFormula(cast(z3.BoolRef, assgn_1.to_smt() == z3.StringVal("")), assgn_1) & \
+            sc.SMTFormula(cast(z3.BoolRef, assgn_1.to_smt() == z3.StringVal("")), assgn_1) &
             sc.forall(
                 var,
                 assgn_1,
@@ -126,7 +126,6 @@ class TestEvaluation(unittest.TestCase):
         self.assertFalse(well_formed(bad_formula_7))
 
     def test_evaluate(self):
-        prog = Constant("$prog", "<prog>")
         lhs_1 = BoundVariable("$lhs_1", "<var>")
         lhs_2 = BoundVariable("$lhs_2", "<var>")
         rhs_1 = BoundVariable("$rhs_1", "<rhs>")
@@ -135,17 +134,17 @@ class TestEvaluation(unittest.TestCase):
         assgn_2 = BoundVariable("$assgn_2", "<assgn>")
         var = BoundVariable("$var", "<var>")
 
-        formula: Formula = sc.forall_bind(
+        formula: Callable[[DerivationTree], Formula] = lambda tree: sc.forall_bind(
             lhs_1 + " := " + rhs_1,
             assgn_1,
-            prog,
+            tree,
             sc.forall(
                 var,
                 rhs_1,
                 sc.exists_bind(
                     lhs_2 + " := " + rhs_2,
                     assgn_2,
-                    prog,
+                    tree,
                     sc.before(assgn_2, assgn_1) &
                     sc.smt_for(cast(z3.BoolRef, lhs_2.to_smt() == var.to_smt()), lhs_2, var)
                 )
@@ -162,15 +161,15 @@ class TestEvaluation(unittest.TestCase):
         parser = EarleyParser(LANG_GRAMMAR)
 
         tree = DerivationTree.from_parse_tree(next(parser.parse(valid_prog_1)))
-        self.assertTrue(evaluate(formula, {prog: ((), tree)}))
+        self.assertTrue(evaluate(formula(tree)))
 
         for valid_prog in [valid_prog_1, valid_prog_2]:
             tree = DerivationTree.from_parse_tree(next(parser.parse(valid_prog)))
-            self.assertTrue(evaluate(formula, {prog: ((), tree)}))
+            self.assertTrue(evaluate(formula(tree)))
 
         for invalid_prog in [invalid_prog_1, invalid_prog_2, invalid_prog_3, invalid_prog_4]:
             tree = DerivationTree.from_parse_tree(next(parser.parse(invalid_prog)))
-            self.assertFalse(evaluate(formula, {prog: ((), tree)}))
+            self.assertFalse(evaluate(formula(tree)))
 
     def test_evaluate_concrete_in_expr(self):
         parser = EarleyParser(LANG_GRAMMAR)
@@ -180,15 +179,14 @@ class TestEvaluation(unittest.TestCase):
         var = BoundVariable("$var", "<var>")
 
         formula = sc.forall(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("x")), var))
-        self.assertTrue(evaluate(formula, {}))
+        self.assertTrue(evaluate(formula))
         formula = sc.forall(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("y")), var))
-        self.assertFalse(evaluate(formula, {}))
+        self.assertFalse(evaluate(formula))
 
         formula = sc.exists(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("x")), var))
-        self.assertTrue(evaluate(formula, {}))
+        self.assertTrue(evaluate(formula))
         formula = sc.exists(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("y")), var))
-        self.assertFalse(evaluate(formula, {}))
-
+        self.assertFalse(evaluate(formula))
 
     def test_match(self):
         parser = EarleyParser(LANG_GRAMMAR)
@@ -221,7 +219,6 @@ class TestEvaluation(unittest.TestCase):
         self.assertFalse(match)
 
     def test_use_constraint_as_filter(self):
-        prog = Constant("$prog", "<start>")
         lhs_1 = BoundVariable("$lhs_1", "<var>")
         lhs_2 = BoundVariable("$lhs_2", "<var>")
         rhs_1 = BoundVariable("$rhs_1", "<rhs>")
@@ -230,17 +227,17 @@ class TestEvaluation(unittest.TestCase):
         assgn_2 = BoundVariable("$assgn_2", "<assgn>")
         var = BoundVariable("$var", "<var>")
 
-        formula: Formula = sc.forall_bind(
+        formula: Callable[[DerivationTree], Formula] = lambda tree: sc.forall_bind(
             lhs_1 + " := " + rhs_1,
             assgn_1,
-            prog,
+            tree,
             sc.forall(
                 var,
                 rhs_1,
                 sc.exists_bind(
                     lhs_2 + " := " + rhs_2,
                     assgn_2,
-                    prog,
+                    tree,
                     sc.before(assgn_2, assgn_1) &
                     sc.smt_for(cast(z3.BoolRef, lhs_2.to_smt() == var.to_smt()), lhs_2, var)
                 )
@@ -253,7 +250,7 @@ class TestEvaluation(unittest.TestCase):
         fail = 0
         for _ in range(100):
             tree = DerivationTree.from_parse_tree(fuzzer.expand_tree(("<start>", None)))
-            if evaluate(formula, {prog: (tuple(), tree)}):
+            if evaluate(formula(tree)):
                 inp = tree_to_string(tree)
                 try:
                     eval_lang(inp)

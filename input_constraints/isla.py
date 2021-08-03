@@ -1149,14 +1149,10 @@ def well_formed(formula: Formula,
 
 
 def evaluate(formula: Formula,
-             assignments: Optional[Dict[Variable, Tuple[Path, DerivationTree]]] = None,
              reference_tree: Optional[DerivationTree] = None) -> bool:
-    """Passing `assignments` is deprecated"""
     assert well_formed(formula)
-    assignments: Dict[Variable, Tuple[Path, DerivationTree]] = assignments or {}
 
     def evaluate_(formula: Formula, assignments: Dict[Variable, Tuple[Path, DerivationTree]]) -> bool:
-        q = '"'
         t = type(formula)
 
         if t is SMTFormula:
@@ -1208,7 +1204,7 @@ def evaluate(formula: Formula,
         else:
             raise NotImplementedError()
 
-    return evaluate_(formula, assignments)
+    return evaluate_(formula, {})
 
 
 def matches_for_quantified_formula(
