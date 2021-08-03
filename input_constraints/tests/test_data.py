@@ -1,11 +1,10 @@
 import string
-from typing import Dict
+from typing import Dict, Callable
 
 from fuzzingbook.GrammarFuzzer import tree_to_string
 from fuzzingbook.Parser import EarleyParser
 
-from input_constraints.helpers import get_subtree, dfs
-from input_constraints.type_defs import ParseTree
+from input_constraints.type_defs import ParseTree, Path
 
 LANG_GRAMMAR = {
     "<start>":
@@ -44,3 +43,21 @@ def eval_lang(inp: str) -> Dict[str, int]:
     dfs(tree, evalAssignments)
 
     return valueMap
+
+
+def dfs(tree: ParseTree, action: Callable[[ParseTree], None] = print):
+    node, children = tree
+    action(tree)
+    if children is not None:
+        for child in children:
+            dfs(child, action)
+
+
+def get_subtree(path: Path, tree: ParseTree) -> ParseTree:
+    """Access a subtree based on `path` (a list of children numbers)"""
+    node, children = tree
+
+    if not path:
+        return tree
+
+    return get_subtree(path[1:], children[path[0]])
