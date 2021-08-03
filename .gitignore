@@ -2,3 +2,5 @@
 input_constraints/__pycache__/
 input_constraints/tests/__pycache__/
 prof/
+isla.egg-info/
+setup.py
