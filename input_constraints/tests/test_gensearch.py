@@ -27,16 +27,15 @@ class TestGensearch(unittest.TestCase):
         self.execute_generation_test(formula, start, max_number_free_instantiations=2)
 
     def test_simple_universal_formula_with_bind(self):
-        start = isla.Constant("$start", "<start>")
-        rhs = isla.BoundVariable("$rhs", "<rhs>")
-        var1 = isla.BoundVariable("$var", "<var>")
+        mgr = isla.VariableManager()
+        formula = mgr.create(
+            sc.forall_bind(
+                isla.BindExpression(mgr.bv("$var1", "<var>")),
+                mgr.bv("$rhs", "<rhs>"), mgr.const("$start", "<start>"),
+                sc.smt_for(cast(z3.BoolRef, mgr.bv("$var1").to_smt() == z3.StringVal("x")), mgr.bv("$var1")))
+        )
 
-        formula = sc.forall_bind(
-            isla.BindExpression(var1),
-            rhs, start,
-            sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
-
-        self.execute_generation_test(formula, start, print_solutions=True)
+        self.execute_generation_test(formula, mgr.const("$start"), print_solutions=True)
 
     def test_simple_existential_formula(self):
         start = isla.Constant("$start", "<start>")
@@ -81,33 +80,26 @@ class TestGensearch(unittest.TestCase):
         self.execute_generation_test(formula, start, num_solutions=15)
 
     def test_declared_before_used(self):
-        start = isla.Constant("$start", "<start>")
-        lhs_1 = isla.BoundVariable("$lhs_1", "<var>")
-        lhs_2 = isla.BoundVariable("$lhs_2", "<var>")
-        rhs_1 = isla.BoundVariable("$rhs_1", "<rhs>")
-        rhs_2 = isla.BoundVariable("$rhs_2", "<rhs>")
-        assgn_1 = isla.BoundVariable("$assgn_1", "<assgn>")
-        assgn_2 = isla.BoundVariable("$assgn_2", "<assgn>")
-        var = isla.BoundVariable("$var", "<var>")
-
-        formula: isla.Formula = sc.forall_bind(
-            lhs_1 + " := " + rhs_1,
-            assgn_1,
-            start,
+        mgr = isla.VariableManager()
+        formula: isla.Formula = mgr.create(sc.forall_bind(
+            mgr.bv("$lhs_1", "<var>") + " := " + mgr.bv("$rhs_1", "<rhs>"),
+            mgr.bv("$assgn_1", "<assgn>"),
+            mgr.const("$start", "<start>"),
             sc.forall(
-                var,
-                rhs_1,
+                mgr.bv("$var", "<var>"),
+                mgr.bv("$rhs_1"),
                 sc.exists_bind(
-                    lhs_2 + " := " + rhs_2,
-                    assgn_2,
-                    start,
-                    sc.before(assgn_2, assgn_1) &
-                    sc.smt_for(cast(z3.BoolRef, lhs_2.to_smt() == var.to_smt()), lhs_2, var)
+                    mgr.bv("$lhs_2", "<var>") + " := " + mgr.bv("$rhs_2", "<rhs>"),
+                    mgr.bv("$assgn_2", "<assgn>"),
+                    mgr.const("$start"),
+                    sc.before(mgr.bv("$assgn_2"), mgr.bv("$assgn_1")) &
+                    sc.smt_for(cast(z3.BoolRef, mgr.bv("$lhs_2").to_smt() == mgr.bv("$var").to_smt()),
+                               mgr.bv("$lhs_2"), mgr.bv("$var"))
                 )
             )
-        )
+        ))
 
-        self.execute_generation_test(formula, start, max_number_free_instantiations=2)
+        self.execute_generation_test(formula, mgr.const("$start"), max_number_free_instantiations=2)
 
     def execute_generation_test(self,
                                 formula: isla.Formula,

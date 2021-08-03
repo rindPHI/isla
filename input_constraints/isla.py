@@ -1479,3 +1479,38 @@ def split_disjunction(formula: Formula) -> List[Formula]:
     else:
         formula: DisjunctiveFormula
         return [elem for arg in formula.args for elem in split_disjunction(arg)]
+
+
+class VariableManager:
+    def __init__(self):
+        self.placeholders: Dict[str, Variable] = {}
+        self.variables: Dict[str, Variable] = {}
+
+    def __var(self, name: str, n_type: Optional[str], constr: Callable[[str, Optional[str]], Variable]) -> Variable:
+        matching_variables = [var for var_name, var in self.variables.items() if var_name == name]
+        if matching_variables:
+            return matching_variables[0]
+
+        if n_type:
+            return self.variables.setdefault(name, constr(name, n_type))
+
+        matching_placeholders = [var for var_name, var in self.placeholders.items() if var_name == name]
+        if matching_placeholders:
+            return matching_placeholders[0]
+
+        return self.placeholders.setdefault(name, constr(name, None))
+
+    def const(self, name: str, n_type: Optional[str] = None) -> Constant:
+        return cast(Constant, self.__var(name, n_type, Constant))
+
+    def bv(self, name: str, n_type: Optional[str] = None) -> BoundVariable:
+        return cast(BoundVariable, self.__var(name, n_type, BoundVariable))
+
+    def create(self, formula: Formula) -> Formula:
+        assert all(any(var_name == ph_name for var_name in self.variables)
+                   for ph_name in self.placeholders)
+
+        return formula.substitute_variables({
+            ph_var: next(var for var_name, var in self.variables.items() if var_name == ph_name)
+            for ph_name, ph_var in self.placeholders.items()
+        })
