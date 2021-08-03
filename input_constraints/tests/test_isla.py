@@ -6,7 +6,7 @@ from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
 import input_constraints.isla_shortcuts as sc
 from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
-    DerivationTree
+    DerivationTree, convert_to_dnf, convert_to_nnf
 from input_constraints.tests.test_data import *
 
 
@@ -289,6 +289,32 @@ class TestEvaluation(unittest.TestCase):
         self.assertEqual((0, 2), bindings[rhs])
         self.assertEqual((2, 0, 0), bindings[lhs_2])
         self.assertEqual((2, 0, 2), bindings[rhs_2])
+
+    def test_dnf_conversion(self):
+        a = Constant("$a", "<var>")
+        w = sc.smt_for(a.to_smt() == z3.StringVal("1"), a)
+        x = sc.smt_for(a.to_smt() == z3.StringVal("2"), a)
+        y = sc.smt_for(a.to_smt() > z3.StringVal("0"), a)
+        z = sc.smt_for(a.to_smt() < z3.StringVal("3"), a)
+
+        formula = (w | x) & (y | z)
+        self.assertEqual((w & y) | (w & z) | (x & y) | (x & z), convert_to_dnf(formula))
+
+        formula = w & (y | z)
+        self.assertEqual((w & y) | (w & z), convert_to_dnf(formula))
+
+        formula = w & (x | y | z)
+        self.assertEqual((w & x) | (w & y) | (w & z), convert_to_dnf(formula))
+
+    def test_push_in_negation(self):
+        a = Constant("$a", "<var>")
+        w = sc.smt_for(a.to_smt() == z3.StringVal("1"), a)
+        x = sc.smt_for(a.to_smt() == z3.StringVal("2"), a)
+        y = sc.smt_for(a.to_smt() > z3.StringVal("0"), a)
+        z = sc.smt_for(a.to_smt() < z3.StringVal("3"), a)
+
+        formula = -((w | x) & (y | z))
+        self.assertEqual(-w & -x | -y & -z, formula)
 
 
 if __name__ == '__main__':

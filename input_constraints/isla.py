@@ -5,6 +5,7 @@ import sys
 from functools import reduce
 from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable
 
+import itertools
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
 from fuzzingbook.Grammars import is_nonterminal
@@ -557,6 +558,25 @@ class Formula:
         return DisjunctiveFormula(self, other)
 
     def __neg__(self):
+        if isinstance(self, SMTFormula):
+            return SMTFormula(
+                z3.Not(self.formula),
+                *self.free_variables_,
+                instantiated_variables=self.instantiated_variables,
+                substitutions=self.substitutions)
+        elif isinstance(self, NegatedFormula):
+            return self.args[0]
+        elif isinstance(self, ConjunctiveFormula):
+            return reduce(lambda a, b: a | b, [-arg for arg in self.args])
+        elif isinstance(self, DisjunctiveFormula):
+            return reduce(lambda a, b: a & b, [-arg for arg in self.args])
+        elif isinstance(self, ForallFormula):
+            return ExistsFormula(
+                self.bound_variable, self.in_variable, -self.inner_formula, self.bind_expression)
+        elif isinstance(self, ExistsFormula):
+            return ForallFormula(
+                self.bound_variable, self.in_variable, -self.inner_formula, self.bind_expression)
+
         return NegatedFormula(self)
 
     def accept(self, visitor: FormulaVisitor):
@@ -701,6 +721,9 @@ class NegatedFormula(PropositionalCombinator):
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         return NegatedFormula(*[arg.substitute_expressions(subst_map) for arg in self.args])
 
+    def __hash__(self):
+        return hash((type(self), self.args))
+
     def __str__(self):
         return f"¬({self.args[0]})"
 
@@ -719,6 +742,12 @@ class ConjunctiveFormula(PropositionalCombinator):
         for formula in self.args:
             formula.accept(visitor)
 
+    def __hash__(self):
+        return hash((type(self), self.args))
+
+    def __eq__(self, other):
+        return split_conjunction(self) == split_conjunction(other)
+
     def __str__(self):
         return f"({' ∧ '.join(map(str, self.args))})"
 
@@ -736,6 +765,12 @@ class DisjunctiveFormula(PropositionalCombinator):
         visitor.visit_disjunctive_formula(self)
         for formula in self.args:
             formula.accept(visitor)
+
+    def __hash__(self):
+        return hash((type(self), self.args))
+
+    def __eq__(self, other):
+        return split_disjunction(self) == split_disjunction(other)
 
     def __str__(self):
         return f"({' ∨ '.join(map(str, self.args))})"
@@ -1243,3 +1278,99 @@ def replace_formula(in_formula: Formula,
             in_formula.bind_expression)
 
     return in_formula
+
+
+def convert_to_nnf(formula: Formula, negate=False) -> Formula:
+    """Pushes negations inside the formula."""
+    if isinstance(formula, NegatedFormula):
+        return convert_to_nnf(formula.args[0], not negate)
+    elif isinstance(formula, ConjunctiveFormula):
+        args = [convert_to_nnf(arg, negate) for arg in formula.args]
+        if negate:
+            return reduce(lambda a, b: a | b, args)
+        else:
+            return reduce(lambda a, b: a & b, args)
+    elif isinstance(formula, DisjunctiveFormula):
+        args = [convert_to_nnf(arg, negate) for arg in formula.args]
+        if negate:
+            return reduce(lambda a, b: a & b, args)
+        else:
+            return reduce(lambda a, b: a | b, args)
+    elif isinstance(formula, PredicateFormula):
+        if negate:
+            return NegatedFormula(formula)
+        else:
+            return formula
+    elif isinstance(formula, SMTFormula):
+        if negate:
+            return SMTFormula(
+                z3.Not(formula.formula),
+                *formula.free_variables(),
+                instantiated_variables=formula.instantiated_variables,
+                substitutions=formula.substitutions
+            )
+        else:
+            return formula
+    elif isinstance(formula, QuantifiedFormula):
+        inner_formula = convert_to_nnf(formula.inner_formula, negate) if negate else formula.inner_formula
+        already_matched: Set[int] = formula.already_matched if isinstance(formula, ForallFormula) else set()
+
+        if ((isinstance(formula, ForallFormula) and negate)
+                or (isinstance(formula, ExistsFormula) and not negate)):
+            return ExistsFormula(
+                formula.bound_variable, formula.in_variable, inner_formula, formula.bind_expression)
+        else:
+            return ForallFormula(
+                formula.bound_variable, formula.in_variable, inner_formula, formula.bind_expression, already_matched)
+    else:
+        assert False, f"Unexpected formula type {type(formula).__name__}"
+
+
+def convert_to_dnf(formula: Formula) -> Formula:
+    assert (not isinstance(formula, NegatedFormula)
+            or not isinstance(formula.args[0], PropositionalCombinator)), "Convert to NNF before converting to DNF"
+
+    if isinstance(formula, ConjunctiveFormula):
+        disjuncts_list = [split_disjunction(convert_to_dnf(arg)) for arg in formula.args]
+        return reduce(
+            lambda a, b: a | b,
+            [left & right for left, right in itertools.product(*disjuncts_list)],
+            SMTFormula(z3.BoolVal(False))
+        )
+    elif isinstance(formula, DisjunctiveFormula):
+        return reduce(
+            lambda a, b: a | b,
+            [convert_to_dnf(subformula) for subformula in formula.args],
+            SMTFormula(z3.BoolVal(False))
+        )
+    elif isinstance(formula, ForallFormula):
+        return ForallFormula(
+            formula.bound_variable,
+            formula.in_variable,
+            convert_to_dnf(formula.inner_formula),
+            formula.bind_expression,
+            formula.already_matched)
+    elif isinstance(formula, ExistsFormula):
+        return ForallFormula(
+            formula.bound_variable,
+            formula.in_variable,
+            convert_to_dnf(formula.inner_formula),
+            formula.bind_expression)
+    else:
+        return formula
+
+
+def split_conjunction(formula: Formula) -> List[Formula]:
+    if not type(formula) is ConjunctiveFormula:
+        return [formula]
+    else:
+        formula: ConjunctiveFormula
+        return [elem for arg in formula.args for elem in split_conjunction(arg)]
+
+
+def split_disjunction(formula: Formula) -> List[Formula]:
+    if not type(formula) is DisjunctiveFormula:
+        return [formula]
+    else:
+        formula: DisjunctiveFormula
+        return [elem for arg in formula.args for elem in split_disjunction(arg)]

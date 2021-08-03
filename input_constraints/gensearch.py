@@ -16,7 +16,8 @@ import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import visit_z3_expr, delete_unreachable, dict_of_lists_to_list_of_dicts
-from input_constraints.isla import DerivationTree, VariablesCollector
+from input_constraints.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
+    convert_to_dnf, convert_to_nnf
 from input_constraints.type_defs import Grammar, Path
 
 
@@ -466,7 +467,9 @@ class ISLaSolver:
             queue: List[Tuple[float, SolutionState]],
             cost_reduction: Optional[float] = None,
     ) -> List[DerivationTree]:
-        # TODO: Establish invariant
+        # Establish invariant
+        formula = convert_to_dnf(convert_to_nnf(new_state.constraint))
+        new_state = SolutionState(formula, new_state.tree)
 
         conjuncts = get_conjuncts(new_state.constraint)
         new_state = self.remove_nonmatching_universal_quantifiers(new_state)
@@ -740,22 +743,6 @@ def instantiate_predicates(formula: isla.Formula, tree: DerivationTree) -> isla.
         formula = isla.replace_formula(formula, predicate_formula, instantiation)
 
     return formula
-
-
-def split_conjunction(formula: isla.Formula) -> List[isla.Formula]:
-    if not type(formula) is isla.ConjunctiveFormula:
-        return [formula]
-    else:
-        formula: isla.ConjunctiveFormula
-        return [elem for arg in formula.args for elem in split_conjunction(arg)]
-
-
-def split_disjunction(formula: isla.Formula) -> List[isla.Formula]:
-    if not type(formula) is isla.DisjunctiveFormula:
-        return [formula]
-    else:
-        formula: isla.DisjunctiveFormula
-        return [elem for arg in formula.args for elem in split_disjunction(arg)]
 
 
 def get_conjuncts(formula: isla.Formula) -> List[isla.Formula]:
