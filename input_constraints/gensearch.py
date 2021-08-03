@@ -118,7 +118,8 @@ class ISLaSolver:
         initial_formula = self.formula.substitute_expressions({self.top_constant: initial_tree})
 
         queue: List[Tuple[int, SolutionState]] = []
-        heapq.heappush(queue, (0, self.establish_invariant(SolutionState(initial_formula, initial_tree))))
+        heapq.heappush(queue, (0, self.establish_invariant(
+            SolutionState(ensure_unique_bound_variables(initial_formula), initial_tree))))
 
         while queue:
             cost: int
@@ -517,7 +518,7 @@ class ISLaSolver:
         return result
 
     def establish_invariant(self, state: SolutionState) -> SolutionState:
-        formula = ensure_unique_bound_variables(convert_to_dnf(convert_to_nnf(state.constraint)))
+        formula = convert_to_dnf(convert_to_nnf(state.constraint))
         return SolutionState(formula, state.tree)
 
     def compute_cost(self, state: SolutionState, cost_reduction: float = 1.0) -> float:

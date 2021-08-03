@@ -961,7 +961,7 @@ class ForallFormula(QuantifiedFormula):
             self.bound_variable if self.bound_variable not in subst_map else subst_map[self.bound_variable],
             self.in_variable if self.in_variable not in subst_map else subst_map[self.in_variable],
             self.inner_formula.substitute_variables(subst_map),
-            self.bind_expression.substitute_variables(subst_map),
+            None if not self.bind_expression else self.bind_expression.substitute_variables(subst_map),
             self.already_matched
         )
 
@@ -1021,7 +1021,7 @@ class ExistsFormula(QuantifiedFormula):
             self.bound_variable if self.bound_variable not in subst_map else subst_map[self.bound_variable],
             self.in_variable if self.in_variable not in subst_map else subst_map[self.in_variable],
             self.inner_formula.substitute_variables(subst_map),
-            self.bind_expression.substitute_variables(subst_map))
+            None if not self.bind_expression else self.bind_expression.substitute_variables(subst_map))
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         new_in_variable = self.in_variable
