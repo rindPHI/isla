@@ -154,15 +154,18 @@ class TestHelpers(unittest.TestCase):
     def test_path_to_tree(self):
         self.assertEqual([('<stmt>', [('<assgn>', None)]),
                           ('<stmt>', [('<assgn>', None), (' ; ', []), ('<stmt>', None)])],
-                         path_to_tree(canonical(LANG_GRAMMAR), ["<stmt>", "<assgn>"]))
+                         [tree.to_parse_tree()
+                          for tree in path_to_tree(canonical(LANG_GRAMMAR), ["<stmt>", "<assgn>"])])
 
         self.assertEqual([('<stmt>', [('<assgn>', None), (' ; ', []), ('<stmt>', None)])],
-                         path_to_tree(canonical(LANG_GRAMMAR), ["<stmt>", "<stmt>"]))
+                         [tree.to_parse_tree()
+                          for tree in path_to_tree(canonical(LANG_GRAMMAR), ["<stmt>", "<stmt>"])])
 
         self.assertEqual([('<stmt>', [('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', [('<digit>', None)])])]),
                           ('<stmt>', [('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', [('<digit>', None)])]),
                                       (' ; ', []), ('<stmt>', None)])],
-                         path_to_tree(canonical(LANG_GRAMMAR), ["<stmt>", "<assgn>", "<rhs>", "<digit>"]))
+                         [tree.to_parse_tree()
+                          for tree in path_to_tree(canonical(LANG_GRAMMAR), ["<stmt>", "<assgn>", "<rhs>", "<digit>"])])
 
     def test_find_all_paths(self):
         graph = GrammarGraph.from_grammar(LANG_GRAMMAR)
