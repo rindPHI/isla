@@ -119,6 +119,18 @@ def z3_subst(inp: z3.ExprRef, subst_map: Dict[z3.ExprRef, z3.ExprRef]) -> z3.Exp
     return z3.substitute(inp, *tuple(subst_map.items()))
 
 
+def is_valid(formula: z3.BoolRef) -> bool:
+    if z3.is_true(formula):
+        return True
+
+    if z3.is_false(formula):
+        return False
+
+    solver = z3.Solver()
+    solver.add(z3.Not(formula))
+    return solver.check() == z3.unsat
+
+
 def reachable(grammar: Grammar, nonterminal: str, to_nonterminal: str) -> bool:
     graph = GrammarGraph.from_grammar(grammar)
     return graph.get_node(nonterminal).reachable(graph.get_node(to_nonterminal))

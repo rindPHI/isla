@@ -24,6 +24,7 @@ class SolutionState:
     def __init__(self, constraint: isla.Formula, tree: DerivationTree):
         self.constraint = constraint
         self.tree = tree
+        self.__hash = None
 
     def formula_satisfied(self) -> bool:
         if self.tree.is_open():
@@ -59,19 +60,21 @@ class SolutionState:
 
     # Numeric comparisons are needed for using solution states in the binary heap queue
     def __lt__(self, other: 'SolutionState'):
-        return str(self) < str(other)
+        return hash(self) < hash(other)
 
     def __le__(self, other: 'SolutionState'):
-        return str(self) <= str(other)
+        return hash(self) <= hash(other)
 
     def __gt__(self, other: 'SolutionState'):
-        return str(self) > str(other)
+        return hash(self) > hash(other)
 
     def __ge__(self, other: 'SolutionState'):
-        return str(self) >= str(other)
+        return hash(self) >= hash(other)
 
     def __hash__(self):
-        return hash((self.constraint, self.tree.structural_hash()))
+        if self.__hash is None:
+            self.__hash = hash((self.constraint, self.tree.structural_hash()))
+        return self.__hash
 
     def __eq__(self, other):
         return (isinstance(other, SolutionState)
@@ -119,8 +122,8 @@ class ISLaSolver:
             cost: int
             state: SolutionState
             cost, state = heapq.heappop(queue)
-            self.logger.debug(f"Polling new state {state}")
-            self.logger.debug(f"Queue length: {len(queue)}")
+            self.logger.debug(f"Polling new state %s", state)
+            self.logger.debug(f"Queue length: %s", len(queue))
 
             formula = state.constraint
             tree = state.tree
@@ -489,7 +492,7 @@ class ISLaSolver:
                     # A typical (maybe the only) case is when an existential quantifier is eliminated and the
                     # original constraint is re-attached. Then, the there might be several options for matching
                     # the existential quantifier again, some of which will be unsuccessful.
-                    self.logger.debug(f"Discarding state {new_state} (unsatisfied constraint)")
+                    self.logger.debug(f"Discarding state %s (unsatisfied constraint)", new_state)
                     result.append(new_state.tree)
                 continue
 
@@ -499,10 +502,10 @@ class ISLaSolver:
 
             heapq.heappush(queue, (self.compute_cost(new_state, cost_reduction or 1.0), new_state))
 
-            self.logger.debug(f"Pushing new state {new_state}")
-            self.logger.debug(f"Queue length: {len(queue)}")
+            self.logger.debug(f"Pushing new state %s", new_state)
+            self.logger.debug(f"Queue length: %d", len(queue))
             if len(queue) % 100 == 0:
-                self.logger.info(f"Queue length: {len(queue)}")
+                self.logger.info(f"Queue length: %d", len(queue))
 
         # if self.queue_size_limit is not None and len(queue) > self.queue_size_limit:
         #     self.logger.debug(f"Balancing queue")

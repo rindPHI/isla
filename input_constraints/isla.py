@@ -12,7 +12,7 @@ from fuzzingbook.Parser import EarleyParser
 from grammar_graph.gg import GrammarGraph
 from orderedset import OrderedSet
 
-from input_constraints.helpers import get_symbols, is_before, z3_subst, path_iterator, replace_tree_path
+from input_constraints.helpers import get_symbols, is_before, z3_subst, path_iterator, replace_tree_path, is_valid
 from input_constraints.type_defs import ParseTree, Path, Grammar
 
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
@@ -782,10 +782,10 @@ class SMTFormula(Formula):
             if var not in complete_substitutions
         ])
 
-        new_smt_formula = z3_subst(self.formula, {
+        new_smt_formula: z3.BoolRef = cast(z3.BoolRef, z3_subst(self.formula, {
             variable.to_smt(): z3.StringVal(str(tree))
             for variable, tree in complete_substitutions.items()
-        })
+        }))
 
         new_free_variables: OrderedSet[Variable] = OrderedSet([
             variable for variable in self.free_variables_
@@ -793,9 +793,7 @@ class SMTFormula(Formula):
 
         if len(new_free_variables) + len(new_instantiated_variables) == 0:
             # Formula is ground, we can evaluate it!
-            solver = z3.Solver()
-            solver.add(z3.Not(new_smt_formula))
-            return SMTFormula(z3.BoolVal(solver.check() == z3.unsat))
+            return SMTFormula(z3.BoolVal(is_valid(new_smt_formula)))
 
         return SMTFormula(cast(z3.BoolRef, new_smt_formula), *new_free_variables,
                           instantiated_variables=new_instantiated_variables,
