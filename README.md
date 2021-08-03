@@ -78,7 +78,7 @@ while True:
     try:
         print(next(it))
     except StopIteration:
-        pass
+        break
 ```
 
 To create more diverse inputs, ISLa can be configured to perform a *bounded expansion* of grammar nonterminals that are
