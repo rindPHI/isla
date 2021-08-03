@@ -7,7 +7,7 @@ from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 import input_constraints.isla_shortcuts as sc
 from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
     DerivationTree
-from test_data import *
+from input_constraints.tests.test_data import *
 
 
 class TestEvaluation(unittest.TestCase):
