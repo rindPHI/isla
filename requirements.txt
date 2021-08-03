@@ -12,8 +12,8 @@ fibheap==0.2.1
 flake8==3.9.2
 fuzzingbook==0.8.1
 gprof2dot==2021.2.21
-grammar2regex @ file:///Users/dsteinhoefel/PycharmProjects/InputConstraints/libs/grammar2regex-0.0.1.tar.gz
-grammargraph @ file:///Users/dsteinhoefel/PycharmProjects/InputConstraints/libs/grammargraph-0.0.1.tar.gz
+./libs/grammar2regex-0.0.1.tar.gz
+./libs/grammargraph-0.0.1.tar.gz
 graphviz==0.16
 inflection==0.5.1
 iniconfig==1.1.1
