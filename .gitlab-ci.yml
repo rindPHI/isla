@@ -27,7 +27,7 @@ cache:
 before_script:
   - python -V  # Print out python version for debugging
   - python -m pip install --upgrade pipenv
-  - pipenv install --deploy --dev
+  - pipenv install --system --deploy --ignore-pipfile
 
 test:
   script:
