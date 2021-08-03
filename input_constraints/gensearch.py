@@ -18,7 +18,7 @@ from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import visit_z3_expr, delete_unreachable, dict_of_lists_to_list_of_dicts
 from input_constraints.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
-    convert_to_dnf, convert_to_nnf
+    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables
 from input_constraints.type_defs import Grammar, Path
 
 
@@ -517,7 +517,7 @@ class ISLaSolver:
         return result
 
     def establish_invariant(self, state: SolutionState) -> SolutionState:
-        formula = convert_to_dnf(convert_to_nnf(state.constraint))
+        formula = ensure_unique_bound_variables(convert_to_dnf(convert_to_nnf(state.constraint)))
         return SolutionState(formula, state.tree)
 
     def compute_cost(self, state: SolutionState, cost_reduction: float = 1.0) -> float:

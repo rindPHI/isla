@@ -331,7 +331,21 @@ class TestEvaluation(unittest.TestCase):
                 assgn, start,
                 sc.smt_for(cast(z3.BoolRef, var_1.to_smt() == z3.StringVal("y")), var_1))
 
-        print(ensure_unique_bound_variables(formula))
+        rhs_1_0 = BoundVariable("$rhs_1_0", "<rhs>")
+        var_1_0 = BoundVariable("$var1_0", "<var>")
+
+        expected = \
+            sc.forall_bind(
+                BindExpression(var_1),
+                rhs_1, start,
+                sc.smt_for(cast(z3.BoolRef, var_1.to_smt() == z3.StringVal("x")), var_1)) & \
+            sc.forall_bind(
+                var_1_0 + " := " + rhs_1_0,
+                assgn, start,
+                sc.smt_for(cast(z3.BoolRef, var_1_0.to_smt() == z3.StringVal("y")), var_1_0))
+
+        self.assertEqual(expected, ensure_unique_bound_variables(formula))
+        self.assertEqual(expected, ensure_unique_bound_variables(expected))
 
 
 if __name__ == '__main__':

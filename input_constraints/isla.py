@@ -1424,6 +1424,7 @@ def ensure_unique_bound_variables(formula: Formula, used_names: Optional[Set[str
 
         for variable in orig_vars:
             if variable.name not in used_names:
+                used_names.add(variable.name)
                 result[variable] = variable
                 continue
 
