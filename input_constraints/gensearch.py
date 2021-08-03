@@ -117,7 +117,7 @@ class ISLaSolver:
         initial_formula = self.formula.substitute_expressions({self.top_constant: initial_tree})
 
         queue: List[Tuple[int, SolutionState]] = []
-        heapq.heappush(queue, (0, SolutionState(initial_formula, initial_tree)))
+        heapq.heappush(queue, (0, self.establish_invariant(SolutionState(initial_formula, initial_tree))))
 
         while queue:
             cost: int
@@ -128,8 +128,6 @@ class ISLaSolver:
 
             formula = state.constraint
             tree = state.tree
-            # TODO: Relax invariant. Maybe: DNF, negations moved inside etc., but no restrictions on the quantifiers.
-            # assert satisfies_invariant(formula, self.grammar)
 
             # Split disjunctions
             if isinstance(formula, isla.DisjunctiveFormula):
@@ -467,9 +465,7 @@ class ISLaSolver:
             queue: List[Tuple[float, SolutionState]],
             cost_reduction: Optional[float] = None,
     ) -> List[DerivationTree]:
-        # Establish invariant
-        formula = convert_to_dnf(convert_to_nnf(new_state.constraint))
-        new_state = SolutionState(formula, new_state.tree)
+        new_state = self.establish_invariant(new_state)
 
         conjuncts = get_conjuncts(new_state.constraint)
         new_state = self.remove_nonmatching_universal_quantifiers(new_state)
@@ -518,6 +514,10 @@ class ISLaSolver:
         #     heapq.heapify(queue)
 
         return result
+
+    def establish_invariant(self, state: SolutionState) -> SolutionState:
+        formula = convert_to_dnf(convert_to_nnf(state.constraint))
+        return SolutionState(formula, state.tree)
 
     def compute_cost(self, state: SolutionState, cost_reduction: float = 1.0) -> float:
         """Cost of state. Best value: 0, Worst: Unbounded"""
