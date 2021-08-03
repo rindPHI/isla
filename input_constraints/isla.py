@@ -12,9 +12,8 @@ from fuzzingbook.Parser import EarleyParser
 from grammar_graph.gg import GrammarGraph
 from orderedset import OrderedSet
 
-from input_constraints.helpers import get_symbols, is_before, visit_z3_expr, \
-    is_z3_var, z3_subst, path_iterator, replace_tree_path
-from input_constraints.type_defs import ParseTree, Path, Grammar, AbstractTree
+from input_constraints.helpers import get_symbols, is_before, z3_subst, path_iterator, replace_tree_path
+from input_constraints.type_defs import ParseTree, Path, Grammar
 
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
 Assignment = Tuple['Constant', 'Formula', 'DerivationTree']
@@ -1245,88 +1244,6 @@ def matches_for_quantified_formula(
 
     in_tree.traverse(search_action)
     return new_assignments
-
-
-class NonAtomicVisitor(FormulaVisitor):
-    def __init__(self):
-        self.non_atomic_variables = OrderedSet([])
-
-    def visit_forall_formula(self, formula: ForallFormula):
-        self.non_atomic_variables.add(formula.in_variable)
-        if formula.bind_expression is not None:
-            self.non_atomic_variables.add(formula.bound_variable)
-
-    def visit_exists_formula(self, formula: ExistsFormula):
-        self.non_atomic_variables.add(formula.in_variable)
-        if formula.bind_expression is not None:
-            self.non_atomic_variables.add(formula.bound_variable)
-
-    def visit_predicate_formula(self, formula: PredicateFormula):
-        if formula.predicate != BEFORE_PREDICATE:
-            self.non_atomic_variables.update(formula.free_variables())
-
-    def visit_smt_formula(self, formula: SMTFormula):
-        # TODO: This is still quite arbitrary and ad-hoc, should be fundamentally investigated and reworked.
-
-        if str(formula.formula.decl()) == "==" and any(not is_z3_var(child)
-                                                       for child in formula.formula.children()):
-            # In equations like "Var == 'asdf'", it slows down the process to first fuzz Var.
-            # Thus, we have to leave Var's type concrete.
-            self.non_atomic_variables.update(formula.free_variables())
-
-        for expr in visit_z3_expr(formula.formula):
-            # Any non-trivial string expression, e.g., substring computations
-            # or regex operations, exclude the involved variables from atomic
-            # representations, since their internal structure matters.
-            # TODO: Have to more thoroughly test whether this suffices.
-            if expr.decl().name() == "str.in_re":
-                self.non_atomic_variables.update(formula.free_variables())
-
-            if z3.is_string(expr) and not z3.is_string_value(expr) and not z3.is_const(expr):
-                self.non_atomic_variables.update(formula.free_variables())
-
-
-def abstract_tree_to_string(tree: AbstractTree) -> str:
-    symbol, children, *_ = tree
-    if children:
-        return ''.join(abstract_tree_to_string(c) for c in children)
-    else:
-        if isinstance(symbol, Variable):
-            return symbol.name
-        return symbol
-
-
-def tree_variables(tree: AbstractTree) -> Generator[Variable, None, None]:
-    return (sub_tree[0]
-            for _, sub_tree in path_iterator(tree)
-            if isinstance(sub_tree[0], Variable))
-
-
-def state_to_string(state: SolutionState) -> str:
-    return "{(" + "), (".join(map(str, [f"{constant.name}, {formula}, \"{abstract_tree_to_string(tree)}\""
-                                        for constant, formula, tree in state])) + ")}"
-
-
-def substitute_variables_in_tree(in_tree: AbstractTree, subst_map: Dict[Variable, AbstractTree]) -> AbstractTree:
-    node, children = in_tree
-    if children is None:
-        if isinstance(node, Variable) and node in subst_map:
-            return subst_map[node]
-        else:
-            return in_tree
-
-    return node, [substitute_variables_in_tree(child, subst_map) for child in children]
-
-
-def inline_var_in_tree(in_tree: DerivationTree, variable: Variable, inst: DerivationTree) -> DerivationTree:
-    node, children = in_tree
-    if children is None:
-        if node == variable:
-            return inst
-        else:
-            return in_tree
-
-    return DerivationTree(node, [inline_var_in_tree(child, variable, inst) for child in children], id=in_tree.id)
 
 
 def replace_formula(in_formula: Formula,

@@ -5,10 +5,10 @@ import z3
 from fuzzingbook.Grammars import unreachable_nonterminals
 from grammar_graph.gg import GrammarGraph
 
-from input_constraints.type_defs import Path, Grammar, AbstractTree
+from input_constraints.type_defs import Path, Grammar, ParseTree
 
 
-def path_iterator(tree: AbstractTree, path: Path = ()) -> Generator[Tuple[Path, AbstractTree], None, None]:
+def path_iterator(tree: ParseTree, path: Path = ()) -> Generator[Tuple[Path, ParseTree], None, None]:
     yield path, tree
     if tree[1] is not None:
         for i, child in enumerate(tree[1]):
@@ -20,7 +20,7 @@ def delete_unreachable(grammar: Grammar) -> None:
         del grammar[unreachable]
 
 
-def replace_tree_path(in_tree: AbstractTree, path: Path, replacement_tree: AbstractTree) -> AbstractTree:
+def replace_tree_path(in_tree: ParseTree, path: Path, replacement_tree: ParseTree) -> ParseTree:
     """Returns tree where replacement_tree has been inserted at `path` instead of the original subtree"""
     node, children = in_tree
 

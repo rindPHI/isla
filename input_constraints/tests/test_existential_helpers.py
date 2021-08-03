@@ -6,7 +6,7 @@ from grammar_graph.gg import GrammarGraph
 
 from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
-from input_constraints.isla import abstract_tree_to_string, DerivationTree
+from input_constraints.isla import DerivationTree
 from input_constraints.tests.test_data import *
 from input_constraints.tests.test_helpers import parse
 

@@ -15,6 +15,7 @@ fibheap = "*"
 pyswip = "*"
 inflection = "*"
 pytest = "*"
+pytest-profiling = "*"
 
 [dev-packages]
 
