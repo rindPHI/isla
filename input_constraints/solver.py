@@ -134,7 +134,7 @@ class ISLaSolver:
                 continue
 
             # Instantiate all top-level predicate formulas.
-            state = instantiate_predicates(state)
+            state = instantiate_structural_predicates(state)
 
             if state.constraint == sc.false():
                 continue
@@ -722,7 +722,7 @@ def is_semantic_formula(formula: isla.Formula) -> bool:
     return not pred_qfr_visitor.collect(formula)
 
 
-def instantiate_predicates(state: SolutionState) -> SolutionState:
+def instantiate_structural_predicates(state: SolutionState) -> SolutionState:
     # Note: The current interpretation of these Python (non-SMT) predicates is that they are *structural* predicate,
     #       i.e., they are only concerned about positions / paths and not about actual parse trees.
     #       This means that we can already evaluate them when they still contain constants, as long as the constants
