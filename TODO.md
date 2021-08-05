@@ -1,8 +1,6 @@
 ISLa TODOs
 ==========
 
-* Enforce invariant: 
-  - No variable bound by two different quantifiers (even on the same level)
 * Add semantic predicates (e.g., checksums)
 * Add aggregations, e.g. sum, count.
   *How to generate with aggregations? Resolve at end?*

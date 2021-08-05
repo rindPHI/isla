@@ -2,6 +2,7 @@ import string
 from typing import Dict, Callable
 
 from fuzzingbook.GrammarFuzzer import tree_to_string
+from fuzzingbook.Grammars import convert_ebnf_grammar, srange
 from fuzzingbook.Parser import EarleyParser
 
 from input_constraints.type_defs import ParseTree, Path
@@ -18,6 +19,24 @@ LANG_GRAMMAR = {
     "<var>": list(string.ascii_lowercase),
     "<digit>": list(string.digits)
 }
+
+CSV_EBNF_GRAMMAR = {
+    "<start>": ["<csv-file>"],
+    "<csv-file>": ["<csv-header><csv-record>*"],
+    "<csv-header>": ["<csv-record>"],
+    "<csv-record>": ["<csv-string-list>\n"],
+    "<csv-string-list>": ["<raw-string>", "<raw-string>;<csv-string-list>"],
+    "<raw-string>": ["<spaces>", "<spaces>?<raw-field><spaces>?"],
+    "<raw-field>": ["<simple-field>", "<quoted-field>"],
+    "<simple-field>": ["<simple-character>*"],
+    "<simple-character>": [c for c in srange(string.printable) if c not in ["\n", ";", '"', " ", "\t", "\r"]],
+    "<quoted-field>": ['"<escaped-field>"'],
+    "<escaped-field>": ["<escaped-character>*"],
+    "<escaped-character>": [c for c in srange(string.printable) if c not in ['"']],
+    "<spaces>": [" ", " <spaces>"],
+}
+
+CSV_GRAMMAR = convert_ebnf_grammar(CSV_EBNF_GRAMMAR)
 
 
 def eval_lang(inp: str) -> Dict[str, int]:
