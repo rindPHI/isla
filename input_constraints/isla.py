@@ -487,7 +487,7 @@ class BindExpression:
 
 
 class FormulaVisitor:
-    def visit_predicate_formula(self, formula: 'PredicateFormula'):
+    def visit_predicate_formula(self, formula: 'StructuralPredicateFormula'):
         pass
 
     def visit_negated_formula(self, formula: 'NegatedFormula'):
@@ -590,7 +590,7 @@ class Formula:
         raise NotImplementedError()
 
 
-class Predicate:
+class StructuralPredicate:
     def __init__(self, name: str, arity: int, eval_fun: Callable[..., bool]):
         self.name = name
         self.arity = arity
@@ -600,7 +600,7 @@ class Predicate:
         return self.eval_fun(*instantiations)
 
     def __eq__(self, other):
-        return type(other) is Predicate and (self.name, self.arity) == (other.name, other.arity)
+        return type(other) is StructuralPredicate and (self.name, self.arity) == (other.name, other.arity)
 
     def __hash__(self):
         return hash((self.name, self.arity))
@@ -612,18 +612,18 @@ class Predicate:
         return self.name
 
 
-BEFORE_PREDICATE = Predicate(
+BEFORE_PREDICATE = StructuralPredicate(
     "before", 2, lambda inst_1, inst_2: is_before(inst_1[0], inst_2[0])
 )
 
 
-class PredicateFormula(Formula):
-    def __init__(self, predicate: Predicate, *args: Union[Variable, DerivationTree]):
+class StructuralPredicateFormula(Formula):
+    def __init__(self, predicate: StructuralPredicate, *args: Union[Variable, DerivationTree]):
         assert len(args) == predicate.arity
         self.predicate = predicate
         self.args: List[Union[Variable, DerivationTree]] = list(args)
 
-    def evaluate(self, context_tree: DerivationTree):
+    def evaluate(self, context_tree: DerivationTree) -> bool:
         args_with_paths: List[Tuple[Path, DerivationTree]] = \
             [(context_tree.find_node(tree), tree) if isinstance(tree, DerivationTree)
              else context_tree.filter(
@@ -638,8 +638,8 @@ class PredicateFormula(Formula):
         return self.predicate.eval_fun(*args_with_paths)
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
-        return PredicateFormula(self.predicate,
-                                *[arg if arg not in subst_map
+        return StructuralPredicateFormula(self.predicate,
+                                          *[arg if arg not in subst_map
                                   else subst_map[arg] for arg in self.args])
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
@@ -659,7 +659,7 @@ class PredicateFormula(Formula):
 
             new_args.append(tree.substitute({k: v for k, v in subst_map.items()}))
 
-        return PredicateFormula(self.predicate, *new_args)
+        return StructuralPredicateFormula(self.predicate, *new_args)
 
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([])
@@ -1078,7 +1078,7 @@ class VariablesCollector(FormulaVisitor):
         if formula.bind_expression is not None:
             self.result.update(formula.bind_expression.bound_variables())
 
-    def visit_predicate_formula(self, formula: PredicateFormula):
+    def visit_predicate_formula(self, formula: StructuralPredicateFormula):
         for arg in formula.args:
             if isinstance(arg, Variable):
                 self.result.add(arg)
@@ -1116,7 +1116,7 @@ class FilterVisitor(FormulaVisitor):
         if self.filter(formula):
             self.result.append(formula)
 
-    def visit_predicate_formula(self, formula: PredicateFormula):
+    def visit_predicate_formula(self, formula: StructuralPredicateFormula):
         if self.filter(formula):
             self.result.append(formula)
 
@@ -1183,7 +1183,7 @@ def well_formed(formula: Formula,
         else:
             return all(well_formed(subformula, bound_vars, in_expr_vars, bound_by_smt)
                        for subformula in formula.args)
-    elif t is PredicateFormula:
+    elif t is StructuralPredicateFormula:
         return all(free_var in bound_vars
                    for free_var in formula.free_variables()
                    if type(free_var) is BoundVariable)
@@ -1227,8 +1227,8 @@ def evaluate(formula: Formula,
             elif t is ExistsFormula:
                 formula: ExistsFormula
                 return any(evaluate_(formula.inner_formula, new_assignment) for new_assignment in new_assignments)
-        elif t is PredicateFormula:
-            formula: PredicateFormula
+        elif t is StructuralPredicateFormula:
+            formula: StructuralPredicateFormula
             assert (not any(isinstance(arg, DerivationTree) for arg in formula.args)
                     or reference_tree is not None)
             arg_insts = [(reference_tree.find_node(arg), arg) if isinstance(arg, DerivationTree)
@@ -1351,7 +1351,7 @@ def convert_to_nnf(formula: Formula, negate=False) -> Formula:
             return reduce(lambda a, b: a & b, args)
         else:
             return reduce(lambda a, b: a | b, args)
-    elif isinstance(formula, PredicateFormula):
+    elif isinstance(formula, StructuralPredicateFormula):
         if negate:
             return NegatedFormula(formula)
         else:

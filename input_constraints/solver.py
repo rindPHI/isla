@@ -41,7 +41,7 @@ class SolutionState:
         # We assume that any universal quantifier has already been instantiated, if it matches,
         # and is thus satisfied, or another unsatisfied constraint resulted from the instantiation.
         # Existential, predicate, and SMT formulas have to be eliminated first.
-        return any(all(not isinstance(conjunct, isla.PredicateFormula)
+        return any(all(not isinstance(conjunct, isla.StructuralPredicateFormula)
                        and (not isinstance(conjunct, isla.SMTFormula) or conjunct == sc.true())
                        and not isinstance(conjunct, isla.ExistsFormula)
                        and (not isinstance(conjunct, isla.ForallFormula) or len(conjunct.already_matched) > 0)
@@ -471,7 +471,7 @@ class ISLaSolver:
 
         assert all(all(state.tree.find_node(arg) for arg in predicate_formula.args)
                    for predicate_formula in get_conjuncts(state.constraint)
-                   if isinstance(predicate_formula, isla.PredicateFormula))
+                   if isinstance(predicate_formula, isla.StructuralPredicateFormula))
 
         heapq.heappush(queue, (self.compute_cost(state, cost_reduction or 1.0), state))
 
@@ -650,7 +650,7 @@ def satisfies_invariant(formula: isla.Formula, grammar: Grammar) -> bool:
 
         # Only predicates inside negation; for SMT formulas, has to be pushed into formula
         if any(isinstance(conjunct, isla.NegatedFormula)
-               and not isinstance(conjunct.args[0], isla.PredicateFormula)
+               and not isinstance(conjunct.args[0], isla.StructuralPredicateFormula)
                for conjunct in conjuncts):
             return False
 
@@ -664,7 +664,7 @@ def satisfies_invariant(formula: isla.Formula, grammar: Grammar) -> bool:
         # 1. SMT Formulas, 2. Predicate formulas, 3. Existential, 4. Universal
         type_map = {
             isla.SMTFormula: 1,
-            isla.PredicateFormula: 2,
+            isla.StructuralPredicateFormula: 2,
             isla.ExistsFormula: 3,
             isla.ForallFormula: 4,
         }
@@ -717,7 +717,7 @@ def qfr_free_formula_to_z3_formula(formula: isla.Formula) -> z3.BoolRef:
 
 def is_semantic_formula(formula: isla.Formula) -> bool:
     pred_qfr_visitor = isla.FilterVisitor(lambda f:
-                                          isinstance(f, isla.PredicateFormula) or
+                                          isinstance(f, isla.StructuralPredicateFormula) or
                                           isinstance(f, isla.QuantifiedFormula))
     return not pred_qfr_visitor.collect(formula)
 
@@ -729,7 +729,7 @@ def instantiate_predicates(state: SolutionState) -> SolutionState:
     #       occur in the derivation tree.
     predicate_formulas = [
         conjunct for conjunct in get_conjuncts(state.constraint)
-        if isinstance(conjunct, isla.PredicateFormula)]
+        if isinstance(conjunct, isla.StructuralPredicateFormula)]
 
     formula = state.constraint
     for predicate_formula in predicate_formulas:
