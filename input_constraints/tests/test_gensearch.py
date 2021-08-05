@@ -10,7 +10,7 @@ from input_constraints.solver import ISLaSolver
 from input_constraints.tests.test_data import LANG_GRAMMAR
 
 
-class TestGensearch(unittest.TestCase):
+class TestSolver(unittest.TestCase):
     def test_atomic_smt_formula(self):
         assgn = isla.Constant("$assgn", "<assgn>")
         formula = isla.SMTFormula(cast(z3.BoolRef, assgn.to_smt() == z3.StringVal("x := x")), assgn)
