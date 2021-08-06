@@ -110,11 +110,11 @@ class TestSolver(unittest.TestCase):
             sc.forall(
                 mgr.bv("$header", "<csv-header>"),
                 mgr.const("$start", "<start>"),
-                sc.count(mgr.bv("$header"), isla.DerivationTree("<csv-field>", None), mgr.const("$num", "NUM")) &
+                sc.count(mgr.bv("$header"), "<csv-field>", mgr.const("$num", "NUM")) &
                 sc.forall(
                     mgr.bv("$line", "<csv-record>"),
                     mgr.const("$start", "<start>"),
-                    sc.count(mgr.bv("$line"), isla.DerivationTree("<csv-field>", None), mgr.const("$num", "NUM"))
+                    sc.count(mgr.bv("$line"), "<csv-field>", mgr.const("$num", "NUM"))
                 )
             )
         )

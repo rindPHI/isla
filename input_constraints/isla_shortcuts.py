@@ -40,7 +40,7 @@ def before(
 
 def count(
         in_tree: Union[Variable, DerivationTree],
-        needle: DerivationTree,
+        needle: str,
         num: Union[Constant, DerivationTree]) -> SemanticPredicateFormula:
     return SemanticPredicateFormula(COUNT_PREDICATE, in_tree, needle, num)
 

@@ -14,18 +14,15 @@ BEFORE_PREDICATE = StructuralPredicate("before", 2, is_before)
 
 def count(grammar: Optional[Grammar],
           in_tree: DerivationTree,
-          needle: DerivationTree,
+          needle: str,
           num: Union[Constant, DerivationTree]) -> SemPredEvalResult:
-    assert needle.children is None  # Maybe relax later
-    assert is_nonterminal(needle.value)
-
-    num_needle_occurrences = len(in_tree.filter(lambda t: needle.is_prefix(t)))
+    num_needle_occurrences = len(in_tree.filter(lambda t: t.value == needle))
 
     if grammar is not None:
         graph = GrammarGraph.from_grammar(grammar)
         leaf_nonterminals = [node.value for _, node in in_tree.open_leaves()]
 
-        more_needles_possible = any(graph.get_node(leaf_nonterminal).reachable(graph.get_node(needle.value))
+        more_needles_possible = any(graph.get_node(leaf_nonterminal).reachable(graph.get_node(needle))
                                     for leaf_nonterminal in leaf_nonterminals)
     else:
         assert in_tree.is_complete(), "Pass a grammar to the count predicate to evaluate open trees."
@@ -66,36 +63,25 @@ def count(grammar: Optional[Grammar],
     #       the solver's current solution tree and might get substituted by expansions.
 
     canonical_grammar = canonical(grammar)
-    candidates = insert_tree(canonical_grammar, DerivationTree(needle.value, needle.children), in_tree)
+    candidates = insert_tree(canonical_grammar, DerivationTree(needle, None), in_tree)
     while candidates:
         candidate = candidates.pop(0)
-        candidate_needle_occurrences = len(candidate.filter(lambda t: needle.is_prefix(t)))
+        candidate_needle_occurrences = len(candidate.filter(lambda t: t.value == needle))
         if candidate_needle_occurrences > target_num_needle_occurrences:
             continue
 
         candidate_more_needles_possible = \
-            any(graph.get_node(leaf_nonterminal).reachable(graph.get_node(needle.value))
+            any(graph.get_node(leaf_nonterminal).reachable(graph.get_node(needle))
                 for leaf_nonterminal in [node.value for _, node in candidate.open_leaves()])
 
         if not candidate_more_needles_possible and candidate_needle_occurrences == target_num_needle_occurrences:
             return SemPredEvalResult({in_tree: candidate})
 
         if candidate_more_needles_possible and candidate_needle_occurrences < target_num_needle_occurrences:
-            candidates.extend(insert_tree(canonical_grammar, DerivationTree(needle.value, needle.children), candidate))
+            candidates.extend(insert_tree(canonical_grammar, DerivationTree(needle, None), candidate))
 
     # TODO: Check if None would not be more appropriate. Could we have missed a better insertion opportunity?
     return SemPredEvalResult(False)
 
 
-COUNT_PREDICATE = SemanticPredicate(
-    "count", 3, count,
-    custom_args_equality=(
-        lambda t1, t2:
-        t1[0] == t2[0]
-        and t1[1].structurally_equal(t2[1])
-        and (not isinstance(t1[2], Constant) or isinstance(t2[2], Constant))
-        and (not isinstance(t2[2], Constant) or isinstance(t1[2], Constant))
-        and (not isinstance(t1[2], Constant) or t1[2] == t2[2])
-        and (isinstance(t1[2], Constant) or t1[2].structurally_equal(t2[2]))
-    )
-)
+COUNT_PREDICATE = SemanticPredicate("count", 3, count)

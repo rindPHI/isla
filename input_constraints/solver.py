@@ -700,69 +700,6 @@ class ISLaSolver:
         return DerivationTree.from_parse_tree(list(parser.parse(input))[0][1][0])
 
 
-def satisfies_invariant(formula: isla.Formula, grammar: Grammar) -> bool:
-    for disjunct in split_disjunction(formula):
-        conjuncts = split_conjunction(disjunct)
-
-        # Is in DNF:
-        # No disjunction in side conjunction
-        if any(isinstance(conjunct, isla.DisjunctiveFormula) for conjunct in conjuncts):
-            return False
-
-        # Only predicates inside negation; for SMT formulas, has to be pushed into formula
-        if any(isinstance(conjunct, isla.NegatedFormula)
-               and not isinstance(conjunct.args[0], isla.StructuralPredicateFormula)
-               for conjunct in conjuncts):
-            return False
-
-        # SMT formulas must be atoms: No logical connectives & quantifiers inside
-        for smt_formula in [formula for formula in conjuncts if isinstance(formula, isla.SMTFormula)]:
-            for smt_sub in visit_z3_expr(smt_formula.formula):
-                if isinstance(smt_sub, z3.QuantifierRef):
-                    return False
-
-        # Conjunct order:
-        # 1. SMT Formulas, 2. Predicate formulas, 3. Existential, 4. Universal
-        type_map = {
-            isla.SMTFormula: 1,
-            isla.StructuralPredicateFormula: 2,
-            isla.ExistsFormula: 3,
-            isla.ForallFormula: 4,
-        }
-
-        conjunct_types: List[int] = list(map(
-            lambda conjunct: type_map.get(type(conjunct), -1),
-            conjuncts))
-
-        # Nothing else permitted at this point
-        if -1 in conjunct_types:
-            return False
-
-        # Right order
-        if sorted(conjunct_types) != conjunct_types:
-            return False
-
-        # Structure of universal formulas:
-        # At most one univ. formula at a time must much any given subtree.
-        # That is, when considering the tree prefixes to which the formulas apply, no two of these
-        # prefixes must equal or be prefixes of each other.
-
-        universal_tree_prefixes: List[DerivationTree] = [
-            DerivationTree(formula.bound_variable.n_type, None) if formula.bind_expression is None
-            else cast(isla.BindExpression, formula.bind_expression).to_tree_prefix(
-                formula.bound_variable.n_type, grammar, to_abstract_tree=False)[0]
-            for formula in conjuncts
-            if isinstance(formula, isla.ForallFormula)
-        ]
-
-        return all(not any(tree_1.is_prefix(tree_2)
-                           for tree_2 in universal_tree_prefixes
-                           if tree_2 is not tree_1)
-                   for tree_1 in universal_tree_prefixes)
-
-    return True
-
-
 def qfr_free_formula_to_z3_formula(formula: isla.Formula) -> z3.BoolRef:
     if isinstance(formula, isla.SMTFormula):
         return formula.formula

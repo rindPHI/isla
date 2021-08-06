@@ -22,7 +22,7 @@ LANG_GRAMMAR = {
 
 SIMPLE_CSV_GRAMMAR = {
     "<start>": ["<csv-header><csv-records>"],
-    "<csv-header>": ["<csv-record>"],
+    "<csv-header>": ["<csv-field-list>\n"],
     "<csv-records>": ["", "<csv-record><csv-records>"],
     "<csv-record>": ["<csv-field-list>\n"],
     "<csv-field-list>": ["<csv-field>", "<csv-field>;<csv-field-list>"],

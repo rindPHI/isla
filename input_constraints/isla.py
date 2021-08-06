@@ -751,14 +751,12 @@ class SemPredEvalResult:
 
 class SemanticPredicate:
     def __init__(self, name: str, arity: int,
-                 eval_fun: Callable[[Optional[Grammar], ...], SemPredEvalResult],
-                 custom_args_equality: Optional[Callable[[Tuple, Tuple], bool]] = None):
+                 eval_fun: Callable[[Optional[Grammar], ...], SemPredEvalResult]):
         self.name = name
         self.arity = arity
         self.eval_fun = eval_fun
-        self.custom_args_equality = custom_args_equality or (lambda t1, t2: t1 == t2)
 
-    def evaluate(self, grammar: Optional[Grammar], *instantiations: Union[DerivationTree, Constant]):
+    def evaluate(self, grammar: Optional[Grammar], *instantiations: Union[DerivationTree, Constant, str]):
         return self.eval_fun(grammar, *instantiations)
 
     def __eq__(self, other):
@@ -775,7 +773,7 @@ class SemanticPredicate:
 
 
 class SemanticPredicateFormula(Formula):
-    def __init__(self, predicate: SemanticPredicate, *args: Union[DerivationTree, Constant]):
+    def __init__(self, predicate: SemanticPredicate, *args: Union[DerivationTree, Constant, str]):
         assert len(args) == predicate.arity
         self.predicate = predicate
         self.args: List[Union[Variable, DerivationTree]] = list(args)
@@ -791,6 +789,10 @@ class SemanticPredicateFormula(Formula):
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         new_args = []
         for arg in self.args:
+            if isinstance(arg, str):
+                new_args.append(arg)
+                continue
+
             if isinstance(arg, Variable):
                 if arg in subst_map:
                     new_args.append(subst_map[arg])
@@ -830,7 +832,7 @@ class SemanticPredicateFormula(Formula):
     def __eq__(self, other):
         return (type(self) is type(other)
                 and self.predicate == other.predicate
-                and self.predicate.custom_args_equality(self.args, other.args))
+                and self.args == other.args)
 
     def __str__(self):
         arg_strings = []
@@ -1238,8 +1240,10 @@ class VariablesCollector(FormulaVisitor):
         for arg in formula.args:
             if isinstance(arg, Variable):
                 self.result.add(arg)
-            else:
+            elif isinstance(arg, DerivationTree):
                 self.result.update(arg.tree_variables())
+            else:
+                assert isinstance(arg, str)
 
     def visit_smt_formula(self, formula: SMTFormula):
         self.result.update(formula.free_variables())

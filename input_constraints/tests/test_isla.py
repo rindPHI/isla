@@ -375,11 +375,11 @@ class TestEvaluation(unittest.TestCase):
             sc.forall(
                 mgr.bv("$header", "<csv-header>"),
                 tree,
-                sc.count(mgr.bv("$header"), DerivationTree("<raw-string>", None), mgr.const("$num", "NUM")) &
+                sc.count(mgr.bv("$header"), "<raw-string>", mgr.const("$num", "NUM")) &
                 sc.forall(
                     mgr.bv("$line", "<csv-record>"),
                     tree,
-                    sc.count(mgr.bv("$line"), DerivationTree("<raw-string>", None), mgr.const("$num", "NUM"))
+                    sc.count(mgr.bv("$line"), "<raw-string>", mgr.const("$num", "NUM"))
                 )
             )
         )
@@ -391,6 +391,8 @@ class TestEvaluation(unittest.TestCase):
         csv_doc = "a;b;c\nd;e;f\ng;h;i;j\n"
         tree = DerivationTree.from_parse_tree(parse(csv_doc, CSV_GRAMMAR))
         self.assertFalse(evaluate(formula(tree)))
+
+        return
 
         mgr = VariableManager()
         formula = lambda tree: mgr.create(
