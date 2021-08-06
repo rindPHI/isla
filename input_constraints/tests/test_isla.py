@@ -6,8 +6,10 @@ from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
 import input_constraints.isla_shortcuts as sc
 from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
-    DerivationTree, convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables
+    DerivationTree, convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, SemPredEvalResult
+from input_constraints.isla_predicates import count
 from input_constraints.tests.test_data import *
+from input_constraints.tests.test_helpers import parse
 
 
 class TestEvaluation(unittest.TestCase):
@@ -346,6 +348,26 @@ class TestEvaluation(unittest.TestCase):
 
         self.assertEqual(expected, ensure_unique_bound_variables(formula))
         self.assertEqual(expected, ensure_unique_bound_variables(expected))
+
+    def test_count(self):
+        prog = "x := 1 ; x := 1 ; x := 1"
+        tree = DerivationTree.from_parse_tree(parse(prog, LANG_GRAMMAR))
+
+        result = count(LANG_GRAMMAR, tree, DerivationTree("<assgn>", None), Constant("n", "NUM"))
+        self.assertEqual("{n: 3}", str(result))
+
+        result = count(LANG_GRAMMAR, tree, DerivationTree("<assgn>", None), DerivationTree("3", None))
+        self.assertEqual(SemPredEvalResult(True), result)
+
+        result = count(LANG_GRAMMAR, tree, DerivationTree("<assgn>", None), DerivationTree("4", None))
+        self.assertEqual(SemPredEvalResult(False), result)
+
+        tree = DerivationTree("<start>", [DerivationTree("<stmt>", None)])
+        result = count(LANG_GRAMMAR, tree, DerivationTree("<assgn>", None), DerivationTree("4", None))
+        self.assertEqual("{<stmt>: <assgn> ; <assgn> ; <assgn> ; <assgn>}", str(result))
+
+        result = count(LANG_GRAMMAR, tree, DerivationTree("<start>", None), DerivationTree("2", None))
+        self.assertEqual(SemPredEvalResult(False), result)
 
 
 if __name__ == '__main__':

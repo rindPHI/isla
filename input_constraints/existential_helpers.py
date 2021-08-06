@@ -262,6 +262,7 @@ def path_to_tree(grammar: CanonicalGrammar, path: Union[Tuple[str], List[str]]) 
 
     return [make_leaves_open(tree) for tree in result]
 
+
 def make_leaves_open(tree: DerivationTree) -> DerivationTree:
     if tree.children is None:
         return tree
@@ -273,34 +274,6 @@ def make_leaves_open(tree: DerivationTree) -> DerivationTree:
             return tree
 
     return DerivationTree(tree.value, [make_leaves_open(child) for child in tree.children], tree.id)
-
-
-#def make_leaves_open(result: List[DerivationTree]) -> List[DerivationTree]:
-#    for tree in result:
-#        node, children = tree
-#        if children is not None and not children:
-#            result.remove(tree)
-#            result.append(DerivationTree(node, None))
-#            break
-#
-#        queue = [tree]
-#        while queue:
-#            next_node = queue.pop()
-#            for idx, child in enumerate(next_node.children):
-#                if not is_nonterminal(child.value):
-#                    next_node.children[idx] = DerivationTree(child.value, [])
-#                    continue
-#
-#                if child.children is None:
-#                    continue
-#
-#                if child.num_children() == 0:
-#                    next_node.children[idx] = DerivationTree(child.value, None)
-#                    continue
-#
-#                queue.append(child)
-#
-#    return result
 
 
 def paths_between(graph: GrammarGraph, start: str, dest: str) -> Generator[Tuple[str, ...], None, None]:

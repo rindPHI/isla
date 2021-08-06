@@ -13,7 +13,7 @@ from fuzzingbook.Parser import EarleyParser
 from grammar_graph.gg import GrammarGraph
 from orderedset import OrderedSet
 
-from input_constraints.helpers import get_symbols, is_before, z3_subst, path_iterator, replace_tree_path, is_valid
+from input_constraints.helpers import get_symbols, z3_subst, path_iterator, replace_tree_path, is_valid
 from input_constraints.type_defs import ParseTree, Path, Grammar
 
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
@@ -633,11 +633,6 @@ class StructuralPredicate:
         return self.name
 
 
-BEFORE_PREDICATE = StructuralPredicate(
-    "before", 2, lambda inst_1, inst_2: is_before(inst_1, inst_2)
-)
-
-
 class StructuralPredicateFormula(Formula):
     def __init__(self, predicate: StructuralPredicate, *args: Union[Variable, DerivationTree]):
         assert len(args) == predicate.arity
@@ -714,6 +709,55 @@ class StructuralPredicateFormula(Formula):
 
     def __repr__(self):
         return f'PredicateFormula({repr(self.predicate), ", ".join(map(repr, self.args))})'
+
+
+class SemPredEvalResult:
+    def __init__(self, result: Optional[Union[bool, Dict[Union[Constant, DerivationTree], DerivationTree]]]):
+        self.result = result
+
+    def true(self):
+        return self.result is True
+
+    def false(self):
+        return self.result is False
+
+    def ready(self):
+        return self.result is not None
+
+    def __eq__(self, other):
+        return isinstance(other, SemPredEvalResult) and self.result == other.result
+
+    def __str__(self):
+        if self.ready():
+            if self.true() or self.false():
+                return str(self.result)
+            else:
+                return "{" + ", ".join([str(key) + ": " + str(value) for key, value in self.result.items()]) + "}"
+        else:
+            return "UNKNOWN"
+
+
+class SemanticPredicate:
+    def __init__(self, name: str, arity: int,
+                 eval_fun: Callable[[Grammar, Tuple[Union[DerivationTree, Constant], ...]], SemPredEvalResult]):
+        self.name = name
+        self.arity = arity
+        self.eval_fun = eval_fun
+
+    def evaluate(self, grammar: Grammar, *instantiations: Union[DerivationTree, Constant]):
+        return self.eval_fun(grammar, *instantiations)
+
+    def __eq__(self, other):
+        return type(other) is SemanticPredicate and (self.name, self.arity) == (other.name, other.arity)
+
+    def __hash__(self):
+        return hash((self.name, self.arity))
+
+    def __repr__(self):
+        return f"SemanticPredicate({self.name}, {self.arity})"
+
+    def __str__(self):
+        return self.name
 
 
 class PropositionalCombinator(Formula):

@@ -1,4 +1,5 @@
 from input_constraints.isla import *
+from input_constraints.isla_predicates import BEFORE_PREDICATE
 
 
 def forall_bind(
