@@ -100,7 +100,7 @@ class ISLaSolver:
 
         self.grammar = grammar
         self.canonical_grammar = canonical(grammar)
-        self.node_leaf_distances: Dict[str, int] = {}
+        self.node_leaf_distances: Dict[str, int] = self.compute_node_leaf_distances()
 
         self.formula = formula
         top_constants: Set[isla.Constant] = set(
@@ -511,15 +511,13 @@ class ISLaSolver:
 
     def compute_cost(self, state: SolutionState, cost_reduction: float = 1.0) -> float:
         """Cost of state. Best value: 0, Worst: Unbounded"""
-        return cost_reduction * len(state.tree)
+        # return cost_reduction * len(state.tree)
 
-        # if not self.node_leaf_distances:
-        #     self.node_leaf_distances = self.compute_node_leaf_distances()
-        # nonterminals = [leaf.value for _, leaf in state.tree.open_leaves()]
-        # return cost_reduction * (
-        #         len(state.tree) +
-        #         sum([self.node_leaf_distances[nonterminal] for nonterminal in nonterminals])
-        # )
+        nonterminals = [leaf.value for _, leaf in state.tree.open_leaves()]
+        return cost_reduction * (
+                len(state.tree) +
+                sum([self.node_leaf_distances[nonterminal] for nonterminal in nonterminals])
+        )
 
     def compute_node_leaf_distances(self) -> Dict[str, int]:
         self.logger.info("Computing node-to-leaf distances")

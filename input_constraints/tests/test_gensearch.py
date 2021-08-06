@@ -98,7 +98,7 @@ class TestSolver(unittest.TestCase):
             )
         ))
 
-        self.execute_generation_test(formula, mgr.const("$start"), max_number_free_instantiations=2)
+        self.execute_generation_test(formula, mgr.const("$start"), num_solutions=100, max_number_free_instantiations=1)
 
     def execute_generation_test(self,
                                 formula: isla.Formula,

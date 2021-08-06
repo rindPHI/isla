@@ -215,6 +215,18 @@ class DerivationTree:
     def __len__(self):
         return len(list(self.path_iterator()))
 
+    def __lt__(self, other):
+        return len(self) < len(other)
+
+    def __le__(self, other):
+        return len(self) <= len(other)
+
+    def __gt__(self, other):
+        return len(self) > len(other)
+
+    def __ge__(self, other):
+        return len(self) >= len(other)
+
     def open_concrete_leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
         return ((path, sub_tree)
                 for path, sub_tree in self.open_leaves()
@@ -640,7 +652,7 @@ class StructuralPredicateFormula(Formula):
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return StructuralPredicateFormula(self.predicate,
                                           *[arg if arg not in subst_map
-                                  else subst_map[arg] for arg in self.args])
+                                            else subst_map[arg] for arg in self.args])
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         new_args = []
