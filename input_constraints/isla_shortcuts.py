@@ -1,5 +1,5 @@
 from input_constraints.isla import *
-from input_constraints.isla_predicates import BEFORE_PREDICATE
+from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
 
 
 def forall_bind(
@@ -33,9 +33,16 @@ def exists(
 
 
 def before(
-        var: Union[Variable, Tuple[Path, DerivationTree]],
-        before_var: Union[Variable, Tuple[Path, DerivationTree]]) -> StructuralPredicateFormula:
+        var: Union[Variable, DerivationTree],
+        before_var: Union[Variable, DerivationTree]) -> StructuralPredicateFormula:
     return StructuralPredicateFormula(BEFORE_PREDICATE, var, before_var)
+
+
+def count(
+        in_tree: Union[Variable, DerivationTree],
+        needle: DerivationTree,
+        num: Union[Constant, DerivationTree]) -> SemanticPredicateFormula:
+    return SemanticPredicateFormula(COUNT_PREDICATE, in_tree, needle, num)
 
 
 def true():

@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Optional
 
 from fuzzingbook.Grammars import is_nonterminal
 from fuzzingbook.Parser import canonical
@@ -6,13 +6,13 @@ from grammar_graph.gg import GrammarGraph
 
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import is_before
-from input_constraints.isla import DerivationTree, Constant, SemPredEvalResult, StructuralPredicate
+from input_constraints.isla import DerivationTree, Constant, SemPredEvalResult, StructuralPredicate, SemanticPredicate
 from input_constraints.type_defs import Grammar
 
 BEFORE_PREDICATE = StructuralPredicate("before", 2, is_before)
 
 
-def count(grammar: Grammar,
+def count(grammar: Optional[Grammar],
           in_tree: DerivationTree,
           needle: DerivationTree,
           num: Union[Constant, DerivationTree]) -> SemPredEvalResult:
@@ -21,11 +21,15 @@ def count(grammar: Grammar,
 
     num_needle_occurrences = len(in_tree.filter(lambda t: needle.is_prefix(t)))
 
-    graph = GrammarGraph.from_grammar(grammar)
-    leaf_nonterminals = [node.value for _, node in in_tree.open_leaves()]
+    if grammar is not None:
+        graph = GrammarGraph.from_grammar(grammar)
+        leaf_nonterminals = [node.value for _, node in in_tree.open_leaves()]
 
-    more_needles_possible = any(graph.get_node(leaf_nonterminal).reachable(graph.get_node(needle.value))
-                                for leaf_nonterminal in leaf_nonterminals)
+        more_needles_possible = any(graph.get_node(leaf_nonterminal).reachable(graph.get_node(needle.value))
+                                    for leaf_nonterminal in leaf_nonterminals)
+    else:
+        assert in_tree.is_complete(), "Pass a grammar to the count predicate to evaluate open trees."
+        more_needles_possible = False
 
     if isinstance(num, Constant):
         # Return the number of needle occurrences in in_tree, or "not ready" if in_tree is not
@@ -43,6 +47,8 @@ def count(grammar: Grammar,
         return SemPredEvalResult(False)
 
     if not more_needles_possible:
+        # TODO: We could also try to insert needle into already closed parts of the tree,
+        #       similar to treatment of existential quantifiers...
         if num_needle_occurrences == target_num_needle_occurrences:
             return SemPredEvalResult(True)
         else:
@@ -76,3 +82,6 @@ def count(grammar: Grammar,
 
     # TODO: Check if None would not be more appropriate. Could we have missed a better insertion opportunity?
     return SemPredEvalResult(False)
+
+
+COUNT_PREDICATE = SemanticPredicate("count", 3, count)
