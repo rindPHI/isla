@@ -517,28 +517,28 @@ class BindExpression:
 
 class FormulaVisitor:
     def visit_predicate_formula(self, formula: 'StructuralPredicateFormula'):
-        pass
+        raise NotImplementedError()
 
     def visit_semantic_predicate_formula(self, formula: 'SemanticPredicateFormula'):
-        pass
+        raise NotImplementedError()
 
     def visit_negated_formula(self, formula: 'NegatedFormula'):
-        pass
+        raise NotImplementedError()
 
     def visit_conjunctive_formula(self, formula: 'ConjunctiveFormula'):
-        pass
+        raise NotImplementedError()
 
     def visit_disjunctive_formula(self, formula: 'DisjunctiveFormula'):
-        pass
+        raise NotImplementedError()
 
     def visit_smt_formula(self, formula: 'SMTFormula'):
-        pass
+        raise NotImplementedError()
 
     def visit_exists_formula(self, formula: 'ExistsFormula'):
-        pass
+        raise NotImplementedError()
 
     def visit_forall_formula(self, formula: 'ForallFormula'):
-        pass
+        raise NotImplementedError()
 
 
 class Formula:
@@ -1229,6 +1229,14 @@ class VariablesCollector(FormulaVisitor):
                 _, tree = arg
                 self.result.update(tree.tree_variables())
 
+    def visit_semantic_predicate_formula(self, formula: SemanticPredicateFormula):
+        for arg in formula.args:
+            if isinstance(arg, Variable):
+                self.result.add(arg)
+            else:
+                _, tree = arg
+                self.result.update(tree.tree_variables())
+
     def visit_smt_formula(self, formula: SMTFormula):
         self.result.update(formula.free_variables())
 
@@ -1260,6 +1268,10 @@ class FilterVisitor(FormulaVisitor):
             self.result.append(formula)
 
     def visit_predicate_formula(self, formula: StructuralPredicateFormula):
+        if self.filter(formula):
+            self.result.append(formula)
+
+    def visit_semantic_predicate_formula(self, formula: SemanticPredicateFormula):
         if self.filter(formula):
             self.result.append(formula)
 
