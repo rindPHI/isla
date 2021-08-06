@@ -77,13 +77,15 @@ class DerivationTree:
         assert children is None or all(isinstance(child, DerivationTree) for child in children)
 
         self.value = value
-        self.children = children
+        self.children = None if children is None else tuple(children)
         self.id = id if id is not None else random.randint(0, sys.maxsize)
         self.__hash = None
         self.__structural_hash = None
 
-    def add_child(self, child: 'DerivationTree'):
-        self.children.append(child)
+        if not children:
+            self.__len = 1
+        else:
+            self.__len = sum([child.__len for child in children]) + 1
 
     def root_nonterminal(self) -> str:
         if isinstance(self.value, Variable):
@@ -199,7 +201,7 @@ class DerivationTree:
 
         head = path[0]
         new_children = (children[:head] +
-                        [children[head].replace_path(path[1:], replacement_tree, retain_id)] +
+                        (children[head].replace_path(path[1:], replacement_tree, retain_id), ) +
                         children[head + 1:])
 
         return DerivationTree(node, new_children, id=self.id)
@@ -213,7 +215,9 @@ class DerivationTree:
                 if sub_tree.children is None)
 
     def __len__(self):
-        return len(list(self.path_iterator()))
+        # if self.__len is None:
+        #     self.__len = len(list(self.path_iterator()))
+        return self.__len
 
     def __lt__(self, other):
         return len(self) < len(other)
@@ -259,6 +263,9 @@ class DerivationTree:
             id=self.id)
 
     def is_prefix(self, other: 'DerivationTree') -> bool:
+        if len(self) > len(other):
+            return False
+
         if self.value != other.value:
             return False
 

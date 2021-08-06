@@ -6,9 +6,9 @@ from grammar_graph.gg import GrammarGraph, NonterminalNode, Node, ChoiceNode
 from orderedset import OrderedSet
 
 from input_constraints import isla
-from input_constraints.helpers import is_prefix
+from input_constraints.helpers import is_prefix, path_iterator
 from input_constraints.isla import DerivationTree
-from input_constraints.type_defs import Path, CanonicalGrammar
+from input_constraints.type_defs import Path, CanonicalGrammar, ParseTree
 
 
 def insert_tree(grammar: CanonicalGrammar,
@@ -51,6 +51,10 @@ def insert_tree(grammar: CanonicalGrammar,
             for t in new_tree:
                 add_to_result(t)
             return list(result)
+
+        # The following alternative avoids prefixes, but is quite expensive if there are many results.
+        # if (new_tree.structural_hash() not in result_hashes
+        #         and not any(existing.is_prefix(new_tree) for existing in result)):
 
         if new_tree.structural_hash() not in result_hashes:
             result.append(new_tree)
@@ -183,12 +187,14 @@ def wrap_in_tree_starting_in(start_nonterminal: str,
                              grammar: CanonicalGrammar, graph: GrammarGraph) -> DerivationTree:
     start_node = graph.get_node(start_nonterminal)
     end_node = graph.get_node(tree.root_nonterminal())
+    parse_tree = tree.to_parse_tree()
     assert start_node.reachable(end_node)
 
     derivation_path = [n.symbol for n in graph.shortest_non_trivial_path(start_node, end_node)]
 
-    result: DerivationTree = DerivationTree(start_nonterminal, [])
-    curr_tree: DerivationTree = result
+    # We work with raw parse trees here since DerivationTree objects are immutable
+    result_pt: ParseTree = (start_nonterminal, [])
+    curr_tree: ParseTree = result_pt
     for path_idx in range(len(derivation_path) - 1):
         path_nonterminal = derivation_path[path_idx]
         next_nonterminal = derivation_path[path_idx + 1]
@@ -199,16 +205,25 @@ def wrap_in_tree_starting_in(start_nonterminal: str,
              if not any(a_ for a_ in alternatives_for_path_nonterminal
                         if len(a_) < len(a))][0]
         idx_of_next_nonterminal = shortest_alt_for_path_nonterminal.index(next_nonterminal)
+
         for alt_idx, alt_symbol in enumerate(shortest_alt_for_path_nonterminal):
             if alt_idx == idx_of_next_nonterminal:
                 if path_idx == len(derivation_path) - 2:
-                    curr_tree.children.append(tree)
+                    curr_tree[1].append(parse_tree)
                 else:
-                    curr_tree.children.append(DerivationTree(alt_symbol, []))
+                    curr_tree[1].append((alt_symbol, []))
             else:
-                curr_tree.children.append(DerivationTree(alt_symbol, None if is_nonterminal(alt_symbol) else []))
+                curr_tree[1].append((alt_symbol, None if is_nonterminal(alt_symbol) else []))
 
-        curr_tree = curr_tree.children[idx_of_next_nonterminal]
+        curr_tree = curr_tree[1][idx_of_next_nonterminal]
+
+    result = DerivationTree.from_parse_tree(result_pt)
+
+    # Ensure ID is corect
+    for path, t in path_iterator(result_pt):
+        if t is parse_tree:
+            result = result.replace_path(path, tree)
+            break
 
     return result
 
@@ -245,35 +260,47 @@ def path_to_tree(grammar: CanonicalGrammar, path: Union[Tuple[str], List[str]]) 
 
         path = path[1:]
 
-    return make_leaves_open(result)
+    return [make_leaves_open(tree) for tree in result]
+
+def make_leaves_open(tree: DerivationTree) -> DerivationTree:
+    if tree.children is None:
+        return tree
+
+    if not tree.children:
+        if is_nonterminal(tree.value):
+            return DerivationTree(tree.value, None, tree.id)
+        else:
+            return tree
+
+    return DerivationTree(tree.value, [make_leaves_open(child) for child in tree.children], tree.id)
 
 
-def make_leaves_open(result: List[DerivationTree]) -> List[DerivationTree]:
-    for tree in result:
-        node, children = tree
-        if children is not None and not children:
-            result.remove(tree)
-            result.append(DerivationTree(node, None))
-            break
-
-        queue = [tree]
-        while queue:
-            next_node = queue.pop()
-            for idx, child in enumerate(next_node.children):
-                if not is_nonterminal(child.value):
-                    next_node.children[idx] = DerivationTree(child.value, [])
-                    continue
-
-                if child.children is None:
-                    continue
-
-                if child.num_children() == 0:
-                    next_node.children[idx] = DerivationTree(child.value, None)
-                    continue
-
-                queue.append(child)
-
-    return result
+#def make_leaves_open(result: List[DerivationTree]) -> List[DerivationTree]:
+#    for tree in result:
+#        node, children = tree
+#        if children is not None and not children:
+#            result.remove(tree)
+#            result.append(DerivationTree(node, None))
+#            break
+#
+#        queue = [tree]
+#        while queue:
+#            next_node = queue.pop()
+#            for idx, child in enumerate(next_node.children):
+#                if not is_nonterminal(child.value):
+#                    next_node.children[idx] = DerivationTree(child.value, [])
+#                    continue
+#
+#                if child.children is None:
+#                    continue
+#
+#                if child.num_children() == 0:
+#                    next_node.children[idx] = DerivationTree(child.value, None)
+#                    continue
+#
+#                queue.append(child)
+#
+#    return result
 
 
 def paths_between(graph: GrammarGraph, start: str, dest: str) -> Generator[Tuple[str, ...], None, None]:

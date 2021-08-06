@@ -35,7 +35,7 @@ class TestSolver(unittest.TestCase):
                 mgr.smt(cast(z3.BoolRef, mgr.bv("$var1").to_smt() == z3.StringVal("x"))))
         )
 
-        self.execute_generation_test(formula, mgr.const("$start"), print_solutions=True)
+        self.execute_generation_test(formula, mgr.const("$start"))
 
     def test_simple_existential_formula(self):
         start = isla.Constant("$start", "<start>")
@@ -45,7 +45,10 @@ class TestSolver(unittest.TestCase):
             var1, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        self.execute_generation_test(formula, start, num_solutions=1, max_number_free_instantiations=1)
+        # TODO: Try to create infinite solution stream
+        self.execute_generation_test(
+            formula, start, num_solutions=17,
+            max_number_free_instantiations=1, expand_after_existential_elimination=True)
 
     def test_simple_existential_formula_with_bind(self):
         start = isla.Constant("$start", "<start>")
@@ -57,7 +60,8 @@ class TestSolver(unittest.TestCase):
             rhs, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        self.execute_generation_test(formula, start, num_solutions=1, print_solutions=True)
+        # TODO: Try to create infinite solution stream
+        self.execute_generation_test(formula, start, num_solutions=1)
 
     def test_conjunction_of_qfd_formulas(self):
         start = isla.Constant("$start", "<start>")
@@ -106,13 +110,16 @@ class TestSolver(unittest.TestCase):
                                 num_solutions=50,
                                 print_solutions=False,
                                 max_number_free_instantiations=1,
-                                max_number_smt_instantiations=1
+                                max_number_smt_instantiations=1,
+                                expand_after_existential_elimination=False
                                 ):
         solver = ISLaSolver(
             grammar=LANG_GRAMMAR,
             formula=formula,
             max_number_free_instantiations=max_number_free_instantiations,
-            max_number_smt_instantiations=max_number_smt_instantiations)
+            max_number_smt_instantiations=max_number_smt_instantiations,
+            expand_after_existential_elimination=expand_after_existential_elimination
+        )
 
         it = solver.solve()
         for idx in range(num_solutions):

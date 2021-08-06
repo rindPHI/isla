@@ -94,7 +94,8 @@ class ISLaSolver:
                  grammar: Grammar,
                  formula: isla.Formula,
                  max_number_free_instantiations: int = 10,
-                 max_number_smt_instantiations: int = 10
+                 max_number_smt_instantiations: int = 10,
+                 expand_after_existential_elimination: bool = False
                  ):
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -111,6 +112,7 @@ class ISLaSolver:
 
         self.max_number_free_instantiations: int = max_number_free_instantiations
         self.max_number_smt_instantiations: int = max_number_smt_instantiations
+        self.expand_after_existential_elimination = expand_after_existential_elimination
 
         # Initialize Queue
         initial_tree = DerivationTree(self.top_constant.n_type, None)
@@ -153,7 +155,9 @@ class ISLaSolver:
             if result_states is not None:
                 yield from [result for new_state in result_states
                             for result in self.process_new_state(new_state)]
-                continue
+                if (not self.expand_after_existential_elimination
+                        or any(result_state.constraint == sc.true() for result_state in result_states)):
+                    continue
 
             # Match all universal formulas
             result_states = self.match_all_universal_formulas(state)
@@ -586,10 +590,11 @@ class ISLaSolver:
         # 2) the nonterminal to instantiate is part of a tree that is an argument to an SMT formula
         conjuncts = get_conjuncts(state.constraint)
 
-        # Note: By collecting also existential formulas and removing the "continue" shortcut for existential
-        #       elimination in the main solve() method, we can produce more inputs for existential constraints.
-        #       However, this seems to render the solver much less efficient, e.g., for the dev-use example.
-        universal_formulas = [formula for formula in conjuncts if isinstance(formula, isla.ForallFormula)]
+        universal_formulas = [formula for formula in conjuncts
+                              if (not self.expand_after_existential_elimination
+                                  and isinstance(formula, isla.ForallFormula)
+                                  or self.expand_after_existential_elimination
+                                  and isinstance(formula, isla.QuantifiedFormula))]
 
         smt_formulas = [formula for formula in conjuncts if isinstance(formula, isla.SMTFormula)]
         leaf_node = state.tree.get_subtree(path_to_leaf)

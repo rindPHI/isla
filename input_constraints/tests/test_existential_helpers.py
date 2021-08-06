@@ -87,6 +87,26 @@ class TestExistentialHelpers(unittest.TestCase):
             list(map(str, results))
         )
 
+    # Test deactivated: Should assert that no prefix trees are generated. The implemented
+    # check in insert_tree, however, was too expensive for the JSON examples. Stalling for now.
+    #def test_insert_var(self):
+    #    tree = ('<start>', [('<stmt>', [('<assgn>', None), ('<stmt>', None)])])
+    #
+    #    results = insert_tree(canonical(LANG_GRAMMAR),
+    #                          DerivationTree("<var>", None),
+    #                          DerivationTree.from_parse_tree(tree))
+    #
+    #    print(list(map(str, results)))
+    #    self.assertEqual(
+    #        ['<var> := <rhs><stmt>',
+    #         '<assgn><var> := <rhs>',
+    #         '<var> := <rhs> ; <assgn><stmt>',
+    #         '<assgn> ; <var> := <rhs> ; <assgn><stmt>',
+    #         '<assgn><var> := <rhs> ; <stmt>',
+    #         '<assgn><assgn> ; <var> := <rhs> ; <stmt>'],
+    #        list(map(str, results))
+    #    )
+
 
 if __name__ == '__main__':
     unittest.main()
