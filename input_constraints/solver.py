@@ -112,25 +112,27 @@ class ISLaSolver:
         self.max_number_free_instantiations: int = max_number_free_instantiations
         self.max_number_smt_instantiations: int = max_number_smt_instantiations
 
-    def solve(self) -> Generator[DerivationTree, None, None]:
+        # Initialize Queue
         initial_tree = DerivationTree(self.top_constant.n_type, None)
         initial_formula = self.formula.substitute_expressions({self.top_constant: initial_tree})
-
-        queue: List[Tuple[int, SolutionState]] = []
-        heapq.heappush(queue, (0, self.establish_invariant(
+        self.queue: List[Tuple[float, SolutionState]] = []
+        self.tree_hashes_in_queue: Set[int] = {initial_tree.structural_hash()}
+        heapq.heappush(self.queue, (0, self.establish_invariant(
             SolutionState(ensure_unique_bound_variables(initial_formula), initial_tree))))
 
-        while queue:
+    def solve(self) -> Generator[DerivationTree, None, None]:
+        while self.queue:
             cost: int
             state: SolutionState
-            cost, state = heapq.heappop(queue)
+            cost, state = heapq.heappop(self.queue)
+            self.tree_hashes_in_queue.remove(state.tree.structural_hash())
             self.logger.debug(f"Polling new state %s", state)
-            self.logger.debug(f"Queue length: %s", len(queue))
+            self.logger.debug(f"Queue length: %s", len(self.queue))
 
             # Split disjunctions
             if isinstance(state.constraint, isla.DisjunctiveFormula):
                 for disjunct in split_disjunction(state.constraint):
-                    heapq.heappush(queue, (cost, SolutionState(disjunct, state.tree)))
+                    heapq.heappush(self.queue, (cost, SolutionState(disjunct, state.tree)))
                 continue
 
             # Instantiate all top-level predicate formulas.
@@ -143,21 +145,21 @@ class ISLaSolver:
             result_states = self.eliminate_all_semantic_formulas(state)
             if result_states is not None:
                 yield from [result for new_state in result_states
-                            for result in self.process_new_state(new_state, queue)]
+                            for result in self.process_new_state(new_state)]
                 continue
 
             # Eliminate first existential formula
             result_states = self.eliminate_first_existential_formula(state)
             if result_states is not None:
                 yield from [result for new_state in result_states
-                            for result in self.process_new_state(new_state, queue)]
+                            for result in self.process_new_state(new_state)]
                 continue
 
             # Match all universal formulas
             result_states = self.match_all_universal_formulas(state)
             if result_states is not None:
                 yield from [result for new_state in result_states
-                            for result in self.process_new_state(new_state, queue)]
+                            for result in self.process_new_state(new_state)]
                 continue
 
             for new_state in self.postprocess_new_state(state):
@@ -169,7 +171,7 @@ class ISLaSolver:
                 expanded_states = self.expand_tree(new_state)
                 assert len(expanded_states) > 0, f"State {new_state} will never leave the queue."
                 yield from [result for expanded_state in expanded_states
-                            for result in self.process_new_state(expanded_state, queue)]
+                            for result in self.process_new_state(expanded_state)]
 
     def eliminate_all_semantic_formulas(self, state: SolutionState) -> Optional[List[SolutionState]]:
         conjuncts = split_conjunction(state.constraint)
@@ -442,15 +444,13 @@ class ISLaSolver:
 
     def process_new_state(
             self, new_state: SolutionState,
-            queue: List[Tuple[float, SolutionState]],
             cost_reduction: Optional[float] = None,
     ) -> List[DerivationTree]:
         return [state.tree for state in self.postprocess_new_state(new_state)
-                if self.state_is_valid_or_enqueue(state, queue, cost_reduction)]
+                if self.state_is_valid_or_enqueue(state, cost_reduction)]
 
     def state_is_valid_or_enqueue(self,
                                   state: SolutionState,
-                                  queue: List[Tuple[float, SolutionState]],
                                   cost_reduction: Optional[float] = None) -> bool:
         """
         Returns True if the given state is valid, such that it can be yielded. Returns False and enqueues the state
@@ -473,12 +473,20 @@ class ISLaSolver:
                    for predicate_formula in get_conjuncts(state.constraint)
                    if isinstance(predicate_formula, isla.StructuralPredicateFormula))
 
-        heapq.heappush(queue, (self.compute_cost(state, cost_reduction or 1.0), state))
+        if state.tree.structural_hash() in self.tree_hashes_in_queue:
+            # Some structures can arise as well from tree insertion (existential quantifier elimination)
+            # and expansion; also, tree insertion can yield different trees that have intersecting
+            # expansions. We drop those to output more diverse solutions (numbers for SMT solutions
+            # and free nonterminals are configurable, so you get more outputs by playing with those!).
+            return False
+
+        heapq.heappush(self.queue, (self.compute_cost(state, cost_reduction or 1.0), state))
+        self.tree_hashes_in_queue.add(state.tree.structural_hash())
 
         self.logger.debug(f"Pushing new state %s", state)
-        self.logger.debug(f"Queue length: %d", len(queue))
-        if len(queue) % 100 == 0:
-            self.logger.info(f"Queue length: %d", len(queue))
+        self.logger.debug(f"Queue length: %d", len(self.queue))
+        if len(self.queue) % 100 == 0:
+            self.logger.info(f"Queue length: %d", len(self.queue))
 
         # if self.queue_size_limit is not None and len(queue) > self.queue_size_limit:
         #     self.logger.debug(f"Balancing queue")
