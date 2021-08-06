@@ -1553,7 +1553,8 @@ def convert_to_dnf(formula: Formula) -> Formula:
         disjuncts_list = [split_disjunction(convert_to_dnf(arg)) for arg in formula.args]
         return reduce(
             lambda a, b: a | b,
-            [left & right for left, right in itertools.product(*disjuncts_list)],
+            [reduce(lambda a, b: a & b, OrderedSet(split_conjunction(left & right)), SMTFormula(z3.BoolVal(True)))
+             for left, right in itertools.product(*disjuncts_list)],
             SMTFormula(z3.BoolVal(False))
         )
     elif isinstance(formula, DisjunctiveFormula):

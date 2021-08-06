@@ -119,7 +119,7 @@ class TestSolver(unittest.TestCase):
             )
         )
 
-        self.execute_generation_test(formula, mgr.const("$start"), num_solutions=1000,
+        self.execute_generation_test(formula, mgr.const("$start"), #num_solutions=1000,
                                      grammar=SIMPLE_CSV_GRAMMAR, max_number_free_instantiations=1)
 
     def test_csv_rows_equal_length(self):
@@ -128,11 +128,11 @@ class TestSolver(unittest.TestCase):
             sc.forall(
                 mgr.bv("$header", "<csv-header>"),
                 mgr.const("$start", "<start>"),
-                sc.count(mgr.bv("$header"), isla.DerivationTree("<raw-string>", None), mgr.const("$num", "NUM")) &
+                sc.count(mgr.bv("$header"), "<raw-string>", mgr.const("$num", "NUM")) &
                 sc.forall(
                     mgr.bv("$line", "<csv-record>"),
                     mgr.const("$start", "<start>"),
-                    sc.count(mgr.bv("$line"), isla.DerivationTree("<raw-string>", None), mgr.const("$num", "NUM"))
+                    sc.count(mgr.bv("$line"), "<raw-string>", mgr.const("$num", "NUM"))
                 )
             )
         )
