@@ -62,8 +62,11 @@ def count(grammar: Optional[Grammar],
     # Try to add more needles to in_tree, such that no more needles can be obtained
     # in the resulting tree from expanding leaf nonterminals.
 
+    # NOTE: We insert a new tree for needle (with a new ID), since otherwise, the needle ends up in
+    #       the solver's current solution tree and might get substituted by expansions.
+
     canonical_grammar = canonical(grammar)
-    candidates = insert_tree(canonical_grammar, needle, in_tree)
+    candidates = insert_tree(canonical_grammar, DerivationTree(needle.value, needle.children), in_tree)
     while candidates:
         candidate = candidates.pop(0)
         candidate_needle_occurrences = len(candidate.filter(lambda t: needle.is_prefix(t)))
@@ -78,10 +81,21 @@ def count(grammar: Optional[Grammar],
             return SemPredEvalResult({in_tree: candidate})
 
         if candidate_more_needles_possible and candidate_needle_occurrences < target_num_needle_occurrences:
-            candidates.extend(insert_tree(canonical_grammar, needle, candidate))
+            candidates.extend(insert_tree(canonical_grammar, DerivationTree(needle.value, needle.children), candidate))
 
     # TODO: Check if None would not be more appropriate. Could we have missed a better insertion opportunity?
     return SemPredEvalResult(False)
 
 
-COUNT_PREDICATE = SemanticPredicate("count", 3, count)
+COUNT_PREDICATE = SemanticPredicate(
+    "count", 3, count,
+    custom_args_equality=(
+        lambda t1, t2:
+        t1[0] == t2[0]
+        and t1[1].structurally_equal(t2[1])
+        and (not isinstance(t1[2], Constant) or isinstance(t2[2], Constant))
+        and (not isinstance(t2[2], Constant) or isinstance(t1[2], Constant))
+        and (not isinstance(t1[2], Constant) or t1[2] == t2[2])
+        and (isinstance(t1[2], Constant) or t1[2].structurally_equal(t2[2]))
+    )
+)

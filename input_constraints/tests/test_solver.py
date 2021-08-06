@@ -7,7 +7,7 @@ import z3
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 from input_constraints.solver import ISLaSolver
-from input_constraints.tests.test_data import LANG_GRAMMAR
+from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR
 
 
 class TestSolver(unittest.TestCase):
@@ -104,9 +104,46 @@ class TestSolver(unittest.TestCase):
 
         self.execute_generation_test(formula, mgr.const("$start"), max_number_free_instantiations=1)
 
+    def test_simple_csv_rows_equal_length(self):
+        mgr = isla.VariableManager()
+        formula = mgr.create(
+            sc.forall(
+                mgr.bv("$header", "<csv-header>"),
+                mgr.const("$start", "<start>"),
+                sc.count(mgr.bv("$header"), isla.DerivationTree("<csv-field>", None), mgr.const("$num", "NUM")) &
+                sc.forall(
+                    mgr.bv("$line", "<csv-record>"),
+                    mgr.const("$start", "<start>"),
+                    sc.count(mgr.bv("$line"), isla.DerivationTree("<csv-field>", None), mgr.const("$num", "NUM"))
+                )
+            )
+        )
+
+        self.execute_generation_test(formula, mgr.const("$start"), num_solutions=1000,
+                                     grammar=SIMPLE_CSV_GRAMMAR, max_number_free_instantiations=1)
+
+    def test_csv_rows_equal_length(self):
+        mgr = isla.VariableManager()
+        formula = mgr.create(
+            sc.forall(
+                mgr.bv("$header", "<csv-header>"),
+                mgr.const("$start", "<start>"),
+                sc.count(mgr.bv("$header"), isla.DerivationTree("<raw-string>", None), mgr.const("$num", "NUM")) &
+                sc.forall(
+                    mgr.bv("$line", "<csv-record>"),
+                    mgr.const("$start", "<start>"),
+                    sc.count(mgr.bv("$line"), isla.DerivationTree("<raw-string>", None), mgr.const("$num", "NUM"))
+                )
+            )
+        )
+
+        self.execute_generation_test(formula, mgr.const("$start"), #num_solutions=1000,
+                                     grammar=CSV_GRAMMAR, max_number_free_instantiations=10)
+
     def execute_generation_test(self,
                                 formula: isla.Formula,
                                 constant: isla.Constant,
+                                grammar=LANG_GRAMMAR,
                                 num_solutions=50,
                                 print_solutions=False,
                                 max_number_free_instantiations=1,
@@ -114,7 +151,7 @@ class TestSolver(unittest.TestCase):
                                 expand_after_existential_elimination=False
                                 ):
         solver = ISLaSolver(
-            grammar=LANG_GRAMMAR,
+            grammar=grammar,
             formula=formula,
             max_number_free_instantiations=max_number_free_instantiations,
             max_number_smt_instantiations=max_number_smt_instantiations,

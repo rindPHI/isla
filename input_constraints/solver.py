@@ -106,7 +106,8 @@ class ISLaSolver:
         self.formula = formula
         top_constants: Set[isla.Constant] = set(
             [c for c in VariablesCollector().collect(self.formula)
-             if type(c) is isla.Constant])
+             if isinstance(c, isla.Constant)
+             and not c.is_numeric()])
         assert len(top_constants) == 1
         self.top_constant = next(iter(top_constants))
 
@@ -137,7 +138,7 @@ class ISLaSolver:
                     heapq.heappush(self.queue, (cost, SolutionState(disjunct, state.tree)))
                 continue
 
-            # Instantiate all top-level predicate formulas.
+            # Instantiate all top-level structural predicate formulas.
             state = instantiate_structural_predicates(state)
 
             if state.constraint == sc.false():
@@ -148,6 +149,12 @@ class ISLaSolver:
             if result_states is not None:
                 yield from [result for new_state in result_states
                             for result in self.process_new_state(new_state)]
+                continue
+
+            # Eliminate first (ready) semantic predicate formula
+            result_state = self.eliminate_first_ready_semantic_predicate_formula(state)
+            if result_state is not None:
+                yield from self.process_new_state(result_state)
                 continue
 
             # Eliminate first existential formula
@@ -184,6 +191,8 @@ class ISLaSolver:
         if not semantic_formulas:
             return None
 
+        self.logger.debug("Eliminating semantic formulas %s", str(list(map(str, semantic_formulas))))
+
         prefix_conjunction = reduce(lambda a, b: a & b, semantic_formulas, sc.true())
         new_disjunct = (
                 prefix_conjunction &
@@ -192,6 +201,36 @@ class ISLaSolver:
                        sc.true()))
 
         return self.eliminate_semantic_formula(prefix_conjunction, SolutionState(new_disjunct, state.tree))
+
+    def eliminate_first_ready_semantic_predicate_formula(self, state: SolutionState) -> Optional[SolutionState]:
+        semantic_predicate_formulas = [
+            conjunct for conjunct in split_conjunction(state.constraint)
+            if isinstance(conjunct, isla.SemanticPredicateFormula)]
+
+        if not semantic_predicate_formulas:
+            return None
+
+        for semantic_predicate_formula in semantic_predicate_formulas:
+            evaluation_result = semantic_predicate_formula.evaluate(self.grammar)
+            if not evaluation_result.ready():
+                continue
+
+            self.logger.debug("Eliminating semantic predicate formula %s", semantic_predicate_formula)
+
+            if evaluation_result.true() or evaluation_result.false():
+                return SolutionState(
+                    isla.replace_formula(
+                        state.constraint,
+                        semantic_predicate_formula,
+                        sc.true() if evaluation_result.true() else sc.false()),
+                    state.tree)
+
+            return SolutionState(
+                state.constraint.substitute_expressions(evaluation_result.result),
+                state.tree.substitute(evaluation_result.result),
+            )
+
+        return None
 
     def eliminate_first_existential_formula(self, state: SolutionState) -> Optional[List[SolutionState]]:
         existential_formulas = [
@@ -207,8 +246,10 @@ class ISLaSolver:
                            if state.complete()
                            or state.constraint == sc.true()]
         if complete_states:
+            self.logger.debug("Matching existential formula %s", existential_formulas[0])
             new_states = complete_states
         else:
+            self.logger.debug("Eliminating existential formula %s", existential_formulas[0])
             new_states.extend(self.eliminate_existential_formula(existential_formulas[0], state))
 
         return new_states
@@ -220,6 +261,8 @@ class ISLaSolver:
 
         if not universal_formulas:
             return None
+
+        self.logger.debug("Matching universal formulas %s", str(list(map(str, universal_formulas))))
 
         return self.match_universal_formulas(universal_formulas, state) or None
 
@@ -484,6 +527,10 @@ class ISLaSolver:
             # and free nonterminals are configurable, so you get more outputs by playing with those!).
             return False
 
+        if state.constraint == sc.false():
+            self.logger.debug("Discarding state %s", state)
+            return False
+
         heapq.heappush(self.queue, (self.compute_cost(state, cost_reduction or 1.0), state))
         self.tree_hashes_in_queue.add(state.tree.structural_hash())
 
@@ -587,7 +634,8 @@ class ISLaSolver:
     def can_be_freely_instantiated(self, path_to_leaf: Path, state: SolutionState) -> bool:
         # An instantiation is only then *not* free if
         # 1) instantiating it might lead to an expression that might match a quantifier
-        # 2) the nonterminal to instantiate is part of a tree that is an argument to an SMT formula
+        # 2) the nonterminal to instantiate is part of a tree that is an argument
+        #    to an SMT formula or semantic predicate formula
         conjuncts = get_conjuncts(state.constraint)
 
         universal_formulas = [formula for formula in conjuncts
@@ -596,14 +644,16 @@ class ISLaSolver:
                                   or self.expand_after_existential_elimination
                                   and isinstance(formula, isla.QuantifiedFormula))]
 
-        smt_formulas = [formula for formula in conjuncts if isinstance(formula, isla.SMTFormula)]
+        semantic_formulas = [formula for formula in conjuncts
+                             if isinstance(formula, isla.SMTFormula)
+                             or isinstance(formula, isla.SemanticPredicateFormula)]
         leaf_node = state.tree.get_subtree(path_to_leaf)
 
         return (not any(self.quantified_formula_might_match(qfd_formula, path_to_leaf, state)
                         for qfd_formula in universal_formulas)
                 and all(all(tree_arg.find_node(leaf_node) is None
-                            for tree_arg in smt_formula.tree_arguments())
-                        for smt_formula in smt_formulas)
+                            for tree_arg in semantic_formula.tree_arguments())
+                        for semantic_formula in semantic_formulas)
                 )
 
     def quantified_formula_might_match(

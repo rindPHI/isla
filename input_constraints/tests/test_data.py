@@ -20,6 +20,15 @@ LANG_GRAMMAR = {
     "<digit>": list(string.digits)
 }
 
+SIMPLE_CSV_GRAMMAR = {
+    "<start>": ["<csv-header><csv-records>"],
+    "<csv-header>": ["<csv-record>"],
+    "<csv-records>": ["", "<csv-record><csv-records>"],
+    "<csv-record>": ["<csv-field-list>\n"],
+    "<csv-field-list>": ["<csv-field>", "<csv-field>;<csv-field-list>"],
+    "<csv-field>": list(string.ascii_lowercase),
+}
+
 CSV_EBNF_GRAMMAR = {
     "<start>": ["<csv-file>"],
     "<csv-file>": ["<csv-header><csv-record>*"],

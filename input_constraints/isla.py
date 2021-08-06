@@ -344,11 +344,12 @@ class DerivationTree:
     def structurally_equal(self, other: 'DerivationTree'):
         return (isinstance(other, DerivationTree)
                 and self.value == other.value
-                and self.children is not None or other.children is None
-                and other.children is not None or self.children is None
-                and len(self.children) == len(other.children)
-                and all(self.children[idx].structurally_equal(other.children[idx])
-                        for idx in range(len(self.children))))
+                and (self.children is not None or other.children is None)
+                and (other.children is not None or self.children is None)
+                and (self.children is None or
+                     len(self.children) == len(other.children)
+                     and all(self.children[idx].structurally_equal(other.children[idx])
+                             for idx in range(len(self.children)))))
 
     def __eq__(self, other):
         """
@@ -517,28 +518,28 @@ class BindExpression:
 
 class FormulaVisitor:
     def visit_predicate_formula(self, formula: 'StructuralPredicateFormula'):
-        raise NotImplementedError()
+        pass
 
     def visit_semantic_predicate_formula(self, formula: 'SemanticPredicateFormula'):
-        raise NotImplementedError()
+        pass
 
     def visit_negated_formula(self, formula: 'NegatedFormula'):
-        raise NotImplementedError()
+        pass
 
     def visit_conjunctive_formula(self, formula: 'ConjunctiveFormula'):
-        raise NotImplementedError()
+        pass
 
     def visit_disjunctive_formula(self, formula: 'DisjunctiveFormula'):
-        raise NotImplementedError()
+        pass
 
     def visit_smt_formula(self, formula: 'SMTFormula'):
-        raise NotImplementedError()
+        pass
 
     def visit_exists_formula(self, formula: 'ExistsFormula'):
-        raise NotImplementedError()
+        pass
 
     def visit_forall_formula(self, formula: 'ForallFormula'):
-        raise NotImplementedError()
+        pass
 
 
 class Formula:
@@ -750,10 +751,12 @@ class SemPredEvalResult:
 
 class SemanticPredicate:
     def __init__(self, name: str, arity: int,
-                 eval_fun: Callable[[Optional[Grammar], ...], SemPredEvalResult]):
+                 eval_fun: Callable[[Optional[Grammar], ...], SemPredEvalResult],
+                 custom_args_equality: Optional[Callable[[Tuple, Tuple], bool]] = None):
         self.name = name
         self.arity = arity
         self.eval_fun = eval_fun
+        self.custom_args_equality = custom_args_equality or (lambda t1, t2: t1 == t2)
 
     def evaluate(self, grammar: Optional[Grammar], *instantiations: Union[DerivationTree, Constant]):
         return self.eval_fun(grammar, *instantiations)
@@ -825,7 +828,9 @@ class SemanticPredicateFormula(Formula):
         return hash((type(self), self.predicate, tuple(self.args)))
 
     def __eq__(self, other):
-        return type(self) is type(other) and (self.predicate, self.args) == (other.predicate, other.args)
+        return (type(self) is type(other)
+                and self.predicate == other.predicate
+                and self.predicate.custom_args_equality(self.args, other.args))
 
     def __str__(self):
         arg_strings = []
@@ -1234,8 +1239,7 @@ class VariablesCollector(FormulaVisitor):
             if isinstance(arg, Variable):
                 self.result.add(arg)
             else:
-                _, tree = arg
-                self.result.update(tree.tree_variables())
+                self.result.update(arg.tree_variables())
 
     def visit_smt_formula(self, formula: SMTFormula):
         self.result.update(formula.free_variables())
@@ -1507,7 +1511,7 @@ def convert_to_nnf(formula: Formula, negate=False) -> Formula:
             return reduce(lambda a, b: a & b, args)
         else:
             return reduce(lambda a, b: a | b, args)
-    elif isinstance(formula, StructuralPredicateFormula):
+    elif isinstance(formula, StructuralPredicateFormula) or isinstance(formula, SemanticPredicateFormula):
         if negate:
             return NegatedFormula(formula)
         else:
