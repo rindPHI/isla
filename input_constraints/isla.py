@@ -69,6 +69,8 @@ class Constant(Variable):
 
 
 class DerivationTree:
+    """Derivation trees are immutable!"""
+
     def __init__(self, value: Union[str, Variable],
                  children: Optional[List['DerivationTree']] = None,
                  id: Optional[int] = None):
@@ -201,7 +203,7 @@ class DerivationTree:
 
         head = path[0]
         new_children = (children[:head] +
-                        (children[head].replace_path(path[1:], replacement_tree, retain_id), ) +
+                        (children[head].replace_path(path[1:], replacement_tree, retain_id),) +
                         children[head + 1:])
 
         return DerivationTree(node, new_children, id=self.id)
@@ -610,12 +612,12 @@ class Formula:
 
 
 class StructuralPredicate:
-    def __init__(self, name: str, arity: int, eval_fun: Callable[..., bool]):
+    def __init__(self, name: str, arity: int, eval_fun: Callable[[Path, ...], bool]):
         self.name = name
         self.arity = arity
         self.eval_fun = eval_fun
 
-    def evaluate(self, *instantiations: Tuple[Path, DerivationTree]):
+    def evaluate(self, *instantiations: Path):
         return self.eval_fun(*instantiations)
 
     def __eq__(self, other):
@@ -632,7 +634,7 @@ class StructuralPredicate:
 
 
 BEFORE_PREDICATE = StructuralPredicate(
-    "before", 2, lambda inst_1, inst_2: is_before(inst_1[0], inst_2[0])
+    "before", 2, lambda inst_1, inst_2: is_before(inst_1, inst_2)
 )
 
 
@@ -654,7 +656,7 @@ class StructuralPredicateFormula(Formula):
                                str([str(tree) for path, tree in args_with_paths if path is None]) +
                                f"\nContext tree:\n{context_tree}")
 
-        return self.predicate.eval_fun(*args_with_paths)
+        return self.predicate.eval_fun(*[path for path, _ in args_with_paths])
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return StructuralPredicateFormula(self.predicate,
