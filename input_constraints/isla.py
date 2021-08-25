@@ -73,8 +73,24 @@ class Constant(Variable):
         return self.n_type == Constant.NUMERIC_NTYPE
 
 
+class BoundVariable(Variable):
+    def __init__(self, name: str, n_type: str):
+        """
+        A variable bound by a quantifier.
+
+        :param name: The name of the variable.
+        :param n_type: The nonterminal type of the variable, e.g., "<var>".
+        """
+        super().__init__(name, n_type)
+
+    def __add__(self, other: Union[str, 'BoundVariable']) -> 'BindExpression':
+        assert type(other) == str or type(other) == BoundVariable
+        return BindExpression(self, other)
+
+
 class DerivationTree:
     """Derivation trees are immutable!"""
+    next_id: int = 0
 
     def __init__(self, value: Union[str, Variable],
                  children: Optional[List['DerivationTree']] = None,
@@ -85,7 +101,13 @@ class DerivationTree:
 
         self.value = value
         self.children = None if children is None else tuple(children)
-        self.id = id if id is not None else random.randint(0, sys.maxsize)
+
+        if id:
+            self.id = id
+        else:
+            self.id = DerivationTree.next_id
+            DerivationTree.next_id += 1
+
         self.__hash = None
         self.__structural_hash = None
 
@@ -378,21 +400,6 @@ class DerivationTree:
         return self.to_string(show_open_leaves=True)
 
 
-class BoundVariable(Variable):
-    def __init__(self, name: str, n_type: str):
-        """
-        A variable bound by a quantifier.
-
-        :param name: The name of the variable.
-        :param n_type: The nonterminal type of the variable, e.g., "<var>".
-        """
-        super().__init__(name, n_type)
-
-    def __add__(self, other: Union[str, 'BoundVariable']) -> 'BindExpression':
-        assert type(other) == str or type(other) == BoundVariable
-        return BindExpression(self, other)
-
-
 class BindExpression:
     def __init__(self, *bound_elements: Union[str, BoundVariable]):
         self.bound_elements: List[Union[str, BoundVariable]]
@@ -561,6 +568,12 @@ class Formula:
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> 'Formula':
         raise NotImplementedError()
 
+    def __hash__(self):
+        raise NotImplementedError()
+
+    def __eq__(self, other):
+        raise NotImplementedError()
+
     def __and__(self, other):
         if self == other:
             return self
@@ -707,7 +720,7 @@ class StructuralPredicateFormula(Formula):
         visitor.visit_predicate_formula(self)
 
     def __hash__(self):
-        return hash((type(self), self.predicate, tuple(self.args)))
+        return hash((type(self).__name__, self.predicate, tuple(self.args)))
 
     def __eq__(self, other):
         return type(self) is type(other) and (self.predicate, self.args) == (other.predicate, other.args)
@@ -827,7 +840,7 @@ class SemanticPredicateFormula(Formula):
         visitor.visit_semantic_predicate_formula(self)
 
     def __hash__(self):
-        return hash((type(self), self.predicate, tuple(self.args)))
+        return hash((type(self).__name__, self.predicate, tuple(self.args)))
 
     def __eq__(self, other):
         return (type(self) is type(other)
@@ -865,7 +878,7 @@ class PropositionalCombinator(Formula):
         return f"{type(self).__name__}({', '.join(map(repr, self.args))})"
 
     def __hash__(self):
-        return hash((type(self), self.args))
+        return hash((type(self).__name__, self.args))
 
     def __eq__(self, other):
         return type(self) == type(other) and self.args == other.args
@@ -887,7 +900,7 @@ class NegatedFormula(PropositionalCombinator):
         return NegatedFormula(*[arg.substitute_expressions(subst_map) for arg in self.args])
 
     def __hash__(self):
-        return hash((type(self), self.args))
+        return hash((type(self).__name__, self.args))
 
     def __str__(self):
         return f"¬({self.args[0]})"
@@ -911,7 +924,7 @@ class ConjunctiveFormula(PropositionalCombinator):
             formula.accept(visitor)
 
     def __hash__(self):
-        return hash((type(self), self.args))
+        return hash((type(self).__name__, self.args))
 
     def __eq__(self, other):
         return split_conjunction(self) == split_conjunction(other)
@@ -938,7 +951,7 @@ class DisjunctiveFormula(PropositionalCombinator):
             formula.accept(visitor)
 
     def __hash__(self):
-        return hash((type(self), self.args))
+        return hash((type(self).__name__, self.args))
 
     def __eq__(self, other):
         return split_disjunction(self) == split_disjunction(other)
@@ -1086,7 +1099,13 @@ class QuantifiedFormula(Formula):
                f'{repr(self.inner_formula)}{"" if self.bind_expression is None else ", " + repr(self.bind_expression)})'
 
     def __hash__(self):
-        return hash((type(self), self.bound_variable, self.in_variable, self.inner_formula, self.bind_expression))
+        return hash((
+            type(self).__name__,
+            self.bound_variable,
+            self.in_variable,
+            self.inner_formula,
+            self.bind_expression or 0
+        ))
 
     def __eq__(self, other):
         return type(self) == type(other) and \

@@ -74,7 +74,7 @@ class SolutionState:
 
     def __hash__(self):
         if self.__hash is None:
-            self.__hash = hash((self.constraint, self.tree.structural_hash()))
+            self.__hash = hash((self.constraint, self.tree))
         return self.__hash
 
     def __eq__(self, other):
@@ -129,7 +129,7 @@ class ISLaSolver:
             state: SolutionState
             cost, state = heapq.heappop(self.queue)
             self.tree_hashes_in_queue.remove(state.tree.structural_hash())
-            self.logger.debug(f"Polling new state %s", state)
+            self.logger.debug(f"Polling new state %s (hash %d)", state, hash(state))
             self.logger.debug(f"Queue length: %s", len(self.queue))
 
             # Split disjunctions
@@ -534,7 +534,7 @@ class ISLaSolver:
         heapq.heappush(self.queue, (self.compute_cost(state, cost_reduction or 1.0), state))
         self.tree_hashes_in_queue.add(state.tree.structural_hash())
 
-        self.logger.debug(f"Pushing new state %s", state)
+        self.logger.debug(f"Pushing new state %s (hash %d)", state, hash(state))
         self.logger.debug(f"Queue length: %d", len(self.queue))
         if len(self.queue) % 100 == 0:
             self.logger.info(f"Queue length: %d", len(self.queue))

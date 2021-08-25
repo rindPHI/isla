@@ -353,20 +353,20 @@ class TestEvaluation(unittest.TestCase):
         prog = "x := 1 ; x := 1 ; x := 1"
         tree = DerivationTree.from_parse_tree(parse(prog, LANG_GRAMMAR))
 
-        result = count(LANG_GRAMMAR, tree, DerivationTree("<assgn>", None), Constant("n", "NUM"))
+        result = count(LANG_GRAMMAR, tree, "<assgn>", Constant("n", "NUM"))
         self.assertEqual("{n: 3}", str(result))
 
-        result = count(LANG_GRAMMAR, tree, DerivationTree("<assgn>", None), DerivationTree("3", None))
+        result = count(LANG_GRAMMAR, tree, "<assgn>", DerivationTree("3", None))
         self.assertEqual(SemPredEvalResult(True), result)
 
-        result = count(LANG_GRAMMAR, tree, DerivationTree("<assgn>", None), DerivationTree("4", None))
+        result = count(LANG_GRAMMAR, tree, "<assgn>", DerivationTree("4", None))
         self.assertEqual(SemPredEvalResult(False), result)
 
         tree = DerivationTree("<start>", [DerivationTree("<stmt>", None)])
-        result = count(LANG_GRAMMAR, tree, DerivationTree("<assgn>", None), DerivationTree("4", None))
+        result = count(LANG_GRAMMAR, tree, "<assgn>", DerivationTree("4", None))
         self.assertEqual("{<stmt>: <assgn> ; <assgn> ; <assgn> ; <assgn>}", str(result))
 
-        result = count(LANG_GRAMMAR, tree, DerivationTree("<start>", None), DerivationTree("2", None))
+        result = count(LANG_GRAMMAR, tree, "<start>", DerivationTree("2", None))
         self.assertEqual(SemPredEvalResult(False), result)
 
     def test_csv_prop(self):
@@ -375,11 +375,11 @@ class TestEvaluation(unittest.TestCase):
             sc.forall(
                 mgr.bv("$header", "<csv-header>"),
                 tree,
-                sc.count(mgr.bv("$header"), "<raw-string>", mgr.const("$num", "NUM")) &
+                sc.count(mgr.bv("$header"), "<raw-string>", mgr.num_const("$num")) &
                 sc.forall(
                     mgr.bv("$line", "<csv-record>"),
                     tree,
-                    sc.count(mgr.bv("$line"), "<raw-string>", mgr.const("$num", "NUM"))
+                    sc.count(mgr.bv("$line"), "<raw-string>", mgr.num_const("$num"))
                 )
             )
         )
@@ -399,11 +399,11 @@ class TestEvaluation(unittest.TestCase):
             sc.forall(
                 mgr.bv("$header", "<csv-header>"),
                 tree,
-                sc.count(mgr.bv("$header"), DerivationTree("<raw-string>", None), mgr.num_const("$num")) &
+                sc.count(mgr.bv("$header"), "<raw-string>", mgr.num_const("$num")) &
                 sc.forall(
                     mgr.bv("$line", "<csv-record>"),
                     tree,
-                    sc.count(mgr.bv("$line"), DerivationTree("<raw-string>", None), mgr.num_const("$num2")) &
+                    sc.count(mgr.bv("$line"), "<raw-string>", mgr.num_const("$num2")) &
                     mgr.smt(cast(z3.BoolRef,
                                  z3.StrToInt(mgr.num_const("$num").to_smt()) >=
                                  z3.StrToInt(mgr.num_const("$num2").to_smt())))
