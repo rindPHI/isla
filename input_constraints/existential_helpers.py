@@ -27,21 +27,6 @@ def insert_tree(grammar: CanonicalGrammar,
 
     # We first check whether there are holes in the (incomplete) tree which we can exploit.
     # If so, we do this.
-    perfect_matches: List[Path] = []
-    embeddable_matches: List[Tuple[Path, DerivationTree]] = []
-    for subtree_path, subtree in in_tree.path_iterator():
-        node, children = subtree
-        if not isinstance(node, str):
-            continue
-
-        if children is not None:
-            continue
-
-        if node == to_insert_nonterminal:
-            perfect_matches.append(subtree_path)
-        elif graph.get_node(node).reachable(graph.get_node(to_insert_nonterminal)):
-            embeddable_matches.append((subtree_path, subtree))
-
     result: List[DerivationTree] = []
     result_hashes: Set[int] = set()
 
@@ -62,24 +47,47 @@ def insert_tree(grammar: CanonicalGrammar,
 
         return list(result)
 
-    for match_path_perfect in perfect_matches:
-        orig_node = in_tree.get_subtree(match_path_perfect)
-        assert tree.value == orig_node.value
-        add_to_result(in_tree.replace_path(
-            match_path_perfect,
-            DerivationTree(tree.value, tree.children, orig_node.id),
-            retain_id=True
-        ))
-
-    for match_path_embeddable, match_tree in embeddable_matches:
-        t = wrap_in_tree_starting_in(match_tree.root_nonterminal(), tree, grammar, graph)
-        orig_node = in_tree.get_subtree(match_path_embeddable)
-        assert t.value == orig_node.value
-        add_to_result(in_tree.replace_path(
-            match_path_embeddable,
-            DerivationTree(t.value, t.children, orig_node.id),
-            retain_id=True
-        ))
+    # NOTE: Removed the attempt to use existing "holes" for now. There is some kind of problem with
+    #       the "declared before used" example if we use it. It works if we set tree.id = orig_node.id
+    #       (with side effect!) instead of creating a new DerivationTree object with that same ID,
+    #       for whatever reason, but this has undesired effects for other examples. E.g., in the CSV
+    #       with same field size example, we only get rows like "a;x;x;x" since the last three fields
+    #       have the same ID. Also, DerivationTrees should be immutable. If we find out what breaks the
+    #       def-use example, we can reactivate this code.
+    #
+    # perfect_matches: List[Path] = []
+    # embeddable_matches: List[Tuple[Path, DerivationTree]] = []
+    # for subtree_path, subtree in in_tree.path_iterator():
+    #     node, children = subtree
+    #     if not isinstance(node, str):
+    #         continue
+    #
+    #     if children is not None:
+    #         continue
+    #
+    #     if node == to_insert_nonterminal:
+    #         perfect_matches.append(subtree_path)
+    #     elif graph.get_node(node).reachable(graph.get_node(to_insert_nonterminal)):
+    #         embeddable_matches.append((subtree_path, subtree))
+    #
+    # for match_path_perfect in perfect_matches:
+    #     orig_node = in_tree.get_subtree(match_path_perfect)
+    #     assert tree.value == orig_node.value
+    #     add_to_result(in_tree.replace_path(
+    #         match_path_perfect,
+    #         DerivationTree(tree.value, tree.children, orig_node.id),
+    #         retain_id=True
+    #     ))
+    #
+    # for match_path_embeddable, match_tree in embeddable_matches:
+    #     t = wrap_in_tree_starting_in(match_tree.root_nonterminal(), tree, grammar, graph)
+    #     orig_node = in_tree.get_subtree(match_path_embeddable)
+    #     assert t.value == orig_node.value
+    #     add_to_result(in_tree.replace_path(
+    #         match_path_embeddable,
+    #         DerivationTree(t.value, t.children, orig_node.id),
+    #         retain_id=True
+    #     ))
 
     # Next, we check whether we can take another alternative at the parent node.
 
