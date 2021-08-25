@@ -103,7 +103,7 @@ class ISLaSolver:
         self.canonical_grammar = canonical(grammar)
         self.node_leaf_distances: Dict[str, int] = self.compute_node_leaf_distances()
 
-        self.formula = formula
+        self.formula = ensure_unique_bound_variables(formula)
         top_constants: Set[isla.Constant] = set(
             [c for c in VariablesCollector().collect(self.formula)
              if isinstance(c, isla.Constant)
@@ -118,17 +118,17 @@ class ISLaSolver:
         # Initialize Queue
         initial_tree = DerivationTree(self.top_constant.n_type, None)
         initial_formula = self.formula.substitute_expressions({self.top_constant: initial_tree})
+
         self.queue: List[Tuple[float, SolutionState]] = []
-        self.tree_hashes_in_queue: Set[int] = {initial_tree.structural_hash()}
-        heapq.heappush(self.queue, (0, self.establish_invariant(
-            SolutionState(ensure_unique_bound_variables(initial_formula), initial_tree))))
+        # self.tree_hashes_in_queue: Set[int] = {initial_tree.structural_hash()}
+        heapq.heappush(self.queue, (0, self.establish_invariant(SolutionState(initial_formula, initial_tree))))
 
     def solve(self) -> Generator[DerivationTree, None, None]:
         while self.queue:
             cost: int
             state: SolutionState
             cost, state = heapq.heappop(self.queue)
-            self.tree_hashes_in_queue.remove(state.tree.structural_hash())
+            # self.tree_hashes_in_queue.remove(state.tree.structural_hash())
             self.logger.debug(f"Polling new state %s (hash %d)", state, hash(state))
             self.logger.debug(f"Queue length: %s", len(self.queue))
 
@@ -455,7 +455,10 @@ class ISLaSolver:
             solver = z3.Solver()
 
             for constant in constants:
-                regex = self.extract_regular_expression(constant.n_type)
+                if constant.is_numeric():
+                    regex = z3.Concat(z3.Range("0", "9"), z3.Star(z3.Range("0", "9")))
+                else:
+                    regex = self.extract_regular_expression(constant.n_type)
                 solver.add(z3.InRe(z3.String(constant.name), regex))
 
             for prev_solution in internal_solutions:
@@ -472,8 +475,12 @@ class ISLaSolver:
 
             new_solution = {
                 tree_substitutions.get(constant, constant):
-                    self.parse(constant.n_type, solver.model()[z3.String(constant.name)].as_string())
-                for constant in constants}
+                    (
+                        val := solver.model()[z3.String(constant.name)].as_string(),
+                        DerivationTree(val, []) if constant.is_numeric() else self.parse(constant.n_type, val)
+                    )[-1]
+                for constant in constants
+            }
 
             new_internal_solution = {
                 constant: z3.StringVal(solver.model()[z3.String(constant.name)].as_string())
@@ -520,19 +527,22 @@ class ISLaSolver:
                    for predicate_formula in get_conjuncts(state.constraint)
                    if isinstance(predicate_formula, isla.StructuralPredicateFormula))
 
-        if state.tree.structural_hash() in self.tree_hashes_in_queue:
-            # Some structures can arise as well from tree insertion (existential quantifier elimination)
-            # and expansion; also, tree insertion can yield different trees that have intersecting
-            # expansions. We drop those to output more diverse solutions (numbers for SMT solutions
-            # and free nonterminals are configurable, so you get more outputs by playing with those!).
-            return False
+        # The below optimization had to be removed, since we can have significantly different formulas
+        # with the same trees; e.g., if we instantiate a numerical constant multiple times.
+        #
+        # if state.tree.structural_hash() in self.tree_hashes_in_queue:
+        #     # Some structures can arise as well from tree insertion (existential quantifier elimination)
+        #     # and expansion; also, tree insertion can yield different trees that have intersecting
+        #     # expansions. We drop those to output more diverse solutions (numbers for SMT solutions
+        #     # and free nonterminals are configurable, so you get more outputs by playing with those!).
+        #     return False
 
         if state.constraint == sc.false():
             self.logger.debug("Discarding state %s", state)
             return False
 
         heapq.heappush(self.queue, (self.compute_cost(state, cost_reduction or 1.0), state))
-        self.tree_hashes_in_queue.add(state.tree.structural_hash())
+        # self.tree_hashes_in_queue.add(state.tree.structural_hash())
 
         self.logger.debug(f"Pushing new state %s (hash %d)", state, hash(state))
         self.logger.debug(f"Queue length: %d", len(self.queue))

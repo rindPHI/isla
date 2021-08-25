@@ -65,15 +65,21 @@ def insert_tree(grammar: CanonicalGrammar,
     for match_path_perfect in perfect_matches:
         orig_node = in_tree.get_subtree(match_path_perfect)
         assert tree.value == orig_node.value
-        tree.id = orig_node.id
-        add_to_result(in_tree.replace_path(match_path_perfect, tree, retain_id=True))
+        add_to_result(in_tree.replace_path(
+            match_path_perfect,
+            DerivationTree(tree.value, tree.children, orig_node.id),
+            retain_id=True
+        ))
 
     for match_path_embeddable, match_tree in embeddable_matches:
         t = wrap_in_tree_starting_in(match_tree.root_nonterminal(), tree, grammar, graph)
         orig_node = in_tree.get_subtree(match_path_embeddable)
         assert t.value == orig_node.value
-        t.id = orig_node.id
-        add_to_result(in_tree.replace_path(match_path_embeddable, t, retain_id=True))
+        add_to_result(in_tree.replace_path(
+            match_path_embeddable,
+            DerivationTree(t.value, t.children, orig_node.id),
+            retain_id=True
+        ))
 
     # Next, we check whether we can take another alternative at the parent node.
 

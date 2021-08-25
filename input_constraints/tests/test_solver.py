@@ -107,37 +107,39 @@ class TestSolver(unittest.TestCase):
     def test_simple_csv_rows_equal_length(self):
         mgr = isla.VariableManager()
         formula = mgr.create(
+            mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$num").to_smt()) >= z3.IntVal(3))) &
+            mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$num").to_smt()) <= z3.IntVal(5))) &
             sc.forall(
-                mgr.bv("$header", "<csv-header>"),
+                mgr.bv("$hline", "<csv-header>"),
                 mgr.const("$start", "<start>"),
-                sc.count(mgr.bv("$header"), "<csv-field>", mgr.num_const("$num")) &
-                sc.forall(
-                    mgr.bv("$line", "<csv-record>"),
-                    mgr.const("$start", "<start>"),
-                    sc.count(mgr.bv("$line"), "<csv-field>", mgr.num_const("$num"))
-                )
-            )
+                sc.count(mgr.bv("$hline"), "<csv-field>", mgr.num_const("$num"))) &
+            sc.forall(
+                mgr.bv("$line", "<csv-record>"),
+                mgr.const("$start", "<start>"),
+                sc.count(mgr.bv("$line"), "<csv-field>", mgr.num_const("$num")))
         )
 
-        self.execute_generation_test(formula, mgr.const("$start"), #num_solutions=1000,
-                                     grammar=SIMPLE_CSV_GRAMMAR, max_number_free_instantiations=1)
+        self.execute_generation_test(formula, mgr.const("$start"),
+                                     grammar=SIMPLE_CSV_GRAMMAR,
+                                     max_number_free_instantiations=1,
+                                     max_number_smt_instantiations=2)
 
     def test_csv_rows_equal_length(self):
         mgr = isla.VariableManager()
         formula = mgr.create(
+            mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$num").to_smt()) >= z3.IntVal(3))) &
+            mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$num").to_smt()) <= z3.IntVal(5))) &
             sc.forall(
-                mgr.bv("$header", "<csv-header>"),
+                mgr.bv("$hline", "<csv-header>"),
                 mgr.const("$start", "<start>"),
-                sc.count(mgr.bv("$header"), "<raw-string>", mgr.num_const("$num")) &
-                sc.forall(
-                    mgr.bv("$line", "<csv-record>"),
-                    mgr.const("$start", "<start>"),
-                    sc.count(mgr.bv("$line"), "<raw-string>", mgr.num_const("$num"))
-                )
-            )
+                sc.count(mgr.bv("$hline"), "<raw-string>", mgr.num_const("$num"))) &
+            sc.forall(
+                mgr.bv("$line", "<csv-record>"),
+                mgr.const("$start", "<start>"),
+                sc.count(mgr.bv("$line"), "<raw-string>", mgr.num_const("$num")))
         )
 
-        self.execute_generation_test(formula, mgr.const("$start"), #num_solutions=1000,
+        self.execute_generation_test(formula, mgr.const("$start"),
                                      grammar=CSV_GRAMMAR, max_number_free_instantiations=10)
 
     def execute_generation_test(self,

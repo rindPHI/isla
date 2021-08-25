@@ -25,6 +25,7 @@ def count(grammar: Optional[Grammar],
         more_needles_possible = any(graph.get_node(leaf_nonterminal).reachable(graph.get_node(needle))
                                     for leaf_nonterminal in leaf_nonterminals)
     else:
+        graph = None
         assert in_tree.is_complete(), "Pass a grammar to the count predicate to evaluate open trees."
         more_needles_possible = False
 
@@ -36,7 +37,7 @@ def count(grammar: Optional[Grammar],
 
         return SemPredEvalResult({num: DerivationTree(str(num_needle_occurrences), None)})
 
-    assert num.children is None
+    assert not num.children
     assert num.value.isnumeric()
     target_num_needle_occurrences = int(num.value)
 
@@ -59,16 +60,15 @@ def count(grammar: Optional[Grammar],
     # Try to add more needles to in_tree, such that no more needles can be obtained
     # in the resulting tree from expanding leaf nonterminals.
 
-    # NOTE: We insert a new tree for needle (with a new ID), since otherwise, the needle ends up in
-    #       the solver's current solution tree and might get substituted by expansions.
+    num_needles = lambda candidate: len(candidate.filter(lambda t: t.value == needle))
 
     canonical_grammar = canonical(grammar)
-    candidates = insert_tree(canonical_grammar, DerivationTree(needle, None), in_tree)
+    candidates = [candidate for candidate in insert_tree(canonical_grammar, DerivationTree(needle, None), in_tree)
+                  if num_needles(candidate) <= target_num_needle_occurrences]
+    already_seen = {candidate.structural_hash() for candidate in candidates}
     while candidates:
         candidate = candidates.pop(0)
-        candidate_needle_occurrences = len(candidate.filter(lambda t: t.value == needle))
-        if candidate_needle_occurrences > target_num_needle_occurrences:
-            continue
+        candidate_needle_occurrences = num_needles(candidate)
 
         candidate_more_needles_possible = \
             any(graph.get_node(leaf_nonterminal).reachable(graph.get_node(needle))
@@ -77,8 +77,15 @@ def count(grammar: Optional[Grammar],
         if not candidate_more_needles_possible and candidate_needle_occurrences == target_num_needle_occurrences:
             return SemPredEvalResult({in_tree: candidate})
 
-        if candidate_more_needles_possible and candidate_needle_occurrences < target_num_needle_occurrences:
-            candidates.extend(insert_tree(canonical_grammar, DerivationTree(needle, None), candidate))
+        if candidate_needle_occurrences < target_num_needle_occurrences:
+            new_candidates = [
+                new_candidate
+                for new_candidate in insert_tree(canonical_grammar, DerivationTree(needle, None), candidate)
+                if (num_needles(new_candidate) <= target_num_needle_occurrences
+                    and not new_candidate.structural_hash() in already_seen)]
+
+            candidates.extend(new_candidates)
+            already_seen.update({new_candidate.structural_hash() for new_candidate in new_candidates})
 
     # TODO: Check if None would not be more appropriate. Could we have missed a better insertion opportunity?
     return SemPredEvalResult(False)

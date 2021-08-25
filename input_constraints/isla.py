@@ -30,6 +30,9 @@ class Variable:
     def to_smt(self):
         return z3.String(self.name)
 
+    def is_numeric(self):
+        return False
+
     def __eq__(self, other):
         return type(self) is type(other) and (self.name, self.n_type) == (other.name, other.n_type)
 
