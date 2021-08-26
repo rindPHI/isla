@@ -74,7 +74,7 @@ class SolutionState:
 
     def __hash__(self):
         if self.__hash is None:
-            self.__hash = hash((self.constraint, self.tree.structural_hash()))
+            self.__hash = hash((self.constraint, self.tree))
         return self.__hash
 
     def __eq__(self, other):
@@ -95,40 +95,57 @@ class ISLaSolver:
                  formula: isla.Formula,
                  max_number_free_instantiations: int = 10,
                  max_number_smt_instantiations: int = 10,
-                 expand_after_existential_elimination: bool = False
+                 expand_after_existential_elimination: bool = False,
+                 enforce_unique_trees_in_queue: bool = True,
                  ):
+        """
+        :param grammar: The underlying grammar.
+        :param formula: The formula to solve.
+        :param max_number_free_instantiations: Number of times that nonterminals that are not bound by any formula
+        should be expanded by a coverage-based fuzzer.
+        :param max_number_smt_instantiations: Number of solutions of SMT formulas that should be produced.
+        :param expand_after_existential_elimination: Trees are expanded after an existential quantifier elimination
+        iff this paramter is set to true. If false, only a finite (potentially small) set of inputs is generated for
+        existential constraints.
+        :param enforce_unique_trees_in_queue: If true, only one state in the queue containing a tree with the same
+        structure can be present at a time. Should be set to false especially if there are top-level SMT formulas
+        about numeric constants. TODO: This parameter is awkward, maybe we can find a different solution.
+        """
         self.logger = logging.getLogger(type(self).__name__)
 
         self.grammar = grammar
         self.canonical_grammar = canonical(grammar)
         self.node_leaf_distances: Dict[str, int] = self.compute_node_leaf_distances()
 
-        self.formula = formula
+        self.formula = ensure_unique_bound_variables(formula)
         top_constants: Set[isla.Constant] = set(
             [c for c in VariablesCollector().collect(self.formula)
-             if type(c) is isla.Constant])
+             if isinstance(c, isla.Constant)
+             and not c.is_numeric()])
         assert len(top_constants) == 1
         self.top_constant = next(iter(top_constants))
 
         self.max_number_free_instantiations: int = max_number_free_instantiations
         self.max_number_smt_instantiations: int = max_number_smt_instantiations
         self.expand_after_existential_elimination = expand_after_existential_elimination
+        self.enforce_unique_trees_in_queue = enforce_unique_trees_in_queue
 
         # Initialize Queue
         initial_tree = DerivationTree(self.top_constant.n_type, None)
         initial_formula = self.formula.substitute_expressions({self.top_constant: initial_tree})
+        initial_state = self.establish_invariant(SolutionState(initial_formula, initial_tree))
+
         self.queue: List[Tuple[float, SolutionState]] = []
         self.tree_hashes_in_queue: Set[int] = {initial_tree.structural_hash()}
-        heapq.heappush(self.queue, (0, self.establish_invariant(
-            SolutionState(ensure_unique_bound_variables(initial_formula), initial_tree))))
+        heapq.heappush(self.queue, (0, initial_state))
 
     def solve(self) -> Generator[DerivationTree, None, None]:
         while self.queue:
             cost: int
             state: SolutionState
             cost, state = heapq.heappop(self.queue)
-            self.tree_hashes_in_queue.remove(state.tree.structural_hash())
-            self.logger.debug(f"Polling new state %s", state)
+            self.tree_hashes_in_queue.discard(state.tree.structural_hash())
+            self.logger.debug(f"Polling new state %s (hash %d)", state, hash(state))
             self.logger.debug(f"Queue length: %s", len(self.queue))
 
             # Split disjunctions
@@ -137,7 +154,7 @@ class ISLaSolver:
                     heapq.heappush(self.queue, (cost, SolutionState(disjunct, state.tree)))
                 continue
 
-            # Instantiate all top-level predicate formulas.
+            # Instantiate all top-level structural predicate formulas.
             state = instantiate_structural_predicates(state)
 
             if state.constraint == sc.false():
@@ -148,6 +165,12 @@ class ISLaSolver:
             if result_states is not None:
                 yield from [result for new_state in result_states
                             for result in self.process_new_state(new_state)]
+                continue
+
+            # Eliminate first (ready) semantic predicate formula
+            result_state = self.eliminate_first_ready_semantic_predicate_formula(state)
+            if result_state is not None:
+                yield from self.process_new_state(result_state)
                 continue
 
             # Eliminate first existential formula
@@ -184,6 +207,8 @@ class ISLaSolver:
         if not semantic_formulas:
             return None
 
+        self.logger.debug("Eliminating semantic formulas %s", str(list(map(str, semantic_formulas))))
+
         prefix_conjunction = reduce(lambda a, b: a & b, semantic_formulas, sc.true())
         new_disjunct = (
                 prefix_conjunction &
@@ -192,6 +217,36 @@ class ISLaSolver:
                        sc.true()))
 
         return self.eliminate_semantic_formula(prefix_conjunction, SolutionState(new_disjunct, state.tree))
+
+    def eliminate_first_ready_semantic_predicate_formula(self, state: SolutionState) -> Optional[SolutionState]:
+        semantic_predicate_formulas = [
+            conjunct for conjunct in split_conjunction(state.constraint)
+            if isinstance(conjunct, isla.SemanticPredicateFormula)]
+
+        if not semantic_predicate_formulas:
+            return None
+
+        for semantic_predicate_formula in semantic_predicate_formulas:
+            evaluation_result = semantic_predicate_formula.evaluate(self.grammar)
+            if not evaluation_result.ready():
+                continue
+
+            self.logger.debug("Eliminating semantic predicate formula %s", semantic_predicate_formula)
+
+            if evaluation_result.true() or evaluation_result.false():
+                return SolutionState(
+                    isla.replace_formula(
+                        state.constraint,
+                        semantic_predicate_formula,
+                        sc.true() if evaluation_result.true() else sc.false()),
+                    state.tree)
+
+            return SolutionState(
+                state.constraint.substitute_expressions(evaluation_result.result),
+                state.tree.substitute(evaluation_result.result),
+            )
+
+        return None
 
     def eliminate_first_existential_formula(self, state: SolutionState) -> Optional[List[SolutionState]]:
         existential_formulas = [
@@ -207,8 +262,10 @@ class ISLaSolver:
                            if state.complete()
                            or state.constraint == sc.true()]
         if complete_states:
+            self.logger.debug("Matching existential formula %s", existential_formulas[0])
             new_states = complete_states
         else:
+            self.logger.debug("Eliminating existential formula %s", existential_formulas[0])
             new_states.extend(self.eliminate_existential_formula(existential_formulas[0], state))
 
         return new_states
@@ -220,6 +277,8 @@ class ISLaSolver:
 
         if not universal_formulas:
             return None
+
+        self.logger.debug("Matching universal formulas %s", str(list(map(str, universal_formulas))))
 
         return self.match_universal_formulas(universal_formulas, state) or None
 
@@ -412,7 +471,10 @@ class ISLaSolver:
             solver = z3.Solver()
 
             for constant in constants:
-                regex = self.extract_regular_expression(constant.n_type)
+                if constant.is_numeric():
+                    regex = z3.Concat(z3.Range("0", "9"), z3.Star(z3.Range("0", "9")))
+                else:
+                    regex = self.extract_regular_expression(constant.n_type)
                 solver.add(z3.InRe(z3.String(constant.name), regex))
 
             for prev_solution in internal_solutions:
@@ -429,8 +491,12 @@ class ISLaSolver:
 
             new_solution = {
                 tree_substitutions.get(constant, constant):
-                    self.parse(constant.n_type, solver.model()[z3.String(constant.name)].as_string())
-                for constant in constants}
+                    (
+                        val := solver.model()[z3.String(constant.name)].as_string(),
+                        DerivationTree(val, []) if constant.is_numeric() else self.parse(constant.n_type, val)
+                    )[-1]
+                for constant in constants
+            }
 
             new_internal_solution = {
                 constant: z3.StringVal(solver.model()[z3.String(constant.name)].as_string())
@@ -477,17 +543,22 @@ class ISLaSolver:
                    for predicate_formula in get_conjuncts(state.constraint)
                    if isinstance(predicate_formula, isla.StructuralPredicateFormula))
 
-        if state.tree.structural_hash() in self.tree_hashes_in_queue:
+        if self.enforce_unique_trees_in_queue and state.tree.structural_hash() in self.tree_hashes_in_queue:
             # Some structures can arise as well from tree insertion (existential quantifier elimination)
             # and expansion; also, tree insertion can yield different trees that have intersecting
             # expansions. We drop those to output more diverse solutions (numbers for SMT solutions
             # and free nonterminals are configurable, so you get more outputs by playing with those!).
+            self.logger.debug("Discarding state %s, tree already in queue", str(state))
+            return False
+
+        if state.constraint == sc.false():
+            self.logger.debug("Discarding state %s", state)
             return False
 
         heapq.heappush(self.queue, (self.compute_cost(state, cost_reduction or 1.0), state))
         self.tree_hashes_in_queue.add(state.tree.structural_hash())
 
-        self.logger.debug(f"Pushing new state %s", state)
+        self.logger.debug(f"Pushing new state %s (hash %d)", state, hash(state))
         self.logger.debug(f"Queue length: %d", len(self.queue))
         if len(self.queue) % 100 == 0:
             self.logger.info(f"Queue length: %d", len(self.queue))
@@ -587,7 +658,8 @@ class ISLaSolver:
     def can_be_freely_instantiated(self, path_to_leaf: Path, state: SolutionState) -> bool:
         # An instantiation is only then *not* free if
         # 1) instantiating it might lead to an expression that might match a quantifier
-        # 2) the nonterminal to instantiate is part of a tree that is an argument to an SMT formula
+        # 2) the nonterminal to instantiate is part of a tree that is an argument
+        #    to an SMT formula or semantic predicate formula
         conjuncts = get_conjuncts(state.constraint)
 
         universal_formulas = [formula for formula in conjuncts
@@ -596,14 +668,16 @@ class ISLaSolver:
                                   or self.expand_after_existential_elimination
                                   and isinstance(formula, isla.QuantifiedFormula))]
 
-        smt_formulas = [formula for formula in conjuncts if isinstance(formula, isla.SMTFormula)]
+        semantic_formulas = [formula for formula in conjuncts
+                             if isinstance(formula, isla.SMTFormula)
+                             or isinstance(formula, isla.SemanticPredicateFormula)]
         leaf_node = state.tree.get_subtree(path_to_leaf)
 
         return (not any(self.quantified_formula_might_match(qfd_formula, path_to_leaf, state)
                         for qfd_formula in universal_formulas)
                 and all(all(tree_arg.find_node(leaf_node) is None
-                            for tree_arg in smt_formula.tree_arguments())
-                        for smt_formula in smt_formulas)
+                            for tree_arg in semantic_formula.tree_arguments())
+                        for semantic_formula in semantic_formulas)
                 )
 
     def quantified_formula_might_match(
@@ -648,69 +722,6 @@ class ISLaSolver:
         delete_unreachable(grammar)
         parser = EarleyParser(grammar)
         return DerivationTree.from_parse_tree(list(parser.parse(input))[0][1][0])
-
-
-def satisfies_invariant(formula: isla.Formula, grammar: Grammar) -> bool:
-    for disjunct in split_disjunction(formula):
-        conjuncts = split_conjunction(disjunct)
-
-        # Is in DNF:
-        # No disjunction in side conjunction
-        if any(isinstance(conjunct, isla.DisjunctiveFormula) for conjunct in conjuncts):
-            return False
-
-        # Only predicates inside negation; for SMT formulas, has to be pushed into formula
-        if any(isinstance(conjunct, isla.NegatedFormula)
-               and not isinstance(conjunct.args[0], isla.StructuralPredicateFormula)
-               for conjunct in conjuncts):
-            return False
-
-        # SMT formulas must be atoms: No logical connectives & quantifiers inside
-        for smt_formula in [formula for formula in conjuncts if isinstance(formula, isla.SMTFormula)]:
-            for smt_sub in visit_z3_expr(smt_formula.formula):
-                if isinstance(smt_sub, z3.QuantifierRef):
-                    return False
-
-        # Conjunct order:
-        # 1. SMT Formulas, 2. Predicate formulas, 3. Existential, 4. Universal
-        type_map = {
-            isla.SMTFormula: 1,
-            isla.StructuralPredicateFormula: 2,
-            isla.ExistsFormula: 3,
-            isla.ForallFormula: 4,
-        }
-
-        conjunct_types: List[int] = list(map(
-            lambda conjunct: type_map.get(type(conjunct), -1),
-            conjuncts))
-
-        # Nothing else permitted at this point
-        if -1 in conjunct_types:
-            return False
-
-        # Right order
-        if sorted(conjunct_types) != conjunct_types:
-            return False
-
-        # Structure of universal formulas:
-        # At most one univ. formula at a time must much any given subtree.
-        # That is, when considering the tree prefixes to which the formulas apply, no two of these
-        # prefixes must equal or be prefixes of each other.
-
-        universal_tree_prefixes: List[DerivationTree] = [
-            DerivationTree(formula.bound_variable.n_type, None) if formula.bind_expression is None
-            else cast(isla.BindExpression, formula.bind_expression).to_tree_prefix(
-                formula.bound_variable.n_type, grammar, to_abstract_tree=False)[0]
-            for formula in conjuncts
-            if isinstance(formula, isla.ForallFormula)
-        ]
-
-        return all(not any(tree_1.is_prefix(tree_2)
-                           for tree_2 in universal_tree_prefixes
-                           if tree_2 is not tree_1)
-                   for tree_1 in universal_tree_prefixes)
-
-    return True
 
 
 def qfr_free_formula_to_z3_formula(formula: isla.Formula) -> z3.BoolRef:

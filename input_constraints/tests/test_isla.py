@@ -6,8 +6,10 @@ from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
 import input_constraints.isla_shortcuts as sc
 from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
-    DerivationTree, convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables
+    DerivationTree, convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager
+from input_constraints.isla_predicates import count
 from input_constraints.tests.test_data import *
+from input_constraints.tests.test_helpers import parse
 
 
 class TestEvaluation(unittest.TestCase):
@@ -346,6 +348,76 @@ class TestEvaluation(unittest.TestCase):
 
         self.assertEqual(expected, ensure_unique_bound_variables(formula))
         self.assertEqual(expected, ensure_unique_bound_variables(expected))
+
+    def test_count(self):
+        prog = "x := 1 ; x := 1 ; x := 1"
+        tree = DerivationTree.from_parse_tree(parse(prog, LANG_GRAMMAR))
+
+        result = count(LANG_GRAMMAR, tree, "<assgn>", Constant("n", "NUM"))
+        self.assertEqual("{n: 3}", str(result))
+
+        result = count(LANG_GRAMMAR, tree, "<assgn>", DerivationTree("3", None))
+        self.assertEqual(SemPredEvalResult(True), result)
+
+        result = count(LANG_GRAMMAR, tree, "<assgn>", DerivationTree("4", None))
+        self.assertEqual(SemPredEvalResult(False), result)
+
+        tree = DerivationTree("<start>", [DerivationTree("<stmt>", None)])
+        result = count(LANG_GRAMMAR, tree, "<assgn>", DerivationTree("4", None))
+        self.assertEqual("{<stmt>: <assgn> ; <assgn> ; <assgn> ; <assgn>}", str(result))
+
+        result = count(LANG_GRAMMAR, tree, "<start>", DerivationTree("2", None))
+        self.assertEqual(SemPredEvalResult(False), result)
+
+    def test_csv_prop(self):
+        mgr = VariableManager()
+        formula = lambda tree: mgr.create(
+            sc.forall(
+                mgr.bv("$header", "<csv-header>"),
+                tree,
+                sc.count(mgr.bv("$header"), "<raw-string>", mgr.num_const("$num")) &
+                sc.forall(
+                    mgr.bv("$line", "<csv-record>"),
+                    tree,
+                    sc.count(mgr.bv("$line"), "<raw-string>", mgr.num_const("$num"))
+                )
+            )
+        )
+
+        csv_doc = "a;b;c\nd;e;f\n"
+        tree = DerivationTree.from_parse_tree(parse(csv_doc, CSV_GRAMMAR))
+        self.assertTrue(evaluate(formula(tree)))
+
+        csv_doc = "a;b;c\nd;e;f\ng;h;i;j\n"
+        tree = DerivationTree.from_parse_tree(parse(csv_doc, CSV_GRAMMAR))
+        self.assertFalse(evaluate(formula(tree)))
+
+        return
+
+        mgr = VariableManager()
+        formula = lambda tree: mgr.create(
+            sc.forall(
+                mgr.bv("$header", "<csv-header>"),
+                tree,
+                sc.count(mgr.bv("$header"), "<raw-string>", mgr.num_const("$num")) &
+                sc.forall(
+                    mgr.bv("$line", "<csv-record>"),
+                    tree,
+                    sc.count(mgr.bv("$line"), "<raw-string>", mgr.num_const("$num2")) &
+                    mgr.smt(cast(z3.BoolRef,
+                                 z3.StrToInt(mgr.num_const("$num").to_smt()) >=
+                                 z3.StrToInt(mgr.num_const("$num2").to_smt())))
+                )
+            )
+        )
+
+        csv_doc = "a;b;c\nd;e\ng;h;i\n"
+        tree = DerivationTree.from_parse_tree(parse(csv_doc, CSV_GRAMMAR))
+        self.assertTrue(evaluate(formula(tree)))
+
+        csv_doc = "a;b;c\nd;e\ng;h;i;j\n"
+        tree = DerivationTree.from_parse_tree(parse(csv_doc, CSV_GRAMMAR))
+        self.assertFalse(evaluate(formula(tree)))
 
 
 if __name__ == '__main__':

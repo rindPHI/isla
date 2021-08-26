@@ -13,7 +13,7 @@ from fuzzingbook.Parser import EarleyParser
 from grammar_graph.gg import GrammarGraph
 from orderedset import OrderedSet
 
-from input_constraints.helpers import get_symbols, is_before, z3_subst, path_iterator, replace_tree_path, is_valid
+from input_constraints.helpers import get_symbols, z3_subst, path_iterator, replace_tree_path, is_valid
 from input_constraints.type_defs import ParseTree, Path, Grammar
 
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
@@ -29,6 +29,9 @@ class Variable:
 
     def to_smt(self):
         return z3.String(self.name)
+
+    def is_numeric(self):
+        return False
 
     def __eq__(self, other):
         return type(self) is type(other) and (self.name, self.n_type) == (other.name, other.n_type)
@@ -58,6 +61,8 @@ class Variable:
 
 
 class Constant(Variable):
+    NUMERIC_NTYPE = "NUM"
+
     def __init__(self, name: str, n_type: str):
         """
         A constant is a "free variable" in a formula.
@@ -67,9 +72,28 @@ class Constant(Variable):
         """
         super().__init__(name, n_type)
 
+    def is_numeric(self):
+        return self.n_type == Constant.NUMERIC_NTYPE
+
+
+class BoundVariable(Variable):
+    def __init__(self, name: str, n_type: str):
+        """
+        A variable bound by a quantifier.
+
+        :param name: The name of the variable.
+        :param n_type: The nonterminal type of the variable, e.g., "<var>".
+        """
+        super().__init__(name, n_type)
+
+    def __add__(self, other: Union[str, 'BoundVariable']) -> 'BindExpression':
+        assert type(other) == str or type(other) == BoundVariable
+        return BindExpression(self, other)
+
 
 class DerivationTree:
     """Derivation trees are immutable!"""
+    next_id: int = 0
 
     def __init__(self, value: Union[str, Variable],
                  children: Optional[List['DerivationTree']] = None,
@@ -80,7 +104,13 @@ class DerivationTree:
 
         self.value = value
         self.children = None if children is None else tuple(children)
-        self.id = id if id is not None else random.randint(0, sys.maxsize)
+
+        if id:
+            self.id = id
+        else:
+            self.id = DerivationTree.next_id
+            DerivationTree.next_id += 1
+
         self.__hash = None
         self.__structural_hash = None
 
@@ -337,13 +367,22 @@ class DerivationTree:
         return self.__structural_hash
 
     def structurally_equal(self, other: 'DerivationTree'):
-        return (isinstance(other, DerivationTree)
-                and self.value == other.value
-                and self.children is not None or other.children is None
-                and other.children is not None or self.children is None
-                and len(self.children) == len(other.children)
-                and all(self.children[idx].structurally_equal(other.children[idx])
-                        for idx in range(len(self.children))))
+        if not isinstance(other, DerivationTree):
+            return False
+
+        if (self.value != other.value
+                or (self.children is None and other.children is not None)
+                or (other.children is None and self.children is not None)):
+            return False
+
+        if self.children is None:
+            return True
+
+        if len(self.children) != len(other.children):
+            return False
+
+        return all(self.children[idx].structurally_equal(other.children[idx])
+                   for idx in range(len(self.children)))
 
     def __eq__(self, other):
         """
@@ -363,25 +402,13 @@ class DerivationTree:
             if isinstance(value, Variable):
                 return value.name
 
-            return value if show_open_leaves or not is_nonterminal(value) else ""
+            if children is not None:
+                return value if not is_nonterminal(value) else ""
+
+            return value if show_open_leaves else ""
 
     def __str__(self) -> str:
         return self.to_string(show_open_leaves=True)
-
-
-class BoundVariable(Variable):
-    def __init__(self, name: str, n_type: str):
-        """
-        A variable bound by a quantifier.
-
-        :param name: The name of the variable.
-        :param n_type: The nonterminal type of the variable, e.g., "<var>".
-        """
-        super().__init__(name, n_type)
-
-    def __add__(self, other: Union[str, 'BoundVariable']) -> 'BindExpression':
-        assert type(other) == str or type(other) == BoundVariable
-        return BindExpression(self, other)
 
 
 class BindExpression:
@@ -511,6 +538,9 @@ class FormulaVisitor:
     def visit_predicate_formula(self, formula: 'StructuralPredicateFormula'):
         pass
 
+    def visit_semantic_predicate_formula(self, formula: 'SemanticPredicateFormula'):
+        pass
+
     def visit_negated_formula(self, formula: 'NegatedFormula'):
         pass
 
@@ -547,6 +577,12 @@ class Formula:
         raise NotImplementedError()
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> 'Formula':
+        raise NotImplementedError()
+
+    def __hash__(self):
+        raise NotImplementedError()
+
+    def __eq__(self, other):
         raise NotImplementedError()
 
     def __and__(self, other):
@@ -633,11 +669,6 @@ class StructuralPredicate:
         return self.name
 
 
-BEFORE_PREDICATE = StructuralPredicate(
-    "before", 2, lambda inst_1, inst_2: is_before(inst_1, inst_2)
-)
-
-
 class StructuralPredicateFormula(Formula):
     def __init__(self, predicate: StructuralPredicate, *args: Union[Variable, DerivationTree]):
         assert len(args) == predicate.arity
@@ -700,7 +731,7 @@ class StructuralPredicateFormula(Formula):
         visitor.visit_predicate_formula(self)
 
     def __hash__(self):
-        return hash((self.predicate, tuple(self.args)))
+        return hash((type(self).__name__, self.predicate, tuple(self.args)))
 
     def __eq__(self, other):
         return type(self) is type(other) and (self.predicate, self.args) == (other.predicate, other.args)
@@ -714,6 +745,128 @@ class StructuralPredicateFormula(Formula):
 
     def __repr__(self):
         return f'PredicateFormula({repr(self.predicate), ", ".join(map(repr, self.args))})'
+
+
+class SemPredEvalResult:
+    def __init__(self, result: Optional[Union[bool, Dict[Union[Constant, DerivationTree], DerivationTree]]]):
+        self.result = result
+
+    def true(self):
+        return self.result is True
+
+    def false(self):
+        return self.result is False
+
+    def ready(self):
+        return self.result is not None
+
+    def __eq__(self, other):
+        return isinstance(other, SemPredEvalResult) and self.result == other.result
+
+    def __str__(self):
+        if self.ready():
+            if self.true() or self.false():
+                return str(self.result)
+            else:
+                return "{" + ", ".join([str(key) + ": " + str(value) for key, value in self.result.items()]) + "}"
+        else:
+            return "UNKNOWN"
+
+
+class SemanticPredicate:
+    def __init__(self, name: str, arity: int,
+                 eval_fun: Callable[[Optional[Grammar], ...], SemPredEvalResult]):
+        self.name = name
+        self.arity = arity
+        self.eval_fun = eval_fun
+
+    def evaluate(self, grammar: Optional[Grammar], *instantiations: Union[DerivationTree, Constant, str]):
+        return self.eval_fun(grammar, *instantiations)
+
+    def __eq__(self, other):
+        return type(other) is SemanticPredicate and (self.name, self.arity) == (other.name, other.arity)
+
+    def __hash__(self):
+        return hash((self.name, self.arity))
+
+    def __repr__(self):
+        return f"SemanticPredicate({self.name}, {self.arity})"
+
+    def __str__(self):
+        return self.name
+
+
+class SemanticPredicateFormula(Formula):
+    def __init__(self, predicate: SemanticPredicate, *args: Union[DerivationTree, Constant, str]):
+        assert len(args) == predicate.arity
+        self.predicate = predicate
+        self.args: List[Union[Variable, DerivationTree]] = list(args)
+
+    def evaluate(self, grammar: Optional[Grammar]) -> SemPredEvalResult:
+        return self.predicate.eval_fun(grammar, *self.args)
+
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        return SemanticPredicateFormula(self.predicate,
+                                        *[arg if arg not in subst_map
+                                          else subst_map[arg] for arg in self.args])
+
+    def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
+        new_args = []
+        for arg in self.args:
+            if isinstance(arg, str):
+                new_args.append(arg)
+                continue
+
+            if isinstance(arg, Variable):
+                if arg in subst_map:
+                    new_args.append(subst_map[arg])
+                else:
+                    new_args.append(arg)
+                continue
+
+            tree: DerivationTree = arg
+            if tree in subst_map:
+                new_args.append(subst_map[tree])
+                continue
+
+            new_args.append(tree.substitute({k: v for k, v in subst_map.items()}))
+
+        return SemanticPredicateFormula(self.predicate, *new_args)
+
+    def bound_variables(self) -> OrderedSet[BoundVariable]:
+        return OrderedSet([])
+
+    def free_variables(self) -> OrderedSet[Variable]:
+        result = OrderedSet([])
+        result.update([arg for arg in self.args if isinstance(arg, Variable)])
+        vars_in_concrete_args = [v for arg in self.args if isinstance(arg, DerivationTree)
+                                 for v in arg.tree_variables()]
+        result.update(vars_in_concrete_args)
+        return result
+
+    def tree_arguments(self) -> OrderedSet[DerivationTree]:
+        return OrderedSet([arg for arg in self.args if isinstance(arg, DerivationTree)])
+
+    def accept(self, visitor: FormulaVisitor):
+        visitor.visit_semantic_predicate_formula(self)
+
+    def __hash__(self):
+        return hash((type(self).__name__, self.predicate, tuple(self.args)))
+
+    def __eq__(self, other):
+        return (type(self) is type(other)
+                and self.predicate == other.predicate
+                and self.args == other.args)
+
+    def __str__(self):
+        arg_strings = []
+        for arg in self.args:
+            arg_strings.append(str(arg))
+
+        return f"{self.predicate}({', '.join(arg_strings)})"
+
+    def __repr__(self):
+        return f'SemanticPredicateFormula({repr(self.predicate), ", ".join(map(repr, self.args))})'
 
 
 class PropositionalCombinator(Formula):
@@ -736,7 +889,7 @@ class PropositionalCombinator(Formula):
         return f"{type(self).__name__}({', '.join(map(repr, self.args))})"
 
     def __hash__(self):
-        return hash((type(self), self.args))
+        return hash((type(self).__name__, self.args))
 
     def __eq__(self, other):
         return type(self) == type(other) and self.args == other.args
@@ -758,7 +911,7 @@ class NegatedFormula(PropositionalCombinator):
         return NegatedFormula(*[arg.substitute_expressions(subst_map) for arg in self.args])
 
     def __hash__(self):
-        return hash((type(self), self.args))
+        return hash((type(self).__name__, self.args))
 
     def __str__(self):
         return f"¬({self.args[0]})"
@@ -782,7 +935,7 @@ class ConjunctiveFormula(PropositionalCombinator):
             formula.accept(visitor)
 
     def __hash__(self):
-        return hash((type(self), self.args))
+        return hash((type(self).__name__, self.args))
 
     def __eq__(self, other):
         return split_conjunction(self) == split_conjunction(other)
@@ -809,7 +962,7 @@ class DisjunctiveFormula(PropositionalCombinator):
             formula.accept(visitor)
 
     def __hash__(self):
-        return hash((type(self), self.args))
+        return hash((type(self).__name__, self.args))
 
     def __eq__(self, other):
         return split_disjunction(self) == split_disjunction(other)
@@ -957,7 +1110,13 @@ class QuantifiedFormula(Formula):
                f'{repr(self.inner_formula)}{"" if self.bind_expression is None else ", " + repr(self.bind_expression)})'
 
     def __hash__(self):
-        return hash((type(self), self.bound_variable, self.in_variable, self.inner_formula, self.bind_expression))
+        return hash((
+            type(self).__name__,
+            self.bound_variable,
+            self.in_variable,
+            self.inner_formula,
+            self.bind_expression or 0
+        ))
 
     def __eq__(self, other):
         return type(self) == type(other) and \
@@ -1107,6 +1266,15 @@ class VariablesCollector(FormulaVisitor):
                 _, tree = arg
                 self.result.update(tree.tree_variables())
 
+    def visit_semantic_predicate_formula(self, formula: SemanticPredicateFormula):
+        for arg in formula.args:
+            if isinstance(arg, Variable):
+                self.result.add(arg)
+            elif isinstance(arg, DerivationTree):
+                self.result.update(arg.tree_variables())
+            else:
+                assert isinstance(arg, str)
+
     def visit_smt_formula(self, formula: SMTFormula):
         self.result.update(formula.free_variables())
 
@@ -1141,6 +1309,10 @@ class FilterVisitor(FormulaVisitor):
         if self.filter(formula):
             self.result.append(formula)
 
+    def visit_semantic_predicate_formula(self, formula: SemanticPredicateFormula):
+        if self.filter(formula):
+            self.result.append(formula)
+
     def visit_disjunctive_formula(self, formula: DisjunctiveFormula):
         if self.filter(formula):
             self.result.append(formula)
@@ -1160,10 +1332,8 @@ def well_formed(formula: Formula,
         in_expr_vars = OrderedSet([])
     if bound_by_smt is None:
         bound_by_smt = OrderedSet([])
-    t = type(formula)
 
-    if issubclass(t, QuantifiedFormula):
-        formula: QuantifiedFormula
+    if isinstance(formula, QuantifiedFormula):
         if formula.in_variable in bound_by_smt:
             return False
         if formula.bound_variables().intersection(bound_vars):
@@ -1179,17 +1349,15 @@ def well_formed(formula: Formula,
             in_expr_vars | OrderedSet([formula.in_variable]),
             bound_by_smt
         )
-    elif t is SMTFormula:
+    elif isinstance(formula, SMTFormula):
         if any(free_var in in_expr_vars for free_var in formula.free_variables()):
             return False
 
         return not any(free_var not in bound_vars
                        for free_var in formula.free_variables()
                        if type(free_var) is BoundVariable)
-    elif issubclass(t, PropositionalCombinator):
-        formula: PropositionalCombinator
-
-        if t is ConjunctiveFormula:
+    elif isinstance(formula, PropositionalCombinator):
+        if isinstance(formula, ConjunctiveFormula):
             smt_formulas = [f for f in formula.args if type(f) is SMTFormula]
             other_formulas = [f for f in formula.args if type(f) is not SMTFormula]
 
@@ -1204,7 +1372,7 @@ def well_formed(formula: Formula,
         else:
             return all(well_formed(subformula, bound_vars, in_expr_vars, bound_by_smt)
                        for subformula in formula.args)
-    elif t is StructuralPredicateFormula:
+    elif isinstance(formula, StructuralPredicateFormula) or isinstance(formula, SemanticPredicateFormula):
         return all(free_var in bound_vars
                    for free_var in formula.free_variables()
                    if type(free_var) is BoundVariable)
@@ -1217,10 +1385,7 @@ def evaluate(formula: Formula,
     assert well_formed(formula)
 
     def evaluate_(formula: Formula, assignments: Dict[Variable, Tuple[Path, DerivationTree]]) -> bool:
-        t = type(formula)
-
-        if t is SMTFormula:
-            formula: SMTFormula
+        if isinstance(formula, SMTFormula):
             instantiation = z3.substitute(
                 formula.formula,
                 *tuple({z3.String(symbol.name): z3.StringVal(str(symbol_assignment[1]))
@@ -1231,9 +1396,7 @@ def evaluate(formula: Formula,
             solver = z3.Solver()
             solver.add(instantiation)
             return solver.check() == z3.sat  # Set timeout?
-        elif issubclass(t, QuantifiedFormula):
-            formula: QuantifiedFormula
-
+        elif isinstance(formula, QuantifiedFormula):
             if isinstance(formula.in_variable, DerivationTree):
                 in_inst = formula.in_variable
             else:
@@ -1242,28 +1405,38 @@ def evaluate(formula: Formula,
 
             new_assignments = matches_for_quantified_formula(formula, in_inst, assignments)
 
-            if t is ForallFormula:
-                formula: ForallFormula
+            if isinstance(formula, ForallFormula):
                 return all(evaluate_(formula.inner_formula, new_assignment) for new_assignment in new_assignments)
-            elif t is ExistsFormula:
-                formula: ExistsFormula
+            elif isinstance(formula, ExistsFormula):
                 return any(evaluate_(formula.inner_formula, new_assignment) for new_assignment in new_assignments)
-        elif t is StructuralPredicateFormula:
-            formula: StructuralPredicateFormula
+        elif isinstance(formula, StructuralPredicateFormula):
             assert (not any(isinstance(arg, DerivationTree) for arg in formula.args)
                     or reference_tree is not None)
             arg_insts = [(reference_tree.find_node(arg), arg) if isinstance(arg, DerivationTree)
                          else assignments[arg]
                          for arg in formula.args]
             return formula.predicate.evaluate(*arg_insts)
-        elif t is NegatedFormula:
-            formula: NegatedFormula
+        elif isinstance(formula, SemanticPredicateFormula):
+            arg_insts = [arg if isinstance(arg, DerivationTree) or arg not in assignments
+                         else assignments[arg][1]
+                         for arg in formula.args]
+            eval_res = formula.predicate.evaluate(None, *arg_insts)
+
+            if eval_res.true():
+                return True
+            elif eval_res.false() or not eval_res.ready():
+                return False
+
+            assert isinstance(eval_res.result, dict)
+            assert all(isinstance(key, Constant) and key.is_numeric() for key in eval_res.result)
+
+            assignments.update({const: (tuple(), assgn) for const, assgn in eval_res.result.items()})
+            return True
+        elif isinstance(formula, NegatedFormula):
             return not evaluate_(formula.args[0], assignments)
-        elif t is ConjunctiveFormula:
-            formula: ConjunctiveFormula
+        elif isinstance(formula, ConjunctiveFormula):
             return all(evaluate_(sub_formula, assignments) for sub_formula in formula.args)
-        elif t is DisjunctiveFormula:
-            formula: DisjunctiveFormula
+        elif isinstance(formula, DisjunctiveFormula):
             return any(evaluate_(sub_formula, assignments) for sub_formula in formula.args)
         else:
             raise NotImplementedError()
@@ -1372,7 +1545,7 @@ def convert_to_nnf(formula: Formula, negate=False) -> Formula:
             return reduce(lambda a, b: a & b, args)
         else:
             return reduce(lambda a, b: a | b, args)
-    elif isinstance(formula, StructuralPredicateFormula):
+    elif isinstance(formula, StructuralPredicateFormula) or isinstance(formula, SemanticPredicateFormula):
         if negate:
             return NegatedFormula(formula)
         else:
@@ -1410,7 +1583,8 @@ def convert_to_dnf(formula: Formula) -> Formula:
         disjuncts_list = [split_disjunction(convert_to_dnf(arg)) for arg in formula.args]
         return reduce(
             lambda a, b: a | b,
-            [left & right for left, right in itertools.product(*disjuncts_list)],
+            [reduce(lambda a, b: a & b, OrderedSet(split_conjunction(left & right)), SMTFormula(z3.BoolVal(True)))
+             for left, right in itertools.product(*disjuncts_list)],
             SMTFormula(z3.BoolVal(False))
         )
     elif isinstance(formula, DisjunctiveFormula):
@@ -1527,6 +1701,9 @@ class VariableManager:
 
     def const(self, name: str, n_type: Optional[str] = None) -> Constant:
         return cast(Constant, self.__var(name, n_type, Constant))
+
+    def num_const(self, name: str) -> Constant:
+        return cast(Constant, self.__var(name, Constant.NUMERIC_NTYPE, Constant))
 
     def bv(self, name: str, n_type: Optional[str] = None) -> BoundVariable:
         return cast(BoundVariable, self.__var(name, n_type, BoundVariable))
