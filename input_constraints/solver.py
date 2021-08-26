@@ -95,8 +95,22 @@ class ISLaSolver:
                  formula: isla.Formula,
                  max_number_free_instantiations: int = 10,
                  max_number_smt_instantiations: int = 10,
-                 expand_after_existential_elimination: bool = False
+                 expand_after_existential_elimination: bool = False,
+                 enforce_unique_trees_in_queue: bool = True,
                  ):
+        """
+        :param grammar: The underlying grammar.
+        :param formula: The formula to solve.
+        :param max_number_free_instantiations: Number of times that nonterminals that are not bound by any formula
+        should be expanded by a coverage-based fuzzer.
+        :param max_number_smt_instantiations: Number of solutions of SMT formulas that should be produced.
+        :param expand_after_existential_elimination: Trees are expanded after an existential quantifier elimination
+        iff this paramter is set to true. If false, only a finite (potentially small) set of inputs is generated for
+        existential constraints.
+        :param enforce_unique_trees_in_queue: If true, only one state in the queue containing a tree with the same
+        structure can be present at a time. Should be set to false especially if there are top-level SMT formulas
+        about numeric constants. TODO: This parameter is awkward, maybe we can find a different solution.
+        """
         self.logger = logging.getLogger(type(self).__name__)
 
         self.grammar = grammar
@@ -114,21 +128,23 @@ class ISLaSolver:
         self.max_number_free_instantiations: int = max_number_free_instantiations
         self.max_number_smt_instantiations: int = max_number_smt_instantiations
         self.expand_after_existential_elimination = expand_after_existential_elimination
+        self.enforce_unique_trees_in_queue = enforce_unique_trees_in_queue
 
         # Initialize Queue
         initial_tree = DerivationTree(self.top_constant.n_type, None)
         initial_formula = self.formula.substitute_expressions({self.top_constant: initial_tree})
+        initial_state = self.establish_invariant(SolutionState(initial_formula, initial_tree))
 
         self.queue: List[Tuple[float, SolutionState]] = []
-        # self.tree_hashes_in_queue: Set[int] = {initial_tree.structural_hash()}
-        heapq.heappush(self.queue, (0, self.establish_invariant(SolutionState(initial_formula, initial_tree))))
+        self.tree_hashes_in_queue: Set[int] = {initial_tree.structural_hash()}
+        heapq.heappush(self.queue, (0, initial_state))
 
     def solve(self) -> Generator[DerivationTree, None, None]:
         while self.queue:
             cost: int
             state: SolutionState
             cost, state = heapq.heappop(self.queue)
-            # self.tree_hashes_in_queue.remove(state.tree.structural_hash())
+            self.tree_hashes_in_queue.discard(state.tree.structural_hash())
             self.logger.debug(f"Polling new state %s (hash %d)", state, hash(state))
             self.logger.debug(f"Queue length: %s", len(self.queue))
 
@@ -527,22 +543,20 @@ class ISLaSolver:
                    for predicate_formula in get_conjuncts(state.constraint)
                    if isinstance(predicate_formula, isla.StructuralPredicateFormula))
 
-        # The below optimization had to be removed, since we can have significantly different formulas
-        # with the same trees; e.g., if we instantiate a numerical constant multiple times.
-        #
-        # if state.tree.structural_hash() in self.tree_hashes_in_queue:
-        #     # Some structures can arise as well from tree insertion (existential quantifier elimination)
-        #     # and expansion; also, tree insertion can yield different trees that have intersecting
-        #     # expansions. We drop those to output more diverse solutions (numbers for SMT solutions
-        #     # and free nonterminals are configurable, so you get more outputs by playing with those!).
-        #     return False
+        if self.enforce_unique_trees_in_queue and state.tree.structural_hash() in self.tree_hashes_in_queue:
+            # Some structures can arise as well from tree insertion (existential quantifier elimination)
+            # and expansion; also, tree insertion can yield different trees that have intersecting
+            # expansions. We drop those to output more diverse solutions (numbers for SMT solutions
+            # and free nonterminals are configurable, so you get more outputs by playing with those!).
+            self.logger.debug("Discarding state %s, tree already in queue", str(state))
+            return False
 
         if state.constraint == sc.false():
             self.logger.debug("Discarding state %s", state)
             return False
 
         heapq.heappush(self.queue, (self.compute_cost(state, cost_reduction or 1.0), state))
-        # self.tree_hashes_in_queue.add(state.tree.structural_hash())
+        self.tree_hashes_in_queue.add(state.tree.structural_hash())
 
         self.logger.debug(f"Pushing new state %s (hash %d)", state, hash(state))
         self.logger.debug(f"Queue length: %d", len(self.queue))

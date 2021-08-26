@@ -367,14 +367,22 @@ class DerivationTree:
         return self.__structural_hash
 
     def structurally_equal(self, other: 'DerivationTree'):
-        return (isinstance(other, DerivationTree)
-                and self.value == other.value
-                and (self.children is not None or other.children is None)
-                and (other.children is not None or self.children is None)
-                and (self.children is None or
-                     len(self.children) == len(other.children)
-                     and all(self.children[idx].structurally_equal(other.children[idx])
-                             for idx in range(len(self.children)))))
+        if not isinstance(other, DerivationTree):
+            return False
+
+        if (self.value != other.value
+                or (self.children is None and other.children is not None)
+                or (other.children is None and self.children is not None)):
+            return False
+
+        if self.children is None:
+            return True
+
+        if len(self.children) != len(other.children):
+            return False
+
+        return all(self.children[idx].structurally_equal(other.children[idx])
+                   for idx in range(len(self.children)))
 
     def __eq__(self, other):
         """

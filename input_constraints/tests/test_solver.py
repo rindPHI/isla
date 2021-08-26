@@ -48,7 +48,9 @@ class TestSolver(unittest.TestCase):
         # TODO: Try to create infinite solution stream
         self.execute_generation_test(
             formula, start, num_solutions=17,
-            max_number_free_instantiations=1, expand_after_existential_elimination=True)
+            max_number_free_instantiations=1,
+            expand_after_existential_elimination=True
+        )
 
     def test_simple_existential_formula_with_bind(self):
         start = isla.Constant("$start", "<start>")
@@ -122,7 +124,8 @@ class TestSolver(unittest.TestCase):
         self.execute_generation_test(formula, mgr.const("$start"),
                                      grammar=SIMPLE_CSV_GRAMMAR,
                                      max_number_free_instantiations=1,
-                                     max_number_smt_instantiations=2)
+                                     max_number_smt_instantiations=2,
+                                     enforce_unique_trees_in_queue=False)
 
     def test_csv_rows_equal_length(self):
         mgr = isla.VariableManager()
@@ -140,7 +143,10 @@ class TestSolver(unittest.TestCase):
         )
 
         self.execute_generation_test(formula, mgr.const("$start"),
-                                     grammar=CSV_GRAMMAR, max_number_free_instantiations=10)
+                                     grammar=CSV_GRAMMAR,
+                                     max_number_free_instantiations=1,
+                                     max_number_smt_instantiations=2,
+                                     enforce_unique_trees_in_queue=False)
 
     def execute_generation_test(self,
                                 formula: isla.Formula,
@@ -150,14 +156,16 @@ class TestSolver(unittest.TestCase):
                                 print_solutions=False,
                                 max_number_free_instantiations=1,
                                 max_number_smt_instantiations=1,
-                                expand_after_existential_elimination=False
+                                expand_after_existential_elimination=False,
+                                enforce_unique_trees_in_queue=True
                                 ):
         solver = ISLaSolver(
             grammar=grammar,
             formula=formula,
             max_number_free_instantiations=max_number_free_instantiations,
             max_number_smt_instantiations=max_number_smt_instantiations,
-            expand_after_existential_elimination=expand_after_existential_elimination
+            expand_after_existential_elimination=expand_after_existential_elimination,
+            enforce_unique_trees_in_queue=enforce_unique_trees_in_queue,
         )
 
         it = solver.solve()
