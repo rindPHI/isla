@@ -1071,7 +1071,9 @@ class SMTFormula(Formula):
             return f"({self.formula}, {subst_string})"
 
     def __eq__(self, other):
-        return type(self) == type(other) and z3.is_true(z3.simplify(self.formula == other.formula))
+        return (type(self) == type(other)
+                and z3.is_true(z3.simplify(self.formula == other.formula))
+                and self.substitutions == other.substitutions)
 
     def __hash__(self):
         return hash((self.formula, tuple(self.substitutions.items())))
