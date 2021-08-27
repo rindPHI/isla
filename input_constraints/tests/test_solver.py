@@ -84,7 +84,7 @@ class TestSolver(unittest.TestCase):
                 assgn, start,
                 sc.smt_for(cast(z3.BoolRef, var_2.to_smt() == z3.StringVal("y")), var_2))
 
-        self.execute_generation_test(formula, start, num_solutions=15)
+        self.execute_generation_test(formula, start)
 
     def test_declared_before_used(self):
         mgr = isla.VariableManager()
