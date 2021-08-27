@@ -716,7 +716,7 @@ class ISLaSolver:
 
     @lru_cache()
     def extract_regular_expression(self, nonterminal: str) -> z3.ReRef:
-        regex_conv = RegexConverter(self.grammar)
+        regex_conv = RegexConverter(self.grammar, compress_unions=True)
         return regex_conv.to_regex(nonterminal)
 
     def parse(self, nonterminal: str, input: str) -> DerivationTree:

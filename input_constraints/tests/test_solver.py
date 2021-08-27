@@ -156,7 +156,7 @@ class TestSolver(unittest.TestCase):
             isla.Constant("$start", "<start>"),
             grammar=rest.REST_GRAMMAR,
             max_number_free_instantiations=1,
-            max_number_smt_instantiations=2,
+            max_number_smt_instantiations=5,
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False)
 

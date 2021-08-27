@@ -7,7 +7,7 @@ from fuzzingbook.Grammars import srange
 
 from input_constraints.isla import VariableManager
 
-from input_constraints import isla_shortcuts as sc
+from input_constraints import isla_shortcuts as sc, isla
 from input_constraints.solver import ISLaSolver
 
 REST_GRAMMAR = {
@@ -24,17 +24,32 @@ REST_GRAMMAR = {
     "<dashes>": ["-", "-<dashes>"],
 }
 
+start = isla.Constant("$start", "<start>")
+
 mgr = VariableManager()
 length_underline = mgr.create(
-    mgr.smt(z3.StrToInt(mgr.num_const("$length").to_smt()) > z3.IntVal(1)) &
-    mgr.smt(z3.StrToInt(mgr.num_const("$length").to_smt()) < z3.IntVal(10)) &
+    mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$length").to_smt()) > z3.IntVal(1))) &
+    mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$length").to_smt()) < z3.IntVal(10))) &
     sc.forall_bind(
         mgr.bv("$titletxt", "<nobr-string>") + "\n" + mgr.bv("$underline", "<underline>"),
         mgr.bv("$title", "<section-title>"),
-        mgr.const("$start", "<start>"),
-        mgr.smt(cast(z3.BoolRef, z3.Length(mgr.bv("$titletxt").to_smt()) == z3.StrToInt(mgr.num_const("$length").to_smt()))) &
-        mgr.smt(cast(z3.BoolRef, z3.Length(mgr.bv("$underline").to_smt()) >= z3.StrToInt(mgr.num_const("$length").to_smt())))
+        start,
+        mgr.smt(cast(z3.BoolRef, z3.Length(mgr.bv("$titletxt").to_smt()) ==
+                     z3.StrToInt(mgr.num_const("$length").to_smt()))) &
+        mgr.smt(cast(z3.BoolRef, z3.Length(mgr.bv("$underline").to_smt()) >=
+                     z3.StrToInt(mgr.num_const("$length").to_smt())))
     )
 )
+
+# Below encoding is less efficient to solve for z3
+#
+# length_underline = mgr.create(
+#     sc.forall_bind(
+#         mgr.bv("$titletxt", "<nobr-string>") + "\n" + mgr.bv("$underline", "<underline>"),
+#         mgr.bv("$title", "<section-title>"),
+#         mgr.const("$start", "<start>"),
+#         mgr.smt(cast(z3.BoolRef, z3.Length(mgr.bv("$titletxt").to_smt()) <= z3.Length(mgr.bv("$underline").to_smt())))
+#     )
+# )
 
 rest_constraints = length_underline
