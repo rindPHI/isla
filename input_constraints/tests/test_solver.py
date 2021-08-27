@@ -3,10 +3,12 @@ import unittest
 from typing import cast
 
 import z3
+from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 from input_constraints.solver import ISLaSolver
+from input_constraints.tests import rest
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR
 
 
@@ -147,6 +149,16 @@ class TestSolver(unittest.TestCase):
                                      max_number_free_instantiations=1,
                                      max_number_smt_instantiations=2,
                                      enforce_unique_trees_in_queue=False)
+
+    def test_rest_titles(self):
+        self.execute_generation_test(
+            rest.length_underline,
+            isla.Constant("$start", "<start>"),
+            grammar=rest.REST_GRAMMAR,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=2,
+            expand_after_existential_elimination=False,
+            enforce_unique_trees_in_queue=False)
 
     def execute_generation_test(self,
                                 formula: isla.Formula,

@@ -8,6 +8,10 @@ from grammar_graph.gg import GrammarGraph
 from input_constraints.type_defs import Path, Grammar, ParseTree
 
 
+def replace_line_breaks(inp: str) -> str:
+    return inp.replace("\n", "\\n")
+
+
 def path_iterator(tree: ParseTree, path: Path = ()) -> Generator[Tuple[Path, ParseTree], None, None]:
     yield path, tree
     if tree[1] is not None:
