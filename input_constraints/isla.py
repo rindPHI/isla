@@ -13,7 +13,8 @@ from fuzzingbook.Parser import EarleyParser
 from grammar_graph.gg import GrammarGraph
 from orderedset import OrderedSet
 
-from input_constraints.helpers import get_symbols, z3_subst, path_iterator, replace_tree_path, is_valid
+from input_constraints.helpers import get_symbols, z3_subst, path_iterator, replace_tree_path, is_valid, \
+    replace_line_breaks
 from input_constraints.type_defs import ParseTree, Path, Grammar
 
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
@@ -525,7 +526,7 @@ class BindExpression:
         return f'BindExpression({", ".join(map(repr, self.bound_elements))})'
 
     def __str__(self):
-        return ' '.join(map(lambda e: f'"{e}"' if type(e) is str else str(e), self.bound_elements))
+        return ' '.join(map(lambda e: f'{repr(e)}' if type(e) is str else str(e), self.bound_elements))
 
     def __hash__(self):
         return hash(tuple(self.bound_elements))
@@ -1183,9 +1184,9 @@ class ForallFormula(QuantifiedFormula):
         self.inner_formula.accept(visitor)
 
     def __str__(self):
-        quote = "'"
+        quote = '"'
         return f'∀ {"" if not self.bind_expression else quote + str(self.bind_expression) + quote + " = "}' \
-               f'{str(self.bound_variable)} ∈ {str(self.in_variable)}: ({str(self.inner_formula)})'
+               f'{str(self.bound_variable)} ∈ {replace_line_breaks(str(self.in_variable))}: ({str(self.inner_formula)})'
 
 
 class ExistsFormula(QuantifiedFormula):
@@ -1231,7 +1232,7 @@ class ExistsFormula(QuantifiedFormula):
     def __str__(self):
         quote = "'"
         return f'∃ {"" if not self.bind_expression else quote + str(self.bind_expression) + quote + " = "}' \
-               f'{str(self.bound_variable)} ∈ {str(self.in_variable)}: ({str(self.inner_formula)})'
+               f'{str(self.bound_variable)} ∈ {replace_line_breaks(str(self.in_variable))}: ({str(self.inner_formula)})'
 
 
 class VariablesCollector(FormulaVisitor):

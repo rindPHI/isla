@@ -15,7 +15,8 @@ from orderedset import OrderedSet
 import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
-from input_constraints.helpers import visit_z3_expr, delete_unreachable, dict_of_lists_to_list_of_dicts
+from input_constraints.helpers import visit_z3_expr, delete_unreachable, dict_of_lists_to_list_of_dicts, \
+    replace_line_breaks
 from input_constraints.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
     convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables
 from input_constraints.type_defs import Grammar, Path
@@ -86,7 +87,7 @@ class SolutionState:
         return f"SolutionState({repr(self.constraint)}, {repr(self.tree)})"
 
     def __str__(self):
-        return f"{{{self.constraint}, {self.tree}}}"
+        return f"{{{self.constraint}, {replace_line_breaks(str(self.tree))}}}"
 
 
 class ISLaSolver:
@@ -207,7 +208,7 @@ class ISLaSolver:
         if not semantic_formulas:
             return None
 
-        self.logger.debug("Eliminating semantic formulas %s", str(list(map(str, semantic_formulas))))
+        self.logger.debug("Eliminating semantic formulas [%s]", ", ".join(map(str, semantic_formulas)))
 
         prefix_conjunction = reduce(lambda a, b: a & b, semantic_formulas, sc.true())
         new_disjunct = (
@@ -278,9 +279,11 @@ class ISLaSolver:
         if not universal_formulas:
             return None
 
-        self.logger.debug("Matching universal formulas %s", str(list(map(str, universal_formulas))))
+        result = self.match_universal_formulas(universal_formulas, state)
+        if result:
+            self.logger.debug("Matched universal formulas [%s]", ", ".join(map(str, universal_formulas)))
 
-        return self.match_universal_formulas(universal_formulas, state) or None
+        return result or None
 
     def expand_tree(self, state: SolutionState) -> List[SolutionState]:
         """
