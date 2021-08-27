@@ -161,6 +161,13 @@ class ISLaSolver:
             if state.constraint == sc.false():
                 continue
 
+            # Match all universal formulas
+            result_states = self.match_all_universal_formulas(state)
+            if result_states is not None:
+                yield from [result for new_state in result_states
+                            for result in self.process_new_state(new_state)]
+                continue
+
             # Eliminate all semantic formulas
             result_states = self.eliminate_all_semantic_formulas(state)
             if result_states is not None:
@@ -182,13 +189,6 @@ class ISLaSolver:
                 if (not self.expand_after_existential_elimination
                         or any(result_state.constraint == sc.true() for result_state in result_states)):
                     continue
-
-            # Match all universal formulas
-            result_states = self.match_all_universal_formulas(state)
-            if result_states is not None:
-                yield from [result for new_state in result_states
-                            for result in self.process_new_state(new_state)]
-                continue
 
             for new_state in self.postprocess_new_state(state):
                 if new_state.complete() and new_state.formula_satisfied():
@@ -332,24 +332,24 @@ class ISLaSolver:
 
         for universal_formula in universal_formulas:
             matches: List[Dict[isla.Variable, Tuple[Path, DerivationTree]]] = \
-                isla.matches_for_quantified_formula(universal_formula)
+                [match for match in isla.matches_for_quantified_formula(universal_formula)
+                 if not universal_formula.is_already_matched(match[universal_formula.bound_variable][1])]
+
+            universal_formula_with_matches = universal_formula.add_already_matched({
+                match_tree
+                for match in matches
+                for _, match_tree in match.values()
+            })
 
             for match in matches:
-                bound_var_match_tree = match[universal_formula.bound_variable][1]
-
-                if universal_formula.is_already_matched(bound_var_match_tree):
-                    continue
-
                 matched = True
 
-                inst_formula = universal_formula.inner_formula.substitute_expressions({
+                inst_formula = universal_formula_with_matches.inner_formula.substitute_expressions({
                     variable: match_tree for variable, (_, match_tree) in match.items()
                 })
 
                 context_formula = inst_formula & isla.replace_formula(
-                    context_formula,
-                    universal_formula,
-                    universal_formula.add_already_matched({match_tree for _, match_tree in match.values()})
+                    context_formula, universal_formula, universal_formula_with_matches
                 )
 
         if matched:

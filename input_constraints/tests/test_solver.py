@@ -3,7 +3,6 @@ import unittest
 from typing import cast
 
 import z3
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
@@ -26,7 +25,7 @@ class TestSolver(unittest.TestCase):
             var1, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        self.execute_generation_test(formula, start, max_number_free_instantiations=2)
+        self.execute_generation_test(formula, start, max_number_free_instantiations=1)
 
     def test_simple_universal_formula_with_bind(self):
         mgr = isla.VariableManager()
