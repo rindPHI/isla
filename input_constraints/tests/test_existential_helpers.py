@@ -8,6 +8,7 @@ from input_constraints.existential_helpers import insert_tree
 from input_constraints.isla import DerivationTree
 from input_constraints.tests.test_data import *
 from input_constraints.tests.test_helpers import parse
+from input_constraints.tests.tinyc import TINYC_GRAMMAR
 
 
 class TestExistentialHelpers(unittest.TestCase):
@@ -87,9 +88,41 @@ class TestExistentialHelpers(unittest.TestCase):
             list(map(str, results))
         )
 
+    def test_insert_tinyc_assignment(self):
+        tree = DerivationTree.from_parse_tree(('<start>', [
+            ('<mwss>', None),
+            ('<statements>', [
+                ('<statement>', [
+                    ('<mwss>', None),
+                    ('<expr>', [('<test>', [('<sum>', [('<term>', [('<id>', None)])])])]),
+                    ('<mwss>', None),
+                    (';', [])]),
+                ('<statement>', [
+                    ('<mwss>', None),
+                    ('<expr>', [
+                        ('<id>', None), ('<mwss>', None), ('=', []), ('<mwss>', None),
+                        ('<expr>', [
+                            ('<id>', None), ('<mwss>', None), ('=', []), ('<mwss>', None),
+                            ('<expr>', [
+                                ('<id>', None), ('<mwss>', None), ('=', []), ('<mwss>', None),
+                                ('<expr>', [
+                                    ('<id>', None), ('<mwss>', None), ('=', []), ('<mwss>', None),
+                                    ('<expr>', None)])])])]),
+                    ('<mwss>', None),
+                    (';', [])])]),
+            ('<mwss>', None)]))
+
+        to_insert = DerivationTree.from_parse_tree(
+            ('<expr>', [('<id>', None), ('<mwss>', None), ('=', []), ('<mwss>', None), ('<expr>', None)]))
+
+        results = insert_tree(canonical(TINYC_GRAMMAR), to_insert, DerivationTree.from_parse_tree(tree))
+
+        for result in results:
+            self.assertTrue(result.find_node(to_insert))
+
     # Test deactivated: Should assert that no prefix trees are generated. The implemented
     # check in insert_tree, however, was too expensive for the JSON examples. Stalling for now.
-    #def test_insert_var(self):
+    # def test_insert_var(self):
     #    tree = ('<start>', [('<stmt>', [('<assgn>', None), ('<stmt>', None)])])
     #
     #    results = insert_tree(canonical(LANG_GRAMMAR),
