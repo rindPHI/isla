@@ -34,7 +34,7 @@ TINYC_GRAMMAR = {
 
 mgr = isla.VariableManager()
 TINYC_DEF_BEFORE_USE_CONSTRAINT = mgr.create(sc.forall(
-    mgr.bv("$test", "<expr>"),
+    mgr.bv("$test", "<test>"),
     mgr.const("$start", "<start>"),
     sc.forall(
         mgr.bv("$id_1", "<id>"),

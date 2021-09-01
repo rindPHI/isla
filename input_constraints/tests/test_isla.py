@@ -272,7 +272,7 @@ class TestEvaluation(unittest.TestCase):
 
         bind_expr: BindExpression = lhs + " := " + rhs
         tree, bindings = bind_expr.to_tree_prefix(assgn.n_type, LANG_GRAMMAR)
-        self.assertEqual("$lhs := $rhs", str(tree))
+        self.assertEqual("<var> := <rhs>", str(tree))
         self.assertEqual((0,), bindings[lhs])
         self.assertEqual((2,), bindings[rhs])
 
@@ -283,7 +283,7 @@ class TestEvaluation(unittest.TestCase):
 
         bind_expr: BindExpression = lhs + " := " + rhs + semicolon + lhs_2 + " := " + rhs_2
         tree, bindings = bind_expr.to_tree_prefix(prog.n_type, LANG_GRAMMAR)
-        self.assertEqual("$lhs := $rhs$semi$lhs_2  := $rhs_2", str(tree))
+        self.assertEqual("<var> := <rhs> ; <var> := <rhs>", str(tree))
 
         self.assertEqual((1,), bindings[semicolon])
         self.assertEqual((0, 0), bindings[lhs])

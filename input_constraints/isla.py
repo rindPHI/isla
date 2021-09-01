@@ -452,12 +452,11 @@ class BindExpression:
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([var for var in self.bound_elements if type(var) is BoundVariable])
 
-    def to_tree_prefix(self, in_nonterminal: str, grammar: Grammar, to_abstract_tree: bool = True) -> \
+    def to_tree_prefix(self, in_nonterminal: str, grammar: Grammar) -> \
             Tuple[DerivationTree, Dict[BoundVariable, Path]]:
         fuzzer = GrammarFuzzer(grammar)
 
         placeholder_map: Dict[Union[str, BoundVariable], str] = {}
-        tree_placeholder_map: Dict[Union[str, BoundVariable], ParseTree] = {}
 
         for bound_element in self.bound_elements:
             if isinstance(bound_element, str):
@@ -465,20 +464,8 @@ class BindExpression:
             elif not is_nonterminal(bound_element.n_type):
                 placeholder_map[bound_element] = bound_element.n_type
             else:
-                ph_candidate = None
-                while ph_candidate is None or ph_candidate in tree_placeholder_map.values():
-                    ph_candidate = fuzzer.expand_tree((bound_element.n_type, None))
-
-                # The fuzzer produces trees like ("<mwss>", [('', [])]), which the parser parses
-                # to ("<mwss>", []). This unparses to the same string, but fails the comparison below.
-                # Thus, we need to clean up the produced tree.
-                #
-                # TODO: Maybe can clean this up significantly, esp. since the to_abstract_tree functionality
-                #       is no longer needed. Maybe only consider unparsed strings, and treat nonterminals
-                #       and terminals uniformly?
-
+                ph_candidate = fuzzer.expand_tree((bound_element.n_type, None))
                 placeholder_map[bound_element] = tree_to_string(ph_candidate)
-                tree_placeholder_map[bound_element] = ph_candidate
 
         inp = "".join(list(map(lambda elem: placeholder_map[elem], self.bound_elements)))
 
@@ -499,18 +486,15 @@ class BindExpression:
                 continue
 
             if is_nonterminal(bound_elements[0].n_type):
-                if subtree == tree_placeholder_map[bound_elements[0]]:
+                if tree_to_string(subtree) == placeholder_map[bound_elements[0]]:
                     positions[bound_elements[0]] = path
-                    tree = replace_tree_path(tree, path, (bound_elements[0] if to_abstract_tree
-                                                          else bound_elements[0].n_type,
-                                                          None))
+                    tree = replace_tree_path(tree, path, (bound_elements[0].n_type, None))
                     bound_elements = bound_elements[1:]
                 continue
 
             if tree_to_string(subtree) == bound_elements[0].n_type:
                 positions[bound_elements[0]] = path
-                tree = replace_tree_path(tree, path, ((bound_elements[0], None) if to_abstract_tree
-                                                      else (bound_elements[0].n_type, [])))
+                tree = replace_tree_path(tree, path, (bound_elements[0].n_type, []))
                 bound_elements = bound_elements[1:]
 
         assert not bound_elements

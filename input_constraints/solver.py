@@ -381,7 +381,7 @@ class ISLaSolver:
         bind_expr_paths: Dict[isla.BoundVariable, Path] = {}
         if existential_formula.bind_expression is not None:
             tree_prefix, bind_expr_paths = existential_formula.bind_expression.to_tree_prefix(
-                existential_formula.bound_variable.n_type, self.grammar, to_abstract_tree=False)
+                existential_formula.bound_variable.n_type, self.grammar)
             inserted_tree = tree_prefix
         else:
             inserted_tree = DerivationTree(existential_formula.bound_variable.n_type, None)
@@ -700,7 +700,7 @@ class ISLaSolver:
         if (qfd_formula.bind_expression is not None
                 and node.value in [var.n_type for var in qfd_formula.bind_expression.bound_variables()]):
             prefix_tree, _ = qfd_formula.bind_expression.to_tree_prefix(
-                qfd_formula.bound_variable.n_type, self.grammar, to_abstract_tree=False)
+                qfd_formula.bound_variable.n_type, self.grammar)
 
             for idx in reversed(range(len(path_to_nonterminal))):
                 subtree = state.tree.get_subtree(path_to_nonterminal[:idx])

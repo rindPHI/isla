@@ -3,14 +3,12 @@ import unittest
 from typing import cast
 
 import z3
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 from input_constraints.solver import ISLaSolver
 from input_constraints.tests import rest, tinyc
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR
-from input_constraints.tests.tinyc import TINYC_GRAMMAR
 
 
 class TestSolver(unittest.TestCase):
@@ -131,6 +129,7 @@ class TestSolver(unittest.TestCase):
                                      enforce_unique_trees_in_queue=False)
 
     def test_csv_rows_equal_length(self):
+        # TODO: Quite slow. Is it "only" the SMT solver?
         mgr = isla.VariableManager()
         formula = mgr.create(
             mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$num").to_smt()) >= z3.IntVal(3))) &
@@ -147,6 +146,7 @@ class TestSolver(unittest.TestCase):
 
         self.execute_generation_test(formula, mgr.const("$start"),
                                      grammar=CSV_GRAMMAR,
+                                     num_solutions=20,
                                      max_number_free_instantiations=1,
                                      max_number_smt_instantiations=2,
                                      enforce_unique_trees_in_queue=False)
@@ -170,11 +170,6 @@ class TestSolver(unittest.TestCase):
             max_number_smt_instantiations=1,
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False)
-
-    def test_tinyc(self):
-        fuzzer = GrammarCoverageFuzzer(TINYC_GRAMMAR)
-        for _ in range(1000):
-            logging.getLogger(type(self).__name__).info("\n%s\n", fuzzer.fuzz())
 
     def execute_generation_test(self,
                                 formula: isla.Formula,
