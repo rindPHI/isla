@@ -580,6 +580,7 @@ class ISLaSolver:
     def postprocess_new_state(self, new_state: SolutionState) -> List[SolutionState]:
         new_state = self.establish_invariant(new_state)
         new_state = self.remove_nonmatching_universal_quantifiers(new_state)
+        new_state = self.remove_infeasible_universal_quantifiers(new_state)
 
         open_concrete_leaves = list(new_state.tree.open_concrete_leaves())
         if (not any(isinstance(conjunct, isla.ExistsFormula) for conjunct in get_conjuncts(new_state.constraint))
@@ -628,16 +629,32 @@ class ISLaSolver:
         return result
 
     def remove_nonmatching_universal_quantifiers(self, state: SolutionState) -> SolutionState:
-        conjuncts = get_conjuncts(state.constraint)
-        if any(isinstance(conjunct, isla.ExistsFormula) for conjunct in conjuncts):
-            return state
-
         result = state
-        for universal_formula in [conjunct for conjunct in conjuncts if isinstance(conjunct, isla.ForallFormula)]:
+        for universal_formula in [conjunct for conjunct in get_conjuncts(state.constraint)
+                                  if isinstance(conjunct, isla.ForallFormula)]:
             if (universal_formula.in_variable.is_complete()
                     and not isla.matches_for_quantified_formula(universal_formula)):
                 result = SolutionState(
                     isla.replace_formula(result.constraint, universal_formula, sc.true()), result.tree)
+
+        return result
+
+    def remove_infeasible_universal_quantifiers(self, state: SolutionState) -> SolutionState:
+        result = state
+        for universal_formula in [conjunct for conjunct in get_conjuncts(state.constraint)
+                                  if isinstance(conjunct, isla.ForallFormula)]:
+            matching_nodes = universal_formula.in_variable.filter(
+                lambda sub: sub.value == universal_formula.bound_variable.n_type)
+
+            if any(tree.id not in universal_formula.already_matched for _, tree in matching_nodes):
+                continue
+
+            if any(self.reachable(leaf.value, universal_formula.bound_variable.n_type)
+                   for _, leaf in universal_formula.in_variable.open_leaves()):
+                continue
+
+            result = SolutionState(
+                isla.replace_formula(result.constraint, universal_formula, sc.true()), result.tree)
 
         return result
 
