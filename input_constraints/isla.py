@@ -537,7 +537,7 @@ class BindExpression:
                 else:
                     return find(path + (0,), elems)
 
-        success = find(tuple(), [elem for elem in self.bound_elements if type(elem) is BoundVariable])
+        success = find(tuple(), [elem for elem in self.bound_elements if isinstance(elem, BoundVariable)])
         return result if success else None
 
     def __repr__(self):
