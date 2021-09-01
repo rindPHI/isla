@@ -2,9 +2,10 @@ import unittest
 
 from fuzzingbook.Grammars import JSON_GRAMMAR
 from fuzzingbook.Parser import canonical
+from grammar_graph.gg import GrammarGraph
 
 from input_constraints import isla
-from input_constraints.existential_helpers import insert_tree
+from input_constraints.existential_helpers import insert_tree, wrap_in_tree_starting_in
 from input_constraints.isla import DerivationTree
 from input_constraints.tests.test_data import *
 from input_constraints.tests.test_helpers import parse
@@ -114,6 +115,12 @@ class TestExistentialHelpers(unittest.TestCase):
 
         to_insert = DerivationTree.from_parse_tree(
             ('<expr>', [('<id>', None), ('<mwss>', None), ('=', []), ('<mwss>', None), ('<expr>', None)]))
+
+        wrapped = wrap_in_tree_starting_in(
+            "<expr>", to_insert, canonical(TINYC_GRAMMAR), GrammarGraph.from_grammar(TINYC_GRAMMAR))
+
+        self.assertTrue(wrapped.find_node(to_insert),
+                        f"{to_insert} not found in result of wrapping in '<expr>': {wrapped}")
 
         results = insert_tree(canonical(TINYC_GRAMMAR), to_insert, DerivationTree.from_parse_tree(tree))
 
