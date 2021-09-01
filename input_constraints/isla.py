@@ -476,7 +476,10 @@ class BindExpression:
 
         positions: Dict[BoundVariable, Path] = {}
         bound_elements = copy.deepcopy(self.bound_elements)
-        for path, subtree in path_iterator(tree):
+        subtrees = list(path_iterator(tree))
+        while subtrees:
+            path, subtree = subtrees.pop(0)
+
             if not bound_elements:
                 break
 
@@ -485,19 +488,23 @@ class BindExpression:
                     bound_elements = bound_elements[1:]
                 continue
 
-            if is_nonterminal(bound_elements[0].n_type):
-                if tree_to_string(subtree) == placeholder_map[bound_elements[0]]:
-                    positions[bound_elements[0]] = path
-                    tree = replace_tree_path(tree, path, (bound_elements[0].n_type, None))
-                    bound_elements = bound_elements[1:]
-                continue
-
-            if tree_to_string(subtree) == bound_elements[0].n_type:
+            if (is_nonterminal(bound_elements[0].n_type)
+                    and tree_to_string(subtree) == placeholder_map[bound_elements[0]]
+                    or tree_to_string(subtree) == bound_elements[0].n_type):
                 positions[bound_elements[0]] = path
-                tree = replace_tree_path(tree, path, (bound_elements[0].n_type, []))
+                tree = replace_tree_path(
+                    tree,
+                    path,
+                    (bound_elements[0].n_type,
+                     None if is_nonterminal(bound_elements[0].n_type)
+                     else []))
+
+                subtrees = [(p, s) for p, s in subtrees
+                            if not p[:len(path)] == path]
                 bound_elements = bound_elements[1:]
 
         assert not bound_elements
+        assert not subtrees
 
         return DerivationTree.from_parse_tree(tree), positions
 
