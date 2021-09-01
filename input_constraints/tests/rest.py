@@ -27,7 +27,7 @@ REST_GRAMMAR = {
 start = isla.Constant("$start", "<start>")
 
 mgr = VariableManager()
-length_underline = mgr.create(
+LENGTH_UNDERLINE = mgr.create(
     mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$length").to_smt()) > z3.IntVal(1))) &
     mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$length").to_smt()) < z3.IntVal(10))) &
     sc.forall_bind(
@@ -52,4 +52,4 @@ length_underline = mgr.create(
 #     )
 # )
 
-rest_constraints = length_underline
+rest_constraints = LENGTH_UNDERLINE

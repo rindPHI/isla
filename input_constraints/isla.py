@@ -1,14 +1,13 @@
 import copy
+import itertools
 import logging
-import random
-import sys
+import re
 from functools import reduce
 from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable
 
-import itertools
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
-from fuzzingbook.Grammars import is_nonterminal
+from fuzzingbook.Grammars import is_nonterminal, RE_NONTERMINAL
 from fuzzingbook.Parser import EarleyParser
 from grammar_graph.gg import GrammarGraph
 from orderedset import OrderedSet
@@ -90,6 +89,19 @@ class BoundVariable(Variable):
     def __add__(self, other: Union[str, 'BoundVariable']) -> 'BindExpression':
         assert type(other) == str or type(other) == BoundVariable
         return BindExpression(self, other)
+
+
+class DummyVariable(BoundVariable):
+    """A variable of which only its nonterminal is of interest (primarily for BindExpressions)."""
+
+    cnt = 0
+
+    def __init__(self, n_type: str):
+        super().__init__(f"DUMMY_{DummyVariable.cnt}", n_type)
+        DummyVariable.cnt += 1
+
+    def __str__(self):
+        return self.n_type
 
 
 class DerivationTree:
@@ -414,11 +426,18 @@ class DerivationTree:
 
 class BindExpression:
     def __init__(self, *bound_elements: Union[str, BoundVariable]):
-        self.bound_elements: List[Union[str, BoundVariable]]
-        if bound_elements:
-            self.bound_elements = list(bound_elements)
-        else:
-            self.bound_elements = []
+        self.bound_elements: List[Union[str, BoundVariable]] = []
+        for bound_elem in bound_elements:
+            if isinstance(bound_elem, BoundVariable):
+                self.bound_elements.append(bound_elem)
+                continue
+
+            self.bound_elements.extend([
+                token if not is_nonterminal(token)
+                else DummyVariable(token)
+                for token in re.split(RE_NONTERMINAL, bound_elem)
+                if token
+            ])
 
     def __add__(self, other: Union[str, 'BoundVariable']) -> 'BindExpression':
         assert type(other) == str or type(other) == BoundVariable
@@ -449,6 +468,14 @@ class BindExpression:
                 ph_candidate = None
                 while ph_candidate is None or ph_candidate in tree_placeholder_map.values():
                     ph_candidate = fuzzer.expand_tree((bound_element.n_type, None))
+
+                # The fuzzer produces trees like ("<mwss>", [('', [])]), which the parser parses
+                # to ("<mwss>", []). This unparses to the same string, but fails the comparison below.
+                # Thus, we need to clean up the produced tree.
+                #
+                # TODO: Maybe can clean this up significantly, esp. since the to_abstract_tree functionality
+                #       is no longer needed. Maybe only consider unparsed strings, and treat nonterminals
+                #       and terminals uniformly?
 
                 placeholder_map[bound_element] = tree_to_string(ph_candidate)
                 tree_placeholder_map[bound_element] = ph_candidate
@@ -526,7 +553,7 @@ class BindExpression:
         return f'BindExpression({", ".join(map(repr, self.bound_elements))})'
 
     def __str__(self):
-        return ' '.join(map(lambda e: f'{repr(e)}' if type(e) is str else str(e), self.bound_elements))
+        return ''.join(map(lambda e: f'{str(e)}' if type(e) is str else str(e), self.bound_elements))
 
     def __hash__(self):
         return hash(tuple(self.bound_elements))

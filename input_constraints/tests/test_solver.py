@@ -3,12 +3,14 @@ import unittest
 from typing import cast
 
 import z3
+from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 from input_constraints.solver import ISLaSolver
-from input_constraints.tests import rest
+from input_constraints.tests import rest, tinyc
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR
+from input_constraints.tests.tinyc import TINYC_GRAMMAR
 
 
 class TestSolver(unittest.TestCase):
@@ -151,13 +153,28 @@ class TestSolver(unittest.TestCase):
 
     def test_rest_titles(self):
         self.execute_generation_test(
-            rest.length_underline,
+            rest.LENGTH_UNDERLINE,
             isla.Constant("$start", "<start>"),
             grammar=rest.REST_GRAMMAR,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=5,
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False)
+
+    def test_tinyc_def_before_use(self):
+        self.execute_generation_test(
+            tinyc.TINYC_DEF_BEFORE_USE_CONSTRAINT,
+            isla.Constant("$start", "<start>"),
+            grammar=tinyc.TINYC_GRAMMAR,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=1,
+            expand_after_existential_elimination=False,
+            enforce_unique_trees_in_queue=False)
+
+    def test_tinyc(self):
+        fuzzer = GrammarCoverageFuzzer(TINYC_GRAMMAR)
+        for _ in range(1000):
+            logging.getLogger(type(self).__name__).info("\n%s\n", fuzzer.fuzz())
 
     def execute_generation_test(self,
                                 formula: isla.Formula,
