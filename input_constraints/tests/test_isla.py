@@ -220,6 +220,14 @@ class TestEvaluation(unittest.TestCase):
         match = bind_expr.match(tree)
         self.assertFalse(match)
 
+    def test_match_tinyc_assignment(self):
+        mgr = VariableManager()
+        bind_expr = mgr.bv("$id_2", "<id>") + " = <expr>;"
+        tree = DerivationTree.from_parse_tree(
+            ('<statement>', [('<id>', [('c', [])]), (' = ', []), ('<expr>', None), (';', [])]))
+        match = bind_expr.match(tree)
+        self.assertTrue(match)
+
     def test_use_constraint_as_filter(self):
         lhs_1 = BoundVariable("$lhs_1", "<var>")
         lhs_2 = BoundVariable("$lhs_2", "<var>")
