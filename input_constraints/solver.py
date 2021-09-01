@@ -602,10 +602,16 @@ class ISLaSolver:
         # return cost_reduction * len(state.tree)
 
         nonterminals = [leaf.value for _, leaf in state.tree.open_leaves()]
-        return cost_reduction * (
+        tree_cost = cost_reduction * (
                 len(state.tree) +
-                sum([self.node_leaf_distances[nonterminal] for nonterminal in nonterminals])
-        )
+                sum([self.node_leaf_distances[nonterminal]
+                     for nonterminal in nonterminals]))
+
+        # Eliminating existential quantifiers (by tree insertion) can be very expensive.
+        constraint_cost = len([sub for sub in get_conjuncts(state.constraint)
+                               if isinstance(sub, isla.ExistsFormula)]) * 10
+
+        return tree_cost + constraint_cost
 
     def compute_node_leaf_distances(self) -> Dict[str, int]:
         self.logger.info("Computing node-to-leaf distances")
