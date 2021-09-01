@@ -165,7 +165,7 @@ class DerivationTree:
         if not path:
             return True
 
-        if not self.children:
+        if not self.children or len(self.children) <= path[0]:
             return False
 
         return self.children[path[0]].is_valid_path(path[1:])
