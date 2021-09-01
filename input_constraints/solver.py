@@ -312,7 +312,8 @@ class ISLaSolver:
             expanded_tree = state.tree
             for path, new_children in possible_expansion.items():
                 leaf_node = expanded_tree.get_subtree(path)
-                expanded_tree = expanded_tree.replace_path(path, DerivationTree(leaf_node.value, new_children))
+                expanded_tree = expanded_tree.replace_path(
+                    path, DerivationTree(leaf_node.value, new_children, leaf_node.id))
 
             updated_constraint = state.constraint.substitute_expressions({
                 state.tree.get_subtree(path[:idx]): expanded_tree.get_subtree(path[:idx])
@@ -542,9 +543,10 @@ class ISLaSolver:
             self.logger.debug(f"Discarding state %s (unsatisfied constraint)", state)
             return False
 
-        assert all(all(state.tree.find_node(arg) for arg in predicate_formula.args)
+        assert all(state.tree.find_node(arg)
                    for predicate_formula in get_conjuncts(state.constraint)
-                   if isinstance(predicate_formula, isla.StructuralPredicateFormula))
+                   if isinstance(predicate_formula, isla.StructuralPredicateFormula)
+                   for arg in predicate_formula.args)
 
         if self.enforce_unique_trees_in_queue and state.tree.structural_hash() in self.tree_hashes_in_queue:
             # Some structures can arise as well from tree insertion (existential quantifier elimination)
