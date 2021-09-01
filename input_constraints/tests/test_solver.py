@@ -169,7 +169,8 @@ class TestSolver(unittest.TestCase):
             max_number_free_instantiations=1,
             max_number_smt_instantiations=1,
             expand_after_existential_elimination=False,
-            enforce_unique_trees_in_queue=False)
+            enforce_unique_trees_in_queue=False,
+            num_solutions=1000)
 
     def execute_generation_test(self,
                                 formula: isla.Formula,

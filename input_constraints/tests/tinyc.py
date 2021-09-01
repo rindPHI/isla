@@ -6,26 +6,45 @@ from fuzzingbook.Grammars import srange
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 
+# TODO: Switch to full grammar again
+
 TINYC_GRAMMAR = {
     "<start>": ["<mwss><statements><mwss>"],
-    "<statements>": ["<statement>", "<statement><wss><statements>"],
-    "<statement>": [
-        "if<wss><paren_expr><wss><statement>",
-        "if<wss><paren_expr><wss><statement><wss>else<wss><statement>",
-        "while<wss><paren_expr><wss><statement>",
-        "do<wss><statement>while<wss><paren_expr>",
-        "{<mwss>}",
-        "{<statement>}",
-        "<mwss><expr><mwss>;",
-        ";"
+    "<statements>": [
+        "<statement><statement>",
+        "<statement><wss><statements>"
     ],
-    "<paren_expr>": ["(<mwss><expr><mwss>)"],
+    "<statement>": [
+        # "if<wss><paren_expr><wss><statement>",
+        # "if<wss><paren_expr><wss><statement><wss>else<wss><statement>",
+        # "while<wss><paren_expr><wss><statement>",
+        # "do<wss><statement>while<wss><paren_expr>",
+        # "{<mwss>}",
+        # "{<statement>}",
+        "<mwss><expr><mwss>;",
+        # ";"
+    ],
+    # "<paren_expr>": ["(<mwss><expr><mwss>)"],
     "<expr>": ["<test>", "<id><mwss>=<mwss><expr>"],
-    "<test>": ["<sum>", "<sum><mwss><<mwss><sum>"],
-    "<sum>": ["<term>", "<sum><mwss>+<mwss><term>", "<sum><mwss>-<mwss><term>"],
-    "<term>": ["<id>", "<int>", "<paren_expr>"],
+    "<test>": [
+        "<sum>",
+        # "<sum><mwss><<mwss><sum>"
+    ],
+    "<sum>": [
+        "<term>",
+        # "<sum><mwss>+<mwss><term>",
+        # "<sum><mwss>-<mwss><term>"
+    ],
+    "<term>": [
+        "<id>",
+        "<int>",
+        # "<paren_expr>"
+    ],
     "<id>": srange(string.ascii_lowercase),
-    "<int>": ["<digit>", "<digit><int>"],
+    "<int>": [
+        "<digit>",
+        # "<digit><int>"
+    ],
     "<digit>": srange(string.digits),
     "<mwss>": ["", "<wss>"],
     "<wss>": ["<ws>", "<ws><wss>"],
