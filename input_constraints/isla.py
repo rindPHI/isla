@@ -511,34 +511,31 @@ class BindExpression:
     def match(self, tree: DerivationTree) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
         result: Dict[BoundVariable, Tuple[Path, DerivationTree]] = {}
 
-        def find(path: Path, elems: List[BoundVariable]) -> bool:
-            if not elems:
-                return True if tree.next_path(path) is None else False
+        bound_elements = list(self.bound_elements)
+        subtrees = list(tree.path_iterator())
+        current_bound_element = bound_elements.pop(0)
 
-            subtree = tree.get_subtree(path)
-            node, children = subtree
-            if node == elems[0].n_type:
-                result[elems[0]] = path, subtree
+        while subtrees:
+            path, subtree = subtrees.pop(0)
 
-                if len(elems) == 1:
-                    return True if tree.next_path(path, skip_children=True) is None else False
+            if ((isinstance(current_bound_element, BoundVariable)
+                 and subtree.value == current_bound_element.n_type)
+                    or (isinstance(current_bound_element, str)
+                        and str(subtree) == current_bound_element)):
 
-                next_p = tree.next_path(path, skip_children=True)
-                if next_p is None:
-                    return False
+                if isinstance(current_bound_element, BoundVariable):
+                    result[current_bound_element] = (path, subtree)
 
-                return find(next_p, elems[1:])
-            else:
-                if not children:
-                    next_p = tree.next_path(path, skip_children=True)
-                    if next_p is None:
-                        return False
-                    return find(next_p, elems)
+                subtrees = [(p, s) for p, s in subtrees
+                            if not p[:len(path)] == path]
+
+                if not bound_elements:
+                    current_bound_element = None
+                    break
                 else:
-                    return find(path + (0,), elems)
+                    current_bound_element = bound_elements.pop(0)
 
-        success = find(tuple(), [elem for elem in self.bound_elements if isinstance(elem, BoundVariable)])
-        return result if success else None
+        return None if bound_elements or subtrees or current_bound_element else result
 
     def __repr__(self):
         return f'BindExpression({", ".join(map(repr, self.bound_elements))})'
