@@ -172,7 +172,7 @@ class ISLaSolver:
             if self.debug:
                 self.current_state = state
                 self.state_tree.setdefault(state, [])
-            self.logger.debug(f"Polling new state %s (hash %d, cost %d)", state, hash(state), cost)
+            self.logger.debug(f"Polling new state %s (hash %d, cost %f)", state, hash(state), cost)
             self.logger.debug(f"Queue length: %s", len(self.queue))
 
             # Split disjunctions
@@ -599,7 +599,7 @@ class ISLaSolver:
             self.state_tree[self.current_state].append(state)
             self.costs[state] = cost
 
-        self.logger.debug(f"Pushing new state %s (hash %d)", state, hash(state))
+        self.logger.debug(f"Pushing new state %s (hash %d, cost %f)", state, hash(state), cost)
         self.logger.debug(f"Queue length: %d", len(self.queue))
         if len(self.queue) % 100 == 0:
             self.logger.info(f"Queue length: %d", len(self.queue))
@@ -648,9 +648,11 @@ class ISLaSolver:
         constraint_cost = len([sub for sub in get_conjuncts(state.constraint)
                                if isinstance(sub, isla.ExistsFormula)])
 
-        # self.logger.info("Costs: %f, %f, %f", tree_cost, constraint_cost, state.level)
-        # return tree_cost + 100 * constraint_cost + 100 * state.level
-        return self.cost_normalizer.compute([tree_cost, constraint_cost, state.level], [3, .5, 2])
+        return self.cost_normalizer.compute(
+            [tree_cost, constraint_cost, state.level],
+            [15, 1, 3],
+            [True, False, False]
+        )
 
     def compute_symbol_costs(self) -> Dict[str, int]:
         self.logger.info("Computing node-to-leaf distances")
@@ -816,14 +818,16 @@ class CostNormalizer:
     def __init__(self):
         self.history: List[List[float]] = []
 
-    def compute(self, costs: List[float], weights: List[float]) -> float:
+    def compute(self, costs: List[float], weights: List[float], do_average: Optional[List[bool]] = None) -> float:
         if len(self.history) < 100:
             self.add_to_history(costs)
         else:
             self.add_to_history(costs)
 
-        averages = [sum(subhistory) / len(subhistory) for subhistory in self.history]
-        return sum([a_cost * weights[idx] / (averages[idx] or .1) for idx, a_cost in enumerate(costs)])
+        averages = [1 if not do_average or not do_average[idx]
+                    else sum(subhistory) / len(subhistory)
+                    for idx, subhistory in enumerate(self.history)]
+        return sum([a_cost * weights[idx] / averages[idx] for idx, a_cost in enumerate(costs)])
 
     def add_to_history(self, costs: List[float]):
         if not self.history:
