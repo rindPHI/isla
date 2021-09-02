@@ -673,6 +673,8 @@ class ISLaSolver:
         #     dist, _ = graph.dijkstra(graph.get_node(nonterminal))
         #     result[nonterminal] = min([dist[leaf] for leaf in leaves])
 
+        # TODO: Instead of summation, maybe compute expansion possibilities along the generated trees?
+
         for nonterminal in reversed(self.grammar):
             result[nonterminal] = (
                     result[nonterminal] +
