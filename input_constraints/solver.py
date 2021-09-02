@@ -2,10 +2,11 @@ import copy
 import heapq
 import logging
 from functools import reduce, lru_cache
-from typing import Generator, Dict, List, Set, cast, Optional, Tuple, Union
+from typing import Generator, Dict, List, Set, Optional, Tuple, Union
 
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
+from fuzzingbook.GrammarFuzzer import GrammarFuzzer
 from fuzzingbook.Grammars import is_nonterminal, nonterminals
 from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph.gg import GrammarGraph
@@ -15,17 +16,19 @@ from orderedset import OrderedSet
 import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
-from input_constraints.helpers import visit_z3_expr, delete_unreachable, dict_of_lists_to_list_of_dicts, \
-    replace_line_breaks
+from input_constraints.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
+    replace_line_breaks, tree_depth, tree_size
 from input_constraints.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
     convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables
 from input_constraints.type_defs import Grammar, Path
+import statistics
 
 
 class SolutionState:
-    def __init__(self, constraint: isla.Formula, tree: DerivationTree):
+    def __init__(self, constraint: isla.Formula, tree: DerivationTree, level: int = 0):
         self.constraint = constraint
         self.tree = tree
+        self.level = level
         self.__hash = None
 
     def formula_satisfied(self) -> bool:
@@ -98,6 +101,7 @@ class ISLaSolver:
                  max_number_smt_instantiations: int = 10,
                  expand_after_existential_elimination: bool = False,
                  enforce_unique_trees_in_queue: bool = True,
+                 debug: bool = False,
                  ):
         """
         :param grammar: The underlying grammar.
@@ -111,12 +115,16 @@ class ISLaSolver:
         :param enforce_unique_trees_in_queue: If true, only one state in the queue containing a tree with the same
         structure can be present at a time. Should be set to false especially if there are top-level SMT formulas
         about numeric constants. TODO: This parameter is awkward, maybe we can find a different solution.
+        :param debug: If true, debug information about the evolution of states is collected, notably in the
+        field state_tree. The root of the tree is in the field state_tree_root. The field costs stores the computed
+        cost values for all new nodes.
         """
         self.logger = logging.getLogger(type(self).__name__)
 
         self.grammar = grammar
         self.canonical_grammar = canonical(grammar)
-        self.node_leaf_distances: Dict[str, int] = self.compute_node_leaf_distances()
+        self.symbol_costs: Dict[str, int] = self.compute_symbol_costs()
+        self.cost_normalizer = CostNormalizer()
 
         self.formula = ensure_unique_bound_variables(formula)
         top_constants: Set[isla.Constant] = set(
@@ -139,14 +147,32 @@ class ISLaSolver:
         self.queue: List[Tuple[float, SolutionState]] = []
         self.tree_hashes_in_queue: Set[int] = {initial_tree.structural_hash()}
         heapq.heappush(self.queue, (0, initial_state))
+        self.current_level = 0
+
+        # Debugging stuff
+        self.debug = debug
+        self.state_tree: Dict[SolutionState, List[SolutionState]] = {}  # is only filled if self.debug
+        self.state_tree_root = None
+        self.current_state = None
+        self.costs: Dict[SolutionState, float] = {}
+
+        if self.debug:
+            self.state_tree[initial_state] = []
+            self.state_tree_root = initial_state
+            self.costs[initial_state] = 0
 
     def solve(self) -> Generator[DerivationTree, None, None]:
         while self.queue:
             cost: int
             state: SolutionState
             cost, state = heapq.heappop(self.queue)
+            self.current_level = state.level
             self.tree_hashes_in_queue.discard(state.tree.structural_hash())
-            self.logger.debug(f"Polling new state %s (hash %d)", state, hash(state))
+
+            if self.debug:
+                self.current_state = state
+                self.state_tree.setdefault(state, [])
+            self.logger.debug(f"Polling new state %s (hash %d, cost %d)", state, hash(state), cost)
             self.logger.debug(f"Queue length: %s", len(self.queue))
 
             # Split disjunctions
@@ -198,6 +224,7 @@ class ISLaSolver:
                 # Expand the tree
                 expanded_states = self.expand_tree(new_state)
                 assert len(expanded_states) > 0, f"State {new_state} will never leave the queue."
+                self.logger.debug("Expanding state %s (%d successors)", new_state, len(expanded_states))
                 yield from [result for expanded_state in expanded_states
                             for result in self.process_new_state(expanded_state)]
 
@@ -266,8 +293,10 @@ class ISLaSolver:
             self.logger.debug("Matching existential formula %s", existential_formulas[0])
             new_states = complete_states
         else:
-            self.logger.debug("Eliminating existential formula %s", existential_formulas[0])
-            new_states.extend(self.eliminate_existential_formula(existential_formulas[0], state))
+            elimination_result = self.eliminate_existential_formula(existential_formulas[0], state)
+            new_states.extend(elimination_result)
+            self.logger.debug(
+                "Eliminating existential formula %s, %d successors", existential_formulas[0], len(elimination_result))
 
         return new_states
 
@@ -560,8 +589,15 @@ class ISLaSolver:
             self.logger.debug("Discarding state %s", state)
             return False
 
-        heapq.heappush(self.queue, (self.compute_cost(state, cost_reduction or 1.0), state))
+        state = SolutionState(state.constraint, state.tree, level=self.current_level + 1)
+
+        cost = self.compute_cost(state, cost_reduction or 1.0)
+        heapq.heappush(self.queue, (cost, state))
         self.tree_hashes_in_queue.add(state.tree.structural_hash())
+
+        if self.debug:
+            self.state_tree[self.current_state].append(state)
+            self.costs[state] = cost
 
         self.logger.debug(f"Pushing new state %s (hash %d)", state, hash(state))
         self.logger.debug(f"Queue length: %d", len(self.queue))
@@ -600,31 +636,55 @@ class ISLaSolver:
 
     def compute_cost(self, state: SolutionState, cost_reduction: float = 1.0) -> float:
         """Cost of state. Best value: 0, Worst: Unbounded"""
-        # return cost_reduction * len(state.tree)
+        # tree_cost = cost_reduction * len(state.tree)
 
         nonterminals = [leaf.value for _, leaf in state.tree.open_leaves()]
         tree_cost = cost_reduction * (
                 len(state.tree) +
-                sum([self.node_leaf_distances[nonterminal]
+                sum([self.symbol_costs[nonterminal]
                      for nonterminal in nonterminals]))
 
         # Eliminating existential quantifiers (by tree insertion) can be very expensive.
         constraint_cost = len([sub for sub in get_conjuncts(state.constraint)
-                               if isinstance(sub, isla.ExistsFormula)]) * 20
+                               if isinstance(sub, isla.ExistsFormula)])
 
-        return tree_cost + constraint_cost
+        # self.logger.info("Costs: %f, %f, %f", tree_cost, constraint_cost, state.level)
+        # return tree_cost + 100 * constraint_cost + 100 * state.level
+        return self.cost_normalizer.compute([tree_cost, constraint_cost, state.level], [3, .5, 2])
 
-    def compute_node_leaf_distances(self) -> Dict[str, int]:
+    def compute_symbol_costs(self) -> Dict[str, int]:
         self.logger.info("Computing node-to-leaf distances")
         result: Dict[str, int] = {}
-        graph = GrammarGraph.from_grammar(self.grammar)
-        leaves = [graph.get_node(nonterminal) for nonterminal in self.grammar
-                  if any(len(nonterminals(expansion)) == 0
-                         for expansion in self.grammar[nonterminal])]
 
         for nonterminal in self.grammar:
-            dist, _ = graph.dijkstra(graph.get_node(nonterminal))
-            result[nonterminal] = min([dist[leaf] for leaf in leaves])
+            fuzzer = GrammarFuzzer(self.grammar)
+            tree = fuzzer.expand_tree_with_strategy((nonterminal, None), fuzzer.expand_node_max_cost, 1)
+            tree = fuzzer.expand_tree_with_strategy(tree, fuzzer.expand_node_min_cost)
+            result[nonterminal] = tree_size(tree)
+
+        # graph = GrammarGraph.from_grammar(self.grammar)
+        # leaves = [graph.get_node(nonterminal) for nonterminal in self.grammar
+        #           if any(len(nonterminals(expansion)) == 0
+        #                  for expansion in self.grammar[nonterminal])]
+        #
+        # for nonterminal in self.grammar:
+        #     dist, _ = graph.dijkstra(graph.get_node(nonterminal))
+        #     result[nonterminal] = min([dist[leaf] for leaf in leaves])
+
+        for nonterminal in reversed(self.grammar):
+            result[nonterminal] = (
+                    result[nonterminal] +
+                    sum(result[other] for other in self.grammar
+                        if other != nonterminal and self.reachable(nonterminal, other)))
+
+        stdev = statistics.stdev(result.values())
+        result = {
+            nonterm: value / stdev
+            for nonterm, value in result.items()
+        }
+
+        result = {nonterm: value + min(v for v in result.values()) for nonterm, value in result.items()}
+        result = {nonterm: round(value / min(v for v in result.values())) for nonterm, value in result.items()}
 
         return result
 
@@ -750,6 +810,30 @@ class ISLaSolver:
         delete_unreachable(grammar)
         parser = EarleyParser(grammar)
         return DerivationTree.from_parse_tree(list(parser.parse(input))[0][1][0])
+
+
+class CostNormalizer:
+    def __init__(self):
+        self.history: List[List[float]] = []
+
+    def compute(self, costs: List[float], weights: List[float]) -> float:
+        if len(self.history) < 100:
+            self.add_to_history(costs)
+        else:
+            self.add_to_history(costs)
+
+        averages = [sum(subhistory) / len(subhistory) for subhistory in self.history]
+        return sum([a_cost * weights[idx] / (averages[idx] or .1) for idx, a_cost in enumerate(costs)])
+
+    def add_to_history(self, costs: List[float]):
+        if not self.history:
+            self.history.extend([[] for _ in costs])
+
+        if len(self.history[0]) > 100:
+            self.history = [subhistory[1:] for subhistory in self.history]
+
+        for idx, cost in enumerate(costs):
+            self.history[idx].append(cost)
 
 
 def qfr_free_formula_to_z3_formula(formula: isla.Formula) -> z3.BoolRef:

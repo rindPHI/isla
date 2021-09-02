@@ -1,12 +1,14 @@
 import logging
 import unittest
-from typing import cast
+from typing import cast, Optional, Dict, List, Tuple
+from xml.dom import minidom
+from xml.sax.saxutils import escape
 
 import z3
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
-from input_constraints.solver import ISLaSolver
+from input_constraints.solver import ISLaSolver, SolutionState
 from input_constraints.tests import rest, tinyc
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR
 
@@ -162,7 +164,7 @@ class TestSolver(unittest.TestCase):
             enforce_unique_trees_in_queue=False)
 
     def test_tinyc_def_before_use(self):
-        self.execute_generation_test(
+        state_tree, state_tree_root, costs = self.execute_generation_test(
             tinyc.TINYC_DEF_BEFORE_USE_CONSTRAINT,
             isla.Constant("$start", "<start>"),
             grammar=tinyc.TINYC_GRAMMAR,
@@ -170,19 +172,27 @@ class TestSolver(unittest.TestCase):
             max_number_smt_instantiations=1,
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
+            debug=True,
             num_solutions=500)
 
-    def execute_generation_test(self,
-                                formula: isla.Formula,
-                                constant: isla.Constant,
-                                grammar=LANG_GRAMMAR,
-                                num_solutions=50,
-                                print_solutions=False,
-                                max_number_free_instantiations=1,
-                                max_number_smt_instantiations=1,
-                                expand_after_existential_elimination=False,
-                                enforce_unique_trees_in_queue=True
-                                ):
+        with open('/tmp/state_tree.xml', 'w') as file:
+            file.write(state_tree_to_xml(state_tree_root, state_tree, costs))
+
+    def execute_generation_test(
+            self,
+            formula: isla.Formula,
+            constant: isla.Constant,
+            grammar=LANG_GRAMMAR,
+            num_solutions=50,
+            print_solutions=False,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=1,
+            expand_after_existential_elimination=False,
+            enforce_unique_trees_in_queue=True,
+            debug=False,
+    ) -> Optional[Tuple[Dict[SolutionState, List[SolutionState]],
+                        SolutionState,
+                        Dict[SolutionState, float]]]:
         solver = ISLaSolver(
             grammar=grammar,
             formula=formula,
@@ -190,6 +200,7 @@ class TestSolver(unittest.TestCase):
             max_number_smt_instantiations=max_number_smt_instantiations,
             expand_after_existential_elimination=expand_after_existential_elimination,
             enforce_unique_trees_in_queue=enforce_unique_trees_in_queue,
+            debug=debug
         )
 
         it = solver.solve()
@@ -204,6 +215,35 @@ class TestSolver(unittest.TestCase):
                 if idx == 0:
                     self.fail("No solution found.")
                 self.fail(f"Only found {idx} solutions")
+
+        return None if not debug else solver.state_tree, solver.state_tree_root, solver.costs
+
+
+def state_tree_to_xml(
+        root: SolutionState,
+        tree: Dict[SolutionState, List[SolutionState]],
+        costs: Dict[SolutionState, float],
+        prettify=True) -> str:
+    if root not in tree:
+        children_string = ""
+    else:
+        children_string = (
+                "<children>" +
+                "".join([state_tree_to_xml(child, tree, costs, False) for child in tree[root]]) +
+                "</children>")
+
+    result = ("<state>" +
+              "<constraint>" + escape(str(root.constraint)) + "</constraint>" +
+              "<tree>" + escape(str(root.tree)) + "</tree>" +
+              "<cost>" + str(costs[root]) + "</cost>" +
+              "<hash>" + str(hash(root)) + "</hash>" +
+              children_string +
+              "</state>")
+
+    if prettify:
+        return minidom.parseString(result).toprettyxml(indent="    ")
+    else:
+        return result
 
 
 if __name__ == '__main__':

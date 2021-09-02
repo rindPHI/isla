@@ -140,6 +140,20 @@ def reachable(grammar: Grammar, nonterminal: str, to_nonterminal: str) -> bool:
     return graph.get_node(nonterminal).reachable(graph.get_node(to_nonterminal))
 
 
+def tree_depth(tree: ParseTree) -> int:
+    if not tree[1]:
+        return 1
+
+    return 1 + max(tree_depth(child) for child in tree[1])
+
+
+def tree_size(tree: ParseTree) -> int:
+    if not tree[1]:
+        return 1
+
+    return 1 + sum(tree_depth(child) for child in tree[1])
+
+
 S = TypeVar('S')
 T = TypeVar('T')
 
