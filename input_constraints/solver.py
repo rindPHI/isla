@@ -610,7 +610,7 @@ class ISLaSolver:
 
         # Eliminating existential quantifiers (by tree insertion) can be very expensive.
         constraint_cost = len([sub for sub in get_conjuncts(state.constraint)
-                               if isinstance(sub, isla.ExistsFormula)]) * 10
+                               if isinstance(sub, isla.ExistsFormula)]) * 20
 
         return tree_cost + constraint_cost
 
