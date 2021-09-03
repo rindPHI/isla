@@ -650,45 +650,24 @@ class ISLaSolver:
 
         return self.cost_normalizer.compute(
             [tree_cost, constraint_cost, state.level],
-            [15, 1, 3],
+            [20, 1, 1],
             [True, False, False]
         )
 
     def compute_symbol_costs(self) -> Dict[str, int]:
-        self.logger.info("Computing node-to-leaf distances")
+        self.logger.info("Computing symbol costs")
         result: Dict[str, int] = {}
 
         for nonterminal in self.grammar:
             fuzzer = GrammarFuzzer(self.grammar)
             tree = fuzzer.expand_tree_with_strategy((nonterminal, None), fuzzer.expand_node_max_cost, 1)
             tree = fuzzer.expand_tree_with_strategy(tree, fuzzer.expand_node_min_cost)
-            result[nonterminal] = tree_size(tree)
-
-        # graph = GrammarGraph.from_grammar(self.grammar)
-        # leaves = [graph.get_node(nonterminal) for nonterminal in self.grammar
-        #           if any(len(nonterminals(expansion)) == 0
-        #                  for expansion in self.grammar[nonterminal])]
-        #
-        # for nonterminal in self.grammar:
-        #     dist, _ = graph.dijkstra(graph.get_node(nonterminal))
-        #     result[nonterminal] = min([dist[leaf] for leaf in leaves])
-
-        # TODO: Instead of summation, maybe compute expansion possibilities along the generated trees?
-
-        for nonterminal in reversed(self.grammar):
-            result[nonterminal] = (
-                    result[nonterminal] +
-                    sum(result[other] for other in self.grammar
-                        if other != nonterminal and self.reachable(nonterminal, other)))
-
-        stdev = statistics.stdev(result.values())
-        result = {
-            nonterm: value / stdev
-            for nonterm, value in result.items()
-        }
-
-        result = {nonterm: value + min(v for v in result.values()) for nonterm, value in result.items()}
-        result = {nonterm: round(value / min(v for v in result.values())) for nonterm, value in result.items()}
+            result[nonterminal] = sum([
+                len([expansion for expansion in self.canonical_grammar[tree.value]
+                     if any(is_nonterminal(symbol) for symbol in expansion)])
+                for _, tree in DerivationTree.from_parse_tree(tree).path_iterator()
+                if is_nonterminal(tree.value)
+            ])
 
         return result
 

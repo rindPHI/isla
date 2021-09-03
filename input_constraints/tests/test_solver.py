@@ -173,7 +173,7 @@ class TestSolver(unittest.TestCase):
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
             debug=True,
-            num_solutions=500)
+            num_solutions=200)
 
         with open('/tmp/state_tree.xml', 'w') as file:
             file.write(state_tree_to_xml(state_tree_root, state_tree, costs))
