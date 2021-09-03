@@ -164,7 +164,7 @@ class TestSolver(unittest.TestCase):
             enforce_unique_trees_in_queue=False)
 
     def test_tinyc_def_before_use(self):
-        state_tree, state_tree_root, costs = self.execute_generation_test(
+        self.execute_generation_test(
             tinyc.TINYC_DEF_BEFORE_USE_CONSTRAINT,
             isla.Constant("$start", "<start>"),
             grammar=tinyc.TINYC_GRAMMAR,
@@ -172,11 +172,7 @@ class TestSolver(unittest.TestCase):
             max_number_smt_instantiations=1,
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
-            debug=True,
-            num_solutions=200)
-
-        with open('/tmp/state_tree.xml', 'w') as file:
-            file.write(state_tree_to_xml(state_tree_root, state_tree, costs))
+        )
 
     def execute_generation_test(
             self,
@@ -190,9 +186,10 @@ class TestSolver(unittest.TestCase):
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=True,
             debug=False,
-    ) -> Optional[Tuple[Dict[SolutionState, List[SolutionState]],
-                        SolutionState,
-                        Dict[SolutionState, float]]]:
+            state_tree_out="/tmp/state_tree.xml"
+    ):
+        logger = logging.getLogger(type(self).__name__)
+
         solver = ISLaSolver(
             grammar=grammar,
             formula=formula,
@@ -204,19 +201,26 @@ class TestSolver(unittest.TestCase):
         )
 
         it = solver.solve()
+        solutions_found = 0
         for idx in range(num_solutions):
             try:
                 assignment = next(it)
-                logging.getLogger(type(self).__name__).info(f"Found solution: {assignment}")
+                self.assertTrue(isla.evaluate(formula.substitute_expressions({constant: assignment})))
+
+                solutions_found += 1
+                logger.info(f"Found solution no. %d: %s", solutions_found, assignment)
+
                 if print_solutions:
                     print(str(assignment))
-                self.assertTrue(isla.evaluate(formula.substitute_expressions({constant: assignment})))
             except StopIteration:
                 if idx == 0:
                     self.fail("No solution found.")
                 self.fail(f"Only found {idx} solutions")
 
-        return None if not debug else solver.state_tree, solver.state_tree_root, solver.costs
+        if debug:
+            with open(state_tree_out, 'w') as file:
+                file.write(state_tree_to_xml(
+                    solver.state_tree_root, solver.state_tree, solver.costs))
 
 
 def state_tree_to_xml(

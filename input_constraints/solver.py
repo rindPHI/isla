@@ -102,6 +102,9 @@ class ISLaSolver:
                  expand_after_existential_elimination: bool = False,
                  enforce_unique_trees_in_queue: bool = True,
                  debug: bool = False,
+                 cost_weights: Tuple[float, float, float] = (30, 2, .5),
+                 boost_cost_weights: Tuple[float, float, float] = (2, 1, 0),
+                 queue_boost_threshold: int = 1000,
                  ):
         """
         :param grammar: The underlying grammar.
@@ -138,6 +141,10 @@ class ISLaSolver:
         self.max_number_smt_instantiations: int = max_number_smt_instantiations
         self.expand_after_existential_elimination = expand_after_existential_elimination
         self.enforce_unique_trees_in_queue = enforce_unique_trees_in_queue
+
+        self.cost_weights = list(cost_weights)
+        self.boost_cost_weights = list(boost_cost_weights)
+        self.queue_boost_threshold = queue_boost_threshold
 
         # Initialize Queue
         initial_tree = DerivationTree(self.top_constant.n_type, None)
@@ -650,7 +657,8 @@ class ISLaSolver:
 
         return self.cost_normalizer.compute(
             [tree_cost, constraint_cost, state.level],
-            [20, 1, 1],
+            self.boost_cost_weights if len(self.queue) // self.queue_boost_threshold % 2 == 1
+            else self.cost_weights,
             [True, False, False]
         )
 
