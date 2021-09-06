@@ -1,12 +1,13 @@
 import string
-from typing import cast
+import subprocess
+import tempfile
+from subprocess import PIPE
+from typing import cast, Union, Optional, IO
 
 import z3
 from fuzzingbook.Grammars import srange
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
-
-# TODO: Switch to full grammar again
 
 TINYC_GRAMMAR = {
     "<start>": ["<mwss><statements><mwss>"],
@@ -20,7 +21,7 @@ TINYC_GRAMMAR = {
         "while<wss><paren_expr><wss><statement>",
         "do<wss><statement>while<wss><paren_expr>",
         "{<mwss>}",
-        "{<statement>}",
+        "{<mwss><statement><mwss>}",
         "<mwss><expr><mwss>;",
         ";"
     ],
@@ -76,6 +77,7 @@ TINYC_DEF_BEFORE_USE_CONSTRAINT = mgr.create(sc.forall(
     )
 ))
 
+
 # TINYC_GRAMMAR = {
 #     "<start>": ["<statements>"],
 #     "<statements>": [
@@ -110,3 +112,21 @@ TINYC_DEF_BEFORE_USE_CONSTRAINT = mgr.create(sc.forall(
 #         )
 #     )
 # ))
+
+def compile_tinyc_clang(tree: isla.DerivationTree, outfile: Optional[IO] = None) -> Union[bool, str]:
+    vars = set([str(subtree) for _, subtree in tree.filter(lambda node: node.value == "<id>")])
+    contents = "int main() {\n"
+    contents += "\n".join([f"    int {v};" for v in vars])
+    contents += "\n" + str(tree).replace("\n", "    \t")
+    contents += "\n" + "}"
+
+    with tempfile.NamedTemporaryFile(suffix=".c") as tmp, tempfile.NamedTemporaryFile(suffix=".out") as _outfile:
+        the_outfile = outfile or _outfile
+        tmp.write(contents.encode())
+        tmp.flush()
+        cmd = ["clang", tmp.name, "-o", the_outfile.name]
+        process = subprocess.Popen(cmd, stderr=PIPE)
+        (stdout, stderr) = process.communicate(timeout=2)
+        exit_code = process.wait()
+
+        return True if exit_code == 0 else stderr.decode("utf-8")

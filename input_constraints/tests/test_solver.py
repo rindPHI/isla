@@ -1,18 +1,20 @@
 import logging
 import subprocess
-import tempfile
 from subprocess import PIPE
+import tempfile
 import unittest
 from typing import cast, Optional, Dict, List, Callable, Union
 from xml.dom import minidom
 from xml.sax.saxutils import escape
 
 import z3
+from fuzzingbook.Parser import EarleyParser
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 from input_constraints.solver import ISLaSolver, SolutionState
 from input_constraints.tests.subject_languages import rest, tinyc
+from input_constraints.tests.subject_languages.tinyc import compile_tinyc_clang
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR
 
 
@@ -167,23 +169,6 @@ class TestSolver(unittest.TestCase):
             enforce_unique_trees_in_queue=False)
 
     def test_tinyc_def_before_use(self):
-        def test_compile(tree: isla.DerivationTree) -> Union[bool, str]:
-            vars = set([str(subtree) for _, subtree in tree.filter(lambda node: node.value == "<id>")])
-            contents = "int main() {\n"
-            contents += "\n".join([f"    int {v};" for v in vars])
-            contents += "\n" + str(tree).replace("\n", "    \t")
-            contents += "\n" + "}"
-
-            with tempfile.NamedTemporaryFile(suffix=".c") as tmp, tempfile.NamedTemporaryFile(suffix=".out") as outfile:
-                tmp.write(contents.encode())
-                tmp.flush()
-                cmd = ["clang", tmp.name, "-o", outfile.name]
-                process = subprocess.Popen(cmd, stderr=PIPE)
-                (stdout, stderr) = process.communicate(timeout=2)
-                exit_code = process.wait()
-
-                return True if exit_code == 0 else stderr.decode("utf-8")
-
         self.execute_generation_test(
             tinyc.TINYC_DEF_BEFORE_USE_CONSTRAINT,
             isla.Constant("$start", "<start>"),
@@ -192,8 +177,26 @@ class TestSolver(unittest.TestCase):
             max_number_smt_instantiations=1,
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
-            custom_test_func=test_compile,
+            custom_test_func=compile_tinyc_clang,
         )
+
+    def test_tinyc_def_before_use_in_if_branch(self):
+        prog = """
+a = 17;
+if (a < 42) {
+    b = 1;
+} else {
+    c = 1;
+}
+d = c;
+"""
+
+        tree = isla.DerivationTree.from_parse_tree(next(EarleyParser(tinyc.TINYC_GRAMMAR).parse(prog)))
+
+        self.assertFalse(isla.evaluate(
+            tinyc.TINYC_DEF_BEFORE_USE_CONSTRAINT.substitute_expressions({
+                isla.Constant("$start", "<start>"): tree
+            })))
 
     def execute_generation_test(
             self,
