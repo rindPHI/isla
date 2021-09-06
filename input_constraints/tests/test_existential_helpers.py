@@ -9,7 +9,7 @@ from input_constraints.existential_helpers import insert_tree, wrap_in_tree_star
 from input_constraints.isla import DerivationTree
 from input_constraints.tests.test_data import *
 from input_constraints.tests.test_helpers import parse
-from input_constraints.tests.tinyc import TINYC_GRAMMAR
+from input_constraints.tests.subject_languages.tinyc import TINYC_GRAMMAR
 
 
 class TestExistentialHelpers(unittest.TestCase):

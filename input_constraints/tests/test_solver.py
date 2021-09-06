@@ -3,7 +3,7 @@ import subprocess
 import tempfile
 from subprocess import PIPE
 import unittest
-from typing import cast, Optional, Dict, List, Tuple, Callable, Union
+from typing import cast, Optional, Dict, List, Callable, Union
 from xml.dom import minidom
 from xml.sax.saxutils import escape
 
@@ -12,7 +12,7 @@ import z3
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 from input_constraints.solver import ISLaSolver, SolutionState
-from input_constraints.tests import rest, tinyc
+from input_constraints.tests.subject_languages import rest, tinyc
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR
 
 
