@@ -23,6 +23,7 @@ cache:
     - venv/
 
 before_script:
+  - apt update && apt install -y clang
   - python -V  # Print out python version for debugging
   - pip install virtualenv
   - virtualenv venv
