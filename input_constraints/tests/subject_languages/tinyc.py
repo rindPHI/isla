@@ -2,29 +2,27 @@ import string
 import subprocess
 import tempfile
 from subprocess import PIPE
-from typing import cast, Union, Optional, IO
+from typing import cast, Union, Optional, IO, Tuple, List, Set
 
 import z3
 from fuzzingbook.Grammars import srange
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 
+# Kartik Talwar. Tiny-C Compiler. https://gist.github.com/KartikTalwar/3095780.
+
 TINYC_GRAMMAR = {
-    "<start>": ["<mwss><statements><mwss>"],
-    "<statements>": [
-        "<statement>",
-        "<statement><wss><statements>"
-    ],
+    "<start>": ["<mwss><statement><mwss>"],
     "<statement>": [
-        "if<wss><paren_expr><wss><statement>",
-        "if<wss><paren_expr><wss><statement><wss>else<wss><statement>",
-        "while<wss><paren_expr><wss><statement>",
-        "do<wss><statement>while<wss><paren_expr>",
-        "{<mwss>}",
-        "{<mwss><statement><mwss>}",
+        "if<mwss><paren_expr><mwss><statement>",
+        "if<mwss><paren_expr><mwss><statement><mwss>else<wss><statement>",
+        "while<mwss><paren_expr><mwss><statement>",
+        "do<wss><statement>while<mwss><paren_expr><mwss>;",
+        "{<mwss><statements><mwss>}",
         "<mwss><expr><mwss>;",
         ";"
     ],
+    "<statements>": ["", "<statement>", "<statement><mwss><statements>"],
     "<paren_expr>": ["(<mwss><expr><mwss>)"],
     "<expr>": [
         "<test>",
@@ -113,8 +111,10 @@ TINYC_DEF_BEFORE_USE_CONSTRAINT = mgr.create(sc.forall(
 #     )
 # ))
 
+
 def compile_tinyc_clang(tree: isla.DerivationTree, outfile: Optional[IO] = None) -> Union[bool, str]:
-    vars = set([str(subtree) for _, subtree in tree.filter(lambda node: node.value == "<id>")])
+    vars = set([str(assignment.children[0])
+                for _, assignment in tree.filter(lambda node: node.value == "<expr>" and len(node.children) == 5)])
     contents = "int main() {\n"
     contents += "\n".join([f"    int {v};" for v in vars])
     contents += "\n" + str(tree).replace("\n", "    \t")

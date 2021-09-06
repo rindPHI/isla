@@ -102,8 +102,8 @@ class ISLaSolver:
                  expand_after_existential_elimination: bool = False,
                  enforce_unique_trees_in_queue: bool = True,
                  debug: bool = False,
-                 cost_vectors: Tuple[Tuple[float, float, float], ...] = ((30, 2, .5), (2, 1, 0)),
-                 cost_phase_lengths: Tuple[int, ...] = (100, 100),
+                 cost_vectors: Tuple[Tuple[float, float, float], ...] = ((20, 1, .5), (0, 0, 1), (2, 1, 0)),
+                 cost_phase_lengths: Tuple[int, ...] = (200, 100, 500),
                  ):
         """
         :param grammar: The underlying grammar.
