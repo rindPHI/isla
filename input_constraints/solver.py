@@ -102,9 +102,8 @@ class ISLaSolver:
                  expand_after_existential_elimination: bool = False,
                  enforce_unique_trees_in_queue: bool = True,
                  debug: bool = False,
-                 cost_weights: Tuple[float, float, float] = (30, 2, .5),
-                 boost_cost_weights: Tuple[float, float, float] = (2, 1, 0),
-                 queue_boost_threshold: int = 1000,
+                 cost_vectors: Tuple[Tuple[float, float, float], ...] = ((30, 2, .5), (2, 1, 0)),
+                 cost_phase_lengths: Tuple[int, ...] = (100, 100),
                  ):
         """
         :param grammar: The underlying grammar.
@@ -142,9 +141,14 @@ class ISLaSolver:
         self.expand_after_existential_elimination = expand_after_existential_elimination
         self.enforce_unique_trees_in_queue = enforce_unique_trees_in_queue
 
-        self.cost_weights = list(cost_weights)
-        self.boost_cost_weights = list(boost_cost_weights)
-        self.queue_boost_threshold = queue_boost_threshold
+        assert len(cost_vectors) == len(cost_phase_lengths)
+        # Expected cost_vector length can change if implementation of cost function changes
+        # (different number of cost factors).
+        assert all(len(cost_vector) == 3 for cost_vector in cost_vectors)
+        self.cost_vectors = cost_vectors
+        self.cost_phase_lengths = cost_phase_lengths
+        self.current_cost_phase: int = 0
+        self.current_cost_phase_since: int = 0
 
         # Initialize Queue
         initial_tree = DerivationTree(self.top_constant.n_type, None)
@@ -655,10 +659,21 @@ class ISLaSolver:
         constraint_cost = len([sub for sub in get_conjuncts(state.constraint)
                                if isinstance(sub, isla.ExistsFormula)])
 
+        if len(self.queue) - self.current_cost_phase_since > self.cost_phase_lengths[self.current_cost_phase]:
+            self.current_cost_phase_since = len(self.queue)
+            self.current_cost_phase = (self.current_cost_phase + 1) % len(self.cost_vectors)
+            self.logger.debug(
+                "Switching to cost phase %d of %d, vector %s",
+                self.current_cost_phase + 1,
+                len(self.cost_vectors),
+                str(self.cost_vectors[self.current_cost_phase])
+            )
+
+        cost_vector = self.cost_vectors[self.current_cost_phase]
+
         return self.cost_normalizer.compute(
             [tree_cost, constraint_cost, state.level],
-            self.boost_cost_weights if len(self.queue) // self.queue_boost_threshold % 2 == 1
-            else self.cost_weights,
+            cost_vector,
             [True, False, False]
         )
 
