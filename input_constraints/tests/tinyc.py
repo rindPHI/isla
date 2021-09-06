@@ -46,9 +46,14 @@ TINYC_GRAMMAR = {
     "<id>": srange(string.ascii_lowercase),
     "<int>": [
         "<digit>",
+        "<digit_nonzero><digits>"
+    ],
+    "<digits>": [
+        "<digit>",
         "<digit><int>"
     ],
     "<digit>": srange(string.digits),
+    "<digit_nonzero>": list(set(srange(string.digits)) - {"0"}),
     "<mwss>": ["", "<wss>"],
     "<wss>": ["<ws>", "<ws><wss>"],
     "<ws>": srange(" \n\t"),

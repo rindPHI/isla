@@ -1,6 +1,9 @@
 import logging
+import subprocess
+import tempfile
+from subprocess import PIPE
 import unittest
-from typing import cast, Optional, Dict, List, Tuple
+from typing import cast, Optional, Dict, List, Tuple, Callable, Union
 from xml.dom import minidom
 from xml.sax.saxutils import escape
 
@@ -164,6 +167,23 @@ class TestSolver(unittest.TestCase):
             enforce_unique_trees_in_queue=False)
 
     def test_tinyc_def_before_use(self):
+        def test_compile(tree: isla.DerivationTree) -> Union[bool, str]:
+            vars = set([str(subtree) for _, subtree in tree.filter(lambda node: node.value == "<id>")])
+            contents = "int main() {\n"
+            contents += "\n".join([f"    int {v};" for v in vars])
+            contents += "\n" + str(tree).replace("\n", "    \t")
+            contents += "\n" + "}"
+
+            with tempfile.NamedTemporaryFile(suffix=".c") as tmp, tempfile.NamedTemporaryFile(suffix=".out") as outfile:
+                tmp.write(contents.encode())
+                tmp.flush()
+                cmd = ["clang", tmp.name, "-o", outfile.name]
+                process = subprocess.Popen(cmd, stderr=PIPE)
+                (stdout, stderr) = process.communicate(timeout=2)
+                exit_code = process.wait()
+
+                return True if exit_code == 0 else stderr.decode("utf-8")
+
         self.execute_generation_test(
             tinyc.TINYC_DEF_BEFORE_USE_CONSTRAINT,
             isla.Constant("$start", "<start>"),
@@ -172,6 +192,7 @@ class TestSolver(unittest.TestCase):
             max_number_smt_instantiations=1,
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
+            custom_test_func=test_compile,
         )
 
     def execute_generation_test(
@@ -186,7 +207,8 @@ class TestSolver(unittest.TestCase):
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=True,
             debug=False,
-            state_tree_out="/tmp/state_tree.xml"
+            state_tree_out="/tmp/state_tree.xml",
+            custom_test_func: Optional[Callable[[isla.DerivationTree], Union[bool, str]]] = None
     ):
         logger = logging.getLogger(type(self).__name__)
 
@@ -197,7 +219,7 @@ class TestSolver(unittest.TestCase):
             max_number_smt_instantiations=max_number_smt_instantiations,
             expand_after_existential_elimination=expand_after_existential_elimination,
             enforce_unique_trees_in_queue=enforce_unique_trees_in_queue,
-            debug=debug
+            debug=debug,
         )
 
         it = solver.solve()
@@ -206,6 +228,11 @@ class TestSolver(unittest.TestCase):
             try:
                 assignment = next(it)
                 self.assertTrue(isla.evaluate(formula.substitute_expressions({constant: assignment})))
+
+                if custom_test_func:
+                    test_result = custom_test_func(assignment)
+                    if test_result is not True:
+                        self.fail("" if not isinstance(test_result, str) else test_result)
 
                 solutions_found += 1
                 logger.info(f"Found solution no. %d: %s", solutions_found, assignment)
