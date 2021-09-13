@@ -9,7 +9,7 @@ import z3
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 from input_constraints.solver import ISLaSolver, SolutionState
-from input_constraints.tests.subject_languages import rest, tinyc
+from input_constraints.tests.subject_languages import rest, tinyc, tar
 from input_constraints.tests.subject_languages.tinyc import compile_tinyc_clang
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR
 
@@ -208,6 +208,17 @@ class TestSolver(unittest.TestCase):
     #             tinyc.TINYC_DEF_BEFORE_USE_CONSTRAINT.substitute_expressions({
     #                 isla.Constant("$start", "<start>"): tree
     #             })))
+
+    def test_tar(self):
+        self.execute_generation_test(
+            tar.LENGTH_CONSTRAINTS,
+            isla.Constant("$start", "<start>"),
+            grammar=tar.TAR_GRAMMAR,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=1,
+            expand_after_existential_elimination=False,
+            enforce_unique_trees_in_queue=False,
+        )
 
     def execute_generation_test(
             self,

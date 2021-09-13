@@ -58,6 +58,7 @@ TINYC_GRAMMAR = {
     "<ws>": srange(" \n\t"),
 }
 
+# TODO: Scoping information
 mgr = isla.VariableManager()
 TINYC_DEF_BEFORE_USE_CONSTRAINT = mgr.create(sc.forall(
     mgr.bv("$test", "<test>"),
