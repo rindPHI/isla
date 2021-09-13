@@ -163,15 +163,15 @@ class TestEvaluation(unittest.TestCase):
         parser = EarleyParser(LANG_GRAMMAR)
 
         tree = DerivationTree.from_parse_tree(next(parser.parse(valid_prog_1)))
-        self.assertTrue(evaluate(formula(tree)))
+        self.assertTrue(evaluate(formula(tree)).to_bool())
 
         for valid_prog in [valid_prog_1, valid_prog_2]:
             tree = DerivationTree.from_parse_tree(next(parser.parse(valid_prog)))
-            self.assertTrue(evaluate(formula(tree)))
+            self.assertTrue(evaluate(formula(tree)).to_bool())
 
         for invalid_prog in [invalid_prog_1, invalid_prog_2, invalid_prog_3, invalid_prog_4]:
             tree = DerivationTree.from_parse_tree(next(parser.parse(invalid_prog)))
-            self.assertFalse(evaluate(formula(tree)))
+            self.assertFalse(evaluate(formula(tree)).to_bool())
 
     def test_evaluate_concrete_in_expr(self):
         parser = EarleyParser(LANG_GRAMMAR)
@@ -181,14 +181,14 @@ class TestEvaluation(unittest.TestCase):
         var = BoundVariable("$var", "<var>")
 
         formula = sc.forall(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("x")), var))
-        self.assertTrue(evaluate(formula))
+        self.assertTrue(evaluate(formula).to_bool())
         formula = sc.forall(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("y")), var))
-        self.assertFalse(evaluate(formula))
+        self.assertFalse(evaluate(formula).to_bool())
 
         formula = sc.exists(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("x")), var))
-        self.assertTrue(evaluate(formula))
+        self.assertTrue(evaluate(formula).to_bool())
         formula = sc.exists(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("y")), var))
-        self.assertFalse(evaluate(formula))
+        self.assertFalse(evaluate(formula).to_bool())
 
     def test_match(self):
         parser = EarleyParser(LANG_GRAMMAR)
@@ -260,7 +260,7 @@ class TestEvaluation(unittest.TestCase):
         fail = 0
         for _ in range(100):
             tree = DerivationTree.from_parse_tree(fuzzer.expand_tree(("<start>", None)))
-            if evaluate(formula(tree)):
+            if evaluate(formula(tree)).to_bool():
                 inp = tree_to_string(tree)
                 try:
                     eval_lang(inp)
@@ -383,22 +383,22 @@ class TestEvaluation(unittest.TestCase):
             sc.forall(
                 mgr.bv("$header", "<csv-header>"),
                 tree,
-                sc.count(mgr.bv("$header"), "<raw-string>", mgr.num_const("$num")) &
+                sc.count(CSV_GRAMMAR, mgr.bv("$header"), "<raw-string>", mgr.num_const("$num")) &
                 sc.forall(
                     mgr.bv("$line", "<csv-record>"),
                     tree,
-                    sc.count(mgr.bv("$line"), "<raw-string>", mgr.num_const("$num"))
+                    sc.count(CSV_GRAMMAR, mgr.bv("$line"), "<raw-string>", mgr.num_const("$num"))
                 )
             )
         )
 
         csv_doc = "a;b;c\nd;e;f\n"
         tree = DerivationTree.from_parse_tree(parse(csv_doc, CSV_GRAMMAR))
-        self.assertTrue(evaluate(formula(tree)))
+        self.assertTrue(evaluate(formula(tree)).to_bool())
 
         csv_doc = "a;b;c\nd;e;f\ng;h;i;j\n"
         tree = DerivationTree.from_parse_tree(parse(csv_doc, CSV_GRAMMAR))
-        self.assertFalse(evaluate(formula(tree)))
+        self.assertFalse(evaluate(formula(tree)).to_bool())
 
         return
 
@@ -421,11 +421,11 @@ class TestEvaluation(unittest.TestCase):
 
         csv_doc = "a;b;c\nd;e\ng;h;i\n"
         tree = DerivationTree.from_parse_tree(parse(csv_doc, CSV_GRAMMAR))
-        self.assertTrue(evaluate(formula(tree)))
+        self.assertTrue(evaluate(formula(tree)).to_bool())
 
         csv_doc = "a;b;c\nd;e\ng;h;i;j\n"
         tree = DerivationTree.from_parse_tree(parse(csv_doc, CSV_GRAMMAR))
-        self.assertFalse(evaluate(formula(tree)))
+        self.assertFalse(evaluate(formula(tree)).to_bool())
 
 
 if __name__ == '__main__':

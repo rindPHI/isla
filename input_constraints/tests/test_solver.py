@@ -118,11 +118,11 @@ class TestSolver(unittest.TestCase):
             sc.forall(
                 mgr.bv("$hline", "<csv-header>"),
                 mgr.const("$start", "<start>"),
-                sc.count(mgr.bv("$hline"), "<csv-field>", mgr.num_const("$num"))) &
+                sc.count(SIMPLE_CSV_GRAMMAR, mgr.bv("$hline"), "<csv-field>", mgr.num_const("$num"))) &
             sc.forall(
                 mgr.bv("$line", "<csv-record>"),
                 mgr.const("$start", "<start>"),
-                sc.count(mgr.bv("$line"), "<csv-field>", mgr.num_const("$num")))
+                sc.count(SIMPLE_CSV_GRAMMAR, mgr.bv("$line"), "<csv-field>", mgr.num_const("$num")))
         )
 
         self.execute_generation_test(formula, mgr.const("$start"),
@@ -140,11 +140,11 @@ class TestSolver(unittest.TestCase):
             sc.forall(
                 mgr.bv("$hline", "<csv-header>"),
                 mgr.const("$start", "<start>"),
-                sc.count(mgr.bv("$hline"), "<raw-string>", mgr.num_const("$num"))) &
+                sc.count(CSV_GRAMMAR, mgr.bv("$hline"), "<raw-string>", mgr.num_const("$num"))) &
             sc.forall(
                 mgr.bv("$line", "<csv-record>"),
                 mgr.const("$start", "<start>"),
-                sc.count(mgr.bv("$line"), "<raw-string>", mgr.num_const("$num")))
+                sc.count(CSV_GRAMMAR, mgr.bv("$line"), "<raw-string>", mgr.num_const("$num")))
         )
 
         self.execute_generation_test(formula, mgr.const("$start"),
@@ -252,7 +252,7 @@ class TestSolver(unittest.TestCase):
         for idx in range(num_solutions):
             try:
                 assignment = next(it)
-                self.assertTrue(isla.evaluate(formula.substitute_expressions({constant: assignment})))
+                self.assertTrue(isla.evaluate(formula.substitute_expressions({constant: assignment})).to_bool())
 
                 if custom_test_func:
                     test_result = custom_test_func(assignment)

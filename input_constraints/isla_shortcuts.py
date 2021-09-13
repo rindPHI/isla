@@ -1,5 +1,5 @@
 from input_constraints.isla import *
-from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
+from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, LJUST_PREDICATE
 
 
 def forall_bind(
@@ -39,10 +39,19 @@ def before(
 
 
 def count(
+        grammar: Grammar,
         in_tree: Union[Variable, DerivationTree],
         needle: str,
         num: Union[Constant, DerivationTree]) -> SemanticPredicateFormula:
-    return SemanticPredicateFormula(COUNT_PREDICATE, in_tree, needle, num)
+    return SemanticPredicateFormula(COUNT_PREDICATE(grammar), in_tree, needle, num)
+
+
+def ljust(
+        grammar: Grammar,
+        tree: Union[Variable, DerivationTree],
+        width: int,
+        fillchar: str) -> SemanticPredicateFormula:
+    return SemanticPredicateFormula(LJUST_PREDICATE(grammar), tree, width, fillchar)
 
 
 def true():

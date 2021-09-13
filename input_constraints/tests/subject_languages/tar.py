@@ -73,6 +73,6 @@ LENGTH_CONSTRAINTS = mgr.create(
     sc.forall(
         mgr.bv("$file_name", "<file_name>"),
         mgr.const("$start", "<start>"),
-        mgr.smt(z3.Length(mgr.bv("$file_name").to_smt()) == z3.IntVal(100))
+        sc.ljust(TAR_GRAMMAR, mgr.bv("$file_name"), 100, "\x00")
     )
 )

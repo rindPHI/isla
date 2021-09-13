@@ -31,10 +31,10 @@ class SolutionState:
         self.level = level
         self.__hash = None
 
-    def formula_satisfied(self) -> bool:
+    def formula_satisfied(self) -> isla.ThreeValuedTruth:
         if self.tree.is_open():
             # Have to instantiate variables first
-            return False
+            return isla.ThreeValuedTruth.unknown()
 
         return isla.evaluate(self.constraint, reference_tree=self.tree)
 
@@ -228,7 +228,7 @@ class ISLaSolver:
                     continue
 
             for new_state in self.postprocess_new_state(state):
-                if new_state.complete() and new_state.formula_satisfied():
+                if new_state.complete() and new_state.formula_satisfied().is_true():
                     yield new_state.tree
                     continue
 
@@ -266,7 +266,7 @@ class ISLaSolver:
             return None
 
         for semantic_predicate_formula in semantic_predicate_formulas:
-            evaluation_result = semantic_predicate_formula.evaluate(self.grammar)
+            evaluation_result = semantic_predicate_formula.evaluate()
             if not evaluation_result.ready():
                 continue
 
@@ -571,17 +571,20 @@ class ISLaSolver:
         if the state is not yet complete, otherwise returns False and discards the state.
         """
         if state.complete():
-            if state.formula_satisfied():
+            eval_result = state.formula_satisfied()
+
+            if eval_result.is_true():
                 return True
 
-            # In certain occasions, it can happen that a complete state does not satisfy the constraint.
-            # A typical (maybe the only) case is when an existential quantifier is eliminated and the
-            # original constraint is re-attached. Then, the there might be several options for matching
-            # the existential quantifier again, some of which will be unsuccessful.
-            #
-            # Complete, but invalid states are discarded and not enqueued
-            self.logger.debug(f"Discarding state %s (unsatisfied constraint)", state)
-            return False
+            if eval_result.is_false():
+                # In certain occasions, it can happen that a complete state does not satisfy the constraint.
+                # A typical (maybe the only) case is when an existential quantifier is eliminated and the
+                # original constraint is re-attached. Then, the there might be several options for matching
+                # the existential quantifier again, some of which will be unsuccessful.
+                #
+                # Complete, but invalid states are discarded and not enqueued
+                self.logger.debug(f"Discarding state %s (unsatisfied constraint)", state)
+                return False
 
         assert all(state.tree.find_node(arg)
                    for predicate_formula in get_conjuncts(state.constraint)
@@ -766,6 +769,10 @@ class ISLaSolver:
                              if isinstance(formula, isla.SMTFormula)
                              or isinstance(formula, isla.SemanticPredicateFormula)]
         leaf_node = state.tree.get_subtree(path_to_leaf)
+
+        # TODO: For SemanticPredicateFormulas, enable flexible response to whether tree argument is bound.
+        #       That is, for some predicate formulas (e.g., ljust), you can just fill in an arbitrary tree
+        #       and they bend it towards a solution, so that argument can be freely instantiated.
 
         return (not any(self.quantified_formula_might_match(qfd_formula, path_to_leaf, state)
                         for qfd_formula in universal_formulas)

@@ -1,33 +1,28 @@
+import copy
 from typing import Union, Optional
 
-from fuzzingbook.Grammars import is_nonterminal
-from fuzzingbook.Parser import canonical
+from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph.gg import GrammarGraph
 
 from input_constraints.existential_helpers import insert_tree
-from input_constraints.helpers import is_before
+from input_constraints.helpers import is_before, delete_unreachable
 from input_constraints.isla import DerivationTree, Constant, SemPredEvalResult, StructuralPredicate, SemanticPredicate
 from input_constraints.type_defs import Grammar
 
 BEFORE_PREDICATE = StructuralPredicate("before", 2, is_before)
 
 
-def count(grammar: Optional[Grammar],
+def count(grammar: Grammar,
           in_tree: DerivationTree,
           needle: str,
           num: Union[Constant, DerivationTree]) -> SemPredEvalResult:
     num_needle_occurrences = len(in_tree.filter(lambda t: t.value == needle))
 
-    if grammar is not None:
-        graph = GrammarGraph.from_grammar(grammar)
-        leaf_nonterminals = [node.value for _, node in in_tree.open_leaves()]
+    graph = GrammarGraph.from_grammar(grammar)
+    leaf_nonterminals = [node.value for _, node in in_tree.open_leaves()]
 
-        more_needles_possible = any(graph.get_node(leaf_nonterminal).reachable(graph.get_node(needle))
-                                    for leaf_nonterminal in leaf_nonterminals)
-    else:
-        graph = None
-        assert in_tree.is_complete(), "Pass a grammar to the count predicate to evaluate open trees."
-        more_needles_possible = False
+    more_needles_possible = any(graph.get_node(leaf_nonterminal).reachable(graph.get_node(needle))
+                                for leaf_nonterminal in leaf_nonterminals)
 
     if isinstance(num, Constant):
         # Return the number of needle occurrences in in_tree, or "not ready" if in_tree is not
@@ -91,4 +86,37 @@ def count(grammar: Optional[Grammar],
     return SemPredEvalResult(False)
 
 
-COUNT_PREDICATE = SemanticPredicate("count", 3, count)
+COUNT_PREDICATE = lambda grammar: SemanticPredicate(
+    "count", 3, lambda in_tree, needle, num: count(grammar, in_tree, needle, num))
+
+
+def ljust(grammar: Grammar,
+          tree: DerivationTree,
+          width: int,
+          fillchar: str) -> SemPredEvalResult:
+    if len(fillchar) != 1:
+        raise TypeError("The fill character must be exactly one character long")
+
+    if not tree.is_complete():
+        return SemPredEvalResult(None)
+
+    unparsed = str(tree)
+
+    if len(unparsed) == width:
+        return SemPredEvalResult(True)
+
+    if len(unparsed) > width:
+        return SemPredEvalResult(False)
+
+    specialized_grammar = copy.deepcopy(grammar)
+    specialized_grammar["<start>"] = [tree.value]
+    delete_unreachable(specialized_grammar)
+    parser = EarleyParser(specialized_grammar)
+
+    unparsed_output = unparsed.ljust(width, fillchar)
+    result = DerivationTree.from_parse_tree(list(parser.parse(unparsed_output))[0])
+    return SemPredEvalResult({tree: result})
+
+
+LJUST_PREDICATE = lambda grammar: SemanticPredicate(
+    "ljust", 3, lambda tree, width, fillchar: ljust(grammar, tree, width, fillchar))

@@ -796,8 +796,8 @@ class SemanticPredicate:
         self.arity = arity
         self.eval_fun = eval_fun
 
-    def evaluate(self, grammar: Optional[Grammar], *instantiations: Union[DerivationTree, Constant, str]):
-        return self.eval_fun(grammar, *instantiations)
+    def evaluate(self, *instantiations: Union[DerivationTree, Constant, str]):
+        return self.eval_fun(*instantiations)
 
     def __eq__(self, other):
         return type(other) is SemanticPredicate and (self.name, self.arity) == (other.name, other.arity)
@@ -813,13 +813,13 @@ class SemanticPredicate:
 
 
 class SemanticPredicateFormula(Formula):
-    def __init__(self, predicate: SemanticPredicate, *args: Union[DerivationTree, Constant, str]):
+    def __init__(self, predicate: SemanticPredicate, *args: Union[DerivationTree, Constant, str, int]):
         assert len(args) == predicate.arity
         self.predicate = predicate
         self.args: List[Union[Variable, DerivationTree]] = list(args)
 
-    def evaluate(self, grammar: Optional[Grammar]) -> SemPredEvalResult:
-        return self.predicate.eval_fun(grammar, *self.args)
+    def evaluate(self) -> SemPredEvalResult:
+        return self.predicate.eval_fun(*self.args)
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return SemanticPredicateFormula(self.predicate,
@@ -829,7 +829,7 @@ class SemanticPredicateFormula(Formula):
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         new_args = []
         for arg in self.args:
-            if isinstance(arg, str):
+            if isinstance(arg, str) or isinstance(arg, int):
                 new_args.append(arg)
                 continue
 
@@ -1291,7 +1291,7 @@ class VariablesCollector(FormulaVisitor):
             elif isinstance(arg, DerivationTree):
                 self.result.update(arg.tree_variables())
             else:
-                assert isinstance(arg, str)
+                assert isinstance(arg, str) or isinstance(arg, int)
 
     def visit_smt_formula(self, formula: SMTFormula):
         self.result.update(formula.free_variables())
@@ -1398,11 +1398,85 @@ def well_formed(formula: Formula,
         raise NotImplementedError()
 
 
+class ThreeValuedTruth:
+    FALSE = 0
+    TRUE = 1
+    UNKNOWN = 2
+
+    def __init__(self, val: int):
+        assert 0 <= val <= 2
+        self.val = val
+
+    def __eq__(self, other):
+        return self.val == other.val
+
+    def __hash__(self):
+        return self.val
+
+    def to_bool(self) -> bool:
+        assert self.val != ThreeValuedTruth.UNKNOWN
+        return bool(self.val)
+
+    def is_false(self):
+        return self.val == ThreeValuedTruth.FALSE
+
+    def is_true(self):
+        return self.val == ThreeValuedTruth.TRUE
+
+    def is_unknown(self):
+        return self.val == ThreeValuedTruth.UNKNOWN
+
+    @staticmethod
+    def from_bool(b: bool) -> 'ThreeValuedTruth':
+        return ThreeValuedTruth(int(b))
+
+    @staticmethod
+    def all(args: Iterable['ThreeValuedTruth']) -> 'ThreeValuedTruth':
+        if any(elem.is_false() for elem in args):
+            return ThreeValuedTruth.false()
+        if any(elem.is_unknown() for elem in args):
+            return ThreeValuedTruth.unknown()
+        return ThreeValuedTruth.true()
+
+    @staticmethod
+    def any(args: Iterable['ThreeValuedTruth']) -> 'ThreeValuedTruth':
+        if any(elem.is_true() for elem in args):
+            return ThreeValuedTruth.true()
+        if any(elem.is_unknown() for elem in args):
+            return ThreeValuedTruth.unknown()
+        return ThreeValuedTruth.false()
+
+    @staticmethod
+    def not_(arg: 'ThreeValuedTruth') -> 'ThreeValuedTruth':
+        if arg.is_true():
+            return ThreeValuedTruth.false()
+        if arg.is_false():
+            return ThreeValuedTruth.true()
+        return ThreeValuedTruth.unknown()
+
+    @staticmethod
+    def true():
+        return ThreeValuedTruth(ThreeValuedTruth.TRUE)
+
+    @staticmethod
+    def false():
+        return ThreeValuedTruth(ThreeValuedTruth.FALSE)
+
+    @staticmethod
+    def unknown():
+        return ThreeValuedTruth(ThreeValuedTruth.UNKNOWN)
+
+    def __str__(self):
+        return ("TRUE" if self.is_true() else
+                "FALSE" if self.is_false() else
+                "UNKNOWN")
+
+
 def evaluate(formula: Formula,
-             reference_tree: Optional[DerivationTree] = None) -> bool:
+             reference_tree: Optional[DerivationTree] = None) -> ThreeValuedTruth:
     assert well_formed(formula)
 
-    def evaluate_(formula: Formula, assignments: Dict[Variable, Tuple[Path, DerivationTree]]) -> bool:
+    def evaluate_(formula: Formula, assignments: Dict[Variable, Tuple[Path, DerivationTree]]) -> ThreeValuedTruth:
         if isinstance(formula, SMTFormula):
             instantiation = z3.substitute(
                 formula.formula,
@@ -1413,7 +1487,7 @@ def evaluate(formula: Formula,
             z3.set_param("smt.string_solver", "z3str3")
             solver = z3.Solver()
             solver.add(instantiation)
-            return solver.check() == z3.sat  # Set timeout?
+            return ThreeValuedTruth.from_bool(solver.check() == z3.sat)  # Set timeout?
         elif isinstance(formula, QuantifiedFormula):
             if isinstance(formula.in_variable, DerivationTree):
                 in_inst = formula.in_variable
@@ -1424,38 +1498,43 @@ def evaluate(formula: Formula,
             new_assignments = matches_for_quantified_formula(formula, in_inst, assignments)
 
             if isinstance(formula, ForallFormula):
-                return all(evaluate_(formula.inner_formula, new_assignment) for new_assignment in new_assignments)
+                return ThreeValuedTruth.all(
+                    evaluate_(formula.inner_formula, new_assignment) for new_assignment in new_assignments)
             elif isinstance(formula, ExistsFormula):
-                return any(evaluate_(formula.inner_formula, new_assignment) for new_assignment in new_assignments)
+                return ThreeValuedTruth.any(
+                    evaluate_(formula.inner_formula, new_assignment) for new_assignment in new_assignments)
         elif isinstance(formula, StructuralPredicateFormula):
             assert (not any(isinstance(arg, DerivationTree) for arg in formula.args)
                     or reference_tree is not None)
             arg_insts = [(reference_tree.find_node(arg), arg) if isinstance(arg, DerivationTree)
                          else assignments[arg]
                          for arg in formula.args]
-            return formula.predicate.evaluate(*arg_insts)
+            return ThreeValuedTruth.from_bool(formula.predicate.evaluate(*arg_insts))
         elif isinstance(formula, SemanticPredicateFormula):
             arg_insts = [arg if isinstance(arg, DerivationTree) or arg not in assignments
                          else assignments[arg][1]
                          for arg in formula.args]
-            eval_res = formula.predicate.evaluate(None, *arg_insts)
+            eval_res = formula.predicate.evaluate(*arg_insts)
 
             if eval_res.true():
-                return True
-            elif eval_res.false() or not eval_res.ready():
-                return False
+                return ThreeValuedTruth.true()
+            elif eval_res.false():
+                return ThreeValuedTruth.false()
 
-            assert isinstance(eval_res.result, dict)
-            assert all(isinstance(key, Constant) and key.is_numeric() for key in eval_res.result)
+            if not eval_res.ready() or not all(isinstance(key, Constant) for key in eval_res.result):
+                # Evaluation resulted in a tree update; that is, the formula is satisfiable, but only
+                # after an update of its arguments. This result happens when evaluating formulas during
+                # solution search after instantiating variables with concrete trees.
+                return ThreeValuedTruth.unknown()
 
             assignments.update({const: (tuple(), assgn) for const, assgn in eval_res.result.items()})
-            return True
+            return ThreeValuedTruth.true()
         elif isinstance(formula, NegatedFormula):
-            return not evaluate_(formula.args[0], assignments)
+            return ThreeValuedTruth.not_(evaluate_(formula.args[0], assignments))
         elif isinstance(formula, ConjunctiveFormula):
-            return all(evaluate_(sub_formula, assignments) for sub_formula in formula.args)
+            return ThreeValuedTruth.all(evaluate_(sub_formula, assignments) for sub_formula in formula.args)
         elif isinstance(formula, DisjunctiveFormula):
-            return any(evaluate_(sub_formula, assignments) for sub_formula in formula.args)
+            return ThreeValuedTruth.any(evaluate_(sub_formula, assignments) for sub_formula in formula.args)
         else:
             raise NotImplementedError()
 
