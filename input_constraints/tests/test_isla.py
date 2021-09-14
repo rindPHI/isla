@@ -8,6 +8,7 @@ import input_constraints.isla_shortcuts as sc
 from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
     DerivationTree, convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager
 from input_constraints.isla_predicates import count
+from input_constraints.tests.subject_languages import tinyc, tar
 from input_constraints.tests.test_data import *
 from input_constraints.tests.test_helpers import parse
 
@@ -221,7 +222,7 @@ class TestEvaluation(unittest.TestCase):
         self.assertFalse(match)
 
     def test_match_tinyc_assignment(self):
-        mgr = VariableManager()
+        mgr = VariableManager(tinyc.TINYC_GRAMMAR)
         bind_expr = mgr.bv("$id_2", "<id>") + " = <expr>;"
         tree = DerivationTree.from_parse_tree(
             ('<statement>', [('<id>', [('c', [])]), (' = ', []), ('<expr>', None), (';', [])]))
@@ -378,7 +379,7 @@ class TestEvaluation(unittest.TestCase):
         self.assertEqual(SemPredEvalResult(False), result)
 
     def test_csv_prop(self):
-        mgr = VariableManager()
+        mgr = VariableManager(CSV_GRAMMAR)
         formula = lambda tree: mgr.create(
             sc.forall(
                 mgr.bv("$header", "<csv-header>"),
@@ -402,7 +403,7 @@ class TestEvaluation(unittest.TestCase):
 
         return
 
-        mgr = VariableManager()
+        mgr = VariableManager(CSV_GRAMMAR)
         formula = lambda tree: mgr.create(
             sc.forall(
                 mgr.bv("$header", "<csv-header>"),
@@ -426,6 +427,12 @@ class TestEvaluation(unittest.TestCase):
         csv_doc = "a;b;c\nd;e\ng;h;i;j\n"
         tree = DerivationTree.from_parse_tree(parse(csv_doc, CSV_GRAMMAR))
         self.assertFalse(evaluate(formula(tree)).to_bool())
+
+    def test_to_tree_prefix_tar_file_name(self):
+        mgr = VariableManager(tar.TAR_GRAMMAR)
+        bind_expression = mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>"
+        self.assertEqual(('<file_name>', [('<characters>', None), ('<maybe_nuls>', None)]),
+                         bind_expression.to_tree_prefix("<file_name>", tar.TAR_GRAMMAR)[0].to_parse_tree())
 
 
 if __name__ == '__main__':

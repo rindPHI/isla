@@ -1,4 +1,5 @@
 import string
+from typing import cast
 
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
@@ -30,9 +31,9 @@ TAR_GRAMMAR = {
         "<file_name_prefix>"
     ],
     "<file_name>": ["<characters><maybe_nuls>"],
-    "<file_mode>": ["<padded_octal_digits><SPACE>"],
-    "<uid>": ["<padded_octal_digits><SPACE>"],
-    "<gid>": ["<padded_octal_digits><SPACE>"],
+    "<file_mode>": ["<padded_octal_digits><SPACE><NUL>"],
+    "<uid>": ["<padded_octal_digits><SPACE><NUL>"],
+    "<gid>": ["<padded_octal_digits><SPACE><NUL>"],
     "<file_size>": ["<padded_octal_digits><SPACE>"],
     "<mod_time>": ["<padded_octal_digits><SPACE>"],
     "<checksum>": ["<padded_octal_digits><NUL><SPACE>"],
@@ -68,11 +69,75 @@ TAR_GRAMMAR = {
     "<ZERO>": ["0"]
 }
 
-mgr = isla.VariableManager()
+mgr = isla.VariableManager(TAR_GRAMMAR)
+start = mgr.const("$start", "<start>")
 LENGTH_CONSTRAINTS = mgr.create(
     sc.forall(
         mgr.bv("$file_name", "<file_name>"),
-        mgr.const("$start", "<start>"),
-        sc.ljust(TAR_GRAMMAR, mgr.bv("$file_name"), 100, "\x00")
-    )
+        start,
+        sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$file_name"), 100, "\x00")
+    ) &
+    sc.forall(
+        mgr.bv("$file_mode", "<file_mode>"),
+        start,
+        sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$file_mode"), 8, "0")
+    ) &
+    sc.forall(
+        mgr.bv("$uid", "<uid>"),
+        start,
+        sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$uid"), 8, "0")
+    ) &
+    sc.forall(
+        mgr.bv("$gid", "<gid>"),
+        start,
+        sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$gid"), 8, "0")
+    ) &
+    sc.forall(
+        mgr.bv("$file_size", "<file_size>"),
+        start,
+        sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$file_size"), 12, "0")
+    ) &
+    sc.forall(
+        mgr.bv("$mod_time", "<mod_time>"),
+        start,
+        sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$mod_time"), 12, "0")
+    ) &
+    sc.forall(
+        mgr.bv("$checksum", "<checksum>"),
+        start,
+        sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$checksum"), 8, "0")  # TODO: Implement proper checksum
+    ) &
+    sc.forall(
+        mgr.bv("$linked_file_name", "<linked_file_name>"),
+        start,
+        sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$linked_file_name"), 100, "\x00")
+    ) &
+    sc.forall(
+        mgr.bv("$entry", "<entry>"),
+        start,
+        sc.forall(
+            mgr.bv("$typeflag", "<typeflag>"),
+            mgr.bv("$entry"),
+            mgr.smt(cast(z3.BoolRef, mgr.bv("$typeflag").to_smt() == z3.StringVal("0")))
+            | (mgr.smt(mgr.bv("$typeflag").to_smt() == z3.StringVal("2")) &
+               sc.forall_bind(
+                   mgr.bv("$linked_file_name_chars", "<characters>") + "<maybe_nuls>",
+                   mgr.bv("$linked_file_name", "<linked_file_name>"),
+                   mgr.bv("$entry"),
+                   sc.exists(
+                       mgr.bv("$linked_entry", "<entry>"),
+                       start,
+                       sc.forall_bind(
+                           mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>",
+                           mgr.bv("$file_name"),
+                           mgr.bv("$linked_entry"),
+                           mgr.smt(mgr.bv("$file_name_chars").to_smt() == mgr.bv("$linked_file_name_chars").to_smt())
+                       )
+                   )))
+        ))
+    # sc.forall(
+    #    mgr.bv("$linked_file_name", "<linked_file_name>"),
+    #    start,
+    #    sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$linked_file_name"), 100, "\x00")
+    # )
 )

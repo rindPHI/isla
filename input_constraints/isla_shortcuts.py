@@ -1,5 +1,6 @@
 from input_constraints.isla import *
-from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, LJUST_PREDICATE
+from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, LJUST_PREDICATE, LJUST_CROP_PREDICATE, \
+    RJUST_CROP_PREDICATE, RJUST_PREDICATE
 
 
 def forall_bind(
@@ -52,6 +53,30 @@ def ljust(
         width: int,
         fillchar: str) -> SemanticPredicateFormula:
     return SemanticPredicateFormula(LJUST_PREDICATE(grammar), tree, width, fillchar)
+
+
+def ljust_crop(
+        grammar: Grammar,
+        tree: Union[Variable, DerivationTree],
+        width: int,
+        fillchar: str) -> SemanticPredicateFormula:
+    return SemanticPredicateFormula(LJUST_CROP_PREDICATE(grammar), tree, width, fillchar)
+
+
+def rjust(
+        grammar: Grammar,
+        tree: Union[Variable, DerivationTree],
+        width: int,
+        fillchar: str) -> SemanticPredicateFormula:
+    return SemanticPredicateFormula(RJUST_PREDICATE(grammar), tree, width, fillchar)
+
+
+def rjust_crop(
+        grammar: Grammar,
+        tree: Union[Variable, DerivationTree],
+        width: int,
+        fillchar: str) -> SemanticPredicateFormula:
+    return SemanticPredicateFormula(RJUST_CROP_PREDICATE(grammar), tree, width, fillchar)
 
 
 def true():

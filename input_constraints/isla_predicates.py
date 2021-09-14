@@ -90,10 +90,13 @@ COUNT_PREDICATE = lambda grammar: SemanticPredicate(
     "count", 3, lambda in_tree, needle, num: count(grammar, in_tree, needle, num))
 
 
-def ljust(grammar: Grammar,
-          tree: DerivationTree,
-          width: int,
-          fillchar: str) -> SemPredEvalResult:
+def just(ljust: bool,
+         crop: bool,
+         grammar: Grammar,
+         tree: DerivationTree,
+         width: int,
+         fillchar: str,
+         ) -> SemPredEvalResult:
     if len(fillchar) != 1:
         raise TypeError("The fill character must be exactly one character long")
 
@@ -105,7 +108,7 @@ def ljust(grammar: Grammar,
     if len(unparsed) == width:
         return SemPredEvalResult(True)
 
-    if len(unparsed) > width:
+    if not crop and len(unparsed) > width:
         return SemPredEvalResult(False)
 
     specialized_grammar = copy.deepcopy(grammar)
@@ -113,10 +116,23 @@ def ljust(grammar: Grammar,
     delete_unreachable(specialized_grammar)
     parser = EarleyParser(specialized_grammar)
 
-    unparsed_output = unparsed.ljust(width, fillchar)
+    unparsed_output = unparsed.ljust(width, fillchar) if ljust else unparsed.rjust(width, fillchar)
+    assert crop or len(unparsed_output) == width
+    unparsed_output = unparsed_output[len(unparsed_output) - width:]
     result = DerivationTree.from_parse_tree(list(parser.parse(unparsed_output))[0])
     return SemPredEvalResult({tree: result})
 
 
 LJUST_PREDICATE = lambda grammar: SemanticPredicate(
-    "ljust", 3, lambda tree, width, fillchar: ljust(grammar, tree, width, fillchar))
+    "ljust", 3, lambda tree, width, fillchar: just(True, False, grammar, tree, width, fillchar), lambda tree, args: False)
+
+LJUST_CROP_PREDICATE = lambda grammar: SemanticPredicate(
+    "ljust_crop", 3,
+    lambda tree, width, fillchar: just(True, True, grammar, tree, width, fillchar), lambda tree, args: False)
+
+RJUST_PREDICATE = lambda grammar: SemanticPredicate(
+    "rjust", 3, lambda tree, width, fillchar: just(False, False, grammar, tree, width, fillchar), lambda tree, args: False)
+
+RJUST_CROP_PREDICATE = lambda grammar: SemanticPredicate(
+    "rjust_crop", 3,
+    lambda tree, width, fillchar: just(False, True, grammar, tree, width, fillchar), lambda tree, args: False)

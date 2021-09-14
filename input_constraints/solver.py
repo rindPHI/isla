@@ -102,6 +102,11 @@ class ISLaSolver:
                  expand_after_existential_elimination: bool = False,
                  enforce_unique_trees_in_queue: bool = True,
                  debug: bool = False,
+                 # Current cost functions:
+                 # 1. "Tree cost" --- Cost computed from the open nonterminals in a tree.
+                 # 2. "Constraint cost" --- Cost computed from the constraint. Currently, only counts existential qfrs.
+                 # 3. Number of ancestors --- The "derivation depth", increases strictly monotonically. Penalize to
+                 #                            prefer items longer in the queue.
                  cost_vectors: Tuple[Tuple[float, float, float], ...] = ((20, 1, .5), (0, 0, 1), (2, 1, 0)),
                  cost_phase_lengths: Tuple[int, ...] = (200, 100, 500),
                  ):
@@ -188,8 +193,19 @@ class ISLaSolver:
 
             # Split disjunctions
             if isinstance(state.constraint, isla.DisjunctiveFormula):
+                self.logger.debug("Splitting disjunction %s", state.constraint)
                 for disjunct in split_disjunction(state.constraint):
-                    heapq.heappush(self.queue, (cost, SolutionState(disjunct, state.tree)))
+                    new_state = SolutionState(disjunct, state.tree)
+                    heapq.heappush(self.queue, (cost, new_state))
+
+                    if self.debug:
+                        self.state_tree[self.current_state].append(new_state)
+                        self.costs[new_state] = cost
+
+                    self.logger.debug("Pushing new state %s (hash %d, cost %f)", state, hash(new_state), cost)
+                    self.logger.debug("Queue length: %d", len(self.queue))
+                    if len(self.queue) % 100 == 0:
+                        self.logger.info("Queue length: %d", len(self.queue))
                 continue
 
             # Instantiate all top-level structural predicate formulas.
@@ -280,10 +296,11 @@ class ISLaSolver:
                         sc.true() if evaluation_result.true() else sc.false()),
                     state.tree)
 
-            return SolutionState(
-                state.constraint.substitute_expressions(evaluation_result.result),
-                state.tree.substitute(evaluation_result.result),
-            )
+            new_constraint = (
+                isla.replace_formula(state.constraint, semantic_predicate_formula, sc.true())
+                    .substitute_expressions(evaluation_result.result))
+
+            return SolutionState(new_constraint, state.tree.substitute(evaluation_result.result))
 
         return None
 
@@ -556,16 +573,11 @@ class ISLaSolver:
 
         return solutions
 
-    def process_new_state(
-            self, new_state: SolutionState,
-            cost_reduction: Optional[float] = None,
-    ) -> List[DerivationTree]:
+    def process_new_state(self, new_state: SolutionState) -> List[DerivationTree]:
         return [state.tree for state in self.postprocess_new_state(new_state)
-                if self.state_is_valid_or_enqueue(state, cost_reduction)]
+                if self.state_is_valid_or_enqueue(state)]
 
-    def state_is_valid_or_enqueue(self,
-                                  state: SolutionState,
-                                  cost_reduction: Optional[float] = None) -> bool:
+    def state_is_valid_or_enqueue(self, state: SolutionState) -> bool:
         """
         Returns True if the given state is valid, such that it can be yielded. Returns False and enqueues the state
         if the state is not yet complete, otherwise returns False and discards the state.
@@ -605,7 +617,7 @@ class ISLaSolver:
 
         state = SolutionState(state.constraint, state.tree, level=self.current_level + 1)
 
-        cost = self.compute_cost(state, cost_reduction or 1.0)
+        cost = self.compute_cost(state)
         heapq.heappush(self.queue, (cost, state))
         self.tree_hashes_in_queue.add(state.tree.structural_hash())
 
@@ -613,10 +625,10 @@ class ISLaSolver:
             self.state_tree[self.current_state].append(state)
             self.costs[state] = cost
 
-        self.logger.debug(f"Pushing new state %s (hash %d, cost %f)", state, hash(state), cost)
-        self.logger.debug(f"Queue length: %d", len(self.queue))
+        self.logger.debug("Pushing new state %s (hash %d, cost %f)", state, hash(state), cost)
+        self.logger.debug("Queue length: %d", len(self.queue))
         if len(self.queue) % 100 == 0:
-            self.logger.info(f"Queue length: %d", len(self.queue))
+            self.logger.info("Queue length: %d", len(self.queue))
 
         # if self.queue_size_limit is not None and len(queue) > self.queue_size_limit:
         #     self.logger.debug(f"Balancing queue")
@@ -648,15 +660,15 @@ class ISLaSolver:
         formula = convert_to_dnf(convert_to_nnf(state.constraint))
         return SolutionState(formula, state.tree)
 
-    def compute_cost(self, state: SolutionState, cost_reduction: float = 1.0) -> float:
+    def compute_cost(self, state: SolutionState) -> float:
         """Cost of state. Best value: 0, Worst: Unbounded"""
         # tree_cost = cost_reduction * len(state.tree)
 
         nonterminals = [leaf.value for _, leaf in state.tree.open_leaves()]
-        tree_cost = cost_reduction * (
-                len(state.tree) +
-                sum([self.symbol_costs[nonterminal]
-                     for nonterminal in nonterminals]))
+        tree_cost = (
+            # len(state.tree) +
+            sum([self.symbol_costs[nonterminal]
+                 for nonterminal in nonterminals]))
 
         # Eliminating existential quantifiers (by tree insertion) can be very expensive.
         constraint_cost = len([sub for sub in get_conjuncts(state.constraint)
@@ -755,8 +767,8 @@ class ISLaSolver:
     def can_be_freely_instantiated(self, path_to_leaf: Path, state: SolutionState) -> bool:
         # An instantiation is only then *not* free if
         # 1) instantiating it might lead to an expression that might match a quantifier
-        # 2) the nonterminal to instantiate is part of a tree that is an argument
-        #    to an SMT formula or semantic predicate formula
+        # 2) the leaf to expand is part of a tree that is an argument to an SMT formula
+        # 3) the leaf to expand is bound by a semantic predicate formula.
         conjuncts = get_conjuncts(state.constraint)
 
         universal_formulas = [formula for formula in conjuncts
@@ -765,20 +777,19 @@ class ISLaSolver:
                                   or self.expand_after_existential_elimination
                                   and isinstance(formula, isla.QuantifiedFormula))]
 
-        semantic_formulas = [formula for formula in conjuncts
-                             if isinstance(formula, isla.SMTFormula)
-                             or isinstance(formula, isla.SemanticPredicateFormula)]
+        smt_formulas = [formula for formula in conjuncts
+                        if isinstance(formula, isla.SMTFormula)]
+        semantic_predicate_formulas = [formula for formula in conjuncts
+                                       if isinstance(formula, isla.SemanticPredicateFormula)]
         leaf_node = state.tree.get_subtree(path_to_leaf)
-
-        # TODO: For SemanticPredicateFormulas, enable flexible response to whether tree argument is bound.
-        #       That is, for some predicate formulas (e.g., ljust), you can just fill in an arbitrary tree
-        #       and they bend it towards a solution, so that argument can be freely instantiated.
 
         return (not any(self.quantified_formula_might_match(qfd_formula, path_to_leaf, state)
                         for qfd_formula in universal_formulas)
-                and all(all(tree_arg.find_node(leaf_node) is None
-                            for tree_arg in semantic_formula.tree_arguments())
-                        for semantic_formula in semantic_formulas)
+                and all(tree_arg.find_node(leaf_node) is None
+                        for smt_formula in smt_formulas
+                        for tree_arg in smt_formula.tree_arguments())
+                and not any(semantic_formula.binds_tree(leaf_node)
+                            for semantic_formula in semantic_predicate_formulas)
                 )
 
     def quantified_formula_might_match(

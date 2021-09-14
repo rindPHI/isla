@@ -464,8 +464,13 @@ class BindExpression:
             elif not is_nonterminal(bound_element.n_type):
                 placeholder_map[bound_element] = bound_element.n_type
             else:
-                ph_candidate = fuzzer.expand_tree((bound_element.n_type, None))
-                placeholder_map[bound_element] = tree_to_string(ph_candidate)
+                for _ in range(100):
+                    ph_candidate = fuzzer.expand_tree((bound_element.n_type, None))
+                    if tree_to_string(ph_candidate):
+                        placeholder_map[bound_element] = tree_to_string(ph_candidate)
+                        break
+                else:
+                    assert False, f"Could not find non-empty instantiation of nonterminal {bound_element.n_type}"
 
         inp = "".join(list(map(lambda elem: placeholder_map[elem], self.bound_elements)))
 
@@ -789,14 +794,28 @@ class SemPredEvalResult:
             return "UNKNOWN"
 
 
+SemPredArg = Union[DerivationTree, Constant, str, int]
+
+
 class SemanticPredicate:
-    def __init__(self, name: str, arity: int,
-                 eval_fun: Callable[[Optional[Grammar], ...], SemPredEvalResult]):
+    def __init__(
+            self, name: str, arity: int,
+            eval_fun: Callable[[Union[DerivationTree, Constant, str, int], ...], SemPredEvalResult],
+            binds_tree: Optional[Callable[[DerivationTree, Tuple[SemPredArg, ...]], bool]] = None):
         self.name = name
         self.arity = arity
         self.eval_fun = eval_fun
 
-    def evaluate(self, *instantiations: Union[DerivationTree, Constant, str]):
+        if binds_tree is not None:
+            self.binds_tree = binds_tree
+        else:
+            self.binds_tree = (
+                lambda tree, args:
+                any(tree_arg.find_node(tree) is not None
+                    for tree_arg in args
+                    if isinstance(tree_arg, DerivationTree)))
+
+    def evaluate(self, *instantiations: SemPredArg):
         return self.eval_fun(*instantiations)
 
     def __eq__(self, other):
@@ -813,13 +832,16 @@ class SemanticPredicate:
 
 
 class SemanticPredicateFormula(Formula):
-    def __init__(self, predicate: SemanticPredicate, *args: Union[DerivationTree, Constant, str, int]):
+    def __init__(self, predicate: SemanticPredicate, *args: SemPredArg):
         assert len(args) == predicate.arity
         self.predicate = predicate
-        self.args: List[Union[Variable, DerivationTree]] = list(args)
+        self.args: Tuple[SemPredArg, ...] = args
 
     def evaluate(self) -> SemPredEvalResult:
         return self.predicate.eval_fun(*self.args)
+
+    def binds_tree(self, tree: DerivationTree) -> bool:
+        return self.predicate.binds_tree(tree, self.args)
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return SemanticPredicateFormula(self.predicate,
@@ -867,7 +889,7 @@ class SemanticPredicateFormula(Formula):
         visitor.visit_semantic_predicate_formula(self)
 
     def __hash__(self):
-        return hash((type(self).__name__, self.predicate, tuple(self.args)))
+        return hash((type(self).__name__, self.predicate, self.args))
 
     def __eq__(self, other):
         return (type(self) is type(other)
@@ -1432,6 +1454,7 @@ class ThreeValuedTruth:
 
     @staticmethod
     def all(args: Iterable['ThreeValuedTruth']) -> 'ThreeValuedTruth':
+        args = list(args)
         if any(elem.is_false() for elem in args):
             return ThreeValuedTruth.false()
         if any(elem.is_unknown() for elem in args):
@@ -1440,6 +1463,7 @@ class ThreeValuedTruth:
 
     @staticmethod
     def any(args: Iterable['ThreeValuedTruth']) -> 'ThreeValuedTruth':
+        args = list(args)
         if any(elem.is_true() for elem in args):
             return ThreeValuedTruth.true()
         if any(elem.is_unknown() for elem in args):
@@ -1465,6 +1489,9 @@ class ThreeValuedTruth:
     @staticmethod
     def unknown():
         return ThreeValuedTruth(ThreeValuedTruth.UNKNOWN)
+
+    def __repr__(self):
+        return f"ThreeValuedTruth({self.val})"
 
     def __str__(self):
         return ("TRUE" if self.is_true() else
@@ -1774,14 +1801,19 @@ def split_disjunction(formula: Formula) -> List[Formula]:
 
 
 class VariableManager:
-    def __init__(self):
+    def __init__(self, grammar: Grammar):
         self.placeholders: Dict[str, Variable] = {}
         self.variables: Dict[str, Variable] = {}
+        self.grammar = grammar
 
     def __var(self,
               name: str,
               n_type: Optional[str],
               constr: Optional[Callable[[str, Optional[str]], Variable]] = None) -> Variable:
+        if n_type is not None:
+            assert n_type == Constant.NUMERIC_NTYPE or n_type in self.grammar, \
+                f"Unknown nonterminal type {n_type} for variable {name}"
+
         matching_variables = [var for var_name, var in self.variables.items() if var_name == name]
         if matching_variables:
             return matching_variables[0]
@@ -1805,7 +1837,8 @@ class VariableManager:
     def bv(self, name: str, n_type: Optional[str] = None) -> BoundVariable:
         return cast(BoundVariable, self.__var(name, n_type, BoundVariable))
 
-    def smt(self, formula: z3.BoolRef) -> SMTFormula:
+    def smt(self, formula) -> SMTFormula:
+        assert isinstance(formula, z3.BoolRef)
         z3_symbols = get_symbols(formula)
         isla_variables = [self.__var(str(z3_symbol), None) for z3_symbol in z3_symbols]
         return SMTFormula(formula, *isla_variables)

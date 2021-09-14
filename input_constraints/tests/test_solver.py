@@ -1,10 +1,12 @@
 import logging
+import os
 import unittest
-from typing import cast, Optional, Dict, List, Callable, Union
+from typing import cast, Optional, Dict, List, Callable, Union, Tuple
 from xml.dom import minidom
 from xml.sax.saxutils import escape
 
 import z3
+from pyexpat import ExpatError
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
@@ -31,7 +33,7 @@ class TestSolver(unittest.TestCase):
         self.execute_generation_test(formula, start, max_number_free_instantiations=1)
 
     def test_simple_universal_formula_with_bind(self):
-        mgr = isla.VariableManager()
+        mgr = isla.VariableManager(LANG_GRAMMAR)
         formula = mgr.create(
             sc.forall_bind(
                 isla.BindExpression(mgr.bv("$var1", "<var>")),
@@ -90,7 +92,7 @@ class TestSolver(unittest.TestCase):
         self.execute_generation_test(formula, start)
 
     def test_declared_before_used(self):
-        mgr = isla.VariableManager()
+        mgr = isla.VariableManager(LANG_GRAMMAR)
         formula: isla.Formula = mgr.create(sc.forall_bind(
             mgr.bv("$lhs_1", "<var>") + " := " + mgr.bv("$rhs_1", "<rhs>"),
             mgr.bv("$assgn_1", "<assgn>"),
@@ -111,7 +113,7 @@ class TestSolver(unittest.TestCase):
         self.execute_generation_test(formula, mgr.const("$start"), max_number_free_instantiations=1)
 
     def test_simple_csv_rows_equal_length(self):
-        mgr = isla.VariableManager()
+        mgr = isla.VariableManager(SIMPLE_CSV_GRAMMAR)
         formula = mgr.create(
             mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$num").to_smt()) >= z3.IntVal(3))) &
             mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$num").to_smt()) <= z3.IntVal(5))) &
@@ -133,7 +135,7 @@ class TestSolver(unittest.TestCase):
 
     def test_csv_rows_equal_length(self):
         # TODO: Quite slow. Is it "only" the SMT solver?
-        mgr = isla.VariableManager()
+        mgr = isla.VariableManager(CSV_GRAMMAR)
         formula = mgr.create(
             mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$num").to_smt()) >= z3.IntVal(3))) &
             mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$num").to_smt()) <= z3.IntVal(5))) &
@@ -180,6 +182,8 @@ class TestSolver(unittest.TestCase):
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
             custom_test_func=compile_tinyc_clang,
+            cost_vectors=((20, 1, .5), (0, 0, 1), (2, 1, 0)),
+            cost_phase_lengths=(200, 100, 500),
         )
 
     # NOTE: Constraint does currently not implement scoping, and only imposes that
@@ -218,6 +222,8 @@ class TestSolver(unittest.TestCase):
             max_number_smt_instantiations=1,
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
+            debug=True,
+            num_solutions=5
         )
 
     def execute_generation_test(
@@ -233,19 +239,38 @@ class TestSolver(unittest.TestCase):
             enforce_unique_trees_in_queue=True,
             debug=False,
             state_tree_out="/tmp/state_tree.xml",
-            custom_test_func: Optional[Callable[[isla.DerivationTree], Union[bool, str]]] = None
+            log_out="/tmp/isla_log.txt",
+            custom_test_func: Optional[Callable[[isla.DerivationTree], Union[bool, str]]] = None,
+            cost_vectors: Optional[Tuple[Tuple[float, float, float], ...]] = None,
+            cost_phase_lengths: Optional[Tuple[int, ...]] = None
     ):
         logger = logging.getLogger(type(self).__name__)
 
-        solver = ISLaSolver(
-            grammar=grammar,
-            formula=formula,
-            max_number_free_instantiations=max_number_free_instantiations,
-            max_number_smt_instantiations=max_number_smt_instantiations,
-            expand_after_existential_elimination=expand_after_existential_elimination,
-            enforce_unique_trees_in_queue=enforce_unique_trees_in_queue,
-            debug=debug,
-        )
+        if debug:
+            for f in [f for f in [state_tree_out, log_out] if os.path.exists(f)]:
+                os.remove(f)
+
+        args = {
+            "grammar": grammar,
+            "formula": formula,
+            "max_number_free_instantiations": max_number_free_instantiations,
+            "max_number_smt_instantiations": max_number_smt_instantiations,
+            "expand_after_existential_elimination": expand_after_existential_elimination,
+            "enforce_unique_trees_in_queue": enforce_unique_trees_in_queue,
+            "debug": debug,
+        }
+
+        if cost_vectors:
+            args["cost_vectors"] = cost_vectors
+        if cost_phase_lengths:
+            args["cost_phase_lengths"] = cost_phase_lengths
+
+        solver = ISLaSolver(**args)
+
+        if debug:
+            file_handler = logging.FileHandler(log_out)
+            for name in logging.root.manager.loggerDict:
+                logging.getLogger(name).addHandler(file_handler)
 
         it = solver.solve()
         solutions_found = 0
@@ -273,6 +298,8 @@ class TestSolver(unittest.TestCase):
             with open(state_tree_out, 'w') as file:
                 file.write(state_tree_to_xml(
                     solver.state_tree_root, solver.state_tree, solver.costs))
+                print(f"Written derivation data (XML) to {state_tree_out}")
+                print(f"Written log {log_out}")
 
 
 def state_tree_to_xml(
@@ -296,8 +323,12 @@ def state_tree_to_xml(
               children_string +
               "</state>")
 
+    result = result.replace("\x00", "&lt;NUL&gt;")
     if prettify:
-        return minidom.parseString(result).toprettyxml(indent="    ")
+        try:
+            return minidom.parseString(result).toprettyxml(indent="    ")
+        except ExpatError:
+            return result
     else:
         return result
 
