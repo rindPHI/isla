@@ -1,3 +1,4 @@
+import random
 import unittest
 from typing import cast
 
@@ -7,7 +8,7 @@ from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 import input_constraints.isla_shortcuts as sc
 from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
     DerivationTree, convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager
-from input_constraints.isla_predicates import count
+from input_constraints.isla_predicates import count, is_before
 from input_constraints.tests.subject_languages import tinyc, tar
 from input_constraints.tests.test_data import *
 from input_constraints.tests.test_helpers import parse

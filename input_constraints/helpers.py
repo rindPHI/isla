@@ -55,24 +55,6 @@ def is_prefix(path_1: Path, path_2: Path) -> bool:
         return is_prefix(cdr_1, cdr_2)
 
 
-def is_before(path_1: Path, path_2: Path) -> bool:
-    if not path_1 or not path_2:
-        # Note: (1,) is not before (1,0), since it's a prefix!
-        # Also, (1,) cannot be before ().
-        # But (1,0) would be before (1,1).
-        return False
-
-    car_1, *cdr_1 = path_1
-    car_2, *cdr_2 = path_2
-
-    if car_1 < car_2:
-        return True
-    elif car_2 < car_1:
-        return False
-    else:
-        return is_before(tuple(cdr_1), tuple(cdr_2))
-
-
 def get_symbols(formula: z3.BoolRef) -> Set[z3.Symbol]:
     result: Set[z3.Symbol] = set()
 

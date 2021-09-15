@@ -1,6 +1,8 @@
+import datetime
 import logging
 import os
 import unittest
+from time import time
 from typing import cast, Optional, Dict, List, Callable, Union, Tuple
 from xml.dom import minidom
 from xml.sax.saxutils import escape
@@ -248,7 +250,8 @@ class TestSolver(unittest.TestCase):
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
             debug=True,
-            num_solutions=5
+            num_solutions=14,
+            precompute_reachability=False
         )
 
     def execute_generation_test(
@@ -262,6 +265,7 @@ class TestSolver(unittest.TestCase):
             max_number_smt_instantiations=1,
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=True,
+            precompute_reachability=False,
             debug=False,
             state_tree_out="/tmp/state_tree.xml",
             log_out="/tmp/isla_log.txt",
@@ -282,6 +286,7 @@ class TestSolver(unittest.TestCase):
             "max_number_smt_instantiations": max_number_smt_instantiations,
             "expand_after_existential_elimination": expand_after_existential_elimination,
             "enforce_unique_trees_in_queue": enforce_unique_trees_in_queue,
+            "precompute_reachability": precompute_reachability,
             "debug": debug,
         }
 
@@ -302,7 +307,7 @@ class TestSolver(unittest.TestCase):
         for idx in range(num_solutions):
             try:
                 assignment = next(it)
-                self.assertTrue(isla.evaluate(formula.substitute_expressions({constant: assignment})).to_bool())
+                self.assertTrue(isla.evaluate(formula.substitute_expressions({constant: assignment})).is_true())
 
                 if custom_test_func:
                     test_result = custom_test_func(assignment)

@@ -1,12 +1,15 @@
+import copy
 import string
-from typing import cast
+from typing import cast, Union, List
 
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.Grammars import srange
+from fuzzingbook.Parser import EarleyParser
 
 from input_constraints import isla
 import input_constraints.isla_shortcuts as sc
+from input_constraints.helpers import delete_unreachable
 
 TAR_GRAMMAR = {
     "<start>": ["<entries>"],
@@ -69,6 +72,49 @@ TAR_GRAMMAR = {
     "<ZERO>": ["0"]
 }
 
+
+def tar_checksum(header: isla.DerivationTree, checksum_tree: isla.DerivationTree) -> isla.SemPredEvalResult:
+    if not header.is_complete():
+        return isla.SemPredEvalResult(None)
+
+    current_checksum_path = header.find_node(checksum_tree)
+
+    checksum_grammar = copy.deepcopy(TAR_GRAMMAR)
+    checksum_grammar["<start>"] = ["<checksum>"]
+    checksum_grammar["<checksum>"] = ["<SPACE><SPACE><SPACE><SPACE><SPACE><SPACE><SPACE><SPACE>"]
+    delete_unreachable(checksum_grammar)
+    checksum_parser = EarleyParser(checksum_grammar)
+
+    space_checksum = isla.DerivationTree.from_parse_tree(list(checksum_parser.parse("        "))[0]).get_subtree((0,))
+    header_wo_checksum = header.replace_path(current_checksum_path, space_checksum)
+
+    header_bytes: List[int] = list(str(header_wo_checksum).encode("ascii"))
+
+    checksum_value = str(oct(sum(header_bytes)))[2:].rjust(6, "0") + "\x00 "
+
+    checksum_grammar = copy.deepcopy(TAR_GRAMMAR)
+    checksum_grammar["<start>"] = ["<checksum>"]
+    delete_unreachable(checksum_grammar)
+    checksum_parser = EarleyParser(checksum_grammar)
+
+    new_checksum_tree = isla.DerivationTree.from_parse_tree(
+        list(checksum_parser.parse(checksum_value))[0]).get_subtree((0,))
+
+    if str(new_checksum_tree) == str(checksum_tree):
+        return isla.SemPredEvalResult(True)
+
+    return isla.SemPredEvalResult({checksum_tree: new_checksum_tree})
+
+
+TAR_CHECKSUM_PREDICATE = isla.SemanticPredicate("tar_checksum", 2, tar_checksum, lambda tree, args: False)
+
+
+def tar_checksum(
+        header: Union[isla.Variable, isla.DerivationTree],
+        checksum: Union[isla.Variable, isla.DerivationTree]) -> isla.SemanticPredicateFormula:
+    return isla.SemanticPredicateFormula(TAR_CHECKSUM_PREDICATE, header, checksum)
+
+
 mgr = isla.VariableManager(TAR_GRAMMAR)
 start = mgr.const("$start", "<start>")
 LENGTH_CONSTRAINTS = mgr.create(
@@ -102,11 +148,19 @@ LENGTH_CONSTRAINTS = mgr.create(
         start,
         sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$mod_time"), 12, "0")
     ) &
+    # sc.forall(
+    #     mgr.bv("$checksum", "<checksum>"),
+    #     start,
+    #     sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$checksum"), 8, "0")  # TODO: Implement proper checksum
+    # ) &
     sc.forall(
-        mgr.bv("$checksum", "<checksum>"),
+        mgr.bv("$header", "<header>"),
         start,
-        sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$checksum"), 8, "0")  # TODO: Implement proper checksum
-    ) &
+        sc.forall(
+            mgr.bv("$checksum", "<checksum>"),
+            mgr.bv("$header"),
+            tar_checksum(mgr.bv("$header"), mgr.bv("$checksum"))
+        )) &
     sc.forall(
         mgr.bv("$linked_file_name", "<linked_file_name>"),
         start,
@@ -127,6 +181,8 @@ LENGTH_CONSTRAINTS = mgr.create(
                    sc.exists(
                        mgr.bv("$linked_entry", "<entry>"),
                        start,
+                       (sc.before(mgr.bv("$entry"), mgr.bv("$linked_entry"))
+                        | sc.before(mgr.bv("$linked_entry"), mgr.bv("$entry"))) &
                        sc.forall_bind(
                            mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>",
                            mgr.bv("$file_name"),
@@ -135,9 +191,4 @@ LENGTH_CONSTRAINTS = mgr.create(
                        )
                    )))
         ))
-    # sc.forall(
-    #    mgr.bv("$linked_file_name", "<linked_file_name>"),
-    #    start,
-    #    sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$linked_file_name"), 100, "\x00")
-    # )
 )

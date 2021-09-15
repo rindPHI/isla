@@ -1,6 +1,6 @@
 from input_constraints.isla import *
 from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, LJUST_PREDICATE, LJUST_CROP_PREDICATE, \
-    RJUST_CROP_PREDICATE, RJUST_PREDICATE
+    RJUST_CROP_PREDICATE, RJUST_PREDICATE, AFTER_PREDICATE
 
 
 def forall_bind(
@@ -37,6 +37,12 @@ def before(
         var: Union[Variable, DerivationTree],
         before_var: Union[Variable, DerivationTree]) -> StructuralPredicateFormula:
     return StructuralPredicateFormula(BEFORE_PREDICATE, var, before_var)
+
+
+def after(
+        var: Union[Variable, DerivationTree],
+        before_var: Union[Variable, DerivationTree]) -> StructuralPredicateFormula:
+    return StructuralPredicateFormula(AFTER_PREDICATE, var, before_var)
 
 
 def count(

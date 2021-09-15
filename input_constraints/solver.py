@@ -1,6 +1,7 @@
 import copy
 import heapq
 import logging
+import sys
 from functools import reduce, lru_cache
 from typing import Generator, Dict, List, Set, Optional, Tuple, Union
 
@@ -9,6 +10,7 @@ from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.GrammarFuzzer import GrammarFuzzer
 from fuzzingbook.Grammars import is_nonterminal
 from fuzzingbook.Parser import canonical, EarleyParser
+from grammar_graph import gg
 from grammar_graph.gg import GrammarGraph
 from grammar_to_regex.cfg2regex import RegexConverter
 from orderedset import OrderedSet
@@ -101,6 +103,7 @@ class ISLaSolver:
                  max_number_smt_instantiations: int = 10,
                  expand_after_existential_elimination: bool = False,  # Currently not used, might be removed
                  enforce_unique_trees_in_queue: bool = True,
+                 precompute_reachability: bool = False,
                  debug: bool = False,
                  # Current cost functions:
                  # 1. "Tree cost" --- Cost computed from the open nonterminals in a tree.
@@ -122,6 +125,9 @@ class ISLaSolver:
         :param enforce_unique_trees_in_queue: If true, only one state in the queue containing a tree with the same
         structure can be present at a time. Should be set to false especially if there are top-level SMT formulas
         about numeric constants. TODO: This parameter is awkward, maybe we can find a different solution.
+        :param precompute_reachability: If true, the distances between all grammar nodes are pre-computed using
+        Floyd-Warshall's algorithm. This makes sense if there are many expensive distance queries, e.g., in a big
+        grammar and a constraint with relatively many universal quantifiers.
         :param debug: If true, debug information about the evolution of states is collected, notably in the
         field state_tree. The root of the tree is in the field state_tree_root. The field costs stores the computed
         cost values for all new nodes.
@@ -129,6 +135,7 @@ class ISLaSolver:
         self.logger = logging.getLogger(type(self).__name__)
 
         self.grammar = grammar
+        self.graph = GrammarGraph.from_grammar(grammar)
         self.canonical_grammar = canonical(grammar)
         self.symbol_costs: Dict[str, int] = self.compute_symbol_costs()
         self.cost_normalizer = CostNormalizer()
@@ -154,6 +161,24 @@ class ISLaSolver:
         self.cost_phase_lengths = cost_phase_lengths
         self.current_cost_phase: int = 0
         self.current_cost_phase_since: int = 0
+
+        self.precompute_reachability = precompute_reachability
+        if precompute_reachability:
+            # Pre-compute grammar graph distances for more performant reachability queries
+            self.logger.info("Pre-Computing shortest distances between all grammar nodes "
+                             "for quicker reachability queries...")
+            node_distances: [Dict[gg.Node, Dict[gg.Node, int]]] = self.graph.shortest_distances(infinity=sys.maxsize)
+            u: gg.Node
+            self.node_distances: [Dict[str, Dict[str, int]]] = {
+                u.symbol: {
+                    v.symbol: dist
+                    for v, dist in node_distances[u].items()
+                    if not isinstance(v, gg.ChoiceNode)
+                }
+                for u in self.graph.all_nodes
+                if type(u) is gg.NonterminalNode
+            }
+            self.logger.info("DONE Pre-Computing shortest distances between all grammar nodes.")
 
         # Initialize Queue
         initial_tree = DerivationTree(self.top_constant.n_type, None)
@@ -209,7 +234,7 @@ class ISLaSolver:
                 continue
 
             # Instantiate all top-level structural predicate formulas.
-            state = instantiate_structural_predicates(state)
+            state = self.instantiate_structural_predicates(state)
 
             if state.constraint == sc.false():
                 continue
@@ -256,6 +281,19 @@ class ISLaSolver:
                 self.logger.debug("Expanding state %s (%d successors)", new_state, len(expanded_states))
                 yield from [result for expanded_state in expanded_states
                             for result in self.process_new_state(expanded_state)]
+
+    def instantiate_structural_predicates(self, state: SolutionState) -> SolutionState:
+        predicate_formulas = [
+            conjunct for conjunct in get_conjuncts(state.constraint)
+            if isinstance(conjunct, isla.StructuralPredicateFormula)]
+
+        formula = state.constraint
+        for predicate_formula in predicate_formulas:
+            instantiation = isla.SMTFormula(z3.BoolVal(predicate_formula.evaluate(state.tree)))
+            self.logger.debug("Eliminating (-> %s) structural predicate formula %s", instantiation, predicate_formula)
+            formula = isla.replace_formula(formula, predicate_formula, instantiation)
+
+        return SolutionState(formula, state.tree)
 
     def eliminate_all_semantic_formulas(self, state: SolutionState) -> Optional[List[SolutionState]]:
         conjuncts = split_conjunction(state.constraint)
@@ -810,12 +848,14 @@ class ISLaSolver:
 
         return False
 
-    @lru_cache()
+    @lru_cache(maxsize=None)
     def reachable(self, nonterminal: str, to_nonterminal: str) -> bool:
-        graph = GrammarGraph.from_grammar(self.grammar)
-        return graph.get_node(nonterminal).reachable(graph.get_node(to_nonterminal))
+        if self.precompute_reachability:
+            return self.node_distances[nonterminal][to_nonterminal] < sys.maxsize
 
-    @lru_cache()
+        return self.graph.get_node(nonterminal).reachable(self.graph.get_node(to_nonterminal))
+
+    @lru_cache(maxsize=None)
     def extract_regular_expression(self, nonterminal: str) -> z3.ReRef:
         regex_conv = RegexConverter(self.grammar, compress_unions=True)
         return regex_conv.to_regex(nonterminal)
@@ -874,23 +914,6 @@ def is_semantic_formula(formula: isla.Formula) -> bool:
     return not pred_qfr_visitor.collect(formula)
 
 
-def instantiate_structural_predicates(state: SolutionState) -> SolutionState:
-    # Note: The current interpretation of these Python (non-SMT) predicates is that they are *structural* predicate,
-    #       i.e., they are only concerned about positions / paths and not about actual parse trees.
-    #       This means that we can already evaluate them when they still contain constants, as long as the constants
-    #       occur in the derivation tree.
-    predicate_formulas = [
-        conjunct for conjunct in get_conjuncts(state.constraint)
-        if isinstance(conjunct, isla.StructuralPredicateFormula)]
-
-    formula = state.constraint
-    for predicate_formula in predicate_formulas:
-        instantiation = isla.SMTFormula(z3.BoolVal(predicate_formula.evaluate(state.tree)))
-        formula = isla.replace_formula(formula, predicate_formula, instantiation)
-
-    return SolutionState(formula, state.tree)
-
-
 def get_conjuncts(formula: isla.Formula) -> List[isla.Formula]:
     return [conjunct
             for disjunct in split_disjunction(formula)
@@ -898,9 +921,7 @@ def get_conjuncts(formula: isla.Formula) -> List[isla.Formula]:
 
 
 def quantified_nonterminals_reachable(
-        grammar: Grammar, formula: isla.QuantifiedFormula, tree: DerivationTree) -> bool:
-    graph = GrammarGraph.from_grammar(grammar)
-
+        graph: GrammarGraph, formula: isla.QuantifiedFormula, tree: DerivationTree) -> bool:
     if any(formula.bound_variable.n_type == leaf or
            graph.get_node(leaf).reachable(graph.get_node(formula.bound_variable.n_type))
            for _, (leaf, _) in tree.open_concrete_leaves()):

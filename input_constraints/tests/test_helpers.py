@@ -6,8 +6,9 @@ from fuzzingbook.Parser import EarleyParser, canonical
 from grammar_graph.gg import GrammarGraph
 
 from input_constraints.existential_helpers import path_to_tree, paths_between
-from input_constraints.helpers import is_before, is_prefix, path_iterator, delete_unreachable, \
+from input_constraints.helpers import is_prefix, path_iterator, delete_unreachable, \
     dict_of_lists_to_list_of_dicts
+from input_constraints.isla_predicates import is_before
 from input_constraints.tests.test_data import LANG_GRAMMAR
 from input_constraints.type_defs import Grammar, ParseTree
 
