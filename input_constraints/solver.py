@@ -47,6 +47,7 @@ class SolutionState:
         # Existential, predicate, and SMT formulas have to be eliminated first.
         return any(all(not isinstance(conjunct, isla.StructuralPredicateFormula)
                        and (not isinstance(conjunct, isla.SMTFormula) or conjunct == sc.true())
+                       and not isinstance(conjunct, isla.SemanticPredicateFormula)
                        and not isinstance(conjunct, isla.ExistsFormula)
                        and (not isinstance(conjunct, isla.ForallFormula) or len(conjunct.already_matched) > 0)
                        for conjunct in split_conjunction(disjunct))
@@ -584,21 +585,8 @@ class ISLaSolver:
         if the state is not yet complete, otherwise returns False and discards the state.
         """
         if state.complete():
-            eval_result = state.formula_satisfied()
-
-            if eval_result.is_true():
-                return True
-
-            if eval_result.is_false():
-                assert False
-                # In certain occasions, it can happen that a complete state does not satisfy the constraint.
-                # A typical (maybe the only) case is when an existential quantifier is eliminated and the
-                # original constraint is re-attached. Then, the there might be several options for matching
-                # the existential quantifier again, some of which will be unsuccessful.
-                #
-                # Complete, but invalid states are discarded and not enqueued
-                self.logger.debug(f"Discarding state %s (unsatisfied constraint)", state)
-                return False
+            assert state.formula_satisfied().is_true()
+            return True
 
         assert all(state.tree.find_node(arg)
                    for predicate_formula in get_conjuncts(state.constraint)
