@@ -7,7 +7,7 @@ from typing import Generator, Dict, List, Set, Optional, Tuple, Union
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.GrammarFuzzer import GrammarFuzzer
-from fuzzingbook.Grammars import is_nonterminal, nonterminals
+from fuzzingbook.Grammars import is_nonterminal
 from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph.gg import GrammarGraph
 from grammar_to_regex.cfg2regex import RegexConverter
@@ -17,11 +17,10 @@ import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
-    replace_line_breaks, tree_depth, tree_size
+    replace_line_breaks
 from input_constraints.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
     convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables
 from input_constraints.type_defs import Grammar, Path
-import statistics
 
 
 class SolutionState:
@@ -100,7 +99,7 @@ class ISLaSolver:
                  formula: isla.Formula,
                  max_number_free_instantiations: int = 10,
                  max_number_smt_instantiations: int = 10,
-                 expand_after_existential_elimination: bool = False,
+                 expand_after_existential_elimination: bool = False,  # Currently not used, might be removed
                  enforce_unique_trees_in_queue: bool = True,
                  debug: bool = False,
                  # Current cost functions:
@@ -119,7 +118,7 @@ class ISLaSolver:
         :param max_number_smt_instantiations: Number of solutions of SMT formulas that should be produced.
         :param expand_after_existential_elimination: Trees are expanded after an existential quantifier elimination
         iff this paramter is set to true. If false, only a finite (potentially small) set of inputs is generated for
-        existential constraints.
+        existential constraints. (CURRENTLY NOT USED, MIGHT BE REMOVED)
         :param enforce_unique_trees_in_queue: If true, only one state in the queue containing a tree with the same
         structure can be present at a time. Should be set to false especially if there are top-level SMT formulas
         about numeric constants. TODO: This parameter is awkward, maybe we can find a different solution.
@@ -144,7 +143,7 @@ class ISLaSolver:
 
         self.max_number_free_instantiations: int = max_number_free_instantiations
         self.max_number_smt_instantiations: int = max_number_smt_instantiations
-        self.expand_after_existential_elimination = expand_after_existential_elimination
+        # self.expand_after_existential_elimination = expand_after_existential_elimination
         self.enforce_unique_trees_in_queue = enforce_unique_trees_in_queue
 
         assert len(cost_vectors) == len(cost_phase_lengths)
@@ -240,9 +239,10 @@ class ISLaSolver:
             if result_states is not None:
                 yield from [result for new_state in result_states
                             for result in self.process_new_state(new_state)]
-                if (not self.expand_after_existential_elimination
-                        or any(result_state.constraint == sc.true() for result_state in result_states)):
-                    continue
+                continue
+                # if (not self.expand_after_existential_elimination
+                #         or any(result_state.constraint == sc.true() for result_state in result_states)):
+                #     continue
 
             for new_state in self.postprocess_new_state(state):
                 if new_state.complete() and new_state.formula_satisfied().is_true():
@@ -635,10 +635,10 @@ class ISLaSolver:
         new_state = self.remove_infeasible_universal_quantifiers(new_state)
 
         open_concrete_leaves = list(new_state.tree.open_concrete_leaves())
-        if (not any(isinstance(conjunct, isla.ExistsFormula) for conjunct in get_conjuncts(new_state.constraint))
-                and open_concrete_leaves
-                and all(self.can_be_freely_instantiated(path, new_state)
-                        for path, _ in open_concrete_leaves)):
+        if (not any(isinstance(conjunct, isla.ExistsFormula) for conjunct in get_conjuncts(new_state.constraint)) and
+                open_concrete_leaves and
+                all(self.can_be_freely_instantiated(path, new_state)
+                    for path, _ in open_concrete_leaves)):
             new_states = [self.remove_nonmatching_universal_quantifiers(state)
                           for state in self.instantiate_free_symbols(new_state)]
         else:
@@ -761,11 +761,13 @@ class ISLaSolver:
         # 3) the leaf to expand is bound by a semantic predicate formula.
         conjuncts = get_conjuncts(state.constraint)
 
+        # universal_formulas = [formula for formula in conjuncts
+        #                      if (not self.expand_after_existential_elimination
+        #                          and isinstance(formula, isla.ForallFormula)
+        #                          or self.expand_after_existential_elimination
+        #                          and isinstance(formula, isla.QuantifiedFormula))]
         universal_formulas = [formula for formula in conjuncts
-                              if (not self.expand_after_existential_elimination
-                                  and isinstance(formula, isla.ForallFormula)
-                                  or self.expand_after_existential_elimination
-                                  and isinstance(formula, isla.QuantifiedFormula))]
+                              if isinstance(formula, isla.ForallFormula)]
 
         smt_formulas = [formula for formula in conjuncts
                         if isinstance(formula, isla.SMTFormula)]

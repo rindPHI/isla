@@ -68,19 +68,19 @@ class TestSolver(unittest.TestCase):
         self.execute_generation_test(formula, mgr.const("$start"))
 
     def test_simple_existential_formula(self):
+        mgr = isla.VariableManager(LANG_GRAMMAR)
         start = isla.Constant("$start", "<start>")
-        var1 = isla.BoundVariable("$var", "<var>")
 
-        formula = sc.exists(
-            var1, start,
-            sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
+        formula = mgr.create(
+            sc.exists(
+                mgr.bv("$var", "<var>"), start,
+                mgr.smt(mgr.bv("$var").to_smt() == z3.StringVal("x")))
+        )
 
-        # TODO: Fix (get error for state not leaving queue; essence of the problem is that
-        #       <var> is expanded to all options instead of instantiated by SMT solver!
         self.execute_generation_test(
-            formula, start, num_solutions=7,
+            formula, start, num_solutions=1,
             max_number_free_instantiations=1,
-            expand_after_existential_elimination=True
+            # expand_after_existential_elimination=True
         )
 
     def test_simple_existential_formula_with_bind(self):
