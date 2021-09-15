@@ -251,6 +251,7 @@ class ISLaSolver:
                 # Expand the tree
                 expanded_states = self.expand_tree(new_state)
                 assert len(expanded_states) > 0, f"State {new_state} will never leave the queue."
+
                 self.logger.debug("Expanding state %s (%d successors)", new_state, len(expanded_states))
                 yield from [result for expanded_state in expanded_states
                             for result in self.process_new_state(expanded_state)]
@@ -705,7 +706,7 @@ class ISLaSolver:
                      if any(is_nonterminal(symbol) for symbol in expansion)])
                 for _, tree in DerivationTree.from_parse_tree(tree).path_iterator()
                 if is_nonterminal(tree.value)
-            ])
+            ]) + 1  # Addition of 1 to avoid 0 cost
 
         return result
 
