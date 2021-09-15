@@ -464,54 +464,42 @@ class BindExpression:
             elif not is_nonterminal(bound_element.n_type):
                 placeholder_map[bound_element] = bound_element.n_type
             else:
-                for _ in range(100):
-                    ph_candidate = fuzzer.expand_tree((bound_element.n_type, None))
-                    if tree_to_string(ph_candidate):
-                        placeholder_map[bound_element] = tree_to_string(ph_candidate)
-                        break
-                else:
-                    assert False, f"Could not find non-empty instantiation of nonterminal {bound_element.n_type}"
+                ph_candidate = fuzzer.expand_tree((bound_element.n_type, None))
+                placeholder_map[bound_element] = tree_to_string(ph_candidate)
 
         inp = "".join(list(map(lambda elem: placeholder_map[elem], self.bound_elements)))
 
         graph = GrammarGraph.from_grammar(grammar)
         subgrammar = graph.subgraph(graph.get_node(in_nonterminal)).to_grammar()
         parser = EarleyParser(subgrammar)
-        tree = list(parser.parse(inp))[0][1][0]
+        tree = DerivationTree.from_parse_tree(list(parser.parse(inp))[0][1][0])
 
         positions: Dict[BoundVariable, Path] = {}
         bound_elements = copy.deepcopy(self.bound_elements)
-        subtrees = list(path_iterator(tree))
-        while subtrees:
-            path, subtree = subtrees.pop(0)
+        curr_path = tuple()
+        while bound_elements:
+            curr_subtree = tree.get_subtree(curr_path)
+            curr_bound_elem = bound_elements[0]
 
-            if not bound_elements:
-                break
-
-            if isinstance(bound_elements[0], str):
-                if tree_to_string(subtree) == bound_elements[0]:
+            if isinstance(curr_bound_elem, str):
+                if str(curr_subtree) == curr_bound_elem:
                     bound_elements = bound_elements[1:]
-                continue
 
-            if (is_nonterminal(bound_elements[0].n_type)
-                    and tree_to_string(subtree) == placeholder_map[bound_elements[0]]
-                    or tree_to_string(subtree) == bound_elements[0].n_type):
-                positions[bound_elements[0]] = path
-                tree = replace_tree_path(
-                    tree,
-                    path,
-                    (bound_elements[0].n_type,
-                     None if is_nonterminal(bound_elements[0].n_type)
-                     else []))
-
-                subtrees = [(p, s) for p, s in subtrees
-                            if not p[:len(path)] == path]
+            if isinstance(curr_bound_elem, Variable) and curr_bound_elem.n_type == curr_subtree.value:
+                positions[bound_elements[0]] = curr_path
+                tree = tree.replace_path(curr_path, DerivationTree(curr_subtree.value))
                 bound_elements = bound_elements[1:]
 
-        assert not bound_elements
-        assert not subtrees
+            curr_path = tree.next_path(curr_path)
+            if curr_path is None:
+                break
 
-        return DerivationTree.from_parse_tree(tree), positions
+        assert ([elem.n_type for elem in self.bound_elements if isinstance(elem, Variable)] ==
+                [leaf[1].value for leaf in tree.open_leaves()])
+        own_string = ''.join(map(lambda e: f'{str(e)}' if type(e) is str else e.n_type, self.bound_elements))
+        assert tree.to_string(show_open_leaves=True) == own_string
+
+        return tree, positions
 
     def match(self, tree: DerivationTree) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
         result: Dict[BoundVariable, Tuple[Path, DerivationTree]] = {}

@@ -6,7 +6,6 @@ from xml.dom import minidom
 from xml.sax.saxutils import escape
 
 import z3
-from pyexpat import ExpatError
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
@@ -17,6 +16,31 @@ from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_
 
 
 class TestSolver(unittest.TestCase):
+    def test_qfd_formula_might_match(self):
+        mgr = isla.VariableManager(LANG_GRAMMAR)
+        solver = ISLaSolver(LANG_GRAMMAR, mgr.smt(mgr.const("$DUMMY", "<start>").to_smt() == z3.StringVal("")))
+
+        tree = isla.DerivationTree.from_parse_tree(
+            ('<start>', [
+                ('<stmt>', [
+                    ('<assgn>', [
+                        ('<var>', None),  # Path (0, 0, 0)
+                        (' := ', []), ('<rhs>', [('<var>', None)])]),
+                    (' ; ', []),
+                    ('<stmt>', [('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', None)])])])]))
+
+        formula = cast(isla.QuantifiedFormula, mgr.create(sc.forall_bind(
+            isla.BindExpression(mgr.bv("$var1", "<var>")),
+            mgr.bv("$rhs1", "<rhs>"),
+            tree,
+            mgr.smt(mgr.bv("$var1").to_smt() == z3.StringVal("x"))
+        )))
+
+        assert tree.get_subtree((0, 0, 2, 0)).value == "<var>"
+        # assert not tree.get_subtree((0, 0, 2, 0)).children
+
+        self.assertTrue(solver.quantified_formula_might_match(formula, (0, 0, 2, 0), tree))
+
     def test_atomic_smt_formula(self):
         assgn = isla.Constant("$assgn", "<assgn>")
         formula = isla.SMTFormula(cast(z3.BoolRef, assgn.to_smt() == z3.StringVal("x := x")), assgn)

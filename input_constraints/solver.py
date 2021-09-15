@@ -590,6 +590,7 @@ class ISLaSolver:
                 return True
 
             if eval_result.is_false():
+                assert False
                 # In certain occasions, it can happen that a complete state does not satisfy the constraint.
                 # A typical (maybe the only) case is when an existential quantifier is eliminated and the
                 # original constraint is re-attached. Then, the there might be several options for matching
@@ -784,7 +785,7 @@ class ISLaSolver:
                                        if isinstance(formula, isla.SemanticPredicateFormula)]
         leaf_node = state.tree.get_subtree(path_to_leaf)
 
-        return (not any(self.quantified_formula_might_match(qfd_formula, path_to_leaf, state)
+        return (not any(self.quantified_formula_might_match(qfd_formula, path_to_leaf, state.tree)
                         for qfd_formula in universal_formulas)
                 and all(tree_arg.find_node(leaf_node) is None
                         for smt_formula in smt_formulas
@@ -794,8 +795,8 @@ class ISLaSolver:
                 )
 
     def quantified_formula_might_match(
-            self, qfd_formula: isla.QuantifiedFormula, path_to_nonterminal: Path, state: SolutionState) -> bool:
-        node = state.tree.get_subtree(path_to_nonterminal)
+            self, qfd_formula: isla.QuantifiedFormula, path_to_nonterminal: Path, tree: DerivationTree) -> bool:
+        node = tree.get_subtree(path_to_nonterminal)
 
         if qfd_formula.in_variable.find_node(node) is None:
             return False
@@ -813,7 +814,7 @@ class ISLaSolver:
                 qfd_formula.bound_variable.n_type, self.grammar)
 
             for idx in reversed(range(len(path_to_nonterminal))):
-                subtree = state.tree.get_subtree(path_to_nonterminal[:idx])
+                subtree = tree.get_subtree(path_to_nonterminal[:idx])
                 if subtree.is_prefix(prefix_tree):
                     return True
 
