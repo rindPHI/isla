@@ -7,13 +7,13 @@ from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator
 
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
-from fuzzingbook.Grammars import is_nonterminal, RE_NONTERMINAL
+from fuzzingbook.Grammars import is_nonterminal, RE_NONTERMINAL, JSON_GRAMMAR
 from fuzzingbook.Parser import EarleyParser
 from grammar_graph.gg import GrammarGraph
 from orderedset import OrderedSet
 
 from input_constraints.helpers import get_symbols, z3_subst, path_iterator, replace_tree_path, is_valid, \
-    replace_line_breaks
+    replace_line_breaks, delete_unreachable
 from input_constraints.type_defs import ParseTree, Path, Grammar
 
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
@@ -142,17 +142,11 @@ class DerivationTree:
     def num_children(self) -> int:
         return 0 if self.children is None else len(self.children)
 
-    def is_abstract(self):
-        return isinstance(self.value, Variable) or (self.children is not None
-                                                    and any(child.is_abstract() for child in self.children))
-
     def is_open(self):
         return self.children is None or any(child.is_open() for child in self.children)
 
     def is_complete(self):
-        result = not self.is_open()
-        assert not result or not self.is_abstract()
-        return result
+        return not self.is_open()
 
     def get_subtree(self, path: Path) -> 'DerivationTree':
         """Access a subtree based on `path` (a list of children numbers)"""
@@ -259,6 +253,17 @@ class DerivationTree:
                 for path, sub_tree in self.path_iterator()
                 if sub_tree.children is None)
 
+    def depth(self) -> int:
+        if not self.children:
+            return 1
+        return 1 + max(child.depth() for child in self.children)
+
+    def new_ids(self) -> 'DerivationTree':
+        return DerivationTree(
+            self.value,
+            None if self.children is None
+            else [child.new_ids() for child in self.children])
+
     def __len__(self):
         # if self.__len is None:
         #     self.__len = len(list(self.path_iterator()))
@@ -276,22 +281,9 @@ class DerivationTree:
     def __ge__(self, other):
         return len(self) >= len(other)
 
-    def open_concrete_leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
-        return ((path, sub_tree)
-                for path, sub_tree in self.open_leaves()
-                if sub_tree.children is None and not sub_tree.is_abstract())
-
-    def make_concrete(self) -> 'DerivationTree':
-        return self.substitute(
-            {var: DerivationTree(var.n_type, None) for var in self.tree_variables()})
-
-    def tree_variables(self) -> OrderedSet[Variable]:
-        return OrderedSet([
-            sub_tree.value
-            for _, sub_tree in self.path_iterator()
-            if isinstance(sub_tree.value, Variable)])
-
     def substitute(self, subst_map: Dict[Union[Variable, 'DerivationTree'], 'DerivationTree']) -> 'DerivationTree':
+        assert all(isinstance(key, DerivationTree) for key in subst_map)
+
         if self in subst_map:
             return subst_map[self]
 
@@ -340,7 +332,6 @@ class DerivationTree:
                               else [DerivationTree.from_parse_tree(child) for child in children])
 
     def to_parse_tree(self) -> ParseTree:
-        assert not self.is_abstract()
         return self.value, None if self.children is None else [child.to_parse_tree() for child in self.children]
 
     def __iter__(self):
@@ -439,6 +430,8 @@ class BindExpression:
                 if token
             ])
 
+        self.prefixes: Dict[str, Tuple[DerivationTree, Dict[BoundVariable, Path]]] = {}
+
     def __add__(self, other: Union[str, 'BoundVariable']) -> 'BindExpression':
         assert type(other) == str or type(other) == BoundVariable
         result = BindExpression(*self.bound_elements)
@@ -452,8 +445,11 @@ class BindExpression:
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([var for var in self.bound_elements if type(var) is BoundVariable])
 
-    def to_tree_prefix(self, in_nonterminal: str, grammar: Grammar) -> \
-            Tuple[DerivationTree, Dict[BoundVariable, Path]]:
+    def to_tree_prefix(self, in_nonterminal: str, grammar: Grammar) -> Tuple[DerivationTree, Dict[BoundVariable, Path]]:
+        if in_nonterminal in self.prefixes:
+            cached = self.prefixes[in_nonterminal]
+            return cached[0].new_ids(), cached[1]
+
         fuzzer = GrammarFuzzer(grammar)
 
         placeholder_map: Dict[Union[str, BoundVariable], str] = {}
@@ -469,8 +465,10 @@ class BindExpression:
 
         inp = "".join(list(map(lambda elem: placeholder_map[elem], self.bound_elements)))
 
-        graph = GrammarGraph.from_grammar(grammar)
-        subgrammar = graph.subgraph(graph.get_node(in_nonterminal)).to_grammar()
+        subgrammar = copy.deepcopy(grammar)
+        subgrammar["<start>"] = [in_nonterminal]
+        delete_unreachable(subgrammar)
+
         parser = EarleyParser(subgrammar)
         tree = DerivationTree.from_parse_tree(list(parser.parse(inp))[0][1][0])
 
@@ -499,6 +497,7 @@ class BindExpression:
         own_string = ''.join(map(lambda e: f'{str(e)}' if type(e) is str else e.n_type, self.bound_elements))
         assert tree.to_string(show_open_leaves=True) == own_string
 
+        self.prefixes[in_nonterminal] = (tree, positions)
         return tree, positions
 
     def match(self, tree: DerivationTree) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
@@ -726,12 +725,7 @@ class StructuralPredicateFormula(Formula):
         return OrderedSet([])
 
     def free_variables(self) -> OrderedSet[Variable]:
-        result = OrderedSet([])
-        result.update([arg for arg in self.args if isinstance(arg, Variable)])
-        vars_in_concrete_args = [v for arg in self.args if isinstance(arg, DerivationTree)
-                                 for v in arg.tree_variables()]
-        result.update(vars_in_concrete_args)
-        return result
+        return OrderedSet([arg for arg in self.args if isinstance(arg, Variable)])
 
     def tree_arguments(self) -> OrderedSet[DerivationTree]:
         return OrderedSet([arg for arg in self.args if isinstance(arg, DerivationTree)])
@@ -863,12 +857,7 @@ class SemanticPredicateFormula(Formula):
         return OrderedSet([])
 
     def free_variables(self) -> OrderedSet[Variable]:
-        result = OrderedSet([])
-        result.update([arg for arg in self.args if isinstance(arg, Variable)])
-        vars_in_concrete_args = [v for arg in self.args if isinstance(arg, DerivationTree)
-                                 for v in arg.tree_variables()]
-        result.update(vars_in_concrete_args)
-        return result
+        return OrderedSet([arg for arg in self.args if isinstance(arg, Variable)])
 
     def tree_arguments(self) -> OrderedSet[DerivationTree]:
         return OrderedSet([arg for arg in self.args if isinstance(arg, DerivationTree)])
@@ -1264,12 +1253,13 @@ class ExistsFormula(QuantifiedFormula):
 
 class VariablesCollector(FormulaVisitor):
     def __init__(self):
-        self.result: Optional[OrderedSet[Variable]] = None
+        self.result: OrderedSet[Variable] = OrderedSet()
 
-    def collect(self, formula: Formula) -> OrderedSet[Variable]:
-        self.result = OrderedSet([])
-        formula.accept(self)
-        return self.result
+    @staticmethod
+    def collect(formula: Formula) -> OrderedSet[Variable]:
+        c = VariablesCollector()
+        formula.accept(c)
+        return c.result
 
     def visit_exists_formula(self, formula: ExistsFormula):
         self.visit_quantified_formula(formula)
@@ -1280,28 +1270,15 @@ class VariablesCollector(FormulaVisitor):
     def visit_quantified_formula(self, formula: QuantifiedFormula):
         if isinstance(formula.in_variable, Variable):
             self.result.add(formula.in_variable)
-        else:
-            self.result.update(formula.in_variable.tree_variables())
         self.result.add(formula.bound_variable)
         if formula.bind_expression is not None:
             self.result.update(formula.bind_expression.bound_variables())
 
     def visit_predicate_formula(self, formula: StructuralPredicateFormula):
-        for arg in formula.args:
-            if isinstance(arg, Variable):
-                self.result.add(arg)
-            else:
-                _, tree = arg
-                self.result.update(tree.tree_variables())
+        self.result.update([arg for arg in formula.args if isinstance(arg, Variable)])
 
     def visit_semantic_predicate_formula(self, formula: SemanticPredicateFormula):
-        for arg in formula.args:
-            if isinstance(arg, Variable):
-                self.result.add(arg)
-            elif isinstance(arg, DerivationTree):
-                self.result.update(arg.tree_variables())
-            else:
-                assert isinstance(arg, str) or isinstance(arg, int)
+        self.result.update([arg for arg in formula.args if isinstance(arg, Variable)])
 
     def visit_smt_formula(self, formula: SMTFormula):
         self.result.update(formula.free_variables())

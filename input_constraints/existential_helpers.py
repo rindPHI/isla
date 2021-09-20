@@ -15,7 +15,8 @@ def insert_tree(grammar: CanonicalGrammar,
                 tree: DerivationTree,
                 in_tree: DerivationTree,
                 graph: Optional[GrammarGraph] = None,
-                current_path: Optional[Path] = None) -> List[DerivationTree]:
+                current_path: Optional[Path] = None,
+                max_num_solutions: int = 50) -> List[DerivationTree]:
     if current_path is None:
         current_path = tuple()
 
@@ -30,12 +31,13 @@ def insert_tree(grammar: CanonicalGrammar,
     result: List[DerivationTree] = []
     result_hashes: Set[int] = set()
 
-    def add_to_result(new_tree: Union[DerivationTree,
-                                      List[DerivationTree]]) -> List[DerivationTree]:
+    def add_to_result(
+            new_tree: Union[DerivationTree, List[DerivationTree]]) -> bool:
         if type(new_tree) is list:
             for t in new_tree:
-                add_to_result(t)
-            return list(result)
+                if not add_to_result(t):
+                    return False
+            return True
 
         # The following alternative avoids prefixes, but is quite expensive if there are many results.
         # if (new_tree.structural_hash() not in result_hashes
@@ -45,9 +47,11 @@ def insert_tree(grammar: CanonicalGrammar,
             result.append(new_tree)
             result_hashes.add(new_tree.structural_hash())
 
-        return list(result)
+        return len(result) < max_num_solutions
 
-    # perfect_matches: List[Path] = []
+    # NOTE: Removed using "embeddable" matches since this can yield problematic results. E.g., if a containing
+    #       tree into which tree is embedded occurs in a syntactic predicate, then the it happened
+    perfect_matches: List[Path] = []
     embeddable_matches: List[Tuple[Path, DerivationTree]] = []
     for subtree_path, subtree in in_tree.path_iterator():
         node, children = subtree
@@ -67,11 +71,11 @@ def insert_tree(grammar: CanonicalGrammar,
         t = wrap_in_tree_starting_in(match_tree.root_nonterminal(), tree, grammar, graph)
         orig_node = in_tree.get_subtree(match_path_embeddable)
         assert t.value == orig_node.value
-        add_to_result(in_tree.replace_path(
-            match_path_embeddable,
-            DerivationTree(t.value, t.children, orig_node.id),
-            retain_id=True
-        ))
+        if not add_to_result(in_tree.replace_path(
+                match_path_embeddable,
+                DerivationTree(t.value, t.children, orig_node.id),
+                retain_id=True)):
+            return result
 
     # NOTE: Removed the attempt to use existing "holes" for now. There is some kind of problem with
     #       the "declared before used" example if we use it. It works if we set tree.id = orig_node.id
@@ -120,7 +124,7 @@ def insert_tree(grammar: CanonicalGrammar,
 
                         result: List[DerivationTree] = []
 
-                        leaves = list(into_tree.open_concrete_leaves())
+                        leaves = list(into_tree.open_leaves())
 
                         for leaf_idx, (leaf_path, (leaf_nonterm, _)) in enumerate(leaves):
                             if any(is_prefix(insert_path, leaf_path) for insert_path in insert_paths):
@@ -149,7 +153,7 @@ def insert_tree(grammar: CanonicalGrammar,
                                     for connecting_path in paths_between(graph, leaf_nonterm, nonterm_to_insert):
                                         for connecting_tree in path_to_tree(grammar, connecting_path):
                                             for insert_leaf_path, (insert_leaf_nonterm, _) in \
-                                                    connecting_tree.open_concrete_leaves():
+                                                    connecting_tree.open_leaves():
                                                 if insert_leaf_nonterm != nonterm_to_insert:
                                                     continue
 
@@ -170,13 +174,15 @@ def insert_tree(grammar: CanonicalGrammar,
                         instantiated_tree.id = orig_node.id
 
                         new_tree = in_tree.replace_path(current_path, instantiated_tree)
-                        add_to_result(new_tree)
+                        if not add_to_result(new_tree):
+                            return result
 
     np = in_tree.next_path(current_path)
     if np is None:
         return result
     else:
-        return add_to_result(insert_tree(grammar, tree, in_tree, graph, np))
+        add_to_result(insert_tree(grammar, tree, in_tree, graph, np))
+        return result
 
 
 def shrink_tree(tree: DerivationTree) -> DerivationTree:
@@ -253,7 +259,7 @@ def path_to_tree(grammar: CanonicalGrammar, path: Union[Tuple[str], List[str]]) 
         next_nonterminal = path[0]
         for _ in range(len(candidates)):
             candidate = candidates.pop(0)
-            leaf_path, (leaf_node, _) = next(candidate.open_concrete_leaves())
+            leaf_path, (leaf_node, _) = next(candidate.open_leaves())
             matching_expansions = [expansion for expansion in grammar[leaf_node]
                                    if next_nonterminal in expansion]
             if not matching_expansions:

@@ -3,12 +3,11 @@ import string
 from typing import cast, Union, List
 
 import z3
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.Grammars import srange
 from fuzzingbook.Parser import EarleyParser
 
-from input_constraints import isla
 import input_constraints.isla_shortcuts as sc
+from input_constraints import isla
 from input_constraints.helpers import delete_unreachable
 
 TAR_GRAMMAR = {

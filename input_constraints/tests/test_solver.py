@@ -1,8 +1,6 @@
-import datetime
 import logging
 import os
 import unittest
-from time import time
 from typing import cast, Optional, Dict, List, Callable, Union, Tuple
 from xml.dom import minidom
 from xml.sax.saxutils import escape
@@ -209,7 +207,7 @@ class TestSolver(unittest.TestCase):
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
             custom_test_func=compile_tinyc_clang,
-            cost_vectors=((20, 1, .5), (0, 0, 1), (2, 1, 0)),
+            cost_vectors=((20, -1, 1, .5), (0, 0, 0, 1), (2, -.5, 1, 0)),
             cost_phase_lengths=(200, 100, 500),
         )
 
@@ -240,7 +238,7 @@ class TestSolver(unittest.TestCase):
     #                 isla.Constant("$start", "<start>"): tree
     #             })))
 
-    def test_tar(self):
+    def Xtest_tar(self):
         self.execute_generation_test(
             tar.LENGTH_CONSTRAINTS,
             isla.Constant("$start", "<start>"),
@@ -270,7 +268,7 @@ class TestSolver(unittest.TestCase):
             state_tree_out="/tmp/state_tree.xml",
             log_out="/tmp/isla_log.txt",
             custom_test_func: Optional[Callable[[isla.DerivationTree], Union[bool, str]]] = None,
-            cost_vectors: Optional[Tuple[Tuple[float, float, float], ...]] = None,
+            cost_vectors: Optional[Tuple[Tuple[float, float, float, float], ...]] = None,
             cost_phase_lengths: Optional[Tuple[int, ...]] = None
     ):
         logger = logging.getLogger(type(self).__name__)
@@ -307,7 +305,10 @@ class TestSolver(unittest.TestCase):
         for idx in range(num_solutions):
             try:
                 assignment = next(it)
-                self.assertTrue(isla.evaluate(formula.substitute_expressions({constant: assignment})).is_true())
+                self.assertTrue(
+                    isla.evaluate(formula.substitute_expressions({constant: assignment})).is_true(),
+                    f"Solution {assignment} does not satisfy constraint {formula}"
+                )
 
                 if custom_test_func:
                     test_result = custom_test_func(assignment)
