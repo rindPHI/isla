@@ -16,7 +16,7 @@ def insert_tree(grammar: CanonicalGrammar,
                 in_tree: DerivationTree,
                 graph: Optional[GrammarGraph] = None,
                 current_path: Optional[Path] = None,
-                max_num_solutions: int = 50) -> List[DerivationTree]:
+                max_num_solutions: Optional[int] = 50) -> List[DerivationTree]:
     if current_path is None:
         current_path = tuple()
 
@@ -47,7 +47,7 @@ def insert_tree(grammar: CanonicalGrammar,
             result.append(new_tree)
             result_hashes.add(new_tree.structural_hash())
 
-        return len(result) < max_num_solutions
+        return not max_num_solutions or len(result) < max_num_solutions
 
     # NOTE: Removed using "embeddable" matches since this can yield problematic results. E.g., if a containing
     #       tree into which tree is embedded occurs in a syntactic predicate, then the it happened
@@ -181,7 +181,7 @@ def insert_tree(grammar: CanonicalGrammar,
     if np is None:
         return result
     else:
-        add_to_result(insert_tree(grammar, tree, in_tree, graph, np))
+        add_to_result(insert_tree(grammar, tree, in_tree, graph, np, max_num_solutions=max_num_solutions))
         return result
 
 

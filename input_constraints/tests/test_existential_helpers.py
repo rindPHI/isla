@@ -38,7 +38,7 @@ class TestExistentialHelpers(unittest.TestCase):
         tree = DerivationTree.from_parse_tree(parse(inp, JSON_GRAMMAR))
         to_insert = DerivationTree.from_parse_tree(parse(' "key" : { "key" : null } ', JSON_GRAMMAR, "<member>"))
 
-        results = insert_tree(canonical(JSON_GRAMMAR), to_insert, tree)
+        results = insert_tree(canonical(JSON_GRAMMAR), to_insert, tree, max_num_solutions=None)
 
         self.assertIn(
             ' { "T" : { "I" : true , '
@@ -51,7 +51,7 @@ class TestExistentialHelpers(unittest.TestCase):
         tree = DerivationTree.from_parse_tree(parse(inp, JSON_GRAMMAR))
         to_insert = DerivationTree.from_parse_tree(parse(' "cheese" ', JSON_GRAMMAR, "<element>"))
 
-        results = insert_tree(canonical(JSON_GRAMMAR), to_insert, tree)
+        results = insert_tree(canonical(JSON_GRAMMAR), to_insert, tree, max_num_solutions=None)
         self.assertIn(
             ' { "T" : { "I" : true , "" : [ false , "cheese" , "salami" ] , "" : true , "" : null , "" : false } } ',
             [result.to_string() for result in results])
