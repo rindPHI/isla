@@ -282,21 +282,15 @@ class DerivationTree:
         return len(self) >= len(other)
 
     def substitute(self, subst_map: Dict[Union[Variable, 'DerivationTree'], 'DerivationTree']) -> 'DerivationTree':
-        assert all(isinstance(key, DerivationTree) for key in subst_map)
-
         if self in subst_map:
             return subst_map[self]
 
-        value, children = self
-        if children is None:
-            if isinstance(value, Variable) and value in subst_map:
-                return subst_map[value]
-            else:
-                return self
+        if self.children is None:
+            return self
 
         return DerivationTree(
-            value,
-            [child.substitute(subst_map) for child in children],
+            self.value,
+            [child.substitute(subst_map) for child in self.children],
             id=self.id)
 
     def is_prefix(self, other: 'DerivationTree') -> bool:
