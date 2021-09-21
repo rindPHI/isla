@@ -3,7 +3,7 @@ import heapq
 import logging
 import sys
 from functools import reduce, lru_cache
-from typing import Generator, Dict, List, Set, Optional, Tuple, Union
+from typing import Generator, Dict, List, Set, Optional, Tuple, Union, cast
 
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
@@ -19,7 +19,7 @@ import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
-    replace_line_breaks
+    replace_line_breaks, z3_subst
 from input_constraints.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
     convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables
 from input_constraints.type_defs import Grammar, Path
@@ -221,13 +221,15 @@ class ISLaSolver:
                 self.logger.debug("Splitting disjunction %s", state.constraint)
                 for disjunct in split_disjunction(state.constraint):
                     new_state = SolutionState(disjunct, state.tree)
-                    heapq.heappush(self.queue, (cost, new_state))
+                    new_state_cost = self.compute_cost(new_state)
+
+                    heapq.heappush(self.queue, (new_state_cost, new_state))
 
                     if self.debug:
                         self.state_tree[self.current_state].append(new_state)
-                        self.costs[new_state] = cost
+                        self.costs[new_state] = new_state_cost
 
-                    self.logger.debug("Pushing new state %s (hash %d, cost %f)", state, hash(new_state), cost)
+                    self.logger.debug("Pushing new state %s (hash %d, cost %f)", state, hash(new_state), new_state)
                     self.logger.debug("Queue length: %d", len(self.queue))
                     if len(self.queue) % 100 == 0:
                         self.logger.info("Queue length: %d", len(self.queue))
@@ -550,10 +552,44 @@ class ISLaSolver:
             self, formula: isla.Formula) -> List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]]:
         solutions: List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]] = []
         internal_solutions: List[Dict[isla.Constant, z3.StringVal]] = []
-        smt_formula = qfr_free_formula_to_z3_formula(formula)
+
+        # smt_formula = qfr_free_formula_to_z3_formula(formula)
+
+        assert all(isinstance(conjunct, isla.SMTFormula) for conjunct in get_conjuncts(formula))
 
         smt_formulas = [conjunct for conjunct in get_conjuncts(formula)
                         if isinstance(conjunct, isla.SMTFormula)]
+
+        # NODE: We need to cluster SMT formulas by tree substitutions! If there are two formulas
+        # with a variable $var which is instantiated to different trees, we need two separate
+        # solution. If, however, $var is instantiated with the *same* tree, we need one solution
+        # to both formulas together.
+
+        old_smt_formulas = smt_formulas
+        smt_formulas = []
+
+        for subformula in old_smt_formulas:
+            subst_var: isla.Variable
+            subst_tree: DerivationTree
+
+            new_smt_formula: z3.BoolRef = subformula.formula
+            new_substitutions = subformula.substitutions
+            new_instantiated_variables = subformula.instantiated_variables
+
+            for subst_var, subst_tree in subformula.substitutions.items():
+                new_name = f"{subst_var.name}_{subst_tree.value}_{subst_tree.id}"
+                new_var = isla.BoundVariable(new_name, subst_var.n_type)
+
+                new_smt_formula = cast(z3.BoolRef, z3_subst(new_smt_formula, {subst_var.to_smt(): new_var.to_smt()}))
+                new_substitutions = {new_var if k is subst_var else k: v for k, v in new_substitutions.items()}
+                new_instantiated_variables = {new_var if v is subst_var else v for v in new_instantiated_variables}
+
+            smt_formulas.append(
+                isla.SMTFormula(
+                    new_smt_formula,
+                    *subformula.free_variables_,
+                    instantiated_variables=new_instantiated_variables,
+                    substitutions=new_substitutions))
 
         tree_substitutions = reduce(
             lambda d1, d2: d1 | d2,
@@ -583,11 +619,12 @@ class ISLaSolver:
                 for constant, string_val in prev_solution.items():
                     solver.add(z3.Not(constant.to_smt() == string_val))
 
-            solver.add(smt_formula)
+            for smt_formula in smt_formulas:
+                solver.add(smt_formula.formula)
 
             solver_result = solver.check()
             if solver_result == z3.unknown:
-                self.logger.warning("SMT solver timed out for formula %s", smt_formula)
+                self.logger.warning("SMT solver timed out for formula %s", " & ".join(map(str, smt_formulas)))
 
             if solver_result != z3.sat:
                 if not solutions:
@@ -635,6 +672,11 @@ class ISLaSolver:
                    for predicate_formula in get_conjuncts(state.constraint)
                    if isinstance(predicate_formula, isla.StructuralPredicateFormula)
                    for arg in predicate_formula.args)
+
+        assert all(state.tree.find_node(arg)
+                   for semantic_formula in get_conjuncts(state.constraint)
+                   if isinstance(semantic_formula, isla.SMTFormula)
+                   for arg in semantic_formula.substitutions.values())
 
         if self.enforce_unique_trees_in_queue and state.tree.structural_hash() in self.tree_hashes_in_queue:
             # Some structures can arise as well from tree insertion (existential quantifier elimination)
@@ -928,7 +970,7 @@ class CostNormalizer:
         averages = [1 if not do_average or not do_average[idx]
                     else sum(subhistory) / len(subhistory)
                     for idx, subhistory in enumerate(self.history)]
-        return sum([a_cost * weights[idx] / averages[idx] for idx, a_cost in enumerate(costs)])
+        return max(0, sum([a_cost * weights[idx] / averages[idx] for idx, a_cost in enumerate(costs)]))
 
     def add_to_history(self, costs: List[float]):
         if not self.history:

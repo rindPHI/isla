@@ -116,41 +116,36 @@ def tar_checksum(
 
 mgr = isla.VariableManager(TAR_GRAMMAR)
 start = mgr.const("$start", "<start>")
-LENGTH_CONSTRAINTS = mgr.create(
+TAR_CONSTRAINTS = mgr.create(
     sc.forall(
-        mgr.bv("$file_name", "<file_name>"),
-        start,
-        sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$file_name"), 100, "\x00")
+       mgr.bv("$file_name", "<file_name>"),
+       start,
+       sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$file_name"), 100, "\x00")
     ) &
-    sc.forall(
-        mgr.bv("$file_mode", "<file_mode>"),
-        start,
-        sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$file_mode"), 8, "0")
-    ) &
-    sc.forall(
-        mgr.bv("$uid", "<uid>"),
-        start,
-        sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$uid"), 8, "0")
-    ) &
-    sc.forall(
-        mgr.bv("$gid", "<gid>"),
-        start,
-        sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$gid"), 8, "0")
-    ) &
+    #sc.forall(
+    #    mgr.bv("$file_mode", "<file_mode>"),
+    #    start,
+    #    sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$file_mode"), 8, "0")
+    #) &
+    #sc.forall(
+    #    mgr.bv("$uid", "<uid>"),
+    #    start,
+    #    sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$uid"), 8, "0")
+    #) &
+    # sc.forall(
+    #    mgr.bv("$gid", "<gid>"),
+    #    start,
+    #    sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$gid"), 8, "0")
+    # ) &
     sc.forall(
         mgr.bv("$file_size", "<file_size>"),
         start,
         sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$file_size"), 12, "0")
     ) &
-    sc.forall(
-        mgr.bv("$mod_time", "<mod_time>"),
-        start,
-        sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$mod_time"), 12, "0")
-    ) &
     # sc.forall(
-    #     mgr.bv("$checksum", "<checksum>"),
+    #     mgr.bv("$mod_time", "<mod_time>"),
     #     start,
-    #     sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$checksum"), 8, "0")  # TODO: Implement proper checksum
+    #     sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$mod_time"), 12, "0")
     # ) &
     sc.forall(
         mgr.bv("$header", "<header>"),
@@ -161,33 +156,61 @@ LENGTH_CONSTRAINTS = mgr.create(
             tar_checksum(mgr.bv("$header"), mgr.bv("$checksum"))
         )) &
     sc.forall(
-        mgr.bv("$linked_file_name", "<linked_file_name>"),
-        start,
-        sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$linked_file_name"), 100, "\x00")
-    ) &
-    sc.forall(
         mgr.bv("$entry", "<entry>"),
         start,
         sc.forall(
             mgr.bv("$typeflag", "<typeflag>"),
             mgr.bv("$entry"),
-            mgr.smt(cast(z3.BoolRef, mgr.bv("$typeflag").to_smt() == z3.StringVal("0")))
-            | (mgr.smt(mgr.bv("$typeflag").to_smt() == z3.StringVal("2")) &
-               sc.forall_bind(
-                   mgr.bv("$linked_file_name_chars", "<characters>") + "<maybe_nuls>",
-                   mgr.bv("$linked_file_name", "<linked_file_name>"),
-                   mgr.bv("$entry"),
-                   sc.exists(
-                       mgr.bv("$linked_entry", "<entry>"),
-                       start,
-                       (sc.before(mgr.bv("$entry"), mgr.bv("$linked_entry"))
-                        | sc.before(mgr.bv("$linked_entry"), mgr.bv("$entry"))) &
-                       sc.forall_bind(
-                           mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>",
-                           mgr.bv("$file_name"),
-                           mgr.bv("$linked_entry"),
-                           mgr.smt(mgr.bv("$file_name_chars").to_smt() == mgr.bv("$linked_file_name_chars").to_smt())
-                       )
-                   )))
+            sc.forall_bind(
+                mgr.bv("$linked_file_name_chars", "<characters>") + "<maybe_nuls>",
+                mgr.bv("$linked_file_name", "<linked_file_name>"),
+                mgr.bv("$entry"),
+                (mgr.smt(cast(z3.BoolRef, mgr.bv("$typeflag").to_smt() == z3.StringVal("0"))) &
+                 sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$linked_file_name"), 100, "\x00")) |
+                (mgr.smt(mgr.bv("$typeflag").to_smt() == z3.StringVal("2")) &
+                 sc.exists(
+                     mgr.bv("$linked_entry", "<entry>"),
+                     start,
+                     (sc.before(mgr.bv("$entry"), mgr.bv("$linked_entry"))
+                      | sc.before(mgr.bv("$linked_entry"), mgr.bv("$entry"))) &
+                     sc.forall_bind(
+                         mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>",
+                         mgr.bv("$file_name"),
+                         mgr.bv("$linked_entry"),
+                         mgr.smt(mgr.bv("$file_name_chars").to_smt() == mgr.bv("$linked_file_name_chars").to_smt()) &
+                         sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$linked_file_name"), 100, "\x00")
+                     )
+                 )))
         ))
+
+    # sc.forall(
+    #     mgr.bv("$linked_file_name", "<linked_file_name>"),
+    #     start,
+    #     sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$linked_file_name"), 100, "\x00")
+    # ) &
+    # sc.forall(
+    #     mgr.bv("$entry", "<entry>"),
+    #     start,
+    #     sc.forall(
+    #         mgr.bv("$typeflag", "<typeflag>"),
+    #         mgr.bv("$entry"),
+    #         mgr.smt(cast(z3.BoolRef, mgr.bv("$typeflag").to_smt() == z3.StringVal("0")))
+    #         | (mgr.smt(mgr.bv("$typeflag").to_smt() == z3.StringVal("2")) &
+    #            sc.forall_bind(
+    #                mgr.bv("$linked_file_name_chars", "<characters>") + "<maybe_nuls>",
+    #                mgr.bv("$linked_file_name", "<linked_file_name>"),
+    #                mgr.bv("$entry"),
+    #                sc.exists(
+    #                    mgr.bv("$linked_entry", "<entry>"),
+    #                    start,
+    #                    (sc.before(mgr.bv("$entry"), mgr.bv("$linked_entry"))
+    #                     | sc.before(mgr.bv("$linked_entry"), mgr.bv("$entry"))) &
+    #                    sc.forall_bind(
+    #                        mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>",
+    #                        mgr.bv("$file_name"),
+    #                        mgr.bv("$linked_entry"),
+    #                        mgr.smt(mgr.bv("$file_name_chars").to_smt() == mgr.bv("$linked_file_name_chars").to_smt())
+    #                    )
+    #                )))
+    #     ))
 )

@@ -10,7 +10,7 @@ import z3
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 from input_constraints.solver import ISLaSolver, SolutionState
-from input_constraints.tests.subject_languages import rest, tinyc, tar
+from input_constraints.tests.subject_languages import rest, tinyc, tar, simple_tar
 from input_constraints.tests.subject_languages.tinyc import compile_tinyc_clang
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR
 
@@ -238,9 +238,9 @@ class TestSolver(unittest.TestCase):
     #                 isla.Constant("$start", "<start>"): tree
     #             })))
 
-    def Xtest_tar(self):
+    def test_tar(self):
         self.execute_generation_test(
-            tar.LENGTH_CONSTRAINTS,
+            tar.TAR_CONSTRAINTS,
             isla.Constant("$start", "<start>"),
             grammar=tar.TAR_GRAMMAR,
             max_number_free_instantiations=1,
@@ -248,8 +248,26 @@ class TestSolver(unittest.TestCase):
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
             debug=True,
-            num_solutions=14,
-            precompute_reachability=False
+            num_solutions=10,
+            precompute_reachability=False,
+            # cost_vectors=((20, 0, .5, 0),),
+            # cost_phase_lengths=(100,),
+        )
+
+    def test_simple_tar(self):
+        self.execute_generation_test(
+            simple_tar.TAR_CONSTRAINTS,
+            isla.Constant("$start", "<start>"),
+            grammar=simple_tar.SIMPLE_TAR_GRAMMAR,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=1,
+            expand_after_existential_elimination=False,
+            enforce_unique_trees_in_queue=False,
+            debug=True,
+            num_solutions=10,
+            precompute_reachability=False,
+            cost_vectors=((20, 0, .5, 0),),
+            cost_phase_lengths=(100,),
         )
 
     def execute_generation_test(
