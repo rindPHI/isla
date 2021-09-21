@@ -749,9 +749,10 @@ class ISLaSolver:
             sum([self.symbol_costs[nonterminal]
                  for nonterminal in nonterminals]))
 
-        # Eliminating existential quantifiers (by tree insertion) can be very expensive.
+        # Quantifiers are expensive (universal formulas have to be matched, tree insertion for existential
+        # formulas is even more costly).
         constraint_cost = len([sub for sub in get_conjuncts(state.constraint)
-                               if isinstance(sub, isla.ExistsFormula)])
+                               if isinstance(sub, isla.QuantifiedFormula)])
 
         # How far are we from matching a universal quantifier?
         match_costs = []

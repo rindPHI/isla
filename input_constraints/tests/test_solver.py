@@ -207,8 +207,8 @@ class TestSolver(unittest.TestCase):
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
             custom_test_func=compile_tinyc_clang,
-            cost_vectors=((20, -1, 1, .5), (0, 0, 0, 1), (2, -.5, 1, 0)),
-            cost_phase_lengths=(200, 100, 500),
+            cost_vectors=((20, 2, 5, .5),),
+            cost_phase_lengths=(200,),
         )
 
     # NOTE: Constraint does currently not implement scoping, and only imposes that
@@ -266,8 +266,9 @@ class TestSolver(unittest.TestCase):
             debug=True,
             num_solutions=10,
             precompute_reachability=False,
-            cost_vectors=((20, 0, .5, 0),),
-            cost_phase_lengths=(100,),
+            # cost_vectors=((20, 0, .5, 0),),
+            cost_vectors=((20, 2, 5, .5),),
+            cost_phase_lengths=(200,),
         )
 
     def execute_generation_test(
