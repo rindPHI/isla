@@ -1,4 +1,6 @@
 import itertools
+import logging
+import random
 from typing import Optional, Set, Generator, Tuple, List, Dict, Union, TypeVar
 
 import z3
@@ -105,7 +107,7 @@ def z3_subst(inp: z3.ExprRef, subst_map: Dict[z3.ExprRef, z3.ExprRef]) -> z3.Exp
     return z3.substitute(inp, *tuple(subst_map.items()))
 
 
-def is_valid(formula: z3.BoolRef) -> bool:
+def is_valid(formula: z3.BoolRef, timeout: int = 500) -> bool:
     if z3.is_true(formula):
         return True
 
@@ -113,8 +115,42 @@ def is_valid(formula: z3.BoolRef) -> bool:
         return False
 
     solver = z3.Solver()
+    solver.set("timeout", timeout)
     solver.add(z3.Not(formula))
     return solver.check() == z3.unsat
+
+
+def z3_solve(formulas: List[z3.BoolRef], timeout_ms=500) -> Tuple[z3.CheckSatResult, Optional[z3.ModelRef]]:
+    logger = logging.getLogger("z3_solve3")
+    logger.debug("Evaluating formulas %s", map(str, formulas))
+
+    result = z3.unknown  # To remove IDE warning
+    model: Optional[z3.ModelRef] = None
+    parallel = False
+
+    for _ in range(20):
+        solver = z3.Solver()
+        solver.set("timeout", timeout_ms)
+        for formula in formulas:
+            solver.add(formula)
+        result = solver.check()
+
+        if result == z3.sat:
+            model = solver.model()
+
+        if result != z3.unknown:
+            break
+
+        timeout_ms = int(timeout_ms * .9) + 1
+        random.shuffle(formulas)
+        parallel = not parallel
+        z3.set_param("parallel.enable", parallel)
+        z3.set_param("smt.random_seed", random.randint(0, 99999))
+
+    if result == z3.unknown:
+        logger.warning("Satisfiability of %s could not be decided", list(map(str, formulas)))
+
+    return result, model
 
 
 def reachable(grammar: Grammar, nonterminal: str, to_nonterminal: str) -> bool:

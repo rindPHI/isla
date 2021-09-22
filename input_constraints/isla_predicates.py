@@ -1,5 +1,5 @@
 import copy
-from typing import Union, Optional
+from typing import Union
 
 from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph.gg import GrammarGraph
@@ -38,17 +38,22 @@ AFTER_PREDICATE = StructuralPredicate(
     path_1 != path_2[:len(path_1)]  # No prefix
 )
 
-
 def count(grammar: Grammar,
           in_tree: DerivationTree,
           needle: str,
           num: Union[Constant, DerivationTree]) -> SemPredEvalResult:
+    graph = GrammarGraph.from_grammar(grammar)
+
+    def reachable(fr: str, to: str) -> bool:
+        f_node = graph.get_node(fr)
+        t_node = graph.get_node(to)
+        return f_node.reachable(t_node)
+
     num_needle_occurrences = len(in_tree.filter(lambda t: t.value == needle))
 
-    graph = GrammarGraph.from_grammar(grammar)
     leaf_nonterminals = [node.value for _, node in in_tree.open_leaves()]
 
-    more_needles_possible = any(graph.get_node(leaf_nonterminal).reachable(graph.get_node(needle))
+    more_needles_possible = any(reachable(leaf_nonterminal, needle)
                                 for leaf_nonterminal in leaf_nonterminals)
 
     if isinstance(num, Constant):
@@ -93,7 +98,7 @@ def count(grammar: Grammar,
         candidate_needle_occurrences = num_needles(candidate)
 
         candidate_more_needles_possible = \
-            any(graph.get_node(leaf_nonterminal).reachable(graph.get_node(needle))
+            any(reachable(leaf_nonterminal, needle)
                 for leaf_nonterminal in [node.value for _, node in candidate.open_leaves()])
 
         if not candidate_more_needles_possible and candidate_needle_occurrences == target_num_needle_occurrences:

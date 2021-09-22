@@ -18,7 +18,7 @@ import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
-    replace_line_breaks, z3_subst
+    replace_line_breaks, z3_subst, z3_solve
 from input_constraints.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
     convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables
 from input_constraints.type_defs import Grammar, Path
@@ -641,26 +641,23 @@ class ISLaSolver:
         )
 
         for _ in range(self.max_number_smt_instantiations):
-            solver = z3.Solver()
-            solver.set("timeout", 1000)
+            formulas: List[z3.BoolRef] = []
 
             for constant in constants:
                 if constant.is_numeric():
                     regex = z3.Concat(z3.Range("0", "9"), z3.Star(z3.Range("0", "9")))
                 else:
                     regex = self.extract_regular_expression(constant.n_type)
-                solver.add(z3.InRe(z3.String(constant.name), regex))
+                formulas.append(z3.InRe(z3.String(constant.name), regex))
 
             for prev_solution in internal_solutions:
                 for constant, string_val in prev_solution.items():
-                    solver.add(z3.Not(constant.to_smt() == string_val))
+                    formulas.append(z3.Not(constant.to_smt() == string_val))
 
             for smt_formula in smt_formulas:
-                solver.add(smt_formula.formula)
+                formulas.append(smt_formula.formula)
 
-            solver_result = solver.check()
-            if solver_result == z3.unknown:
-                self.logger.warning("SMT solver timed out for formula %s", " & ".join(map(str, smt_formulas)))
+            solver_result, maybe_model = z3_solve(formulas)
 
             if solver_result != z3.sat:
                 if not solutions:
@@ -668,17 +665,19 @@ class ISLaSolver:
                 else:
                     return solutions
 
+            assert maybe_model is not None
+
             new_solution = {
                 tree_substitutions.get(constant, constant):
                     (
-                        val := solver.model()[z3.String(constant.name)].as_string(),
+                        val := maybe_model[z3.String(constant.name)].as_string(),
                         DerivationTree(val, []) if constant.is_numeric() else self.parse(constant.n_type, val)
                     )[-1]
                 for constant in constants
             }
 
             new_internal_solution = {
-                constant: z3.StringVal(solver.model()[z3.String(constant.name)].as_string())
+                constant: z3.StringVal(maybe_model[z3.String(constant.name)].as_string())
                 for constant in constants}
 
             if new_solution in solutions:
