@@ -340,6 +340,8 @@ class ISLaSolver:
             conjunct for conjunct in split_conjunction(state.constraint)
             if isinstance(conjunct, isla.SemanticPredicateFormula)]
 
+        semantic_predicate_formulas = sorted(semantic_predicate_formulas, key=lambda f: f.order)
+
         if not semantic_predicate_formulas:
             return None
 

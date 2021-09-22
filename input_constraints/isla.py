@@ -808,10 +808,11 @@ class SemanticPredicate:
 
 
 class SemanticPredicateFormula(Formula):
-    def __init__(self, predicate: SemanticPredicate, *args: SemPredArg):
+    def __init__(self, predicate: SemanticPredicate, *args: SemPredArg, order: int = 0):
         assert len(args) == predicate.arity
         self.predicate = predicate
         self.args: Tuple[SemPredArg, ...] = args
+        self.order = order
 
     def evaluate(self) -> SemPredEvalResult:
         return self.predicate.eval_fun(*self.args)
@@ -822,7 +823,7 @@ class SemanticPredicateFormula(Formula):
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return SemanticPredicateFormula(self.predicate,
                                         *[arg if arg not in subst_map
-                                          else subst_map[arg] for arg in self.args])
+                                          else subst_map[arg] for arg in self.args], order=self.order)
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         new_args = []
@@ -845,7 +846,7 @@ class SemanticPredicateFormula(Formula):
 
             new_args.append(tree.substitute({k: v for k, v in subst_map.items()}))
 
-        return SemanticPredicateFormula(self.predicate, *new_args)
+        return SemanticPredicateFormula(self.predicate, *new_args, order=self.order)
 
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([])
