@@ -13,7 +13,6 @@ from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph import gg
 from grammar_graph.gg import GrammarGraph
 from grammar_to_regex.cfg2regex import RegexConverter
-from orderedset import OrderedSet
 
 import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
@@ -186,11 +185,13 @@ class ISLaSolver:
         # Initialize Queue
         initial_tree = DerivationTree(self.top_constant.n_type, None)
         initial_formula = self.formula.substitute_expressions({self.top_constant: initial_tree})
-        initial_state = self.establish_invariant(SolutionState(initial_formula, initial_tree))
+        initial_state = SolutionState(initial_formula, initial_tree)
+        initial_states = self.establish_invariant(initial_state)
 
         self.queue: List[Tuple[float, SolutionState]] = []
         self.tree_hashes_in_queue: Set[int] = {initial_tree.structural_hash()}
-        heapq.heappush(self.queue, (0, initial_state))
+        for state in initial_states:
+            heapq.heappush(self.queue, (self.compute_cost(state), state))
         self.current_level = 0
 
         # Debugging stuff
@@ -201,9 +202,11 @@ class ISLaSolver:
         self.costs: Dict[SolutionState, float] = {}
 
         if self.debug:
-            self.state_tree[initial_state] = []
+            self.state_tree[initial_state] = initial_states
             self.state_tree_root = initial_state
             self.costs[initial_state] = 0
+            for state in initial_states:
+                self.costs[state] = self.compute_cost(state)
 
     def solve(self) -> Generator[DerivationTree, None, None]:
         fuzzer = GrammarCoverageFuzzer(self.grammar)
@@ -222,14 +225,15 @@ class ISLaSolver:
             self.logger.debug(f"Queue length: %s", len(self.queue))
 
             # Split disjunctions
-            if isinstance(state.constraint, isla.DisjunctiveFormula):
-                self.logger.debug("Splitting disjunction %s", state.constraint)
-
-                result_states = [SolutionState(disjunct, state.tree)
-                                 for disjunct in split_disjunction(state.constraint)]
-
-                yield from [s for new_state in result_states for s in self.process_new_state(new_state) if s]
-                continue
+            assert not isinstance(state.constraint, isla.DisjunctiveFormula)
+            # if isinstance(state.constraint, isla.DisjunctiveFormula):
+            #         self.logger.debug("Splitting disjunction %s", state.constraint)
+            #
+            #     result_states = [SolutionState(disjunct, state.tree)
+            #                      for disjunct in split_disjunction(state.constraint)]
+            #
+            #     yield from [s for new_state in result_states for s in self.process_new_state(new_state) if s]
+            #     continue
 
             # Instantiate all top-level structural predicate formulas.
             state = self.instantiate_structural_predicates(state)
@@ -240,7 +244,7 @@ class ISLaSolver:
             # Match all universal formulas
             result_states = self.match_all_universal_formulas(state)
             if result_states is not None:
-                yield from [s for new_state in result_states for s in self.process_new_state(new_state) if s]
+                yield from self.process_new_states(result_states)
                 continue
 
             # Expand if there are any not yet eliminated / matched universal quantifiers
@@ -249,19 +253,17 @@ class ISLaSolver:
                 assert len(expanded_states) > 0, f"State {state} will never leave the queue."
 
                 self.logger.debug("Expanding state %s (%d successors)", state, len(expanded_states))
-                yield from [result for expanded_state in expanded_states
-                            for result in self.process_new_state(expanded_state)]
+                yield from self.process_new_states(expanded_states)
                 continue
 
             # Eliminate all semantic formulas
             result_states = self.eliminate_all_semantic_formulas(state)
             if result_states is not None:
-                yield from [s for s in [self.process_new_state(new_state) for new_state in result_states] if s]
+                yield from self.process_new_states(result_states)
                 continue
 
-            # Eliminate first (ready) semantic predicate formula
-            # TODO: Eliminate *all* ready semantic predicate formulas
-            result_state = self.eliminate_first_ready_semantic_predicate_formula(state)
+            # Eliminate all ready semantic predicate formulas
+            result_state = self.eliminate_all_ready_semantic_predicate_formulas(state)
             if result_state is not None:
                 yield from self.process_new_state(result_state)
                 continue
@@ -269,7 +271,7 @@ class ISLaSolver:
             # Eliminate first existential formula
             result_states = self.eliminate_first_existential_formula(state)
             if result_states is not None:
-                yield from [s for new_state in result_states for s in self.process_new_state(new_state) if s]
+                yield from self.process_new_states(result_states)
                 continue
                 # if (not self.expand_after_existential_elimination
                 #         or any(result_state.constraint == sc.true() for result_state in result_states)):
@@ -285,14 +287,20 @@ class ISLaSolver:
                                         if isinstance(pred_formula, isla.SemanticPredicateFormula))
                                 for _, leaf in state.tree.open_leaves())))
 
-            for _ in range(self.max_number_free_instantiations):
-                if state.constraint == sc.true():
-                    concrete_tree = DerivationTree.from_parse_tree(fuzzer.expand_tree(state.tree.to_parse_tree()))
-                    if state.constraint == sc.true():
-                        yield concrete_tree
-                    else:
-                        yield from [
-                            s for s in self.process_new_state(SolutionState(state.constraint, concrete_tree)) if s]
+            if state.constraint == sc.true():
+                for _ in range(self.max_number_free_instantiations):
+                    yield DerivationTree.from_parse_tree(fuzzer.expand_tree(state.tree.to_parse_tree()))
+            else:
+                for _ in range(self.max_number_free_instantiations):
+                    substitutions: Dict[DerivationTree, DerivationTree] = {
+                        subtree: DerivationTree.from_parse_tree(fuzzer.expand_tree((subtree.value, None)))
+                        for path, subtree in state.tree.open_leaves()
+                    }
+
+                    if substitutions:
+                        yield from self.process_new_state(
+                            SolutionState(state.constraint.substitute_expressions(substitutions),
+                                          state.tree.substitute(substitutions)))
 
     def instantiate_structural_predicates(self, state: SolutionState) -> SolutionState:
         predicate_formulas = [
@@ -327,7 +335,7 @@ class ISLaSolver:
 
         return self.eliminate_semantic_formula(prefix_conjunction, SolutionState(new_disjunct, state.tree))
 
-    def eliminate_first_ready_semantic_predicate_formula(self, state: SolutionState) -> Optional[SolutionState]:
+    def eliminate_all_ready_semantic_predicate_formulas(self, state: SolutionState) -> Optional[SolutionState]:
         semantic_predicate_formulas = [
             conjunct for conjunct in split_conjunction(state.constraint)
             if isinstance(conjunct, isla.SemanticPredicateFormula)]
@@ -335,28 +343,41 @@ class ISLaSolver:
         if not semantic_predicate_formulas:
             return None
 
-        for semantic_predicate_formula in semantic_predicate_formulas:
+        result = state
+
+        changed = False
+        for idx, semantic_predicate_formula in enumerate(semantic_predicate_formulas):
             evaluation_result = semantic_predicate_formula.evaluate()
             if not evaluation_result.ready():
                 continue
 
             self.logger.debug("Eliminating semantic predicate formula %s", semantic_predicate_formula)
+            changed = True
 
-            if evaluation_result.true() or evaluation_result.false():
-                return SolutionState(
+            if evaluation_result.false():
+                return SolutionState(sc.false(), result.tree)
+
+            if evaluation_result.true():
+                result = SolutionState(
                     isla.replace_formula(
-                        state.constraint,
+                        result.constraint,
                         semantic_predicate_formula,
-                        sc.true() if evaluation_result.true() else sc.false()),
-                    state.tree)
+                        sc.true()),
+                    result.tree)
+                continue
 
             new_constraint = (
-                isla.replace_formula(state.constraint, semantic_predicate_formula, sc.true())
+                isla.replace_formula(result.constraint, semantic_predicate_formula, sc.true())
                     .substitute_expressions(evaluation_result.result))
 
-            return SolutionState(new_constraint, state.tree.substitute(evaluation_result.result))
+            for k in range(idx + 1, len(semantic_predicate_formulas)):
+                semantic_predicate_formulas[k] = cast(
+                    isla.SemanticPredicateFormula,
+                    semantic_predicate_formulas[k].substitute_expressions(evaluation_result.result))
 
-        return None
+            result = SolutionState(new_constraint, result.tree.substitute(evaluation_result.result))
+
+        return result if changed else None
 
     def eliminate_first_existential_formula(self, state: SolutionState) -> Optional[List[SolutionState]]:
         existential_formulas = [
@@ -479,13 +500,12 @@ class ISLaSolver:
         matches: List[Dict[isla.Variable, Tuple[Path, DerivationTree]]] = \
             isla.matches_for_quantified_formula(existential_formula)
 
-        context_formula = state.constraint
         for match in matches:
             inst_formula = existential_formula.inner_formula.substitute_expressions({
                 variable: match_tree for variable, (_, match_tree) in match.items()
             })
-            context_formula = inst_formula & isla.replace_formula(context_formula, existential_formula, sc.true())
-            result.append(SolutionState(context_formula, state.tree))
+            constraint = inst_formula & isla.replace_formula(state.constraint, existential_formula, sc.true())
+            result.append(SolutionState(constraint, state.tree))
 
         return result
 
@@ -669,9 +689,12 @@ class ISLaSolver:
 
         return solutions
 
+    def process_new_states(self, new_states: List[SolutionState]) -> List[DerivationTree]:
+        return [tree for new_state in new_states for tree in self.process_new_state(new_state)]
+
     def process_new_state(self, new_state: SolutionState) -> List[DerivationTree]:
-        new_state = self.postprocess_new_state(new_state)
-        return new_state.tree if self.state_is_valid_or_enqueue(new_state) else []
+        new_states = self.postprocess_new_state(new_state)
+        return [new_state.tree for new_state in new_states if self.state_is_valid_or_enqueue(new_state)]
 
     def state_is_valid_or_enqueue(self, state: SolutionState) -> bool:
         """
@@ -728,16 +751,16 @@ class ISLaSolver:
 
         return False
 
-    def postprocess_new_state(self, new_state: SolutionState) -> SolutionState:
-        new_state = self.establish_invariant(new_state)
-        new_state = self.remove_nonmatching_universal_quantifiers(new_state)
-        new_state = self.remove_infeasible_universal_quantifiers(new_state)
+    def postprocess_new_state(self, state: SolutionState) -> List[SolutionState]:
+        new_states = self.establish_invariant(state)
+        new_states = [self.remove_nonmatching_universal_quantifiers(new_state) for new_state in new_states]
+        new_states = [self.remove_infeasible_universal_quantifiers(new_state) for new_state in new_states]
 
-        return new_state
+        return new_states
 
-    def establish_invariant(self, state: SolutionState) -> SolutionState:
+    def establish_invariant(self, state: SolutionState) -> List[SolutionState]:
         formula = convert_to_dnf(convert_to_nnf(state.constraint))
-        return SolutionState(formula, state.tree)
+        return [SolutionState(disjunct, state.tree) for disjunct in split_disjunction(formula)]
 
     def compute_cost(self, state: SolutionState) -> float:
         """Cost of state. Best value: 0, Worst: Unbounded"""
@@ -844,8 +867,10 @@ class ISLaSolver:
             if not isinstance(universal_formula, isla.ForallFormula):
                 continue
 
-            if not any(self.quantified_formula_might_match(universal_formula, leaf_path, universal_formula.in_variable)
-                       for leaf_path, _ in universal_formula.in_variable.open_leaves()):
+            if not (any(self.quantified_formula_might_match(universal_formula, leaf_path, universal_formula.in_variable)
+                        for leaf_path, leaf_node in universal_formula.in_variable.open_leaves())
+                    or [match for match in isla.matches_for_quantified_formula(universal_formula)
+                        if not universal_formula.is_already_matched(match[universal_formula.bound_variable][1])]):
                 result = SolutionState(
                     isla.replace_formula(result.constraint, universal_formula, sc.true()), result.tree)
 
