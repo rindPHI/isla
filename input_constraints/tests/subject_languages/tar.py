@@ -43,29 +43,28 @@ TAR_GRAMMAR = {
         "0",  # normal file
         "2"  # symbolic link
     ],
-    "<linked_file_name>": ["<characters><maybe_nuls>"],
+    "<linked_file_name>": ["<maybe_characters><maybe_nuls>"],
     "<uname>": ["<characters><maybe_nuls>"],
     "<gname>": ["<characters><maybe_nuls>"],
-    "<dev_maj_num>": ["<padded_octal_digits><SPACE>"],
-    "<dev_min_num>": ["<padded_octal_digits><SPACE>"],
+    "<dev_maj_num>": ["<padded_octal_digits><SPACE><NUL>"],
+    "<dev_min_num>": ["<padded_octal_digits><SPACE><NUL>"],
     "<file_name_prefix>": ["<nuls>"],  # TODO: Find out how this field is used!
 
-    "<content>": ["<maybe_characters>"],
+    "<content>": ["<characters><maybe_nuls>"],
 
-    "<padded_octal_digits>": ["<maybe_zeroes><octal_digit_nonzero><maybe_octal_digits>"],
-    "<maybe_octal_digits>": ["", "<octal_digits>"],
-    "<octal_digits>": ["<octal_digit>", "<octal_digit><octal_digits>"],
+    "<padded_octal_digits>": ["<maybe_zeroes><maybe_octal_digits>"],
+    "<maybe_octal_digits>": ["<octal_digits>", ""],
+    "<octal_digits>": ["<octal_digit><octal_digits>", "<octal_digit>"],
     "<octal_digit>": srange("01234567"),
-    "<octal_digit_nonzero>": srange("1234567"),
-    "<maybe_zeroes>": ["", "<zeroes>"],
-    "<zeroes>": ["<ZERO>", "<ZERO><zeroes>"],
+    "<maybe_zeroes>": ["<zeroes>", ""],
+    "<zeroes>": ["<ZERO><zeroes>", "<ZERO>"],
 
-    "<maybe_characters>": ["", "<characters>"],
-    "<characters>": ["<character>", "<character><characters>"],
+    "<maybe_characters>": ["<characters>", ""],
+    "<characters>": ["<character><characters>", "<character>"],
     "<character>": srange(string.printable),
 
-    "<maybe_nuls>": ["", "<nuls>"],
-    "<nuls>": ["<NUL>", "<NUL><nuls>"],
+    "<maybe_nuls>": ["<nuls>", ""],
+    "<nuls>": ["<NUL><nuls>", "<NUL>"],
     "<NUL>": ["\x00"],
     "<SPACE>": [" "],
     "<ZERO>": ["0"]
