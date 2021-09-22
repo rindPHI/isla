@@ -159,7 +159,6 @@ class TestSolver(unittest.TestCase):
                                      enforce_unique_trees_in_queue=False)
 
     def test_csv_rows_equal_length(self):
-        # TODO: Quite slow. Is it "only" the SMT solver?
         mgr = isla.VariableManager(CSV_GRAMMAR)
         formula = mgr.create(
             mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$num").to_smt()) >= z3.IntVal(3))) &
