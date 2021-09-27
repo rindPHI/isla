@@ -255,7 +255,7 @@ class TestSolver(unittest.TestCase):
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
             # debug=True,
-            num_solutions=5,
+            num_solutions=10,
             precompute_reachability=False,
             # cost_vectors=((20, 0, .5, 0),),
             # cost_phase_lengths=(100,),
