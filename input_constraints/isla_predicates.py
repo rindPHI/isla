@@ -142,11 +142,11 @@ def embed_tree(
         ]
 
     if not path_combinations:
-        return tuple()
+        return
 
     ((orig_path, orig_subtree), (extended_path, extended_subtree)), *remaining_combinations = path_combinations
 
-    results_without_match = embed_tree(orig, extended, leaves_to_match, remaining_combinations)
+    yield from embed_tree(orig, extended, leaves_to_match, remaining_combinations)
 
     remaining_leaves_to_match = tuple(
         path for path in leaves_to_match
@@ -165,12 +165,11 @@ def embed_tree(
 
     if not remaining_leaves_to_match:
         assert not remaining_combinations
-        return {extended_path: orig_path},
+        yield {extended_path: orig_path}
+        return
 
-    results_with_match = embed_tree(orig, extended, remaining_leaves_to_match, remaining_combinations)
-
-    return (results_without_match +
-            tuple(assignment | {extended_path: orig_path} for assignment in results_with_match))
+    for assignment in embed_tree(orig, extended, remaining_leaves_to_match, remaining_combinations):
+        yield assignment | {extended_path: orig_path}
 
 
 def just(ljust: bool,
