@@ -1,11 +1,12 @@
 import copy
-from typing import Union, Optional
+import itertools
+from typing import Union, List, Optional, Dict, Tuple, Generator
 
-from fuzzingbook.Parser import canonical, EarleyParser
+from fuzzingbook.Parser import canonical, EarleyParser, PEGParser
 from grammar_graph.gg import GrammarGraph
 
 from input_constraints.existential_helpers import insert_tree
-from input_constraints.helpers import delete_unreachable
+from input_constraints.helpers import delete_unreachable, path_iterator, parent_reflexive, parent_or_child
 from input_constraints.isla import DerivationTree, Constant, SemPredEvalResult, StructuralPredicate, SemanticPredicate
 from input_constraints.type_defs import Grammar, Path
 
@@ -43,12 +44,18 @@ def count(grammar: Grammar,
           in_tree: DerivationTree,
           needle: str,
           num: Union[Constant, DerivationTree]) -> SemPredEvalResult:
+    graph = GrammarGraph.from_grammar(grammar)
+
+    def reachable(fr: str, to: str) -> bool:
+        f_node = graph.get_node(fr)
+        t_node = graph.get_node(to)
+        return f_node.reachable(t_node)
+
     num_needle_occurrences = len(in_tree.filter(lambda t: t.value == needle))
 
-    graph = GrammarGraph.from_grammar(grammar)
     leaf_nonterminals = [node.value for _, node in in_tree.open_leaves()]
 
-    more_needles_possible = any(graph.get_node(leaf_nonterminal).reachable(graph.get_node(needle))
+    more_needles_possible = any(reachable(leaf_nonterminal, needle)
                                 for leaf_nonterminal in leaf_nonterminals)
 
     if isinstance(num, Constant):
@@ -93,7 +100,7 @@ def count(grammar: Grammar,
         candidate_needle_occurrences = num_needles(candidate)
 
         candidate_more_needles_possible = \
-            any(graph.get_node(leaf_nonterminal).reachable(graph.get_node(needle))
+            any(reachable(leaf_nonterminal, needle)
                 for leaf_nonterminal in [node.value for _, node in candidate.open_leaves()])
 
         if not candidate_more_needles_possible and candidate_needle_occurrences == target_num_needle_occurrences:
@@ -117,13 +124,60 @@ COUNT_PREDICATE = lambda grammar: SemanticPredicate(
     "count", 3, lambda in_tree, needle, num: count(grammar, in_tree, needle, num))
 
 
+def embed_tree(
+        orig: DerivationTree,
+        extended: DerivationTree,
+        leaves_to_match: Optional[Tuple[Path, ...]] = None,
+        path_combinations: Optional[Tuple[Tuple[Tuple[Path, DerivationTree], Tuple[Path, DerivationTree]], ...]] = None,
+) -> Tuple[Dict[Path, Path], ...]:
+    if path_combinations is None:
+        assert leaves_to_match is None
+        leaves_to_match = [path for path, _ in orig.leaves()]
+
+        path_combinations = [
+            ((orig_path, orig_tree), (extended_path, extended_tree))
+            for orig_path, orig_tree in orig.path_iterator()
+            for extended_path, extended_tree in extended.path_iterator()
+            if orig_tree.structural_hash() == extended_tree.structural_hash()
+        ]
+
+    if not path_combinations:
+        return
+
+    ((orig_path, orig_subtree), (extended_path, extended_subtree)), *remaining_combinations = path_combinations
+
+    yield from embed_tree(orig, extended, leaves_to_match, remaining_combinations)
+
+    remaining_leaves_to_match = tuple(
+        path for path in leaves_to_match
+        if not parent_reflexive(orig_path, path)
+    )
+
+    remaining_combinations = tuple(
+        combination for combination in remaining_combinations
+        if (
+            other_orig_path := combination[0][0],
+            other_extended_path := combination[1][0],
+            not parent_or_child(orig_path, other_orig_path) and
+            not parent_or_child(extended_path, other_extended_path),
+        )[-1]
+    )
+
+    if not remaining_leaves_to_match:
+        assert not remaining_combinations
+        yield {extended_path: orig_path}
+        return
+
+    for assignment in embed_tree(orig, extended, remaining_leaves_to_match, remaining_combinations):
+        yield assignment | {extended_path: orig_path}
+
+
 def just(ljust: bool,
          crop: bool,
          grammar: Grammar,
          tree: DerivationTree,
          width: int,
-         fillchar: str,
-         ) -> SemPredEvalResult:
+         fillchar: str) -> SemPredEvalResult:
     if len(fillchar) != 1:
         raise TypeError("The fill character must be exactly one character long")
 
@@ -135,19 +189,54 @@ def just(ljust: bool,
     if len(unparsed) == width:
         return SemPredEvalResult(True)
 
-    if not crop and len(unparsed) > width:
-        return SemPredEvalResult(False)
-
     specialized_grammar = copy.deepcopy(grammar)
     specialized_grammar["<start>"] = [tree.value]
     delete_unreachable(specialized_grammar)
+
     parser = EarleyParser(specialized_grammar)
 
-    unparsed_output = unparsed.ljust(width, fillchar) if ljust else unparsed.rjust(width, fillchar)
-    assert crop or len(unparsed_output) == width
-    unparsed_output = unparsed_output[len(unparsed_output) - width:]
-    result = DerivationTree.from_parse_tree(list(parser.parse(unparsed_output))[0]).get_subtree((0,))
-    return SemPredEvalResult({tree: result})
+    if len(unparsed) > width:
+        if not crop:
+            return SemPredEvalResult(False)
+        else:
+            unparsed = unparsed[len(unparsed) - width:]
+            parse_tree = list(parser.parse(unparsed))[0]
+            result = DerivationTree.from_parse_tree(parse_tree).get_subtree((0,))
+            return SemPredEvalResult({tree: result})
+
+    # More efficient than pad + parse: Pad only one symbol, find out how it is done, and repeat the procedure
+
+    one_padded = unparsed.ljust(len(unparsed) + 1, fillchar) if ljust else unparsed.rjust(len(unparsed) + 1, fillchar)
+    one_padded_tree = DerivationTree.from_parse_tree(list(parser.parse(one_padded))[0][1][0])
+
+    two_padded = unparsed.ljust(len(unparsed) + 2, fillchar) if ljust else unparsed.rjust(len(unparsed) + 2, fillchar)
+    two_padded_tree = DerivationTree.from_parse_tree(list(parser.parse(two_padded))[0][1][0])
+
+    if len(unparsed) == width - 1:
+        return SemPredEvalResult({tree: one_padded_tree})
+    elif len(unparsed) == width - 2:
+        return SemPredEvalResult({tree: two_padded_tree})
+
+    for embedding in embed_tree(one_padded_tree, two_padded_tree):
+        error = False
+        result = one_padded_tree
+        for i in range(width - len(unparsed) - 1):
+            new_result = two_padded_tree
+            for extended_path, orig_path in embedding.items():
+                new_result = new_result.replace_path(extended_path, result.get_subtree(orig_path))
+            result = new_result
+
+            expected = (unparsed.ljust(len(unparsed) + i + 2, fillchar) if ljust
+                        else unparsed.rjust(len(unparsed) + i + 2, fillchar))
+
+            error = str(result) != expected
+            if error:
+                break
+
+        if not error:
+            return SemPredEvalResult({tree: result})
+
+    assert False
 
 
 LJUST_PREDICATE = lambda grammar: SemanticPredicate(
