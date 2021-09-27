@@ -6,7 +6,7 @@ from fuzzingbook.Parser import canonical, EarleyParser, PEGParser
 from grammar_graph.gg import GrammarGraph
 
 from input_constraints.existential_helpers import insert_tree
-from input_constraints.helpers import delete_unreachable, path_iterator, parent_reflexive
+from input_constraints.helpers import delete_unreachable, path_iterator, parent_reflexive, parent_or_child
 from input_constraints.isla import DerivationTree, Constant, SemPredEvalResult, StructuralPredicate, SemanticPredicate
 from input_constraints.type_defs import Grammar, Path
 
@@ -127,54 +127,45 @@ COUNT_PREDICATE = lambda grammar: SemanticPredicate(
 def embed_tree(
         orig: DerivationTree,
         extended: DerivationTree,
-        leaves_to_match: Optional[List[Path]] = None,
-        path_combinations: Optional[List[Tuple[Tuple[Path, DerivationTree], Tuple[Path, DerivationTree]]]] = None,
-) -> Optional[List[Dict[Path, Path]]]:
+        leaves_to_match: Optional[Tuple[Path, ...]] = None,
+        path_combinations: Optional[Tuple[Tuple[Tuple[Path, DerivationTree], Tuple[Path, DerivationTree]], ...]] = None,
+) -> Tuple[Dict[Path, Path], ...]:
     if path_combinations is None:
-        return embed_tree(
-            orig,
-            extended,
-            [path for path, _ in orig.leaves()],
-            list(itertools.product(list(orig.path_iterator()), list(extended.path_iterator()))))
+        assert leaves_to_match is None
+        leaves_to_match = [path for path, _ in orig.leaves()]
+        path_combinations = list(itertools.product(list(orig.path_iterator()), list(extended.path_iterator())))
 
     for idx, ((orig_path, orig_subtree), (extended_path, extended_subtree)) in enumerate(path_combinations):
         if orig_subtree.structurally_equal(extended_subtree):
             remaining_combinations = path_combinations[idx + 1:]
 
-            results_without_match = embed_tree(orig, extended, list(leaves_to_match), remaining_combinations)
+            results_without_match = embed_tree(orig, extended, leaves_to_match, remaining_combinations)
 
-            remaining_leaves_to_match = [
+            remaining_leaves_to_match = tuple(
                 path for path in leaves_to_match
                 if not parent_reflexive(orig_path, path)
-            ]
+            )
 
-            remaining_combinations = [
+            remaining_combinations = tuple(
                 combination for combination in remaining_combinations
                 if (
                     other_orig_path := combination[0][0],
                     other_extended_path := combination[1][0],
-                    not parent_reflexive(orig_path, other_orig_path) and
-                    not parent_reflexive(other_orig_path, orig_path) and
-                    not parent_reflexive(extended_path, other_extended_path) and
-                    not parent_reflexive(other_extended_path, extended_path)
+                    not parent_or_child(orig_path, other_orig_path) and
+                    not parent_or_child(extended_path, other_extended_path),
                 )[-1]
-            ]
+            )
 
             if not remaining_leaves_to_match:
                 assert not remaining_combinations
-                return [{extended_path: orig_path}]
+                return {extended_path: orig_path},
 
             results_with_match = embed_tree(orig, extended, remaining_leaves_to_match, remaining_combinations)
 
-            if results_without_match is None and results_with_match is None:
-                return None
-            else:
-                results_with_match = results_with_match or []
-                results_without_match = results_without_match or []
-                return (results_without_match +
-                        [assignment | {extended_path: orig_path} for assignment in results_with_match])
+            return (results_without_match +
+                    tuple(assignment | {extended_path: orig_path} for assignment in results_with_match))
 
-    return None
+    return tuple()
 
 
 def just(ljust: bool,

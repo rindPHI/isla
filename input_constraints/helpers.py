@@ -16,6 +16,11 @@ def replace_line_breaks(inp: str) -> str:
 def parent_reflexive(path_1: Path, path_2: Path) -> bool:
     return len(path_1) <= len(path_2) and path_1 == path_2[:len(path_1)]
 
+
+def parent_or_child(path_1: Path, path_2: Path) -> bool:
+    return path_1[:len(path_2)] == path_2 or path_2[:len(path_1)] == path_1
+
+
 def path_iterator(tree: ParseTree, path: Path = ()) -> Generator[Tuple[Path, ParseTree], None, None]:
     yield path, tree
     if tree[1] is not None:
