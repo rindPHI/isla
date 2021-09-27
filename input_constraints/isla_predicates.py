@@ -1,11 +1,12 @@
 import copy
-from typing import Union
+import itertools
+from typing import Union, List, Optional, Dict, Tuple
 
-from fuzzingbook.Parser import canonical, EarleyParser
+from fuzzingbook.Parser import canonical, EarleyParser, PEGParser
 from grammar_graph.gg import GrammarGraph
 
 from input_constraints.existential_helpers import insert_tree
-from input_constraints.helpers import delete_unreachable
+from input_constraints.helpers import delete_unreachable, path_iterator, parent_reflexive
 from input_constraints.isla import DerivationTree, Constant, SemPredEvalResult, StructuralPredicate, SemanticPredicate
 from input_constraints.type_defs import Grammar, Path
 
@@ -37,6 +38,7 @@ AFTER_PREDICATE = StructuralPredicate(
     not is_before(path_1, path_2) and
     path_1 != path_2[:len(path_1)]  # No prefix
 )
+
 
 def count(grammar: Grammar,
           in_tree: DerivationTree,
@@ -122,13 +124,65 @@ COUNT_PREDICATE = lambda grammar: SemanticPredicate(
     "count", 3, lambda in_tree, needle, num: count(grammar, in_tree, needle, num))
 
 
+def embed_tree(
+        orig: DerivationTree,
+        extended: DerivationTree,
+        leaves_to_match: Optional[List[Path]] = None,
+        path_combinations: Optional[List[Tuple[Tuple[Path, DerivationTree], Tuple[Path, DerivationTree]]]] = None,
+) -> Optional[List[Dict[Path, Path]]]:
+    if path_combinations is None:
+        return embed_tree(
+            orig,
+            extended,
+            [path for path, _ in orig.leaves()],
+            list(itertools.product(list(orig.path_iterator()), list(extended.path_iterator()))))
+
+    for idx, ((orig_path, orig_subtree), (extended_path, extended_subtree)) in enumerate(path_combinations):
+        if orig_subtree.structurally_equal(extended_subtree):
+            remaining_combinations = path_combinations[idx + 1:]
+
+            results_without_match = embed_tree(orig, extended, list(leaves_to_match), remaining_combinations)
+
+            remaining_leaves_to_match = [
+                path for path in leaves_to_match
+                if not parent_reflexive(orig_path, path)
+            ]
+
+            remaining_combinations = [
+                combination for combination in remaining_combinations
+                if (
+                    other_orig_path := combination[0][0],
+                    other_extended_path := combination[1][0],
+                    not parent_reflexive(orig_path, other_orig_path) and
+                    not parent_reflexive(other_orig_path, orig_path) and
+                    not parent_reflexive(extended_path, other_extended_path) and
+                    not parent_reflexive(other_extended_path, extended_path)
+                )[-1]
+            ]
+
+            if not remaining_leaves_to_match:
+                assert not remaining_combinations
+                return [{extended_path: orig_path}]
+
+            results_with_match = embed_tree(orig, extended, remaining_leaves_to_match, remaining_combinations)
+
+            if results_without_match is None and results_with_match is None:
+                return None
+            else:
+                results_with_match = results_with_match or []
+                results_without_match = results_without_match or []
+                return (results_without_match +
+                        [assignment | {extended_path: orig_path} for assignment in results_with_match])
+
+    return None
+
+
 def just(ljust: bool,
          crop: bool,
          grammar: Grammar,
          tree: DerivationTree,
          width: int,
-         fillchar: str,
-         ) -> SemPredEvalResult:
+         fillchar: str) -> SemPredEvalResult:
     if len(fillchar) != 1:
         raise TypeError("The fill character must be exactly one character long")
 
@@ -140,19 +194,54 @@ def just(ljust: bool,
     if len(unparsed) == width:
         return SemPredEvalResult(True)
 
-    if not crop and len(unparsed) > width:
-        return SemPredEvalResult(False)
-
     specialized_grammar = copy.deepcopy(grammar)
     specialized_grammar["<start>"] = [tree.value]
     delete_unreachable(specialized_grammar)
+
     parser = EarleyParser(specialized_grammar)
 
-    unparsed_output = unparsed.ljust(width, fillchar) if ljust else unparsed.rjust(width, fillchar)
-    assert crop or len(unparsed_output) == width
-    unparsed_output = unparsed_output[len(unparsed_output) - width:]
-    result = DerivationTree.from_parse_tree(list(parser.parse(unparsed_output))[0]).get_subtree((0,))
-    return SemPredEvalResult({tree: result})
+    if len(unparsed) > width:
+        if not crop:
+            return SemPredEvalResult(False)
+        else:
+            unparsed = unparsed[len(unparsed) - width:]
+            parse_tree = list(parser.parse(unparsed))[0]
+            result = DerivationTree.from_parse_tree(parse_tree).get_subtree((0,))
+            return SemPredEvalResult({tree: result})
+
+    # More efficient than pad + parse: Pad only one symbol, find out how it is done, and repeat the procedure
+
+    one_padded = unparsed.ljust(len(unparsed) + 1, fillchar) if ljust else unparsed.rjust(len(unparsed) + 1, fillchar)
+    one_padded_tree = DerivationTree.from_parse_tree(list(parser.parse(one_padded))[0][1][0])
+
+    two_padded = unparsed.ljust(len(unparsed) + 2, fillchar) if ljust else unparsed.rjust(len(unparsed) + 2, fillchar)
+    two_padded_tree = DerivationTree.from_parse_tree(list(parser.parse(two_padded))[0][1][0])
+
+    if len(unparsed) == width - 1:
+        return SemPredEvalResult({tree: one_padded_tree})
+    elif len(unparsed) == width - 2:
+        return SemPredEvalResult({tree: two_padded_tree})
+
+    for embedding in embed_tree(one_padded_tree, two_padded_tree):
+        error = False
+        result = one_padded_tree
+        for i in range(width - len(unparsed) - 1):
+            new_result = two_padded_tree
+            for extended_path, orig_path in embedding.items():
+                new_result = new_result.replace_path(extended_path, result.get_subtree(orig_path))
+            result = new_result
+
+            expected = (unparsed.ljust(len(unparsed) + i + 2, fillchar) if ljust
+                        else unparsed.rjust(len(unparsed) + i + 2, fillchar))
+
+            error = str(result) != expected
+            if error:
+                break
+
+        if not error:
+            return SemPredEvalResult({tree: result})
+
+    assert False
 
 
 LJUST_PREDICATE = lambda grammar: SemanticPredicate(

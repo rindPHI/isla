@@ -6,9 +6,11 @@ from xml.dom import minidom
 from xml.sax.saxutils import escape
 
 import z3
+from fuzzingbook.Parser import EarleyParser, PackratParser, PEGParser
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
+from input_constraints.helpers import delete_unreachable
 from input_constraints.solver import ISLaSolver, SolutionState
 from input_constraints.tests.subject_languages import rest, tinyc, tar, simple_tar
 from input_constraints.tests.subject_languages.tinyc import compile_tinyc_clang
@@ -252,8 +254,8 @@ class TestSolver(unittest.TestCase):
             max_number_smt_instantiations=1,
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
-            debug=True,
-            num_solutions=10,
+            # debug=True,
+            num_solutions=5,
             precompute_reachability=False,
             # cost_vectors=((20, 0, .5, 0),),
             # cost_phase_lengths=(100,),
@@ -271,7 +273,6 @@ class TestSolver(unittest.TestCase):
             debug=True,
             num_solutions=10,
             precompute_reachability=False,
-            # cost_vectors=((20, 0, .5, 0),),
             cost_vectors=((20, 2, 5, .5),),
             cost_phase_lengths=(200,),
         )

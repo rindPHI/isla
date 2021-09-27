@@ -245,10 +245,12 @@ class DerivationTree:
 
         return DerivationTree(node, new_children, id=self.id)
 
+    def leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
+        return ((path, sub_tree)
+                for path, sub_tree in self.path_iterator()
+                if not sub_tree.children)
+
     def open_leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
-        """
-        :return: All open leaves of this tree, including concrete and abstract ones.
-        """
         return ((path, sub_tree)
                 for path, sub_tree in self.path_iterator()
                 if sub_tree.children is None)

@@ -5,7 +5,6 @@ from typing import Optional, Set, Generator, Tuple, List, Dict, Union, TypeVar
 
 import z3
 from fuzzingbook.Grammars import unreachable_nonterminals
-from grammar_graph.gg import GrammarGraph
 
 from input_constraints.type_defs import Path, Grammar, ParseTree
 
@@ -13,6 +12,9 @@ from input_constraints.type_defs import Path, Grammar, ParseTree
 def replace_line_breaks(inp: str) -> str:
     return inp.replace("\n", "\\n")
 
+
+def parent_reflexive(path_1: Path, path_2: Path) -> bool:
+    return len(path_1) <= len(path_2) and path_1 == path_2[:len(path_1)]
 
 def path_iterator(tree: ParseTree, path: Path = ()) -> Generator[Tuple[Path, ParseTree], None, None]:
     yield path, tree
@@ -151,11 +153,6 @@ def z3_solve(formulas: List[z3.BoolRef], timeout_ms=500) -> Tuple[z3.CheckSatRes
         logger.warning("Satisfiability of %s could not be decided", list(map(str, formulas)))
 
     return result, model
-
-
-def reachable(grammar: Grammar, nonterminal: str, to_nonterminal: str) -> bool:
-    graph = GrammarGraph.from_grammar(grammar)
-    return graph.get_node(nonterminal).reachable(graph.get_node(to_nonterminal))
 
 
 def tree_depth(tree: ParseTree) -> int:

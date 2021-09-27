@@ -11,7 +11,7 @@ from input_constraints import isla
 from input_constraints.helpers import delete_unreachable
 
 TAR_GRAMMAR = {
-    "<start>": ["<entries>"],
+    "<start>": ["<entries><final_entry>"],
     "<entries>": ["<entry>", "<entry><entries>"],
     "<entry>": ["<header><content>"],
     "<header>": [
@@ -33,12 +33,12 @@ TAR_GRAMMAR = {
         "<file_name_prefix>"
     ],
     "<file_name>": ["<characters><maybe_nuls>"],
-    "<file_mode>": ["<padded_octal_digits><SPACE><NUL>"],
-    "<uid>": ["<padded_octal_digits><SPACE><NUL>"],
-    "<gid>": ["<padded_octal_digits><SPACE><NUL>"],
-    "<file_size>": ["<padded_octal_digits><SPACE>"],
-    "<mod_time>": ["<padded_octal_digits><SPACE>"],
-    "<checksum>": ["<padded_octal_digits><NUL><SPACE>"],
+    "<file_mode>": ["<octal_digits><SPACE><NUL>"],
+    "<uid>": ["<octal_digits><SPACE><NUL>"],
+    "<gid>": ["<octal_digits><SPACE><NUL>"],
+    "<file_size>": ["<octal_digits><SPACE>"],
+    "<mod_time>": ["<octal_digits><SPACE>"],
+    "<checksum>": ["<octal_digits><NUL><SPACE>"],
     "<typeflag>": [  # Generalize?
         "0",  # normal file
         "2"  # symbolic link
@@ -46,18 +46,16 @@ TAR_GRAMMAR = {
     "<linked_file_name>": ["<maybe_characters><maybe_nuls>"],
     "<uname>": ["<characters><maybe_nuls>"],
     "<gname>": ["<characters><maybe_nuls>"],
-    "<dev_maj_num>": ["<padded_octal_digits><SPACE><NUL>"],
-    "<dev_min_num>": ["<padded_octal_digits><SPACE><NUL>"],
+    "<dev_maj_num>": ["<octal_digits><SPACE><NUL>"],
+    "<dev_min_num>": ["<octal_digits><SPACE><NUL>"],
     "<file_name_prefix>": ["<nuls>"],  # TODO: Find out how this field is used!
 
-    "<content>": ["<characters><maybe_nuls>"],
+    "<content>": ["<maybe_characters><maybe_nuls>"],
 
-    "<padded_octal_digits>": ["<maybe_zeroes><maybe_octal_digits>"],
-    "<maybe_octal_digits>": ["<octal_digits>", ""],
+    "<final_entry>": ["<nuls>"],
+
     "<octal_digits>": ["<octal_digit><octal_digits>", "<octal_digit>"],
     "<octal_digit>": srange("01234567"),
-    "<maybe_zeroes>": ["<zeroes>", ""],
-    "<zeroes>": ["<ZERO><zeroes>", "<ZERO>"],
 
     "<maybe_characters>": ["<characters>", ""],
     "<characters>": ["<character><characters>", "<character>"],
@@ -67,7 +65,6 @@ TAR_GRAMMAR = {
     "<nuls>": ["<NUL><nuls>", "<NUL>"],
     "<NUL>": ["\x00"],
     "<SPACE>": [" "],
-    "<ZERO>": ["0"]
 }
 
 
@@ -125,7 +122,7 @@ TAR_CONSTRAINTS = mgr.create(
         mgr.bv("$file_mode", "<file_mode>"),
         start,
         sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$file_mode"), 8, "0")
-    ) &
+    )  &
     sc.forall(
         mgr.bv("$uid", "<uid>"),
         start,
@@ -145,44 +142,79 @@ TAR_CONSTRAINTS = mgr.create(
         mgr.bv("$mod_time", "<mod_time>"),
         start,
         sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$mod_time"), 12, "0")
-    ) &
-    sc.forall(
-        mgr.bv("$header", "<header>"),
-        start,
-        sc.forall(
-            mgr.bv("$checksum", "<checksum>"),
-            mgr.bv("$header"),
-            tar_checksum(mgr.bv("$header"), mgr.bv("$checksum"))
-        )) &
-    sc.forall(
-        mgr.bv("$linked_file_name", "<linked_file_name>"),
-        start,
-        sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$linked_file_name"), 100, "\x00")
-    ) &
-    sc.forall(
-        mgr.bv("$entry", "<entry>"),
-        start,
-        sc.forall(
-            mgr.bv("$typeflag", "<typeflag>"),
-            mgr.bv("$entry"),
-            mgr.smt(cast(z3.BoolRef, mgr.bv("$typeflag").to_smt() == z3.StringVal("0")))
-            | (mgr.smt(mgr.bv("$typeflag").to_smt() == z3.StringVal("2")) &
-               sc.forall_bind(
-                   mgr.bv("$linked_file_name_chars", "<characters>") + "<maybe_nuls>",
-                   mgr.bv("$linked_file_name", "<linked_file_name>"),
-                   mgr.bv("$entry"),
-                   sc.exists(
-                       mgr.bv("$linked_entry", "<entry>"),
-                       start,
-                       (sc.before(mgr.bv("$entry"), mgr.bv("$linked_entry"))
-                        | sc.before(mgr.bv("$linked_entry"), mgr.bv("$entry"))) &
-                       sc.forall_bind(
-                           mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>",
-                           mgr.bv("$file_name", "<file_name>"),
-                           mgr.bv("$linked_entry"),
-                           mgr.smt(mgr.bv("$file_name_chars").to_smt() == mgr.bv("$linked_file_name_chars").to_smt()) &
-                           mgr.smt(z3.Length(mgr.bv("$file_name_chars").to_smt()) <= z3.IntVal(100))
-                       )
-                   )))
-        ))
+    ) # &
+    # sc.forall(
+    #     mgr.bv("$header", "<header>"),
+    #     start,
+    #     sc.forall(
+    #         mgr.bv("$checksum", "<checksum>"),
+    #         mgr.bv("$header"),
+    #         tar_checksum(mgr.bv("$header"), mgr.bv("$checksum"))
+    #     )) &
+    # sc.forall(
+    #     mgr.bv("$linked_file_name", "<linked_file_name>"),
+    #     start,
+    #     sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$linked_file_name"), 100, "\x00")
+    # ) &
+    # sc.forall(
+    #     mgr.bv("$uname", "<uname>"),
+    #     start,
+    #     sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$uname"), 32, "\x00")
+    # ) &
+    # sc.forall(
+    #     mgr.bv("$gname", "<gname>"),
+    #     start,
+    #     sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$gname"), 32, "\x00")
+    # ) &
+    # sc.forall(
+    #     mgr.bv("$dev_maj_num", "<dev_maj_num>"),
+    #     start,
+    #     sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$dev_maj_num"), 8, "0")
+    # ) &
+    # sc.forall(
+    #     mgr.bv("$dev_min_num", "<dev_min_num>"),
+    #     start,
+    #     sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$dev_min_num"), 8, "0")
+    # ) &
+    # sc.forall(
+    #     mgr.bv("$prefix", "<file_name_prefix>"),
+    #     start,
+    #     sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$prefix"), 167, "\x00")
+    # ) &
+    # sc.forall(
+    #     mgr.bv("$content", "<content>"),
+    #     start,
+    #     sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$content"), 512, "\x00")
+    # ) &
+    # sc.forall(
+    #     mgr.bv("$final", "<final_entry>"),
+    #     start,
+    #     sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$final"), 1024, "\x00")
+    # ) &
+    # sc.forall(
+    #     mgr.bv("$entry", "<entry>"),
+    #     start,
+    #     sc.forall(
+    #         mgr.bv("$typeflag", "<typeflag>"),
+    #         mgr.bv("$entry"),
+    #         mgr.smt(cast(z3.BoolRef, mgr.bv("$typeflag").to_smt() == z3.StringVal("0")))
+    #         | (mgr.smt(mgr.bv("$typeflag").to_smt() == z3.StringVal("2")) &
+    #            sc.forall_bind(
+    #                mgr.bv("$linked_file_name_chars", "<characters>") + "<maybe_nuls>",
+    #                mgr.bv("$linked_file_name", "<linked_file_name>"),
+    #                mgr.bv("$entry"),
+    #                sc.exists(
+    #                    mgr.bv("$linked_entry", "<entry>"),
+    #                    start,
+    #                    (sc.before(mgr.bv("$entry"), mgr.bv("$linked_entry"))
+    #                     | sc.before(mgr.bv("$linked_entry"), mgr.bv("$entry"))) &
+    #                    sc.forall_bind(
+    #                        mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>",
+    #                        mgr.bv("$file_name", "<file_name>"),
+    #                        mgr.bv("$linked_entry"),
+    #                        mgr.smt(mgr.bv("$file_name_chars").to_smt() == mgr.bv("$linked_file_name_chars").to_smt()) &
+    #                        mgr.smt(z3.Length(mgr.bv("$file_name_chars").to_smt()) <= z3.IntVal(100))
+    #                    )
+    #                )))
+    #     ))
 )
