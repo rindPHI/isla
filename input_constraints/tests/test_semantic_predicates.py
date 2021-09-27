@@ -59,11 +59,40 @@ class TestSemanticPredicates(unittest.TestCase):
         padded_tree = DerivationTree.from_parse_tree(list(parser.parse("0032251413 "))[0])
 
         one_expected_match = {
-            (0, 0, 1): (0,0),
+            (0, 0, 1): (0, 0),
             (0, 1): (0, 1)
         }
 
         result = embed_tree(orig_tree, padded_tree)
+
+        self.assertIn(one_expected_match, result)
+
+        self.assertTrue(
+            all(
+                all(
+                    any(
+                        len(assgn_path) <= len(leaf_path) and
+                        leaf_path[:len(assgn_path)] == assgn_path
+                        for _, assgn_path in assignment.items())
+                    for leaf_path, _ in orig_tree.leaves())
+                for assignment in result))
+
+    def test_embed_tree_3(self):
+        grammar = dict(tar.TAR_GRAMMAR)
+        grammar["<start>"] = ["<file_size>"]
+        delete_unreachable(grammar)
+        parser = EarleyParser(grammar)
+
+        orig_tree = DerivationTree.from_parse_tree(list(parser.parse("0111111 "))[0])
+        padded_tree = DerivationTree.from_parse_tree(list(parser.parse("00111111 "))[0])
+
+        one_expected_match = {
+            (0, 0, 1): (0, 0),
+            (0, 1): (0, 1)
+        }
+
+        result = list(embed_tree(orig_tree, padded_tree))
+        print(len(result))
 
         self.assertIn(one_expected_match, result)
 

@@ -138,7 +138,7 @@ def embed_tree(
             ((orig_path, orig_tree), (extended_path, extended_tree))
             for orig_path, orig_tree in orig.path_iterator()
             for extended_path, extended_tree in extended.path_iterator()
-            if orig_tree.structurally_equal(extended_tree)
+            if orig_tree.structural_hash() == extended_tree.structural_hash()
         ]
 
     if not path_combinations:
