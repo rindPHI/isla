@@ -127,13 +127,13 @@ class DerivationTree:
             self.id = DerivationTree.next_id
             DerivationTree.next_id += 1
 
-        self.__hash = None
-        self.__structural_hash = None
-
         if not children:
             self.__len = 1
         else:
             self.__len = sum([child.__len for child in children]) + 1
+
+        self.__hash = None
+        self.__structural_hash = None
 
     def root_nonterminal(self) -> str:
         if isinstance(self.value, Variable):
@@ -182,17 +182,19 @@ class DerivationTree:
 
         return self.children[path[0]].is_valid_path(path[1:])
 
-    def path_iterator(self, path: Path = ()) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
-        yield path, self
-        if self.children is not None:
-            for i, child in enumerate(self.children):
-                yield from child.path_iterator(path + (i,))
+    def paths(self) -> List[Tuple[Path, 'DerivationTree']]:
+        def action(path, node):
+            result.append((path, node))
+
+        result: List[Tuple[Path, 'DerivationTree']] = []
+        self.traverse(action)
+        return result
 
     def filter(self, f: Callable[['DerivationTree'], bool],
                enforce_unique: bool = False) -> List[Tuple[Path, 'DerivationTree']]:
         result: List[Tuple[Path, 'DerivationTree']] = []
 
-        for path, subtree in self.path_iterator():
+        for path, subtree in self.paths():
             if f(subtree):
                 result.append((path, subtree))
 
@@ -207,7 +209,7 @@ class DerivationTree:
         if isinstance(node_or_id, DerivationTree):
             node_or_id = node_or_id.id
 
-        for path, node in self.path_iterator():
+        for path, node in self.paths():
             if node.id == node_or_id:
                 return path
 
@@ -274,12 +276,15 @@ class DerivationTree:
             return path[0] + 1,
 
         # path already is the last path.
-        assert skip_children or list(self.path_iterator())[-1][0] == path
+        assert skip_children or list(self.paths())[-1][0] == path
         return None
 
     def replace_path(self, path: Path, replacement_tree: 'DerivationTree', retain_id=False) -> 'DerivationTree':
         """Returns tree where replacement_tree has been inserted at `path` instead of the original subtree"""
         node, children = self
+        self.__hash = None
+        self.__structural_hash = None
+
         assert isinstance(replacement_tree, DerivationTree)
 
         if not path:
@@ -297,12 +302,12 @@ class DerivationTree:
 
     def leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
         return ((path, sub_tree)
-                for path, sub_tree in self.path_iterator()
+                for path, sub_tree in self.paths()
                 if not sub_tree.children)
 
     def open_leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
         return ((path, sub_tree)
-                for path, sub_tree in self.path_iterator()
+                for path, sub_tree in self.paths()
                 if sub_tree.children is None)
 
     def depth(self) -> int:
@@ -398,7 +403,7 @@ class DerivationTree:
                 children_values = []
                 for _ in range(len(node.children)):
                     children_values.append(stack.pop())
-                node_hash = hash((node.value,) if structural else (node.value, node.id) + tuple(children_values))
+                node_hash = hash(((node.value,) if structural else (node.value, node.id)) + tuple(children_values))
 
             stack.append(node_hash)
             if structural:
@@ -573,7 +578,7 @@ class BindExpression:
         result: Dict[BoundVariable, Tuple[Path, DerivationTree]] = {}
 
         bound_elements = list(self.bound_elements)
-        subtrees = list(tree.path_iterator())
+        subtrees = list(tree.paths())
         current_bound_element = bound_elements.pop(0)
 
         while subtrees:

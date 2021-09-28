@@ -451,6 +451,10 @@ class ISLaSolver:
                 expanded_tree = expanded_tree.replace_path(
                     path, DerivationTree(leaf_node.value, new_children, leaf_node.id))
 
+                assert expanded_tree is not state.tree
+                assert expanded_tree != state.tree
+                assert expanded_tree.structural_hash() != state.tree.structural_hash()
+
             updated_constraint = state.constraint.substitute_expressions({
                 state.tree.get_subtree(path[:idx]): expanded_tree.get_subtree(path[:idx])
                 for path in possible_expansion
@@ -530,7 +534,7 @@ class ISLaSolver:
         tree_substitutions = [
             {
                 original_tree: result_tree.get_subtree(path)
-                for path, original_tree in state.tree.path_iterator()
+                for path, original_tree in state.tree.paths()
                 if result_tree.is_valid_path(path)
             }
             for result_tree in insertion_result]
@@ -845,7 +849,7 @@ class ISLaSolver:
             result[nonterminal] = sum([
                 len([expansion for expansion in self.canonical_grammar[tree.value]
                      if any(is_nonterminal(symbol) for symbol in expansion)])
-                for _, tree in DerivationTree.from_parse_tree(tree).path_iterator()
+                for _, tree in DerivationTree.from_parse_tree(tree).paths()
                 if is_nonterminal(tree.value)
             ]) + 1  # Addition of 1 to avoid 0 cost
 

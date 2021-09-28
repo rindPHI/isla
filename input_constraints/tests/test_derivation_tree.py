@@ -1,6 +1,7 @@
 import unittest
 from typing import List
 
+from input_constraints.helpers import parent_or_child
 from input_constraints.isla import DerivationTree
 from input_constraints.tests.test_data import LANG_GRAMMAR
 from input_constraints.tests.test_helpers import parse
@@ -75,6 +76,42 @@ class TestDerivationTree(unittest.TestCase):
         tree.traverse(action, kind=DerivationTree.TRAVERSE_POSTORDER, reverse=True)
         tree.traverse(action, kind=DerivationTree.TRAVERSE_POSTORDER, reverse=False)
 
+    def test_hashes_different(self):
+        tree_one = DerivationTree.from_parse_tree(('<start>', [('<stmt>', None)]))
+        tree_two = DerivationTree.from_parse_tree(('<start>', [('<stmt>', [('<assgn>', None)])]))
+        self.assertNotEqual(tree_one.compute_hash_iteratively(True), tree_two.compute_hash_iteratively(True))
+        self.assertNotEqual(tree_one.structural_hash(), tree_two.structural_hash())
+
+    def test_hash_caching(self):
+        tree = DerivationTree.from_parse_tree(
+            ("1", [
+                ("2", [("4", [])]),
+                ("3", [
+                    ("5", [("7", [])]),
+                    ("6", [])
+                ])
+            ]))
+
+        for path, subtree in tree.paths():
+            self.assertFalse(subtree._DerivationTree__structural_hash)
+
+        orig_hash = tree.structural_hash()
+
+        for path, subtree in tree.paths():
+            self.assertTrue(subtree._DerivationTree__structural_hash)
+
+        new_tree = tree.replace_path((0, 0), DerivationTree.from_parse_tree(("8", [("9", [])])))
+
+        self.assertFalse(new_tree._DerivationTree__structural_hash)
+
+        for path, subtree in new_tree.paths():
+            has_cache = subtree._DerivationTree__structural_hash is not None
+            parent_or_child_of_inserted = parent_or_child(path, (0, 0))
+            self.assertTrue(
+                has_cache and not parent_or_child_of_inserted or not has_cache and parent_or_child_of_inserted)
+
+        self.assertNotEqual(orig_hash, new_tree.structural_hash())
+
     def test_next_path(self):
         tree = DerivationTree.from_parse_tree(("1", [
             ("2", [("4", [])]),
@@ -101,7 +138,7 @@ class TestDerivationTree(unittest.TestCase):
             paths.append(nxt)
             nxt = tree.next_path(nxt)
 
-        all_paths = [path for path, _ in tree.path_iterator()]
+        all_paths = [path for path, _ in tree.paths()]
 
         self.assertEqual(all_paths, [tuple()] + paths)
 
@@ -114,9 +151,31 @@ class TestDerivationTree(unittest.TestCase):
             paths.append(nxt)
             nxt = tree.next_path(nxt)
 
-        all_paths = [path for path, _ in tree.path_iterator()]
+        all_paths = [path for path, _ in tree.paths()]
 
         self.assertEqual(all_paths, [tuple()] + paths)
+
+    def test_substitute(self):
+        tree = DerivationTree.from_parse_tree(("1", [
+            ("2", [("4", [])]),
+            ("3", [
+                ("5", [("7", [])]),
+                ("6", [])
+            ])
+        ]))
+
+        result = tree.substitute({
+            tree.get_subtree((0, 0)): DerivationTree.from_parse_tree(("8", [("9", [])])),
+            tree.get_subtree((1, 1)): DerivationTree.from_parse_tree(("10", []))
+        })
+
+        self.assertEqual(("1", [
+            ("2", [("8", [("9", [])])]),
+            ("3", [
+                ("5", [("7", [])]),
+                ("10", [])
+            ])
+        ]), result.to_parse_tree())
 
 
 if __name__ == '__main__':

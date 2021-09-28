@@ -53,7 +53,7 @@ def insert_tree(grammar: CanonicalGrammar,
     #       tree into which tree is embedded occurs in a syntactic predicate, then the it happened
     perfect_matches: List[Path] = []
     embeddable_matches: List[Tuple[Path, DerivationTree]] = []
-    for subtree_path, subtree in in_tree.path_iterator():
+    for subtree_path, subtree in in_tree.paths():
         node, children = subtree
         if not isinstance(node, str):
             continue
@@ -192,7 +192,7 @@ def shrink_tree(tree: DerivationTree) -> DerivationTree:
         return tree
 
     contains_constant = False
-    for _, subtree in tree.path_iterator():
+    for _, subtree in tree.paths():
         if isinstance(subtree.value, isla.Constant):
             contains_constant = True
             break
