@@ -1,7 +1,7 @@
 import logging
 import os
 import unittest
-from typing import cast, Optional, Dict, List, Callable, Union, Tuple
+from typing import cast, Optional, Dict, List, Callable, Union, Tuple, IO
 from xml.dom import minidom
 from xml.sax.saxutils import escape
 
@@ -246,6 +246,14 @@ class TestSolver(unittest.TestCase):
     #             })))
 
     def test_tar(self):
+        def try_parse_tar(tree: isla.DerivationTree, outfile: Optional[IO] = None) -> Union[bool, str]:
+            parser = tar.TarParser()
+            try:
+                parser.parse(str(tree))
+                return True
+            except SyntaxError as serr:
+                return serr.msg
+
         self.execute_generation_test(
             tar.TAR_CONSTRAINTS,
             isla.Constant("$start", "<start>"),
@@ -257,6 +265,7 @@ class TestSolver(unittest.TestCase):
             # debug=True,
             num_solutions=7,
             precompute_reachability=False,
+            # custom_test_func=try_parse_tar,
             # cost_vectors=((20, 0, .5, 0),),
             # cost_phase_lengths=(100,),
         )

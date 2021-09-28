@@ -199,6 +199,21 @@ class DerivationTree:
         for path, subtree in self.path_iterator():
             action(path, subtree)
 
+    def traverse_reverse_postorder_iteratively(self, action: Callable[[Path, 'DerivationTree'], None]) -> None:
+        stack_1: List[Tuple[Path, DerivationTree]] = [((), self)]
+        stack_2: List[Tuple[Path, DerivationTree]] = []
+
+        while stack_1:
+            path, node = stack_1.pop()
+
+            stack_2.append((path, node))
+            if node.children:
+                for idx, child in enumerate(reversed(node.children)):
+                    stack_1.append((path + (len(node.children) - idx - 1,), child))
+
+        while stack_2:
+            action(*stack_2.pop())
+
     def next_path(self, path: Path, skip_children=False) -> Optional[Path]:
         """
         Returns the next path in the tree. Repeated calls result in an iterator over the paths in the tree.
@@ -335,35 +350,42 @@ class DerivationTree:
         yield self.value
         yield self.children
 
-    def __repr__(self):
-        return f"DerivationTreeNode({repr(self.value)}, {repr(self.children)})"
+    def compute_hash_iteratively(self, structural=False):
+        # We perform an iterative reverse post-order depth-first traversal and use a stack
+        # to store intermediate results from lower levels.
 
-    def __compute_hash(self):
-        if self.children is None:
-            return hash((self.value, self.id))
-        else:
-            return hash((self.value, self.id) + tuple(self.children))
+        stack: List[int] = []
+
+        def action(_, node: DerivationTree) -> None:
+            if node.children is None:
+                node_hash = hash(node.value) if structural else hash((node.value, node.id))
+            else:
+                children_values = []
+                for _ in range(len(node.children)):
+                    children_values.append(stack.pop())
+                node_hash = hash((node.value,) if structural else (node.value, node.id) + tuple(children_values))
+
+            stack.append(node_hash)
+
+        self.traverse_reverse_postorder_iteratively(action)
+
+        assert len(stack) == 1
+        return stack.pop()
 
     def __hash__(self):
         if self.__hash is not None:
-            assert self.__hash == self.__compute_hash()
+            assert self.__hash == self.compute_hash_iteratively()
             return self.__hash
 
-        self.__hash = self.__compute_hash()
+        self.__hash = self.compute_hash_iteratively()
         return self.__hash
-
-    def __compute_structural_hash(self):
-        if self.children is None:
-            return hash(self.value)
-        else:
-            return hash((self.value,) + tuple([child.structural_hash() for child in self.children]))
 
     def structural_hash(self):
         if self.__structural_hash is not None:
-            assert self.__structural_hash == self.__compute_structural_hash()
+            assert self.__structural_hash == self.compute_hash_iteratively(structural=True)
             return self.__structural_hash
 
-        self.__structural_hash = self.__compute_structural_hash()
+        self.__structural_hash = self.compute_hash_iteratively(structural=True)
         return self.__structural_hash
 
     def structurally_equal(self, other: 'DerivationTree'):
@@ -394,18 +416,30 @@ class DerivationTree:
                 and self.children == other.children
                 and self.id == other.id)
 
-    def to_string(self, show_open_leaves: bool = False):
-        value, children = self
-        if children:
-            return ''.join(c.to_string(show_open_leaves) for c in children)
-        else:
-            if isinstance(value, Variable):
-                return value.name
+    def __repr__(self):
+        return f"DerivationTree({repr(self.value)}, {repr(self.children)})"
 
-            if children is not None:
-                return value if not is_nonterminal(value) else ""
+    def to_string(self, show_open_leaves: bool = False) -> str:
+        result = []
+        stack = [self]
 
-            return value if show_open_leaves else ""
+        while stack:
+            node = stack.pop(0)
+            symbol = node.value
+            children = node.children
+
+            if not children:
+                if children is not None:
+                    result.append("" if is_nonterminal(symbol) else symbol)
+                else:
+                    result.append(symbol if show_open_leaves else "")
+
+                continue
+
+            for child in reversed(children):
+                stack.insert(0, child)
+
+        return ''.join(result)
 
     def __str__(self) -> str:
         return self.to_string(show_open_leaves=True)

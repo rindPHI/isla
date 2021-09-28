@@ -1,4 +1,5 @@
 import unittest
+from typing import List
 
 from input_constraints.isla import DerivationTree
 from input_constraints.tests.test_data import LANG_GRAMMAR
@@ -34,6 +35,23 @@ class TestDerivationTree(unittest.TestCase):
         path = tree.next_path(path)
         self.assertEqual((1, 1), path)
         self.assertEqual(("6", []), tree.get_subtree(path).to_parse_tree())
+
+    def test_iterative_reverse_postorder_traversal(self):
+        tree = DerivationTree.from_parse_tree(("1", [
+            ("2", [("4", [])]),
+            ("3", [
+                ("5", [("7", [])]),
+                ("6", [])
+            ])
+        ]))
+
+        visited_nodes: List[int] = []
+
+        def action(path, node):
+            visited_nodes.append(int(node.value))
+
+        tree.traverse_reverse_postorder_iteratively(action)
+        self.assertEqual([6, 7, 5, 3, 4, 2, 1], visited_nodes)
 
     def test_next_path(self):
         tree = DerivationTree.from_parse_tree(("1", [

@@ -1,10 +1,11 @@
 import itertools
 import logging
 import random
+import math
 from typing import Optional, Set, Generator, Tuple, List, Dict, Union, TypeVar
 
 import z3
-from fuzzingbook.Grammars import unreachable_nonterminals
+from fuzzingbook.Grammars import unreachable_nonterminals, is_nonterminal
 
 from input_constraints.type_defs import Path, Grammar, ParseTree
 
@@ -160,6 +161,23 @@ def z3_solve(formulas: List[z3.BoolRef], timeout_ms=500) -> Tuple[z3.CheckSatRes
     return result, model
 
 
+def tree_to_string(tree: ParseTree) -> str:
+    result = []
+    stack = [tree]
+
+    while stack:
+        symbol, children = stack.pop(0)
+
+        if not children:
+            result.append('' if is_nonterminal(symbol) else symbol)
+            continue
+
+        for child in reversed(children):
+            stack.insert(0, child)
+
+    return ''.join(result)
+
+
 def tree_depth(tree: ParseTree) -> int:
     if not tree[1]:
         return 1
@@ -184,3 +202,7 @@ def dict_of_lists_to_list_of_dicts(dict_of_lists: Dict[S, List[T]]) -> List[Dict
     product = list(itertools.product(*list_of_values))
 
     return [dict(zip(keys, product_elem)) for product_elem in product]
+
+
+def roundup(x: int, to: int) -> int:
+    return int(math.ceil(x / float(to))) * int(to)
