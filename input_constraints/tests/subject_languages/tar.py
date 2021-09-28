@@ -1,6 +1,6 @@
 import copy
 import string
-from typing import Union, List, Optional, Tuple, cast
+from typing import Union, List, Optional, Tuple, cast, Callable
 
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string
@@ -10,6 +10,7 @@ from fuzzingbook.Parser import EarleyParser
 import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.helpers import delete_unreachable, roundup
+from input_constraints.isla_predicates import just
 from input_constraints.type_defs import ParseTree
 
 TAR_GRAMMAR = {
@@ -76,26 +77,19 @@ def tar_checksum(header: isla.DerivationTree, checksum_tree: isla.DerivationTree
     if not header.is_complete():
         return isla.SemPredEvalResult(None)
 
-    current_checksum_path = header.find_node(checksum_tree)
+    checksum_parser = TarParser(start_symbol="<checksum>")
 
-    checksum_grammar = copy.deepcopy(TAR_GRAMMAR)
-    checksum_grammar["<start>"] = ["<checksum>"]
-    checksum_grammar["<checksum>"] = ["<SPACE><SPACE><SPACE><SPACE><SPACE><SPACE><SPACE><SPACE>"]
-    delete_unreachable(checksum_grammar)
-    checksum_parser = EarleyParser(checksum_grammar)
+    space_checksum = ('<checksum>', [('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])]),
+                                     ('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])]),
+                                     ('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])])])
 
-    space_checksum = isla.DerivationTree.from_parse_tree(list(checksum_parser.parse("        "))[0]).get_subtree((0,))
-    header_wo_checksum = header.replace_path(current_checksum_path, space_checksum)
+    header_wo_checksum = header.replace_path(
+        header.find_node(checksum_tree),
+        isla.DerivationTree.from_parse_tree(space_checksum))
 
     header_bytes: List[int] = list(str(header_wo_checksum).encode("ascii"))
 
     checksum_value = str(oct(sum(header_bytes)))[2:].rjust(6, "0") + "\x00 "
-
-    checksum_grammar = copy.deepcopy(TAR_GRAMMAR)
-    checksum_grammar["<start>"] = ["<checksum>"]
-    delete_unreachable(checksum_grammar)
-    checksum_parser = EarleyParser(checksum_grammar)
-
     new_checksum_tree = isla.DerivationTree.from_parse_tree(
         list(checksum_parser.parse(checksum_value))[0]).get_subtree((0,))
 
@@ -114,92 +108,122 @@ def tar_checksum(
     return isla.SemanticPredicateFormula(TAR_CHECKSUM_PREDICATE, header, checksum, order=100)
 
 
+def mk_tar_parser(start: str) -> Callable[[str], List[ParseTree]]:
+    parser = TarParser(start_symbol=start)
+    return lambda inp: parser.parse(inp)
+
+
+LJUST_CROP_TAR_PREDICATE = isla.SemanticPredicate(
+    "ljust_crop_tar", 3,
+    lambda tree, width, fillchar: just(True, True, mk_tar_parser, tree, width, fillchar),
+    lambda tree, args: False)
+
+RJUST_CROP_TAR_PREDICATE = isla.SemanticPredicate(
+    "rjust_crop_tar", 3,
+    lambda tree, width, fillchar: just(False, True, mk_tar_parser, tree, width, fillchar),
+    lambda tree, args: False)
+
+
+def ljust_crop_tar(
+        tree: Union[isla.Variable, isla.DerivationTree],
+        width: int,
+        fillchar: str) -> isla.SemanticPredicateFormula:
+    return isla.SemanticPredicateFormula(LJUST_CROP_TAR_PREDICATE, tree, width, fillchar)
+
+
+def rjust_crop_tar(
+        tree: Union[isla.Variable, isla.DerivationTree],
+        width: int,
+        fillchar: str) -> isla.SemanticPredicateFormula:
+    return isla.SemanticPredicateFormula(RJUST_CROP_TAR_PREDICATE, tree, width, fillchar)
+
+
 mgr = isla.VariableManager(TAR_GRAMMAR)
 start = mgr.const("$start", "<start>")
 TAR_CONSTRAINTS = mgr.create(
     sc.forall(
         mgr.bv("$file_name", "<file_name>"),
         start,
-        sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$file_name"), 100, "\x00")
+        ljust_crop_tar(mgr.bv("$file_name"), 100, "\x00")
     ) &
     sc.forall(
         mgr.bv("$file_mode", "<file_mode>"),
         start,
-        sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$file_mode"), 8, "0")
+        rjust_crop_tar(mgr.bv("$file_mode"), 8, "0")
+    ) &
+    sc.forall(
+        mgr.bv("$uid", "<uid>"),
+        start,
+        rjust_crop_tar(mgr.bv("$uid"), 8, "0")
+    ) &
+    sc.forall(
+        mgr.bv("$gid", "<gid>"),
+        start,
+        rjust_crop_tar(mgr.bv("$gid"), 8, "0")
+    ) &
+    sc.forall(
+        mgr.bv("$file_size", "<file_size>"),
+        start,
+        rjust_crop_tar(mgr.bv("$file_size"), 12, "0")
+    ) &
+    sc.forall(
+        mgr.bv("$mod_time", "<mod_time>"),
+        start,
+        rjust_crop_tar(mgr.bv("$mod_time"), 12, "0")
+    ) &
+    sc.forall(
+        mgr.bv("$header", "<header>"),
+        start,
+        sc.forall(
+            mgr.bv("$checksum", "<checksum>"),
+            mgr.bv("$header"),
+            tar_checksum(mgr.bv("$header"), mgr.bv("$checksum"))
+        )) &
+    sc.forall(
+        mgr.bv("$linked_file_name", "<linked_file_name>"),
+        start,
+        ljust_crop_tar(mgr.bv("$linked_file_name"), 100, "\x00")
+    ) &
+    sc.forall(
+        mgr.bv("$uname", "<uname>"),
+        start,
+        ljust_crop_tar(mgr.bv("$uname"), 32, "\x00")
+    ) &
+    sc.forall(
+        mgr.bv("$gname", "<gname>"),
+        start,
+        ljust_crop_tar(mgr.bv("$gname"), 32, "\x00")
+    ) &
+    sc.forall(
+        mgr.bv("$dev_maj_num", "<dev_maj_num>"),
+        start,
+        rjust_crop_tar(mgr.bv("$dev_maj_num"), 8, "0")
+    ) &
+    sc.forall(
+        mgr.bv("$dev_min_num", "<dev_min_num>"),
+        start,
+        rjust_crop_tar(mgr.bv("$dev_min_num"), 8, "0")
+    ) &
+    sc.forall(
+        mgr.bv("$prefix", "<file_name_prefix>"),
+        start,
+        ljust_crop_tar(mgr.bv("$prefix"), 155, "\x00")
+    ) &
+    sc.forall(
+        mgr.bv("$header_padding", "<header_padding>"),
+        start,
+        ljust_crop_tar(mgr.bv("$header_padding"), 12, "\x00")
+    ) &
+    sc.forall(
+        mgr.bv("$content", "<content>"),
+        start,
+        ljust_crop_tar(mgr.bv("$content"), 512, "\x00")
+    ) &
+    sc.forall(
+        mgr.bv("$final", "<final_entry>"),
+        start,
+        ljust_crop_tar(mgr.bv("$final"), 1024, "\x00")
     )  # &
-    # sc.forall(
-    #     mgr.bv("$uid", "<uid>"),
-    #     start,
-    #     sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$uid"), 8, "0")
-    # ) &
-    # sc.forall(
-    #     mgr.bv("$gid", "<gid>"),
-    #     start,
-    #     sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$gid"), 8, "0")
-    # ) &
-    # sc.forall(
-    #     mgr.bv("$file_size", "<file_size>"),
-    #     start,
-    #     sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$file_size"), 12, "0")
-    # ) &
-    # sc.forall(
-    #     mgr.bv("$mod_time", "<mod_time>"),
-    #     start,
-    #     sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$mod_time"), 12, "0")
-    # )  &
-    # sc.forall(
-    #     mgr.bv("$header", "<header>"),
-    #     start,
-    #     sc.forall(
-    #         mgr.bv("$checksum", "<checksum>"),
-    #         mgr.bv("$header"),
-    #         tar_checksum(mgr.bv("$header"), mgr.bv("$checksum"))
-    #     )) &
-    # sc.forall(
-    #     mgr.bv("$linked_file_name", "<linked_file_name>"),
-    #     start,
-    #     sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$linked_file_name"), 100, "\x00")
-    # ) &
-    # sc.forall(
-    #     mgr.bv("$uname", "<uname>"),
-    #     start,
-    #     sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$uname"), 32, "\x00")
-    # ) &
-    # sc.forall(
-    #     mgr.bv("$gname", "<gname>"),
-    #     start,
-    #     sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$gname"), 32, "\x00")
-    # ) &
-    # sc.forall(
-    #     mgr.bv("$dev_maj_num", "<dev_maj_num>"),
-    #     start,
-    #     sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$dev_maj_num"), 8, "0")
-    # ) &
-    # sc.forall(
-    #     mgr.bv("$dev_min_num", "<dev_min_num>"),
-    #     start,
-    #     sc.rjust_crop(TAR_GRAMMAR, mgr.bv("$dev_min_num"), 8, "0")
-    # ) &
-    # sc.forall(
-    #     mgr.bv("$prefix", "<file_name_prefix>"),
-    #     start,
-    #     sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$prefix"), 155, "\x00")
-    # ) &
-    # sc.forall(
-    #     mgr.bv("$header_padding", "<header_padding>"),
-    #     start,
-    #     sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$header_padding"), 12, "\x00")
-    # ) &
-    # sc.forall(
-    #     mgr.bv("$content", "<content>"),
-    #     start,
-    #     sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$content"), 512, "\x00")
-    # ) &
-    # sc.forall(
-    #     mgr.bv("$final", "<final_entry>"),
-    #     start,
-    #     sc.ljust_crop(TAR_GRAMMAR, mgr.bv("$final"), 1024, "\x00")
-    # ) &
     # sc.forall(
     #     mgr.bv("$entry", "<entry>"),
     #     start,
@@ -233,7 +257,7 @@ class TarParser:
     def __init__(self, start_symbol="<start>"):
         self.pos = 0
         self.inp = ""
-        self.start_symbol = "<start>"
+        self.start_symbol = start_symbol
 
     def parse(self, inp: str) -> List[ParseTree]:
         self.pos = 0
@@ -242,8 +266,6 @@ class TarParser:
         return [self.parse_start()]
 
     def parse_start(self) -> ParseTree:
-        children = []
-
         if self.start_symbol == "<start>":
             children = [self.parse_entries(), self.parse_final_entry()]
         elif self.start_symbol == "<entries>":
@@ -262,7 +284,7 @@ class TarParser:
             children = [self.parse_gid()]
         elif self.start_symbol == "<file_size>":
             children = [self.parse_file_size()]
-        elif self.start_symbol == "<mode_time>":
+        elif self.start_symbol == "<mod_time>":
             children = [self.parse_mod_time()]
         elif self.start_symbol == "<checksum>":
             children = [self.parse_checksum()]
@@ -282,10 +304,12 @@ class TarParser:
             children = [self.parse_file_name_prefix()]
         elif self.start_symbol == "<header_padding>":
             children = [self.parse_header_padding()]
-        # elif self.start_symbol == "<content>":
-        #     children = [self.parse_content()]
+        elif self.start_symbol == "<content>":
+            children = [self.parse_content()]
         elif self.start_symbol == "<final_entry>":
             children = [self.parse_final_entry()]
+        else:
+            assert False, f"Unknown start symbol {self.start_symbol}"
 
         return "<start>", children
 
@@ -328,8 +352,10 @@ class TarParser:
 
         return "<entry>", [header, content]
 
-    def parse_content(self, content_size: int) -> ParseTree:
-        return self.parse_padded_characters("<content>", self.read(roundup(content_size, 512)))
+    def parse_content(self, content_size: Optional[int] = None) -> ParseTree:
+        return self.parse_padded_characters(
+            "<content>",
+            self.read(roundup(content_size, 512) if content_size else len(self.inp)))
 
     def parse_header(self) -> ParseTree:
         file_name = self.parse_file_name()

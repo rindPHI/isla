@@ -108,6 +108,9 @@ class DerivationTree:
     """Derivation trees are immutable!"""
     next_id: int = 0
 
+    TRAVERSE_PREORDER = 0
+    TRAVERSE_POSTORDER = 1
+
     def __init__(self, value: Union[str, Variable],
                  children: Optional[List['DerivationTree']] = None,
                  id: Optional[int] = None):
@@ -143,7 +146,22 @@ class DerivationTree:
         return 0 if self.children is None else len(self.children)
 
     def is_open(self):
-        return self.children is None or any(child.is_open() for child in self.children)
+        if self.children is None:
+            return True
+
+        result = False
+
+        def action(_, node: DerivationTree) -> bool:
+            nonlocal result
+            if node.children is None:
+                result = True
+                return True
+
+            return False
+
+        self.traverse(lambda p, n: None, action)
+
+        return result
 
     def is_complete(self):
         return not self.is_open()
@@ -195,24 +213,41 @@ class DerivationTree:
 
         return None
 
-    def traverse(self, action: Callable[[Path, 'DerivationTree'], None]) -> None:
-        for path, subtree in self.path_iterator():
-            action(path, subtree)
-
-    def traverse_reverse_postorder_iteratively(self, action: Callable[[Path, 'DerivationTree'], None]) -> None:
+    def traverse(
+            self,
+            action: Callable[[Path, 'DerivationTree'], None],
+            abort_condition: Callable[[Path, 'DerivationTree'], bool] = lambda p, n: False,
+            kind: int = TRAVERSE_PREORDER,
+            reverse: bool = False
+    ) -> None:
         stack_1: List[Tuple[Path, DerivationTree]] = [((), self)]
         stack_2: List[Tuple[Path, DerivationTree]] = []
+
+        if kind == DerivationTree.TRAVERSE_PREORDER:
+            reverse = not reverse
 
         while stack_1:
             path, node = stack_1.pop()
 
-            stack_2.append((path, node))
-            if node.children:
-                for idx, child in enumerate(reversed(node.children)):
-                    stack_1.append((path + (len(node.children) - idx - 1,), child))
+            if abort_condition(path, node):
+                return
 
-        while stack_2:
-            action(*stack_2.pop())
+            if kind == DerivationTree.TRAVERSE_POSTORDER:
+                stack_2.append((path, node))
+
+            if kind == DerivationTree.TRAVERSE_PREORDER:
+                action(path, node)
+
+            if node.children:
+                iterator = reversed(node.children) if reverse else iter(node.children)
+
+                for idx, child in enumerate(iterator):
+                    new_path = path + ((len(node.children) - idx - 1) if reverse else idx,)
+                    stack_1.append((new_path, child))
+
+        if kind == DerivationTree.TRAVERSE_POSTORDER:
+            while stack_2:
+                action(*stack_2.pop())
 
     def next_path(self, path: Path, skip_children=False) -> Optional[Path]:
         """
@@ -366,8 +401,12 @@ class DerivationTree:
                 node_hash = hash((node.value,) if structural else (node.value, node.id) + tuple(children_values))
 
             stack.append(node_hash)
+            if structural:
+                node.__structural_hash = node_hash
+            else:
+                node.__hash = node_hash
 
-        self.traverse_reverse_postorder_iteratively(action)
+        self.traverse(action, kind=DerivationTree.TRAVERSE_POSTORDER, reverse=True)
 
         assert len(stack) == 1
         return stack.pop()

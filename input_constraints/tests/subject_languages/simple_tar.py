@@ -9,6 +9,7 @@ from fuzzingbook.Parser import EarleyParser
 import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.helpers import delete_unreachable
+from input_constraints.tests.subject_languages.tar import ljust_crop_tar, rjust_crop_tar
 
 SIMPLE_TAR_GRAMMAR = {
     "<start>": ["<entries>"],
@@ -97,25 +98,25 @@ TAR_CONSTRAINTS = mgr.create(
     sc.forall(
         mgr.bv("$file_name", "<file_name>"),
         start,
-        sc.ljust_crop(SIMPLE_TAR_GRAMMAR, mgr.bv("$file_name"), 100, "\x00")
+        ljust_crop_tar(mgr.bv("$file_name"), 100, "\x00")
     ) &
     sc.forall(
-       mgr.bv("$header", "<header>"),
-       start,
-       sc.forall(
-           mgr.bv("$checksum", "<checksum>"),
-           mgr.bv("$header"),
-           tar_checksum(mgr.bv("$header"), mgr.bv("$checksum"))
-       )) &
+        mgr.bv("$header", "<header>"),
+        start,
+        sc.forall(
+            mgr.bv("$checksum", "<checksum>"),
+            mgr.bv("$header"),
+            tar_checksum(mgr.bv("$header"), mgr.bv("$checksum"))
+        )) &
     sc.forall(
         mgr.bv("$checksum", "<checksum>"),
         start,
-        sc.rjust_crop(SIMPLE_TAR_GRAMMAR, mgr.bv("$checksum"), 8, "0")
+        rjust_crop_tar(mgr.bv("$checksum"), 8, "0")
     ) &
     sc.forall(
         mgr.bv("$linked_file_name", "<linked_file_name>"),
         start,
-        sc.ljust_crop(SIMPLE_TAR_GRAMMAR, mgr.bv("$linked_file_name"), 100, "\x00")
+        ljust_crop_tar(mgr.bv("$linked_file_name"), 100, "\x00")
     ) &
     sc.forall(
         mgr.bv("$entry", "<entry>"),
@@ -135,10 +136,10 @@ TAR_CONSTRAINTS = mgr.create(
                        (sc.before(mgr.bv("$entry"), mgr.bv("$linked_entry"))
                         | sc.before(mgr.bv("$linked_entry"), mgr.bv("$entry")))
                        & sc.forall_bind(
-                          mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>",
-                          mgr.bv("$file_name"),
-                          mgr.bv("$linked_entry"),
-                          mgr.smt(mgr.bv("$file_name_chars").to_smt() == mgr.bv("$linked_file_name_chars").to_smt())
+                           mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>",
+                           mgr.bv("$file_name"),
+                           mgr.bv("$linked_entry"),
+                           mgr.smt(mgr.bv("$file_name_chars").to_smt() == mgr.bv("$linked_file_name_chars").to_smt())
                        )
                    )))
         ))

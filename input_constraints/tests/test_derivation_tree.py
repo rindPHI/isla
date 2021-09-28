@@ -36,22 +36,44 @@ class TestDerivationTree(unittest.TestCase):
         self.assertEqual((1, 1), path)
         self.assertEqual(("6", []), tree.get_subtree(path).to_parse_tree())
 
-    def test_iterative_reverse_postorder_traversal(self):
-        tree = DerivationTree.from_parse_tree(("1", [
-            ("2", [("4", [])]),
-            ("3", [
-                ("5", [("7", [])]),
-                ("6", [])
-            ])
-        ]))
+    def test_traverse(self):
+        tree = DerivationTree.from_parse_tree(
+            ("1", [
+                ("2", [("4", [])]),
+                ("3", [
+                    ("5", [("7", [])]),
+                    ("6", [])
+                ])
+            ]))
 
         visited_nodes: List[int] = []
 
         def action(path, node):
             visited_nodes.append(int(node.value))
 
-        tree.traverse_reverse_postorder_iteratively(action)
+        visited_nodes.clear()
+        tree.traverse(action, kind=DerivationTree.TRAVERSE_POSTORDER, reverse=True)
         self.assertEqual([6, 7, 5, 3, 4, 2, 1], visited_nodes)
+
+        visited_nodes.clear()
+        tree.traverse(action, kind=DerivationTree.TRAVERSE_PREORDER, reverse=False)
+        self.assertEqual([1, 2, 4, 3, 5, 7, 6], visited_nodes)
+
+        visited_nodes.clear()
+        tree.traverse(action, kind=DerivationTree.TRAVERSE_POSTORDER, reverse=False)
+        self.assertEqual([4, 2, 7, 5, 6, 3, 1], visited_nodes)
+
+        visited_nodes.clear()
+        tree.traverse(action, kind=DerivationTree.TRAVERSE_PREORDER, reverse=True)
+        self.assertEqual([1, 3, 6, 5, 7, 2, 4], visited_nodes)
+
+        def check_path(path, node):
+            self.assertEqual(node, tree.get_subtree(path))
+
+        tree.traverse(check_path, kind=DerivationTree.TRAVERSE_PREORDER, reverse=True)
+        tree.traverse(check_path, kind=DerivationTree.TRAVERSE_PREORDER, reverse=False)
+        tree.traverse(action, kind=DerivationTree.TRAVERSE_POSTORDER, reverse=True)
+        tree.traverse(action, kind=DerivationTree.TRAVERSE_POSTORDER, reverse=False)
 
     def test_next_path(self):
         tree = DerivationTree.from_parse_tree(("1", [
