@@ -5,6 +5,7 @@ from typing import Union, List, Optional, Dict, Tuple, Generator, Callable
 from fuzzingbook.Parser import canonical, EarleyParser, PEGParser
 from grammar_graph.gg import GrammarGraph
 
+from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import delete_unreachable, path_iterator, parent_reflexive, parent_or_child
 from input_constraints.isla import DerivationTree, Constant, SemPredEvalResult, StructuralPredicate, SemanticPredicate
@@ -176,7 +177,7 @@ def just(ljust: bool,
          crop: bool,
          mk_parser: Callable[[str], Callable[[str], List[ParseTree]]],
          tree: DerivationTree,
-         width: int,
+         width: Union[int, DerivationTree],
          fill_char: str) -> SemPredEvalResult:
     if len(fill_char) != 1:
         raise TypeError("The fill character must be exactly one character long")
@@ -185,6 +186,12 @@ def just(ljust: bool,
         return SemPredEvalResult(None)
 
     unparsed = str(tree)
+
+    if isinstance(width, DerivationTree):
+        if not width.is_complete():
+            return SemPredEvalResult(None)
+
+        width = int(str(width))
 
     if len(unparsed) == width:
         return SemPredEvalResult(True)
@@ -231,3 +238,52 @@ RJUST_CROP_PREDICATE = lambda grammar: SemanticPredicate(
     "rjust_crop", 3,
     lambda tree, width, fillchar: just(False, True, mk_parser(grammar), tree, width, fillchar),
     lambda tree, args: False)
+
+
+def octal_to_dec(
+        _octal_parser: Callable[[str], List[ParseTree]],
+        _decimal_parser: Callable[[str], List[ParseTree]],
+        octal: Union[isla.Constant, DerivationTree],
+        decimal: Union[isla.Constant, DerivationTree]) -> SemPredEvalResult:
+    assert not isinstance(octal, isla.Constant) or not isinstance(decimal, isla.Constant)
+
+    decimal_parser = lambda inp: DerivationTree.from_parse_tree(_decimal_parser(inp)[0][1][0])
+    octal_parser = lambda inp: DerivationTree.from_parse_tree(_octal_parser(inp)[0][1][0])
+
+    if isinstance(octal, DerivationTree):
+        if not octal.is_complete():
+            return SemPredEvalResult(None)
+
+        # Conversion to decimal
+        octal_str = str(octal)
+
+        decimal_number = 0
+        for idx, digit in enumerate(reversed(octal_str)):
+            decimal_number += (8 ** idx) * int(digit)
+
+        if isinstance(decimal, DerivationTree) and decimal_number == int(str(decimal)):
+            return SemPredEvalResult(True)
+
+        return SemPredEvalResult({decimal: decimal_parser(str(decimal_number))})
+
+    assert isinstance(octal, isla.Constant)
+    assert isinstance(decimal, DerivationTree)
+
+    if not decimal.is_complete():
+        return SemPredEvalResult(None)
+
+    decimal_number = int(str(decimal))
+    octal_str = str(oct(decimal_number))[2:]
+
+    if isinstance(octal, DerivationTree) and octal_str == str(octal):
+        return SemPredEvalResult(True)
+
+    return SemPredEvalResult({octal: octal_parser(octal_str)})
+
+
+OCTAL_TO_DEC_PREDICATE = lambda grammar, octal_start, decimal_start: SemanticPredicate(
+    "octal_to_decimal", 2,
+    lambda octal, decimal: octal_to_dec(
+        mk_parser(grammar)(octal_start),
+        mk_parser(grammar)(decimal_start),
+        octal, decimal))

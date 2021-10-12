@@ -87,7 +87,7 @@ class BoundVariable(Variable):
         super().__init__(name, n_type)
 
     def __add__(self, other: Union[str, 'BoundVariable']) -> 'BindExpression':
-        assert type(other) == str or type(other) == BoundVariable
+        assert isinstance(other, str) or isinstance(other, BoundVariable)
         return BindExpression(self, other)
 
 
@@ -357,22 +357,40 @@ class DerivationTree:
         if self.value != other.value:
             return False
 
-        if self.children is None:
-            return True
-
         if not self.children:
-            if other.children is None:
-                return False
-            else:
-                return True
+            return self.children is None or (not other.children and other.children is not None)
 
         if not other.children:
             return False
+
+        assert self.children
+        assert other.children
 
         if len(self.children) != len(other.children):
             return False
 
         return all(self.children[idx].is_prefix(other.children[idx])
+                   for idx, _ in enumerate(self.children))
+
+    def is_potential_prefix(self, other: 'DerivationTree') -> bool:
+        """Returns `True` iff this the `other` tree can be extended such that this tree
+        is a prefix of the `other` tree."""
+        if self.value != other.value:
+            return False
+
+        if not self.children:
+            return self.children is None or (not other.children and other.children is not None)
+
+        if not other.children:
+            return other.children is None
+
+        assert self.children
+        assert other.children
+
+        if len(self.children) != len(other.children):
+            return False
+
+        return all(self.children[idx].is_potential_prefix(other.children[idx])
                    for idx, _ in enumerate(self.children))
 
     @staticmethod
@@ -498,8 +516,9 @@ class BindExpression:
                 continue
 
             self.bound_elements.extend([
-                token if not is_nonterminal(token)
-                else DummyVariable(token)
+                # token if not is_nonterminal(token)
+                # else DummyVariable(token)
+                DummyVariable(token)
                 for token in re.split(RE_NONTERMINAL, bound_elem)
                 if token
             ])
@@ -559,7 +578,8 @@ class BindExpression:
 
             if isinstance(curr_bound_elem, Variable) and curr_bound_elem.n_type == curr_subtree.value:
                 positions[bound_elements[0]] = curr_path
-                tree = tree.replace_path(curr_path, DerivationTree(curr_subtree.value))
+                tree = tree.replace_path(curr_path, DerivationTree(
+                    curr_subtree.value, None if is_nonterminal(curr_bound_elem.n_type) else ()))
                 bound_elements = bound_elements[1:]
 
             curr_path = tree.next_path(curr_path)
@@ -567,7 +587,7 @@ class BindExpression:
                 break
 
         assert ([elem.n_type for elem in self.bound_elements if isinstance(elem, Variable)] ==
-                [leaf[1].value for leaf in tree.open_leaves()])
+                [leaf[1].value for leaf in tree.leaves()])
         own_string = ''.join(map(lambda e: f'{str(e)}' if type(e) is str else e.n_type, self.bound_elements))
         assert tree.to_string(show_open_leaves=True) == own_string
 
@@ -1170,16 +1190,26 @@ class SMTFormula(Formula):
 
 class QuantifiedFormula(Formula):
     def __init__(self,
-                 bound_variable: BoundVariable,
+                 bound_variable: Union[BoundVariable, str],
                  in_variable: Union[Variable, DerivationTree],
                  inner_formula: Formula,
-                 bind_expression: Optional[BindExpression] = None):
+                 bind_expression: Optional[Union[BindExpression, BoundVariable]] = None):
         assert inner_formula is not None
+        assert isinstance(bound_variable, BoundVariable) or bind_expression is not None
 
-        self.bound_variable = bound_variable
+        if isinstance(bound_variable, str):
+            assert is_nonterminal(bound_variable)
+            self.bound_variable = DummyVariable(bound_variable)
+        else:
+            self.bound_variable = bound_variable
+
         self.in_variable = in_variable
         self.inner_formula = inner_formula
-        self.bind_expression = bind_expression
+
+        if isinstance(bind_expression, BoundVariable):
+            self.bind_expression = BindExpression(bind_expression)
+        else:
+            self.bind_expression = bind_expression
 
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return (OrderedSet([self.bound_variable])
@@ -1196,6 +1226,9 @@ class QuantifiedFormula(Formula):
             result.add(self.in_variable)
         result.update(self.inner_formula.tree_arguments())
         return result
+
+    def is_already_matched(self, tree: DerivationTree) -> bool:
+        return False
 
     def __repr__(self):
         return f'{type(self).__name__}({repr(self.bound_variable)}, {repr(self.in_variable)}, ' \
@@ -1218,7 +1251,7 @@ class QuantifiedFormula(Formula):
 
 class ForallFormula(QuantifiedFormula):
     def __init__(self,
-                 bound_variable: BoundVariable,
+                 bound_variable: Union[BoundVariable, str],
                  in_variable: Union[Variable, DerivationTree],
                  inner_formula: Formula,
                  bind_expression: Optional[BindExpression] = None,
@@ -1282,7 +1315,7 @@ class ForallFormula(QuantifiedFormula):
 
 class ExistsFormula(QuantifiedFormula):
     def __init__(self,
-                 bound_variable: BoundVariable,
+                 bound_variable: Union[BoundVariable, str],
                  in_variable: Union[Variable, DerivationTree],
                  inner_formula: Formula,
                  bind_expression: Optional[BindExpression] = None):
@@ -1633,7 +1666,11 @@ def matches_for_quantified_formula(
                     new_assignment = copy.copy(initial_assignments)
                     new_assignment[qfd_var] = path, tree
                     new_assignment.update({v: (path + p[0], p[1]) for v, p in maybe_match.items()})
-                    new_assignments.append(new_assignment)
+
+                    # The assignment is correct if there is not any non-matched leaf
+                    if all(any(len(match_path) <= len(leaf_path) and match_path == leaf_path[:len(match_path)]
+                               for match_path, _ in maybe_match.values()) for leaf_path, _ in tree.leaves()):
+                        new_assignments.append(new_assignment)
             else:
                 new_assignment = copy.copy(initial_assignments)
                 new_assignment[qfd_var] = path, tree

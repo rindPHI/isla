@@ -12,30 +12,30 @@ from input_constraints import isla_shortcuts as sc
 # Kartik Talwar. Tiny-C Compiler. https://gist.github.com/KartikTalwar/3095780.
 
 TINYC_GRAMMAR = {
-    "<start>": ["<mwss><statement><mwss>"],
+    "<start>": ["<statement>"],
     "<statement>": [
-        "if<mwss><paren_expr><mwss><statement>",
-        "if<mwss><paren_expr><mwss><statement><mwss>else<wss><statement>",
-        "while<mwss><paren_expr><mwss><statement>",
-        "do<wss><statement>while<mwss><paren_expr><mwss>;",
-        "{<mwss><statements><mwss>}",
-        "<mwss><expr><mwss>;",
+        "if<paren_expr> <statement>",
+        "if<paren_expr> <statement> else <statement>",
+        "while<paren_expr> <statement>",
+        "do <statement> while<paren_expr>;",
+        "{<statements>}",
+        "<expr>;",
         ";"
     ],
-    "<statements>": ["", "<statement>", "<statement><mwss><statements>"],
-    "<paren_expr>": ["(<mwss><expr><mwss>)"],
+    "<statements>": ["", "<statement><statements>"],
+    "<paren_expr>": ["(<expr>)"],
     "<expr>": [
         "<test>",
-        "<id><mwss>=<mwss><expr>"
+        "<id> = <expr>"
     ],
     "<test>": [
         "<sum>",
-        "<sum><mwss><<mwss><sum>"
+        "<sum> < <sum>"
     ],
     "<sum>": [
         "<term>",
-        "<sum><mwss>+<mwss><term>",
-        "<sum><mwss>-<mwss><term>"
+        "<sum> + <term>",
+        "<sum> - <term>"
     ],
     "<term>": [
         "<id>",
@@ -53,9 +53,6 @@ TINYC_GRAMMAR = {
     ],
     "<digit>": srange(string.digits),
     "<digit_nonzero>": list(set(srange(string.digits)) - {"0"}),
-    "<mwss>": ["", "<wss>"],
-    "<wss>": ["<ws>", "<ws><wss>"],
-    "<ws>": srange(" \n\t"),
 }
 
 # TODO: Scoping information
@@ -67,7 +64,7 @@ TINYC_DEF_BEFORE_USE_CONSTRAINT = mgr.create(sc.forall(
         mgr.bv("$id_1", "<id>"),
         mgr.bv("$test"),
         sc.exists_bind(
-            mgr.bv("$id_2", "<id>") + "<mwss>=<mwss><expr>",
+            mgr.bv("$id_2", "<id>") + " = <expr>",
             mgr.bv("$expr", "<expr>"),
             mgr.const("$start"),
             sc.before(mgr.bv("$expr"), mgr.bv("$test")) &

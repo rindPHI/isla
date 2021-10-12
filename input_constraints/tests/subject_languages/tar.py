@@ -10,7 +10,7 @@ from fuzzingbook.Parser import EarleyParser
 import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.helpers import delete_unreachable, roundup
-from input_constraints.isla_predicates import just
+from input_constraints.isla_predicates import just, OCTAL_TO_DEC_PREDICATE
 from input_constraints.type_defs import ParseTree
 
 TAR_GRAMMAR = {
@@ -138,6 +138,22 @@ def rjust_crop_tar(
     return isla.SemanticPredicateFormula(RJUST_CROP_TAR_PREDICATE, tree, width, fillchar)
 
 
+octal_conv_grammar = copy.deepcopy(TAR_GRAMMAR)
+octal_conv_grammar.update({
+    "<start>": ["<octal_digits>", "<decimal_digits>"],
+    "<decimal_digits>": ["<decimal_digit><decimal_digits>", "<decimal_digit>"],
+    "<decimal_digit>": srange(string.digits),
+})
+delete_unreachable(octal_conv_grammar)
+
+
+def octal_to_decimal_tar(
+        octal: Union[isla.Variable, isla.DerivationTree],
+        decimal: Union[isla.Variable, isla.DerivationTree]) -> isla.SemanticPredicateFormula:
+    return isla.SemanticPredicateFormula(
+        OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"), octal, decimal)
+
+
 mgr = isla.VariableManager(TAR_GRAMMAR)
 start = mgr.const("$start", "<start>")
 TAR_CONSTRAINTS = mgr.create(
@@ -214,42 +230,61 @@ TAR_CONSTRAINTS = mgr.create(
         start,
         ljust_crop_tar(mgr.bv("$header_padding"), 12, "\x00")
     ) &
+    # sc.forall(
+    #     mgr.bv("$content", "<content>"),
+    #     start,
+    #     ljust_crop_tar(mgr.bv("$content"), 512, "\x00")
+    # ) &
     sc.forall(
-        mgr.bv("$content", "<content>"),
+        mgr.bv("$entry", "<entry>"),
         start,
-        ljust_crop_tar(mgr.bv("$content"), 512, "\x00")
+        sc.forall_bind(
+            mgr.bv("$content_chars", "<maybe_characters>") + "<maybe_nuls>",
+            mgr.bv("$content", "<content>"),
+            mgr.bv("$entry"),
+            sc.forall(
+                mgr.bv("$characters", "<characters>"),
+                mgr.bv("$content_chars"),
+                sc.forall_bind(
+                    mgr.bv("$digits", "<octal_digits>") + "<SPACE>",
+                    mgr.bv("$file_size", "<file_size>"),
+                    mgr.bv("$entry"),
+                    octal_to_decimal_tar(mgr.bv("$digits"), mgr.num_const("$dec_digits")) &
+                    ljust_crop_tar(mgr.bv("$characters"), mgr.num_const("$dec_digits"), " "))) &
+            ljust_crop_tar(mgr.bv("$content"), 512, "\x00")
+        )
     ) &
     sc.forall(
         mgr.bv("$final", "<final_entry>"),
         start,
         ljust_crop_tar(mgr.bv("$final"), 1024, "\x00")
-    )  # &
-    # sc.forall(
-    #     mgr.bv("$entry", "<entry>"),
-    #     start,
-    #     sc.forall(
-    #         mgr.bv("$typeflag", "<typeflag>"),
-    #         mgr.bv("$entry"),
-    #         mgr.smt(cast(z3.BoolRef, mgr.bv("$typeflag").to_smt() == z3.StringVal("0")))
-    #         | (mgr.smt(mgr.bv("$typeflag").to_smt() == z3.StringVal("2")) &
-    #            sc.forall_bind(
-    #                mgr.bv("$linked_file_name_chars", "<characters>") + "<maybe_nuls>",
-    #                mgr.bv("$linked_file_name", "<linked_file_name>"),
-    #                mgr.bv("$entry"),
-    #                sc.exists(
-    #                    mgr.bv("$linked_entry", "<entry>"),
-    #                    start,
-    #                    (sc.before(mgr.bv("$entry"), mgr.bv("$linked_entry"))
-    #                     | sc.before(mgr.bv("$linked_entry"), mgr.bv("$entry"))) &
-    #                    sc.forall_bind(
-    #                        mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>",
-    #                        mgr.bv("$file_name", "<file_name>"),
-    #                        mgr.bv("$linked_entry"),
-    #                        mgr.smt(mgr.bv("$file_name_chars").to_smt() == mgr.bv("$linked_file_name_chars").to_smt()) &
-    #                        mgr.smt(z3.Length(mgr.bv("$file_name_chars").to_smt()) <= z3.IntVal(100))
-    #                    )
-    #                )))
-    #     ))
+    ) &
+    sc.forall(
+        mgr.bv("$entry", "<entry>"),
+        start,
+        sc.forall(
+            mgr.bv("$typeflag", "<typeflag>"),
+            mgr.bv("$entry"),
+            mgr.smt(cast(z3.BoolRef, mgr.bv("$typeflag").to_smt() == z3.StringVal("0")))
+            | (mgr.smt(mgr.bv("$typeflag").to_smt() == z3.StringVal("2")) &
+               sc.forall_bind(
+                   mgr.bv("$linked_file_name_chars", "<characters>") + "<maybe_nuls>",
+                   mgr.bv("$linked_file_name", "<linked_file_name>"),
+                   mgr.bv("$entry"),
+                   sc.exists(
+                       mgr.bv("$linked_entry", "<entry>"),
+                       start,
+                       (sc.before(mgr.bv("$entry"), mgr.bv("$linked_entry"))
+                        | sc.before(mgr.bv("$linked_entry"), mgr.bv("$entry"))) &
+                       sc.forall_bind(
+                           mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>",
+                           mgr.bv("$file_name", "<file_name>"),
+                           mgr.bv("$linked_entry"),
+                           mgr.smt(mgr.bv("$file_name_chars").to_smt() == mgr.bv("$linked_file_name_chars").to_smt()) &
+                           mgr.smt(z3.Length(mgr.bv("$file_name_chars").to_smt()) <= z3.IntVal(100))
+                       )
+                   )))
+        ))
 )
 
 
@@ -308,8 +343,10 @@ class TarParser:
             children = [self.parse_content()]
         elif self.start_symbol == "<final_entry>":
             children = [self.parse_final_entry()]
+        elif self.start_symbol == "<characters>":
+            children = [self.parse_characters()]
         else:
-            assert False, f"Unknown start symbol {self.start_symbol}"
+            raise NotImplementedError(f"Unknown start symbol {self.start_symbol}")
 
         return "<start>", children
 
@@ -319,14 +356,14 @@ class TarParser:
         block = self.peek(512)
 
         if block is None:
-            raise SyntaxError(f"at {self.pos}")
+            raise SyntaxError(f"invalid syntax at pos. {self.pos}: premature end of file")
 
         while not self.is_null(block):
             entries.append(self.parse_entry())
 
             block = self.peek(512)
             if block is None:
-                raise SyntaxError(f"at {self.pos}")
+                raise SyntaxError(f"invalid syntax at pos. {self.pos}: premature end of file")
 
         children = []
         result = ("<entries>", children)
@@ -355,7 +392,9 @@ class TarParser:
     def parse_content(self, content_size: Optional[int] = None) -> ParseTree:
         return self.parse_padded_characters(
             "<content>",
-            self.read(roundup(content_size, 512) if content_size else len(self.inp)))
+            self.read(roundup(content_size, 512) if content_size is not None else len(self.inp)),
+            characters_optional=True
+        )
 
     def parse_header(self) -> ParseTree:
         file_name = self.parse_file_name()
@@ -370,7 +409,7 @@ class TarParser:
 
         ustar00_str = self.read(8)
         if ustar00_str != "ustar\x0000":
-            raise SyntaxError(f"at {ustar00_str}")
+            raise SyntaxError(f"invalid syntax at pos. {self.pos - 8}: {ustar00_str} ('ustar\x0000' expected)")
 
         uname = self.parse_uname()
         gname = self.parse_gname()
@@ -396,7 +435,7 @@ class TarParser:
     def parse_dev_min_num(self):
         dev_min_num_padded = self.read(8)
         if dev_min_num_padded[-2:] != " \x00":
-            raise SyntaxError(f"at {dev_min_num_padded[-2:]}")
+            raise SyntaxError(f"invalid syntax at pos. {self.pos - 2}: {dev_min_num_padded[-2:]} (' \x00' expected)")
         dev_min_num = ("<dev_maj_num>", [
             self.parse_octal_digits(dev_min_num_padded[:-2]),
             ("<SPACE>", [(" ", [])]),
@@ -406,7 +445,7 @@ class TarParser:
     def parse_dev_maj_num(self):
         dev_maj_num_padded = self.read(8)
         if dev_maj_num_padded[-2:] != " \x00":
-            raise SyntaxError(f"at {dev_maj_num_padded[-2:]}")
+            raise SyntaxError(f"invalid syntax at pos. {self.pos - 2}: {dev_maj_num_padded[-2:]} (' \x00' expected)")
         dev_maj_num = ("<dev_maj_num>", [
             self.parse_octal_digits(dev_maj_num_padded[:-2]),
             ("<SPACE>", [(" ", [])]),
@@ -426,19 +465,20 @@ class TarParser:
         return file_name
 
     def parse_linked_file_name(self):
-        linked_file_name = self.parse_padded_characters("<linked_file_name>", self.read(100))
+        linked_file_name = self.parse_padded_characters(
+            "<linked_file_name>", self.read(100), characters_optional=True)
         return linked_file_name
 
     def parse_typeflag(self):
         typeflag = ("<typeflag>", [(self.read(1), [])])
         if typeflag[1][0][0] not in string.digits:
-            raise SyntaxError(f"at {str(typeflag)}")
+            raise SyntaxError(f"invalid syntax at {self.pos - 1}: {str(typeflag)} (digit expected)")
         return typeflag
 
     def parse_checksum(self):
         checksum_padded = self.read(8)
         if checksum_padded[-2:] != "\x00 ":
-            raise SyntaxError(f"at {checksum_padded[-2:]}")
+            raise SyntaxError(f"invalid syntax at pos. {self.pos - 2}: {checksum_padded[-2:]} ('\x00 ' expected)")
         checksum = ("<checksum>", [
             self.parse_octal_digits(checksum_padded[:-2]),
             ("<NUL>", [("\x00", [])]),
@@ -448,7 +488,7 @@ class TarParser:
     def parse_mod_time(self):
         mod_time_padded = self.read(12)
         if mod_time_padded[-1] != " ":
-            raise SyntaxError(f"at {mod_time_padded[-1]}")
+            raise SyntaxError(f"invalid syntax at pos. {self.pos - 1}: {mod_time_padded[-1]} (' ' expected)")
         mod_time = ("<mod_time>", [
             self.parse_octal_digits(mod_time_padded[:-1]),
             ("<SPACE>", [(" ", [])])])
@@ -457,7 +497,7 @@ class TarParser:
     def parse_file_size(self):
         file_size_padded = self.read(12)
         if file_size_padded[-1] != " ":
-            raise SyntaxError(f"at {file_size_padded[-1]}")
+            raise SyntaxError(f"invalid syntax at pos. {self.pos - 1}: {file_size_padded[-1]} (' ' expected)")
         file_size = ("<file_size>", [
             self.parse_octal_digits(file_size_padded[:-1]),
             ("<SPACE>", [(" ", [])])])
@@ -466,7 +506,7 @@ class TarParser:
     def parse_gid(self):
         gid_padded = self.read(8)
         if gid_padded[-2:] != " \x00":
-            raise SyntaxError(f"at {gid_padded[-2:]}")
+            raise SyntaxError(f"invalid syntax at pos. {self.pos - 2}: {gid_padded[-2:]} (' \x00' expected)")
         gid = ("<gid>", [
             self.parse_octal_digits(gid_padded[:-2]),
             ("<SPACE>", [(" ", [])]),
@@ -476,7 +516,7 @@ class TarParser:
     def parse_uid(self):
         uid_padded = self.read(8)
         if uid_padded[-2:] != " \x00":
-            raise SyntaxError(f"at {uid_padded[-2:]}")
+            raise SyntaxError(f"invalid syntax at pos. {self.pos - 2}: {uid_padded[-2:]} (' \x00' expected)")
         uid = ("<uid>", [
             self.parse_octal_digits(uid_padded[:-2]),
             ("<SPACE>", [(" ", [])]),
@@ -486,23 +526,38 @@ class TarParser:
     def parse_file_mode(self):
         file_mode_padded = self.read(8)
         if file_mode_padded[-2:] != " \x00":
-            raise SyntaxError(f"at {file_mode_padded[-2:]}")
+            raise SyntaxError(f"invalid syntax at pos. {self.pos - 2}: {file_mode_padded[-2:]} (' \x00' expected)")
         file_mode = ("<file_mode>", [
             self.parse_octal_digits(file_mode_padded[:-2]),
             ("<SPACE>", [(" ", [])]),
             ("<NUL>", [("\x00", [])])])
         return file_mode
 
-    def parse_padded_characters(self, parent_nonterminal: str, inp: str) -> ParseTree:
-        nuls_offset = inp.index("\x00")
-        return parent_nonterminal, [self.parse_characters(inp[:nuls_offset]), self.parse_nuls(inp[nuls_offset:])]
+    def parse_padded_characters(
+            self, parent_nonterminal: str, inp: str,
+            characters_optional=False,
+            padding_optional=True) -> ParseTree:
+        if "\x00" in inp and inp[0] != "\x00":
+            nuls_offset = inp.index("\x00")
+            return parent_nonterminal, [self.parse_characters(inp[:nuls_offset]), self.parse_nuls(inp[nuls_offset:])]
+
+        if "\x00" in inp and inp[0] == "\x00":
+            if characters_optional:
+                return parent_nonterminal, [("<maybe_characters>", []), self.parse_nuls(inp)]
+            else:
+                raise SyntaxError(f"invalid syntax at {self.pos - len(inp)}: {inp} (characters expected)")
+
+        if padding_optional:
+            return parent_nonterminal, [self.parse_characters(inp), ("<maybe_nuls>", [])]
+        else:
+            raise SyntaxError(f"invalid syntax at {self.pos - len(inp)}: {inp} (padding expected)")
 
     def parse_octal_digits(self, inp: str) -> ParseTree:
         children = []
         result = ("<octal_digits>", children)
         for idx, char in enumerate(inp):
             if char not in "01234567":
-                raise SyntaxError(f"at {inp[idx:]}")
+                raise SyntaxError(f"invalid syntax at {self.pos - len(inp) + idx}: {inp[idx:]} (octal digit expected)")
             new_children = []
             children.append(("<octal_digit>", [(char, [])]))
 
@@ -512,12 +567,16 @@ class TarParser:
 
         return result
 
-    def parse_characters(self, inp: str) -> ParseTree:
+    def parse_characters(self, inp: Optional[str] = None) -> ParseTree:
+        if inp is None:
+            inp = self.inp
+
         children = []
         result = ("<characters>", children)
         for idx, char in enumerate(inp):
             if char == "\x00":
-                raise SyntaxError(f"at {inp[idx:]}")
+                raise SyntaxError(f"invalid syntax at {self.pos - len(inp) + idx}: {inp[idx:]} "
+                                  f"(NUL encountered, character expected)")
             new_children = []
             children.append(("<character>", [(char, [])]))
 
@@ -532,7 +591,7 @@ class TarParser:
         result = ("<nuls>", children)
         for idx, char in enumerate(inp):
             if char != "\x00":
-                raise SyntaxError(f"at {inp[idx:]}")
+                raise SyntaxError(f"invalid syntax at pos. {self.pos - len(inp) + idx}: {inp[idx:]} (NUL expected)")
             new_children = []
             children.append(("<NUL>", [(char, [])]))
 
@@ -548,8 +607,9 @@ class TarParser:
         while self.peek(512) is not None:
             inp += self.read(512)
             i += 1
-        if i < 2 or len(self.inp) != self.pos:
-            raise SyntaxError(f"at {self.inp[self.pos:]}")
+        if i < 2 or len(self.inp) != self.pos or not self.is_null(inp):
+            raise SyntaxError(f"invalid syntax at pos. {self.pos}: {self.inp[self.pos:]} "
+                              f"(at least two 512 byte blocks of NULs expected")
 
         return "<final_entry>", [self.parse_nuls(inp)]
 
@@ -563,6 +623,6 @@ class TarParser:
     def read(self, n=1) -> Optional[str]:
         result = self.inp[self.pos:self.pos + n]
         if len(result) != n:
-            raise SyntaxError(f"at {result}")
+            raise SyntaxError(f"at {self.pos}: {result} (premature end of file, expected {n} bytes left)")
         self.pos += n
         return result

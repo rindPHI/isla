@@ -6,15 +6,13 @@ from xml.dom import minidom
 from xml.sax.saxutils import escape
 
 import z3
-from fuzzingbook.Parser import EarleyParser, PackratParser, PEGParser
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
-from input_constraints.helpers import delete_unreachable
 from input_constraints.solver import ISLaSolver, SolutionState
 from input_constraints.tests.subject_languages import rest, tinyc, tar, simple_tar
 from input_constraints.tests.subject_languages.tinyc import compile_tinyc_clang
-from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR
+from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR, XML_GRAMMAR
 
 
 class TestSolver(unittest.TestCase):
@@ -118,6 +116,34 @@ class TestSolver(unittest.TestCase):
 
         self.execute_generation_test(formula, start)
 
+    def test_xml(self):
+        mgr = isla.VariableManager(XML_GRAMMAR)
+        start = mgr.const("$start", "<start>")
+
+        formula: isla.Formula = mgr.create(
+            sc.forall_bind(
+                sc.bexpr("<") + mgr.bv("$oid", "<id>") + ">" +
+                "<xml-tree>" +
+                "</" + mgr.bv("$cid", "<id>") + ">",
+                "<xml-tree>",
+                start,
+                mgr.smt(mgr.bv("$oid").to_smt() == mgr.bv("$cid").to_smt())
+            ) &
+            sc.forall_bind(
+                sc.bexpr("<") + mgr.bv("$oid", "<id>") + " " + "<xml-attribute>" + ">" +
+                "<xml-tree>" +
+                "</" + mgr.bv("$cid", "<id>") + ">",
+                "<xml-tree>",
+                start,
+                mgr.smt(mgr.bv("$oid").to_smt() == mgr.bv("$cid").to_smt())
+            )
+        )
+
+        self.execute_generation_test(
+            formula, mgr.const("$start"), grammar=XML_GRAMMAR, max_number_free_instantiations=1,
+            num_solutions=500
+        )
+
     def test_declared_before_used(self):
         mgr = isla.VariableManager(LANG_GRAMMAR)
         formula: isla.Formula = mgr.create(sc.forall_bind(
@@ -137,7 +163,7 @@ class TestSolver(unittest.TestCase):
             )
         ))
 
-        self.execute_generation_test(formula, mgr.const("$start"), max_number_free_instantiations=1)
+        self.execute_generation_test(formula, mgr.const("$start"), max_number_free_instantiations=1, num_solutions=30)
 
     def test_simple_csv_rows_equal_length(self):
         mgr = isla.VariableManager(SIMPLE_CSV_GRAMMAR)
@@ -161,6 +187,8 @@ class TestSolver(unittest.TestCase):
                                      enforce_unique_trees_in_queue=False)
 
     def test_csv_rows_equal_length(self):
+        # TODO: Something's wrong here, most generated CSV strings have empty columns...
+
         mgr = isla.VariableManager(CSV_GRAMMAR)
         formula = mgr.create(
             mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$num").to_smt()) >= z3.IntVal(3))) &
@@ -198,7 +226,7 @@ class TestSolver(unittest.TestCase):
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False)
 
-    def test_tinyc_def_before_use(self):
+    def test_tiny_c_def_before_use(self):
         # TODO: The compile_tinyc_lang test function is not totally precise, as it initializes
         #       all assigned variables at the beginning to make the tinyc snippet c compatible.
         #       Actually, we would have to localize the initializations, which requires some
@@ -213,7 +241,7 @@ class TestSolver(unittest.TestCase):
             max_number_smt_instantiations=1,
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
-            custom_test_func=compile_tinyc_clang,
+            # custom_test_func=compile_tinyc_clang,
             cost_vectors=((20, 2, 5, .5),),
             cost_phase_lengths=(200,),
         )
@@ -265,7 +293,7 @@ class TestSolver(unittest.TestCase):
             # debug=True,
             num_solutions=7,
             precompute_reachability=False,
-            # custom_test_func=try_parse_tar,
+            custom_test_func=try_parse_tar,
             # cost_vectors=((20, 0, .5, 0),),
             # cost_phase_lengths=(100,),
         )
@@ -347,6 +375,7 @@ class TestSolver(unittest.TestCase):
                 if custom_test_func:
                     test_result = custom_test_func(assignment)
                     if test_result is not True:
+                        logger.info(f"Found (WRONG) solution: %s", assignment)
                         self.fail("" if not isinstance(test_result, str) else test_result)
 
                 solutions_found += 1

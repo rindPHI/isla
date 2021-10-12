@@ -1,19 +1,23 @@
 from input_constraints.isla import *
 from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, LJUST_PREDICATE, LJUST_CROP_PREDICATE, \
-    RJUST_CROP_PREDICATE, RJUST_PREDICATE, AFTER_PREDICATE
+    RJUST_CROP_PREDICATE, RJUST_PREDICATE, AFTER_PREDICATE, OCTAL_TO_DEC_PREDICATE
+
+
+def bexpr(terminal_symbol: str) -> BindExpression:
+    return BindExpression(terminal_symbol)
 
 
 def forall_bind(
-        bind_expression: BindExpression,
-        bound_variable: BoundVariable,
+        bind_expression: Union[BindExpression, BoundVariable],
+        bound_variable: Union[BoundVariable, str],
         in_variable: Union[Variable, DerivationTree],
         inner_formula: Formula) -> ForallFormula:
     return ForallFormula(bound_variable, in_variable, inner_formula, bind_expression)
 
 
 def exists_bind(
-        bind_expression: BindExpression,
-        bound_variable: BoundVariable,
+        bind_expression: Union[BindExpression, BoundVariable],
+        bound_variable: Union[BoundVariable, str],
         in_variable: Union[Variable, DerivationTree],
         inner_formula: Formula) -> ExistsFormula:
     return ExistsFormula(bound_variable, in_variable, inner_formula, bind_expression)
@@ -83,6 +87,15 @@ def rjust_crop(
         width: int,
         fillchar: str) -> SemanticPredicateFormula:
     return SemanticPredicateFormula(RJUST_CROP_PREDICATE(grammar), tree, width, fillchar)
+
+
+def octal_to_decimal(
+        grammar: Grammar,
+        octal_start: str,
+        decimal_start: str,
+        octal: Union[Variable, DerivationTree],
+        decimal: Union[Variable, DerivationTree]) -> SemanticPredicateFormula:
+    return SemanticPredicateFormula(OCTAL_TO_DEC_PREDICATE(grammar, octal_start, decimal_start), octal, decimal)
 
 
 def true():

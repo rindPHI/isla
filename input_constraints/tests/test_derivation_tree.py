@@ -177,6 +177,24 @@ class TestDerivationTree(unittest.TestCase):
             ])
         ]), result.to_parse_tree())
 
+    def test_potential_prefix(self):
+        potential_prefix_tree = DerivationTree.from_parse_tree(
+            ('<xml-tree>', [
+                ('<xml-open-tag>', [('<', []), ('<id>', None), ('>', [])]),
+                ('<xml-tree>', None),
+                ('<xml-close-tag>', [('</', []), ('<id>', None), ('>', [])])]))
+        other_tree = DerivationTree.from_parse_tree(
+            ('<xml-tree>', [
+                ('<xml-open-tag>', None),
+                ('<xml-tree>', None),
+                ('<xml-close-tag>', None)]))
+
+        self.assertTrue(potential_prefix_tree.is_potential_prefix(other_tree))
+        self.assertFalse(potential_prefix_tree.is_prefix(other_tree))
+
+        self.assertTrue(other_tree.is_prefix(potential_prefix_tree))
+        self.assertTrue(other_tree.is_potential_prefix(potential_prefix_tree))
+
 
 if __name__ == '__main__':
     unittest.main()

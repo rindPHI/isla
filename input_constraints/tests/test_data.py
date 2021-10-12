@@ -47,6 +47,26 @@ CSV_EBNF_GRAMMAR = {
 
 CSV_GRAMMAR = convert_ebnf_grammar(CSV_EBNF_GRAMMAR)
 
+XML_GRAMMAR = {
+    "<start>": ["<xml-tree>"],
+    "<xml-tree>": [
+        "<text>",
+        "<xml-open-tag><xml-tree><xml-close-tag>",
+        "<xml-openclose-tag>",
+        "<xml-tree><xml-tree>"
+    ],
+
+    "<xml-open-tag>": ["<<id>>", "<<id> <xml-attribute>>"],
+    "<xml-openclose-tag>": ["<<id>/>", "<<id> <xml-attribute>/>"],
+    "<xml-close-tag>": ["</<id>>"],
+    "<xml-attribute>": ["<id>=<id>", "<xml-attribute> <xml-attribute>"],
+
+    "<id>": ["<letter>", "<letter><id>"],
+    "<letter>": srange(string.ascii_letters + string.digits + "\"" + "'" + "."),
+    "<text>": ["<text><letter_space>", "<letter_space>"],
+    "<letter_space>": srange(string.ascii_letters + string.digits + "\"" + "'" + " " + "\t"),
+}
+
 
 def eval_lang(inp: str) -> Dict[str, int]:
     def assgnlhs(assgn: ParseTree):

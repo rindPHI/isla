@@ -7,7 +7,8 @@ from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
 import input_constraints.isla_shortcuts as sc
 from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
-    DerivationTree, convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager
+    DerivationTree, convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
+    matches_for_quantified_formula, QuantifiedFormula
 from input_constraints.isla_predicates import count, is_before
 from input_constraints.tests.subject_languages import tinyc, tar
 from input_constraints.tests.test_data import *
@@ -434,6 +435,43 @@ class TestEvaluation(unittest.TestCase):
         bind_expression = mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>"
         self.assertEqual(('<file_name>', [('<characters>', None), ('<maybe_nuls>', None)]),
                          bind_expression.to_tree_prefix("<file_name>", tar.TAR_GRAMMAR)[0].to_parse_tree())
+
+    def test_matches_xml_property(self):
+        inp = "<a/><b>k</b>"
+        tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse(inp))[0])
+
+        mgr = VariableManager(XML_GRAMMAR)
+        start = mgr.const("$start", "<start>")
+        formula: QuantifiedFormula = cast(QuantifiedFormula, mgr.create(sc.forall_bind(
+            sc.bexpr("<") + mgr.bv("$oid", "<id>") + ">" +
+            "<xml-tree>" +
+            "</" + mgr.bv("$cid", "<id>") + ">",
+            "<xml-tree>",
+            start,
+            mgr.smt(mgr.bv("$oid").to_smt() == mgr.bv("$cid").to_smt())
+        )))
+
+        matches = matches_for_quantified_formula(formula, tree, {start: tree})
+        self.assertEqual(1, len(matches))
+
+    def test_xml_property(self):
+        mgr = VariableManager(XML_GRAMMAR)
+        start = mgr.const("$start", "<start>")
+        formula: Formula = mgr.create(sc.forall_bind(
+            sc.bexpr("<") + mgr.bv("$oid", "<id>") + ">" +
+            "<xml-tree>" +
+            "</" + mgr.bv("$cid", "<id>") + ">",
+            "<xml-tree>",
+            start,
+            mgr.smt(mgr.bv("$oid").to_smt() == mgr.bv("$cid").to_smt())
+        ))
+
+        correct_tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse("<a/><b>k</b>"))[0])
+        wrong_tree = DerivationTree.from_parse_tree(
+            list(EarleyParser(XML_GRAMMAR).parse("8Cf<2>5</4n><Y i=s/>"))[0])
+
+        self.assertTrue(evaluate(formula.substitute_expressions({start: correct_tree})).is_true())
+        self.assertFalse(evaluate(formula.substitute_expressions({start: wrong_tree})).is_true())
 
 
 if __name__ == '__main__':

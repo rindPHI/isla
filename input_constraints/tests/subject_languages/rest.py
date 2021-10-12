@@ -41,6 +41,8 @@ LENGTH_UNDERLINE = mgr.create(
     )
 )
 
+print(LENGTH_UNDERLINE)
+
 # Below encoding is less efficient to solve for z3
 #
 # length_underline = mgr.create(

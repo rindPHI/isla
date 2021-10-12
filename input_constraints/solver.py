@@ -226,14 +226,6 @@ class ISLaSolver:
 
             # Split disjunctions
             assert not isinstance(state.constraint, isla.DisjunctiveFormula)
-            # if isinstance(state.constraint, isla.DisjunctiveFormula):
-            #         self.logger.debug("Splitting disjunction %s", state.constraint)
-            #
-            #     result_states = [SolutionState(disjunct, state.tree)
-            #                      for disjunct in split_disjunction(state.constraint)]
-            #
-            #     yield from [s for new_state in result_states for s in self.process_new_state(new_state) if s]
-            #     continue
 
             # Instantiate all top-level structural predicate formulas.
             state = self.instantiate_structural_predicates(state)
@@ -477,9 +469,8 @@ class ISLaSolver:
                  if not universal_formula.is_already_matched(match[universal_formula.bound_variable][1])]
 
             universal_formula_with_matches = universal_formula.add_already_matched({
-                match_tree
+                match[universal_formula.bound_variable][1]
                 for match in matches
-                for _, match_tree in match.values()
             })
 
             for match in matches:
@@ -888,22 +879,28 @@ class ISLaSolver:
         if qfd_formula.in_variable.find_node(node) is None:
             return False
 
-        if isinstance(qfd_formula, isla.ForallFormula) and qfd_formula.is_already_matched(node):
-            return False
+        if qfd_formula.is_already_matched(node):
+            # This formula won't match node IFF there is no subtree in node that matches.
+            return any(self.quantified_formula_might_match(qfd_formula, path, node)
+                       for path, _ in node.paths() if path)
 
         qfd_nonterminal = qfd_formula.bound_variable.n_type
         if qfd_nonterminal == node.value or self.reachable(node.value, qfd_nonterminal):
             return True
 
-        if (qfd_formula.bind_expression is not None
-                and node.value in [var.n_type for var in qfd_formula.bind_expression.bound_variables()]):
-            prefix_tree, _ = qfd_formula.bind_expression.to_tree_prefix(
-                qfd_formula.bound_variable.n_type, self.grammar)
+        if qfd_formula.bind_expression is None:
+            return False
 
-            for idx in reversed(range(len(path_to_nonterminal))):
-                subtree = tree.get_subtree(path_to_nonterminal[:idx])
-                if subtree.is_prefix(prefix_tree):
-                    return True
+        # Is there an extension of some tree `node` is a subtree of, such that the
+        # bind expression tree is a prefix tree of that extension?
+
+        maybe_prefix_tree, _ = qfd_formula.bind_expression.to_tree_prefix(
+            qfd_formula.bound_variable.n_type, self.grammar)
+
+        for idx in reversed(range(len(path_to_nonterminal))):
+            subtree = tree.get_subtree(path_to_nonterminal[:idx])
+            if maybe_prefix_tree.is_potential_prefix(subtree) and not qfd_formula.is_already_matched(subtree):
+                return True
 
         return False
 
@@ -912,8 +909,13 @@ class ISLaSolver:
         if self.precompute_reachability:
             return self.node_distances[nonterminal][to_nonterminal]
         else:
+            from_node = self.graph.get_node(nonterminal)
             to_node = self.graph.get_node(to_nonterminal)
-            return self.graph.dijkstra(self.graph.get_node(nonterminal), to_node)[0][to_node]
+
+            assert from_node is not None, f"Node {nonterminal} not found in graph"
+            assert to_node is not None, f"Node {to_nonterminal} not found in graph"
+
+            return self.graph.dijkstra(from_node, to_node)[0][to_node]
 
     def reachable(self, nonterminal: str, to_nonterminal: str) -> bool:
         return self.node_distance(nonterminal, to_nonterminal) < sys.maxsize

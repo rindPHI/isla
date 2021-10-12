@@ -76,3 +76,5 @@ webencodings==0.5.1
 widgetsnbextension==3.5.1
 z3-solver==4.8.10.0
 tox==3.24.1
+astor==0.8.1
+networkx==2.6.3
