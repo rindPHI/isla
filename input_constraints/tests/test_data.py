@@ -59,12 +59,12 @@ XML_GRAMMAR = {
     "<xml-open-tag>": ["<<id>>", "<<id> <xml-attribute>>"],
     "<xml-openclose-tag>": ["<<id>/>", "<<id> <xml-attribute>/>"],
     "<xml-close-tag>": ["</<id>>"],
-    "<xml-attribute>": ["<id>=<id>", "<xml-attribute> <xml-attribute>"],
+    "<xml-attribute>": ["<id>=<id>", "<id>=\"<text>\"", "<xml-attribute> <xml-attribute>"],
 
     "<id>": ["<letter>", "<letter><id>"],
-    "<letter>": srange(string.ascii_letters + string.digits + "\"" + "'" + "."),
-    "<text>": ["<text><letter_space>", "<letter_space>"],
-    "<letter_space>": srange(string.ascii_letters + string.digits + "\"" + "'" + " " + "\t"),
+    "<letter>": srange(string.ascii_letters + string.digits + "\"'."),
+    "<text>": ["<text><letter_extended>", "<letter_extended>"],
+    "<letter_extended>": srange(string.ascii_letters + string.digits + "\"'. \t/?-,=:+"),
 }
 
 

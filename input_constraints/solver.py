@@ -224,7 +224,6 @@ class ISLaSolver:
             self.logger.debug(f"Polling new state %s (hash %d, cost %f)", state, hash(state), cost)
             self.logger.debug(f"Queue length: %s", len(self.queue))
 
-            # Split disjunctions
             assert not isinstance(state.constraint, isla.DisjunctiveFormula)
 
             # Instantiate all top-level structural predicate formulas.
@@ -689,7 +688,10 @@ class ISLaSolver:
         return [tree for new_state in new_states for tree in self.process_new_state(new_state)]
 
     def process_new_state(self, new_state: SolutionState) -> List[DerivationTree]:
-        new_states = self.postprocess_new_state(new_state)
+        new_states = self.establish_invariant(new_state)
+        new_states = [self.remove_nonmatching_universal_quantifiers(new_state) for new_state in new_states]
+        new_states = [self.remove_infeasible_universal_quantifiers(new_state) for new_state in new_states]
+
         return [new_state.tree for new_state in new_states if self.state_is_valid_or_enqueue(new_state)]
 
     def state_is_valid_or_enqueue(self, state: SolutionState) -> bool:
@@ -746,13 +748,6 @@ class ISLaSolver:
         #     heapq.heapify(queue)
 
         return False
-
-    def postprocess_new_state(self, state: SolutionState) -> List[SolutionState]:
-        new_states = self.establish_invariant(state)
-        new_states = [self.remove_nonmatching_universal_quantifiers(new_state) for new_state in new_states]
-        new_states = [self.remove_infeasible_universal_quantifiers(new_state) for new_state in new_states]
-
-        return new_states
 
     def establish_invariant(self, state: SolutionState) -> List[SolutionState]:
         formula = convert_to_dnf(convert_to_nnf(state.constraint))

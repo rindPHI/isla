@@ -140,7 +140,7 @@ class TestSolver(unittest.TestCase):
         )
 
         self.execute_generation_test(
-            formula, mgr.const("$start"), grammar=XML_GRAMMAR, max_number_free_instantiations=1,
+            formula, start, grammar=XML_GRAMMAR, max_number_free_instantiations=1,
             num_solutions=500
         )
 
