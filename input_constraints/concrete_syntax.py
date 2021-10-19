@@ -11,14 +11,14 @@ from input_constraints.helpers import get_symbols
 ISLA_GRAMMAR = {
     "<start>": ["<const><vars_block><constraint_decl>"],
 
-    "<const>": ["const<wss><id>:<wss><nonterminal>;<wss>"],
+    "<const>": ["const<wss><id>:<mwss><nonterminal><mwss>;<mwss>"],
 
-    "<vars_block>": ["vars<wss>{<wss><var_decls><wss>}<wss>", ""],
-    "<var_decls>": ["<var_decl><wss><var_decls>", "<var_decl>"],
-    "<var_decl>": ["<ids_list>: <nonterminal>;"],
+    "<vars_block>": ["vars<mwss>{<mwss><var_decls><mwss>}<mwss>", ""],
+    "<var_decls>": ["<var_decl><mwss><var_decls>", "<var_decl>"],
+    "<var_decl>": ["<ids_list><mwss>:<mwss><nonterminal><mwss>;"],
     "<nonterminal>": ["<<nonterminal_chars>>"],
 
-    "<constraint_decl>": ["constraint<wss>{<wss><constraint><wss>}"],
+    "<constraint_decl>": ["constraint<mwss>{<mwss><constraint><mwss>}"],
     "<constraint>": ["<disjunction>"],
     "<disjunction>": ["(<mwss><conjunction><wss>or<wss><disjunction><mwss>)", "<conjunction>"],
     "<conjunction>": ["(<mwss><negation><wss>and<wss><conjunction><mwss>)", "<negation>"],
@@ -58,7 +58,7 @@ ISLA_GRAMMAR = {
     "<args>": ["<arg>,<wss><args>", "<arg>"],
     "<arg>": ["<id>", "<number>", "<string>"],
 
-    "<ids_list>": ["<id>, <ids_list>", "<id>"],
+    "<ids_list>": ["<id>,<mwss><ids_list>", "<id>"],
     "<id>": ["<letters>"],
     "<string>": ["\"<escaped_string>\""],
     "<escaped_string>": ["<escaped_string_char><escaped_string>", "<escaped_string_char>"],
@@ -157,7 +157,10 @@ def parse_isla(inp: str) -> isla.Formula:
                 if curr_terminal:
                     result_elements.append(curr_terminal)
                     curr_terminal = ""
-                    result_elements.append(next(v for v in variables if v.name == str(leaf.children[1])))
+                    try:
+                        result_elements.append(next(v for v in variables if v.name == str(leaf.children[1])))
+                    except StopIteration:
+                        raise SyntaxError(f"Undeclared symbol {str(leaf.children[1])} in {str(tree)}")
 
         if curr_terminal:
             result_elements.append(curr_terminal)
