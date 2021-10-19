@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 import unittest
@@ -6,11 +7,15 @@ from xml.dom import minidom
 from xml.sax.saxutils import escape
 
 import z3
+from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
+from fuzzingbook.Grammars import srange
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
+from input_constraints.helpers import delete_unreachable
 from input_constraints.solver import ISLaSolver, SolutionState
 from input_constraints.tests.subject_languages import rest, tinyc, tar, simple_tar
+from input_constraints.concrete_syntax import ISLA_GRAMMAR
 from input_constraints.tests.subject_languages.tinyc import compile_tinyc_clang
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR, XML_GRAMMAR
 
@@ -313,6 +318,18 @@ class TestSolver(unittest.TestCase):
             cost_vectors=((20, 2, 5, .5),),
             cost_phase_lengths=(200,),
         )
+
+    def test_isla(self):
+        # TODO
+        grammar = copy.deepcopy(ISLA_GRAMMAR)
+        grammar["<smt_atom>"] = ["(= <id> <id>)"]
+        grammar["<predicate_atom>"] = ["before(<id>, <id>)"]
+        delete_unreachable(grammar)
+
+        fuzzer = GrammarCoverageFuzzer(grammar)
+        logger = logging.getLogger(type(self).__name__)
+        for _ in range(100):
+            logger.info(fuzzer.fuzz())
 
     def execute_generation_test(
             self,
