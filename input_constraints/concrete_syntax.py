@@ -1,5 +1,5 @@
 import string
-from typing import List, cast, Union
+from typing import List, cast, Union, Dict, Optional
 
 import z3
 from fuzzingbook.Grammars import srange
@@ -45,9 +45,10 @@ ISLA_GRAMMAR = {
     "<esc_chars>": ["<esc_char><esc_chars>", "<esc_char>"],
     "<esc_char>": ['\\"', "\\{", "\\}"] + list(set(string.printable) - {'"', "{", "}"}),
 
-    "<smt_atom>": ["(<fsym><wss><sexpr_list>)"],
+    "<smt_atom>": ["<smt_bool_term>"],
+    "<smt_bool_term>": ["true", "false", "(<fsym><wss><sexpr_list>)"],
     "<sexpr_list>": ["<sexpr><wss><sexpr_list>", "<sexpr>"],
-    "<sexpr>": ["(<fsym><wss><sexpr_list>)", "<number>", "<id>", "<string>"],
+    "<sexpr>": ["<smt_bool_term>", "<number>", "<id>", "<string>"],
     "<fsym>": ["<fsymchar_nondigit><fsymchars>"],
     "<fsymchar_nondigit>": ["<letter>"] + srange("~!@$%^&*_-+=<>.?/"),
     "<fsymchars>": ["<fsymchar><fsymchars>", ""],
@@ -59,7 +60,7 @@ ISLA_GRAMMAR = {
     "<arg>": ["<id>", "<number>", "<string>"],
 
     "<ids_list>": ["<id>,<mwss><ids_list>", "<id>"],
-    "<id>": ["<letters>"],
+    "<id>": ["<letter><idchars>", "<letter>"],
     "<string>": ["\"<escaped_string>\""],
     "<escaped_string>": ["<escaped_string_char><escaped_string>", "<escaped_string_char>"],
     "<escaped_string_char>": list(set(string.printable) - {'"'}) + ['\\"'],
@@ -67,6 +68,8 @@ ISLA_GRAMMAR = {
     "<digits>": ["<digit><digits>", "<digit>"],
     "<digit>": srange(string.digits),
     "<letters>": ["<letter><letters>", "<letter>"],
+    "<idchar>": ["<letter>", "<digit>", "_"],
+    "<idchars>": ["<idchar><idchars>", "<idchar>"],
     "<letter>": srange(string.ascii_lowercase),
     "<nonterminal_chars>": ["<nonterminal_char><nonterminal_chars>", "<nonterminal_char>"],
     "<nonterminal_char>": srange(string.ascii_letters + "-_"),
@@ -77,12 +80,19 @@ ISLA_GRAMMAR = {
 }
 
 
-def parse_isla(inp: str) -> isla.Formula:
+def parse_isla(inp: str,
+               structural_predicates: Optional[Dict[str, isla.StructuralPredicate]] = None,
+               semantic_predicates: Optional[Dict[str, isla.SemanticPredicate]] = None) -> isla.Formula:
+    if structural_predicates is None:
+        structural_predicates = {}
+    if semantic_predicates is None:
+        semantic_predicates = {}
+
     pegparser = PEGParser(ISLA_GRAMMAR)
     tree = isla.DerivationTree.from_parse_tree(pegparser.parse(inp.strip())[0])
 
     const_decl = tree.filter(lambda n: n.value == "<const>", enforce_unique=True)[0][1]
-    const = isla.Constant(str(const_decl.children[2]), str(const_decl.children[-3]))
+    const = isla.Constant(str(const_decl.children[2]), str(const_decl.children[-4]))
 
     var_decls = tree.filter(lambda n: n.value == "<var_decl>")
     variables: List[isla.BoundVariable] = []
@@ -92,6 +102,15 @@ def parse_isla(inp: str) -> isla.Formula:
         variables.extend([isla.BoundVariable(id, ntype) for id in ids])
 
     all_vars = [cast(isla.Variable, const)] + variables
+
+    def check_undeclared_ids(tree: isla.DerivationTree) -> None:
+        undeclared_ids = [
+            str(var[1]) for var in tree.filter(lambda n: n.value == "<id>")
+            if all(decl_var.name != str(var[1]) for decl_var in all_vars)
+        ]
+
+        if undeclared_ids:
+            raise SyntaxError(f"Undeclared symbols '{', '.join(undeclared_ids)}' in {tree}")
 
     def parse_constraint(tree: isla.DerivationTree) -> isla.Formula:
         if tree.value == "<constraint>":
@@ -112,12 +131,43 @@ def parse_isla(inp: str) -> isla.Formula:
             else:
                 return -parse_constraint(tree.children[-2])
         elif tree.value == "<smt_atom>":
+            check_undeclared_ids(tree)
+
             z3_constr = z3.parse_smt2_string(
                 f"(assert {str(tree)})",
                 decls={var.name: z3.String(var.name) for var in all_vars})[0]
             free_vars = [v for v in [cast(isla.Variable, const)] + variables
                          if v.name in [str(s) for s in get_symbols(z3_constr)]]
             return isla.SMTFormula(z3_constr, *free_vars)
+        elif tree.value == "<predicate_atom>":
+            check_undeclared_ids(tree)
+
+            predicate_name = str(tree.children[0])
+            if predicate_name not in structural_predicates and predicate_name not in semantic_predicates:
+                raise SyntaxError(f"Unknown predicate {predicate_name} in {tree}")
+
+            args = [
+                next(var for var in all_vars if var.name == str(arg[1].children[0]))
+                if arg[1].children[0].value == "<id>"
+                else int(str(arg)) if arg[1].children[0].value == "<number>"
+                else str(arg)
+                for arg in tree.filter(lambda n: n.value == "<arg>")]
+
+            is_structural = predicate_name in structural_predicates
+
+            predicate = (
+                structural_predicates[predicate_name] if is_structural
+                else semantic_predicates[predicate_name])
+
+            if len(args) != predicate.arity:
+                raise SyntaxError(
+                    f"Unexpected number {len(args)} for predicate {predicate_name} "
+                    f"({predicate.arity} expected) in {tree}")
+
+            if is_structural:
+                return isla.StructuralPredicateFormula(predicate, *args)
+            else:
+                return isla.SemanticPredicateFormula(predicate, *args)
         elif tree.value == "<quantified_formula>":
             qfr_sym = str(tree.children[0])
             bvar_sym = str(tree.children[2])
@@ -131,12 +181,12 @@ def parse_isla(inp: str) -> isla.Formula:
             invar = next(v for v in all_vars if v.name == invar_sym)
 
             bexpr = None
-            if tree.filter(lambda n: n.value == "<bind_expr>"):
+            if tree.children[4].value == "<bind_expr>":
                 bexpr = parse_bind_expr(tree.children[4])
 
             inner_constraint = parse_constraint(tree.children[-1])
 
-            if qfr_sym == "<forall>":
+            if qfr_sym == "forall":
                 return isla.ForallFormula(bvar, invar, inner_constraint, bind_expression=bexpr)
             else:
                 return isla.ExistsFormula(bvar, invar, inner_constraint, bind_expression=bexpr)
@@ -157,10 +207,11 @@ def parse_isla(inp: str) -> isla.Formula:
                 if curr_terminal:
                     result_elements.append(curr_terminal)
                     curr_terminal = ""
-                    try:
-                        result_elements.append(next(v for v in variables if v.name == str(leaf.children[1])))
-                    except StopIteration:
-                        raise SyntaxError(f"Undeclared symbol {str(leaf.children[1])} in {str(tree)}")
+
+                try:
+                    result_elements.append(next(v for v in variables if v.name == str(leaf.children[1])))
+                except StopIteration:
+                    raise SyntaxError(f"Undeclared symbol {str(leaf.children[1])} in {str(tree)}")
 
         if curr_terminal:
             result_elements.append(curr_terminal)
@@ -169,17 +220,3 @@ def parse_isla(inp: str) -> isla.Formula:
 
     return parse_constraint(
         tree.filter(lambda n: n.value == "<constraint_decl>", True)[0][1].children[-3])
-
-
-inp = '''const start: <start>;
-vars {
-  tree, inner: <xml-tree>;
-  opid, clid: <ID>;
-  attr: <xml-attribute>;
-}
-constraint {
-  (forall tree="<{opid}>{inner}</{clid}>" in start: (= opid clid) and 
-   forall tree="<{opid} {attr}>{inner}</{clid}>" in start: (= opid clid))
-}'''
-
-print(parse_isla(inp))

@@ -9,6 +9,13 @@ from fuzzingbook.Grammars import unreachable_nonterminals, is_nonterminal
 
 from input_constraints.type_defs import Path, Grammar, ParseTree
 
+S = TypeVar('S')
+T = TypeVar('T')
+
+
+def pop(l: List[S], default: T = None, index=0) -> Union[S, T]:
+    return default if not l else l.pop(index)
+
 
 def replace_line_breaks(inp: str) -> str:
     return inp.replace("\n", "\\n")
@@ -190,10 +197,6 @@ def tree_size(tree: ParseTree) -> int:
         return 1
 
     return 1 + sum(tree_depth(child) for child in tree[1])
-
-
-S = TypeVar('S')
-T = TypeVar('T')
 
 
 def dict_of_lists_to_list_of_dicts(dict_of_lists: Dict[S, List[T]]) -> List[Dict[S, T]]:

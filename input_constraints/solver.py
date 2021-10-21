@@ -16,6 +16,7 @@ from grammar_to_regex.cfg2regex import RegexConverter
 
 import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
+from input_constraints.concrete_syntax import parse_isla
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
     replace_line_breaks, z3_subst, z3_solve
@@ -96,7 +97,9 @@ class SolutionState:
 class ISLaSolver:
     def __init__(self,
                  grammar: Grammar,
-                 formula: isla.Formula,
+                 formula: Union[isla.Formula, str],
+                 structural_predicates: Optional[Dict[str, isla.StructuralPredicate]] = None,
+                 semantic_predicates: Optional[Dict[str, isla.SemanticPredicate]] = None,
                  max_number_free_instantiations: int = 10,
                  max_number_smt_instantiations: int = 10,
                  expand_after_existential_elimination: bool = False,  # Currently not used, might be removed
@@ -141,6 +144,9 @@ class ISLaSolver:
         self.canonical_grammar = canonical(grammar)
         self.symbol_costs: Dict[str, int] = self.compute_symbol_costs()
         self.cost_normalizer = CostNormalizer()
+
+        if isinstance(formula, str):
+            formula = parse_isla(formula, structural_predicates, semantic_predicates)
 
         self.formula = ensure_unique_bound_variables(formula)
         top_constants: Set[isla.Constant] = set(

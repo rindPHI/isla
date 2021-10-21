@@ -13,7 +13,7 @@ from grammar_graph.gg import GrammarGraph
 from orderedset import OrderedSet
 
 from input_constraints.helpers import get_symbols, z3_subst, path_iterator, replace_tree_path, is_valid, \
-    replace_line_breaks, delete_unreachable
+    replace_line_breaks, delete_unreachable, pop
 from input_constraints.type_defs import ParseTree, Path, Grammar
 
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
@@ -187,7 +187,7 @@ class DerivationTree:
             result.append((path, node))
 
         result: List[Tuple[Path, 'DerivationTree']] = []
-        self.traverse(action)
+        self.traverse(action, kind=DerivationTree.TRAVERSE_PREORDER)
         return result
 
     def filter(self, f: Callable[['DerivationTree'], bool],
@@ -597,31 +597,21 @@ class BindExpression:
     def match(self, tree: DerivationTree) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
         result: Dict[BoundVariable, Tuple[Path, DerivationTree]] = {}
 
-        bound_elements = list(self.bound_elements)
+        bound_variables = list(self.bound_elements)
         subtrees = list(tree.paths())
-        current_bound_element = bound_elements.pop(0)
+        curr_elem = bound_variables.pop(0)
 
-        while subtrees:
-            path, subtree = subtrees.pop(0)
+        while subtrees and curr_elem:
+            path, subtree = pop(subtrees)
 
-            if ((isinstance(current_bound_element, BoundVariable)
-                 and subtree.value == current_bound_element.n_type)
-                    or (isinstance(current_bound_element, str)
-                        and str(subtree) == current_bound_element)):
-
-                if isinstance(current_bound_element, BoundVariable):
-                    result[current_bound_element] = (path, subtree)
+            if subtree.value == curr_elem.n_type:
+                result[curr_elem] = (path, subtree)
+                curr_elem = pop(bound_variables, default=None)
 
                 subtrees = [(p, s) for p, s in subtrees
                             if not p[:len(path)] == path]
 
-                if not bound_elements:
-                    current_bound_element = None
-                    break
-                else:
-                    current_bound_element = bound_elements.pop(0)
-
-        return None if bound_elements or subtrees or current_bound_element else result
+        return None if subtrees or curr_elem else result
 
     def __repr__(self):
         return f'BindExpression({", ".join(map(repr, self.bound_elements))})'

@@ -1,12 +1,12 @@
 ISLa: Input Specification Language
 ==================================
 
-ISLa is a specification language for constraints on structured inputs conforming to a given, context-free
-grammar. It contains the language of SMT (z3) formulas as an island language, and adds the power of structural
-quantifiers over derivation trees on top. ISLa supports universal and existential quantifiers as well as
-structural predicates (e.g., "occurs before"). Its generation mechanism uses feedback from z3 to solve atomic
-"semantic" formulas, and constructive insertion for eliminating existential quantifiers. Universal quantifiers
-and structural predicates are treated by a top-level, deterministic breath-first search.
+ISLa is a specification language for constraints on structured inputs conforming to a given, context-free grammar. It
+contains the language of SMT (z3) formulas as an island language, and adds the power of structural quantifiers over
+derivation trees on top. ISLa supports universal and existential quantifiers as well as structural predicates (e.g., "
+occurs before"). Its generation mechanism uses feedback from z3 to solve atomic
+"semantic" formulas, and constructive insertion for eliminating existential quantifiers. Universal quantifiers and
+structural predicates are treated by a top-level, deterministic breath-first search.
 
 ## Example
 
@@ -28,16 +28,26 @@ LANG_GRAMMAR = {
 ```
 
 An interesting, context-sensitive property for this language is that all right-hand side variables have been declared
-somewhere before. In ISLa, this can be expressed as a constraint
+somewhere before. In ISLa's concrete syntax, this can be expressed as a constraint
 
 ```
-∀ '$lhs_1 " := " $rhs_1' = $assgn_1 ∈ $start: 
-    (∀ $var ∈ $rhs_1: 
-        (∃ '$lhs_2 " := " $rhs_2' = $assgn_2 ∈ $start: 
-            ((before($assgn_2, $assgn_1) ∧ $lhs_2 == $var))))
+const start: <start>;
+
+vars {
+    lhs_1, var, lhs_2: <var>;
+    rhs_1, rhs_2: <rhs>;
+    assgn_1, assgn_2: <assgn>;
+}
+
+constraint {
+  forall assgn_1="{lhs_1} := {rhs_1}" in start:
+    forall var in rhs_1:
+      exists assgn_2="{lhs_2} := {rhs_2}" in start:
+        (before(assgn_2, assgn_1) and (= lhs_2 var))
+}
 ```
 
-or, in Python,
+or, using the Python API,
 
 ```python
 from input_constraints import isla
@@ -66,10 +76,34 @@ The ISLa solver can find satisfying assignments for this formula:
 
 ```python
 from input_constraints.solver import ISLaSolver
+from input_constraints.tests.test_data import LANG_GRAMMAR
 
 solver = ISLaSolver(
     grammar=LANG_GRAMMAR,
     formula=formula,
+    max_number_free_instantiations=10,
+    max_number_smt_instantiations=10)
+
+it = solver.solve()
+while True:
+    try:
+        print(next(it))
+    except StopIteration:
+        break
+```
+
+When calling the solver with an ISLa formula in concrete syntax (a string), one has to supply a "signature" of the
+structural and semantic predicate symbols used:
+
+```python
+from input_constraints.solver import ISLaSolver
+from input_constraints.tests.test_data import LANG_GRAMMAR
+from input_constraints.isla_predicates import BEFORE_PREDICATE
+
+solver = ISLaSolver(
+    grammar=LANG_GRAMMAR,
+    formula=concrete_syntax_formula,
+    structural_predicates={"before": BEFORE_PREDICATE},
     max_number_free_instantiations=10,
     max_number_smt_instantiations=10)
 
@@ -86,8 +120,8 @@ irrelevant for any constraint (parameter `max_number_free_instantiations`). Simi
 semantic SMT formulas can be configured (`max_number_smt_instantiations`).
 
 In certain cases, ISLa will only produce a finite amount of solutions. This holds in particular for simple existential
-constraints. The existential quantifier will be eliminated and the solution output; the search terminates then.
-Usually, though, the stream of solutions will be infinite (given that the grammar contains recursions).
+constraints. The existential quantifier will be eliminated and the solution output; the search terminates then. Usually,
+though, the stream of solutions will be infinite (given that the grammar contains recursions).
 
 ## Build and Install
 

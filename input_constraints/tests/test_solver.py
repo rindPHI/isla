@@ -13,9 +13,11 @@ from fuzzingbook.Grammars import srange
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 from input_constraints.helpers import delete_unreachable
+from input_constraints.isla import VariablesCollector
+from input_constraints.isla_predicates import BEFORE_PREDICATE
 from input_constraints.solver import ISLaSolver, SolutionState
 from input_constraints.tests.subject_languages import rest, tinyc, tar, simple_tar
-from input_constraints.concrete_syntax import ISLA_GRAMMAR
+from input_constraints.concrete_syntax import ISLA_GRAMMAR, parse_isla
 from input_constraints.tests.subject_languages.tinyc import compile_tinyc_clang
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR, XML_GRAMMAR
 
@@ -49,7 +51,7 @@ class TestSolver(unittest.TestCase):
     def test_atomic_smt_formula(self):
         assgn = isla.Constant("$assgn", "<assgn>")
         formula = isla.SMTFormula(cast(z3.BoolRef, assgn.to_smt() == z3.StringVal("x := x")), assgn)
-        self.execute_generation_test(formula, assgn, num_solutions=1)
+        self.execute_generation_test(formula, num_solutions=1)
 
     def test_simple_universal_formula(self):
         start = isla.Constant("$start", "<start>")
@@ -59,7 +61,7 @@ class TestSolver(unittest.TestCase):
             var1, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        self.execute_generation_test(formula, start, max_number_free_instantiations=1)
+        self.execute_generation_test(formula, max_number_free_instantiations=1)
 
     def test_simple_universal_formula_with_bind(self):
         mgr = isla.VariableManager(LANG_GRAMMAR)
@@ -70,7 +72,7 @@ class TestSolver(unittest.TestCase):
                 mgr.smt(cast(z3.BoolRef, mgr.bv("$var1").to_smt() == z3.StringVal("x"))))
         )
 
-        self.execute_generation_test(formula, mgr.const("$start"))
+        self.execute_generation_test(formula)
 
     def test_simple_existential_formula(self):
         mgr = isla.VariableManager(LANG_GRAMMAR)
@@ -83,7 +85,7 @@ class TestSolver(unittest.TestCase):
         )
 
         self.execute_generation_test(
-            formula, start, num_solutions=1,
+            formula, num_solutions=1,
             max_number_free_instantiations=1,
             # expand_after_existential_elimination=True
         )
@@ -99,7 +101,7 @@ class TestSolver(unittest.TestCase):
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
         # TODO: Try to create infinite solution stream
-        self.execute_generation_test(formula, start, num_solutions=1)
+        self.execute_generation_test(formula, num_solutions=1)
 
     def test_conjunction_of_qfd_formulas(self):
         start = isla.Constant("$start", "<start>")
@@ -119,7 +121,7 @@ class TestSolver(unittest.TestCase):
                 assgn, start,
                 sc.smt_for(cast(z3.BoolRef, var_2.to_smt() == z3.StringVal("y")), var_2))
 
-        self.execute_generation_test(formula, start)
+        self.execute_generation_test(formula)
 
     def test_xml(self):
         mgr = isla.VariableManager(XML_GRAMMAR)
@@ -145,7 +147,7 @@ class TestSolver(unittest.TestCase):
         )
 
         self.execute_generation_test(
-            formula, start, grammar=XML_GRAMMAR, max_number_free_instantiations=1,
+            formula, grammar=XML_GRAMMAR, max_number_free_instantiations=1,
             num_solutions=500
         )
 
@@ -168,7 +170,31 @@ class TestSolver(unittest.TestCase):
             )
         ))
 
-        self.execute_generation_test(formula, mgr.const("$start"), max_number_free_instantiations=1, num_solutions=30)
+        self.execute_generation_test(formula, max_number_free_instantiations=1, num_solutions=30)
+
+    def test_declared_before_used_concrete_syntax(self):
+        formula = """
+const start: <start>;
+
+vars {
+    lhs_1, var, lhs_2: <var>;
+    rhs_1, rhs_2: <rhs>;
+    assgn_1, assgn_2: <assgn>;
+}
+
+constraint {
+  forall assgn_1="{lhs_1} := {rhs_1}" in start:
+    forall var in rhs_1:
+      exists assgn_2="{lhs_2} := {rhs_2}" in start:
+        (before(assgn_2, assgn_1) and (= lhs_2 var))
+}
+"""
+
+        self.execute_generation_test(
+            formula,
+            structural_predicates={"before": BEFORE_PREDICATE},
+            max_number_free_instantiations=1,
+            num_solutions=30)
 
     def test_simple_csv_rows_equal_length(self):
         mgr = isla.VariableManager(SIMPLE_CSV_GRAMMAR)
@@ -185,7 +211,7 @@ class TestSolver(unittest.TestCase):
                 sc.count(SIMPLE_CSV_GRAMMAR, mgr.bv("$line"), "<csv-field>", mgr.num_const("$num")))
         )
 
-        self.execute_generation_test(formula, mgr.const("$start"),
+        self.execute_generation_test(formula,
                                      grammar=SIMPLE_CSV_GRAMMAR,
                                      max_number_free_instantiations=1,
                                      max_number_smt_instantiations=2,
@@ -209,7 +235,7 @@ class TestSolver(unittest.TestCase):
         )
 
         self.execute_generation_test(
-            formula, mgr.const("$start"),
+            formula,
             grammar=CSV_GRAMMAR,
             num_solutions=20,
             max_number_free_instantiations=1,
@@ -224,7 +250,6 @@ class TestSolver(unittest.TestCase):
     def Xtest_rest_titles(self):
         self.execute_generation_test(
             rest.LENGTH_UNDERLINE,
-            isla.Constant("$start", "<start>"),
             grammar=rest.REST_GRAMMAR,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=5,
@@ -240,7 +265,6 @@ class TestSolver(unittest.TestCase):
 
         self.execute_generation_test(
             tinyc.TINYC_DEF_BEFORE_USE_CONSTRAINT,
-            isla.Constant("$start", "<start>"),
             grammar=tinyc.TINYC_GRAMMAR,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=1,
@@ -289,7 +313,6 @@ class TestSolver(unittest.TestCase):
 
         self.execute_generation_test(
             tar.TAR_CONSTRAINTS,
-            isla.Constant("$start", "<start>"),
             grammar=tar.TAR_GRAMMAR,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=1,
@@ -306,7 +329,6 @@ class TestSolver(unittest.TestCase):
     def test_simple_tar(self):
         self.execute_generation_test(
             simple_tar.TAR_CONSTRAINTS,
-            isla.Constant("$start", "<start>"),
             grammar=simple_tar.SIMPLE_TAR_GRAMMAR,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=1,
@@ -321,20 +343,27 @@ class TestSolver(unittest.TestCase):
 
     def test_isla(self):
         # TODO
-        grammar = copy.deepcopy(ISLA_GRAMMAR)
-        grammar["<smt_atom>"] = ["(= <id> <id>)"]
-        grammar["<predicate_atom>"] = ["before(<id>, <id>)"]
-        delete_unreachable(grammar)
+        grammar = ISLA_GRAMMAR
+        # grammar = copy.deepcopy(ISLA_GRAMMAR)
+        # grammar["<smt_atom>"] = ["(= <id> <id>)"]
+        # grammar["<predicate_atom>"] = ["before(<id>, <id>)"]
+        # delete_unreachable(grammar)
 
         fuzzer = GrammarCoverageFuzzer(grammar)
         logger = logging.getLogger(type(self).__name__)
-        for _ in range(100):
-            logger.info(fuzzer.fuzz())
+        for _ in range(1000):
+            inp = fuzzer.fuzz()
+            logger.info(inp)
+            try:
+                parse_isla(inp)
+            except SyntaxError as err:
+                logger.warning(err.msg)
 
     def execute_generation_test(
             self,
-            formula: isla.Formula,
-            constant: isla.Constant,
+            formula: Union[isla.Formula, str],
+            structural_predicates: Optional[Dict[str, isla.StructuralPredicate]] = None,
+            semantic_predicates: Optional[Dict[str, isla.SemanticPredicate]] = None,
             grammar=LANG_GRAMMAR,
             num_solutions=50,
             print_solutions=False,
@@ -359,6 +388,8 @@ class TestSolver(unittest.TestCase):
         args = {
             "grammar": grammar,
             "formula": formula,
+            "structural_predicates": structural_predicates,
+            "semantic_predicates": semantic_predicates,
             "max_number_free_instantiations": max_number_free_instantiations,
             "max_number_smt_instantiations": max_number_smt_instantiations,
             "expand_after_existential_elimination": expand_after_existential_elimination,
@@ -378,6 +409,13 @@ class TestSolver(unittest.TestCase):
             file_handler = logging.FileHandler(log_out)
             for name in logging.root.manager.loggerDict:
                 logging.getLogger(name).addHandler(file_handler)
+
+        if isinstance(formula, str):
+            formula = parse_isla(formula, structural_predicates, semantic_predicates)
+
+        constant = next(
+            c for c in VariablesCollector.collect(formula)
+            if isinstance(c, isla.Constant) and not c.is_numeric())
 
         it = solver.solve()
         solutions_found = 0
