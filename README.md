@@ -137,8 +137,7 @@ The (abbreviated) E-BNF grammar for the concrete syntax of ISLa formulas is:
 
 ⟨constraint_decl⟩ := ‘constraint␣{’⟨constraint⟩‘}’
 ⟨constraint⟩ := ⟨disjunction⟩
-⟨disjunction⟩ := ⟨conjunction⟩
-| ‘(’ ⟨conjunction⟩ ‘␣or␣’ ⟨disjunction⟩ ‘)’
+⟨disjunction⟩ := ⟨conjunction⟩ | ‘(’ ⟨conjunction⟩ ‘␣or␣’ ⟨disjunction⟩ ‘)’
 
 ⟨conjunction⟩ := ⟨negation⟩ | ‘(’ ⟨negation⟩ ‘␣and␣’ ⟨conjunction⟩ ‘)’
 ⟨negation⟩ := ⟨smt_atom⟩ | ⟨predicate_atom⟩ | ⟨quantified_formula⟩ | ‘not␣(’ ⟨constraint⟩ ‘)’
