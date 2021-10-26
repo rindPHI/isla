@@ -163,6 +163,7 @@ TAR_CONSTRAINTS = mgr.create(
     sc.forall(
         mgr.bv("$file_name", "<file_name>"),
         start,
+        mgr.smt(z3.Length(mgr.bv("$file_name").to_smt()) > z3.IntVal(0)) &
         ljust_crop_tar(mgr.bv("$file_name"), 100, "\x00")
     ) &
     sc.forall(

@@ -8,14 +8,14 @@ from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 import input_constraints.isla_shortcuts as sc
 from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
     DerivationTree, convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
-    matches_for_quantified_formula, QuantifiedFormula
+    matches_for_quantified_formula, QuantifiedFormula, DummyVariable
 from input_constraints.isla_predicates import count, is_before
 from input_constraints.tests.subject_languages import tinyc, tar
 from input_constraints.tests.test_data import *
 from input_constraints.tests.test_helpers import parse
 
 
-class TestEvaluation(unittest.TestCase):
+class TestISLa(unittest.TestCase):
     def test_wellformed(self):
         prog = Constant("$prog", "<prog>")
         lhs_1 = BoundVariable("$lhs_1", "<var>")
@@ -334,6 +334,7 @@ class TestEvaluation(unittest.TestCase):
         rhs_1 = BoundVariable("$rhs_1", "<rhs>")
         var_1 = BoundVariable("$var1", "<var>")
 
+        DummyVariable.cnt = 0
         formula = \
             sc.forall_bind(
                 BindExpression(var_1),
@@ -347,6 +348,7 @@ class TestEvaluation(unittest.TestCase):
         rhs_1_0 = BoundVariable("$rhs_1_0", "<rhs>")
         var_1_0 = BoundVariable("$var1_0", "<var>")
 
+        DummyVariable.cnt = 0
         expected = \
             sc.forall_bind(
                 BindExpression(var_1),

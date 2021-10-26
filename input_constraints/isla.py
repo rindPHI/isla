@@ -1192,6 +1192,9 @@ class SMTFormula(Formula):
     def __hash__(self):
         return hash((self.formula, tuple(self.substitutions.items())))
 
+class IntroduceNumericConstantFormula(Formula):
+    def __init__(self, bound_variable: BoundVariable):
+        pass
 
 class QuantifiedFormula(Formula):
     def __init__(self,

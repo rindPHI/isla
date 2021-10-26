@@ -314,7 +314,6 @@ constraint {
             # debug=True,
             num_solutions=10,
             precompute_reachability=False,
-            # custom_test_func=try_parse_tar,
             custom_test_func=extract_tar,
             # cost_vectors=((20, 0, .5, 0),),
             # cost_phase_lengths=(100,),

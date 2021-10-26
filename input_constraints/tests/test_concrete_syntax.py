@@ -13,6 +13,8 @@ import input_constraints.isla_shortcuts as sc
 
 class TestConcreteSyntax(unittest.TestCase):
     def test_declared_before_used(self):
+        DummyVariable.cnt = 0
+
         mgr = isla.VariableManager(LANG_GRAMMAR)
         python_formula: isla.Formula = mgr.create(sc.forall_bind(
             mgr.bv("lhs_1", "<var>") + " := " + mgr.bv("rhs_1", "<rhs>"),
@@ -32,7 +34,6 @@ class TestConcreteSyntax(unittest.TestCase):
         ))
 
         DummyVariable.cnt = 0
-
         concr_syntax_formula = """
              const start: <start>;
 
