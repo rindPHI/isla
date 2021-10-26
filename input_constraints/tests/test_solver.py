@@ -304,14 +304,6 @@ constraint {
     #             })))
 
     def test_tar(self):
-        def try_parse_tar(tree: isla.DerivationTree) -> Union[bool, str]:
-            parser = tar.TarParser()
-            try:
-                parser.parse(str(tree))
-                return True
-            except SyntaxError as serr:
-                return serr.msg
-
         self.execute_generation_test(
             tar.TAR_CONSTRAINTS,
             grammar=tar.TAR_GRAMMAR,
