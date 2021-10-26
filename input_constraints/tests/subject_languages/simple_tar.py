@@ -83,7 +83,7 @@ def tar_checksum(header: isla.DerivationTree, checksum_tree: isla.DerivationTree
     return isla.SemPredEvalResult({checksum_tree: new_checksum_tree})
 
 
-TAR_CHECKSUM_PREDICATE = isla.SemanticPredicate("tar_checksum", 2, tar_checksum, lambda tree, args: False)
+TAR_CHECKSUM_PREDICATE = isla.SemanticPredicate("tar_checksum", 2, tar_checksum, binds_tree=False)
 
 
 def tar_checksum(

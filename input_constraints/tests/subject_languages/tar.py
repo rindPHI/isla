@@ -1,6 +1,9 @@
 import copy
 import string
-from typing import Union, List, Optional, Tuple, cast, Callable
+import subprocess
+import tempfile
+from subprocess import PIPE
+from typing import Union, List, Optional, Tuple, cast, Callable, IO
 
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string
@@ -99,7 +102,7 @@ def tar_checksum(header: isla.DerivationTree, checksum_tree: isla.DerivationTree
     return isla.SemPredEvalResult({checksum_tree: new_checksum_tree})
 
 
-TAR_CHECKSUM_PREDICATE = isla.SemanticPredicate("tar_checksum", 2, tar_checksum, lambda tree, args: False)
+TAR_CHECKSUM_PREDICATE = isla.SemanticPredicate("tar_checksum", 2, tar_checksum, binds_tree=False)
 
 
 def tar_checksum(
@@ -116,12 +119,12 @@ def mk_tar_parser(start: str) -> Callable[[str], List[ParseTree]]:
 LJUST_CROP_TAR_PREDICATE = isla.SemanticPredicate(
     "ljust_crop_tar", 3,
     lambda tree, width, fillchar: just(True, True, mk_tar_parser, tree, width, fillchar),
-    lambda tree, args: False)
+    binds_tree=False)
 
 RJUST_CROP_TAR_PREDICATE = isla.SemanticPredicate(
     "rjust_crop_tar", 3,
     lambda tree, width, fillchar: just(False, True, mk_tar_parser, tree, width, fillchar),
-    lambda tree, args: False)
+    binds_tree=False)
 
 
 def ljust_crop_tar(
@@ -230,11 +233,11 @@ TAR_CONSTRAINTS = mgr.create(
         start,
         ljust_crop_tar(mgr.bv("$header_padding"), 12, "\x00")
     ) &
-    # sc.forall(
-    #     mgr.bv("$content", "<content>"),
-    #     start,
-    #     ljust_crop_tar(mgr.bv("$content"), 512, "\x00")
-    # ) &
+    sc.forall(
+        mgr.bv("$content", "<content>"),
+        start,
+        ljust_crop_tar(mgr.bv("$content"), 512, "\x00")
+    ) &
     sc.forall(
         mgr.bv("$entry", "<entry>"),
         start,
@@ -626,3 +629,15 @@ class TarParser:
             raise SyntaxError(f"at {self.pos}: {result} (premature end of file, expected {n} bytes left)")
         self.pos += n
         return result
+
+
+def extract_tar(tree: isla.DerivationTree) -> Union[bool, str]:
+    with tempfile.NamedTemporaryFile(suffix=".tar") as outfile:
+        outfile.write(str(tree).encode())
+        outfile.flush()
+        cmd = ["tar", "-xf", outfile.name]
+        process = subprocess.Popen(cmd, stderr=PIPE)
+        (stdout, stderr) = process.communicate(timeout=2)
+        exit_code = process.wait()
+
+        return True if exit_code == 0 else stderr.decode("utf-8")

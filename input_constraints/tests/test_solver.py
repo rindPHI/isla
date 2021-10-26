@@ -18,6 +18,7 @@ from input_constraints.isla_predicates import BEFORE_PREDICATE
 from input_constraints.solver import ISLaSolver, SolutionState
 from input_constraints.tests.subject_languages import rest, tinyc, tar, simple_tar
 from input_constraints.concrete_syntax import ISLA_GRAMMAR, parse_isla
+from input_constraints.tests.subject_languages.tar import extract_tar
 from input_constraints.tests.subject_languages.tinyc import compile_tinyc_clang
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR, XML_GRAMMAR
 
@@ -303,7 +304,7 @@ constraint {
     #             })))
 
     def test_tar(self):
-        def try_parse_tar(tree: isla.DerivationTree, outfile: Optional[IO] = None) -> Union[bool, str]:
+        def try_parse_tar(tree: isla.DerivationTree) -> Union[bool, str]:
             parser = tar.TarParser()
             try:
                 parser.parse(str(tree))
@@ -319,9 +320,10 @@ constraint {
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
             # debug=True,
-            num_solutions=7,
+            num_solutions=10,
             precompute_reachability=False,
-            custom_test_func=try_parse_tar,
+            # custom_test_func=try_parse_tar,
+            custom_test_func=extract_tar,
             # cost_vectors=((20, 0, .5, 0),),
             # cost_phase_lengths=(100,),
         )

@@ -867,13 +867,28 @@ class SemanticPredicate:
     def __init__(
             self, name: str, arity: int,
             eval_fun: Callable[[Union[DerivationTree, Constant, str, int], ...], SemPredEvalResult],
-            binds_tree: Optional[Callable[[DerivationTree, Tuple[SemPredArg, ...]], bool]] = None):
+            binds_tree: Optional[Union[Callable[[DerivationTree, Tuple[SemPredArg, ...]], bool], bool]] = None):
+        """
+        :param name:
+        :param arity:
+        :param eval_fun:
+        :param binds_tree: Given a derivation tree and the arguments for the predicate, this function tests whether
+        the tree is bound by the predicate formula. The effect of this is that bound trees cannot be freely expanded,
+        similarly to nonterminals bound by a universal quantifier. A semantic predicate may also not bind any of its
+        arguments; in that case, we can freely instantiate the arguments and then ask the predicate for a "fix" if
+        the instantiation is non-conformant. Most semantic predicates do not bind their arguments. Pass nothing or
+        True for this parameter for predicates binding all trees in all their arguments. Pass False for predicates
+        binding no trees at all. Pass a custom function for anything special.
+        """
         self.name = name
         self.arity = arity
         self.eval_fun = eval_fun
 
-        if binds_tree is not None:
-            self.binds_tree = binds_tree
+        if binds_tree is not None and binds_tree is not True:
+            if binds_tree is False:
+                self.binds_tree = lambda tree, args: False
+            else:
+                self.binds_tree = binds_tree
         else:
             self.binds_tree = (
                 lambda tree, args:

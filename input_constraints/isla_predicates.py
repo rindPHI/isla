@@ -122,7 +122,7 @@ def count(grammar: Grammar,
 
 
 COUNT_PREDICATE = lambda grammar: SemanticPredicate(
-    "count", 3, lambda in_tree, needle, num: count(grammar, in_tree, needle, num))
+    "count", 3, lambda in_tree, needle, num: count(grammar, in_tree, needle, num), binds_tree=True)
 
 
 def embed_tree(
@@ -223,21 +223,21 @@ def mk_parser(grammar: Grammar):
 LJUST_PREDICATE = lambda grammar: SemanticPredicate(
     "ljust", 3,
     lambda tree, width, fillchar: just(True, False, mk_parser(grammar), tree, width, fillchar),
-    lambda tree, args: False)
+    binds_tree=False)
 
 LJUST_CROP_PREDICATE = lambda grammar: SemanticPredicate(
     "ljust_crop", 3,
     lambda tree, width, fillchar: just(True, True, mk_parser(grammar), tree, width, fillchar),
-    lambda tree, args: False)
+    binds_tree=False)
 
 RJUST_PREDICATE = lambda grammar: SemanticPredicate(
     "rjust", 3, lambda tree, width, fillchar: just(False, False, mk_parser(grammar), tree, width, fillchar),
-    lambda tree, args: False)
+    binds_tree=False)
 
 RJUST_CROP_PREDICATE = lambda grammar: SemanticPredicate(
     "rjust_crop", 3,
     lambda tree, width, fillchar: just(False, True, mk_parser(grammar), tree, width, fillchar),
-    lambda tree, args: False)
+    binds_tree=False)
 
 
 def octal_to_dec(
@@ -286,4 +286,6 @@ OCTAL_TO_DEC_PREDICATE = lambda grammar, octal_start, decimal_start: SemanticPre
     lambda octal, decimal: octal_to_dec(
         mk_parser(grammar)(octal_start),
         mk_parser(grammar)(decimal_start),
-        octal, decimal))
+        octal, decimal),
+    binds_tree=False
+)
