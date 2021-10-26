@@ -635,7 +635,7 @@ def extract_tar(tree: isla.DerivationTree) -> Union[bool, str]:
     with tempfile.NamedTemporaryFile(suffix=".tar") as outfile:
         outfile.write(str(tree).encode())
         outfile.flush()
-        cmd = ["tar", "-xf", outfile.name]
+        cmd = ["tar", "-C", "/tmp", "-xf", outfile.name]
         process = subprocess.Popen(cmd, stderr=PIPE)
         (stdout, stderr) = process.communicate(timeout=2)
         exit_code = process.wait()
