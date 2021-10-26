@@ -279,9 +279,9 @@ class ISLaSolver:
             assert (state.constraint == sc.true()
                     or (all(isinstance(conjunct, isla.SemanticPredicateFormula)
                             for conjunct in get_conjuncts(state.constraint))
-                        and all(not any(pred_formula.binds_tree(leaf)
-                                        for pred_formula in get_conjuncts(state.constraint)
-                                        if isinstance(pred_formula, isla.SemanticPredicateFormula))
+                        and all(not pred_formula.binds_tree(leaf)
+                                for pred_formula in get_conjuncts(state.constraint)
+                                if isinstance(pred_formula, isla.SemanticPredicateFormula)
                                 for _, leaf in state.tree.open_leaves())))
 
             if state.constraint == sc.true():
