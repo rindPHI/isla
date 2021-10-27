@@ -7,14 +7,13 @@ from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator
 
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
-from fuzzingbook.Grammars import is_nonterminal, RE_NONTERMINAL, JSON_GRAMMAR
+from fuzzingbook.Grammars import is_nonterminal, RE_NONTERMINAL
 from fuzzingbook.Parser import EarleyParser, PEGParser
-from grammar_graph.gg import GrammarGraph
 from orderedset import OrderedSet
 
 from input_constraints.concrete_syntax import ISLA_GRAMMAR
-from input_constraints.helpers import get_symbols, z3_subst, path_iterator, replace_tree_path, is_valid, \
-    replace_line_breaks, delete_unreachable, pop
+from input_constraints.helpers import get_symbols, z3_subst, is_valid, \
+    replace_line_breaks, delete_unreachable, pop, z3_solve
 from input_constraints.type_defs import ParseTree, Path, Grammar
 
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
@@ -1236,7 +1235,7 @@ class IntroduceNumericConstantFormula(Formula):
                 and self.inner_formula == other.inner_formula)
 
     def __str__(self):
-        return f"num {self.bound_variable.name}: {self.inner_formula}"
+        return f"num {self.bound_variable.name}: {str(self.inner_formula)}"
 
     def __repr__(self):
         return f"IntroduceNumericConstantFormula({repr(self.bound_variable)}, {repr(self.inner_formula)})"
@@ -1581,6 +1580,9 @@ class ThreeValuedTruth:
         assert self.val != ThreeValuedTruth.UNKNOWN
         return bool(self.val)
 
+    def __bool__(self):
+        return self.to_bool()
+
     def is_false(self):
         return self.val == ThreeValuedTruth.FALSE
 
@@ -1641,89 +1643,150 @@ class ThreeValuedTruth:
                 "UNKNOWN")
 
 
+def get_toplevel_quantified_formulas(formula: Formula) -> \
+        List[Union[QuantifiedFormula, IntroduceNumericConstantFormula]]:
+    if isinstance(formula, QuantifiedFormula) or isinstance(formula, IntroduceNumericConstantFormula):
+        return [formula]
+    elif isinstance(formula, PropositionalCombinator):
+        return [f for arg in formula.args for f in get_toplevel_quantified_formulas(arg)]
+    else:
+        return []
+
+
+def eliminate_quantifiers(formula: Formula) -> List[Formula]:
+    quantified_formulas = get_toplevel_quantified_formulas(formula)
+    universal_formulas = [f for f in quantified_formulas if isinstance(f, ForallFormula)]
+
+    if universal_formulas:
+        for universal_formula in universal_formulas:
+            assert isinstance(universal_formula.in_variable, DerivationTree)
+            matches = [
+                {var: tree for var, (_, tree) in match.items()}
+                for match in matches_for_quantified_formula(universal_formula, universal_formula.in_variable)]
+            instantiations = [
+                universal_formula.inner_formula.substitute_expressions(match)
+                for match in matches]
+            if instantiations:
+                formula = replace_formula(
+                    formula,
+                    universal_formula,
+                    reduce(lambda f1, f2: f1 & f2, instantiations))
+            else:
+                formula = replace_formula(formula, universal_formula, SMTFormula(z3.BoolVal(True)))
+
+        return eliminate_quantifiers(formula)
+
+    existential_formulas = [f for f in quantified_formulas if isinstance(f, ExistsFormula)]
+    if existential_formulas:
+        result: List[Formula] = []
+        for existential_formula in existential_formulas:
+            assert isinstance(existential_formula.in_variable, DerivationTree)
+            matches = [
+                {var: tree for var, (_, tree) in match.items()}
+                for match in matches_for_quantified_formula(existential_formula, existential_formula.in_variable)]
+            instantiations = [
+                existential_formula.inner_formula.substitute_expressions(match)
+                for match in matches]
+            if instantiations:
+                result.extend([
+                    replace_formula(formula, existential_formula, instantiation)
+                    for instantiation in instantiations])
+            else:
+                result.append(replace_formula(formula, existential_formula, SMTFormula(z3.BoolVal(False))))
+
+        return [f for r in result for f in eliminate_quantifiers(r)]
+
+    intro_const_formulas = [f for f in quantified_formulas if isinstance(f, IntroduceNumericConstantFormula)]
+    if intro_const_formulas:
+        used_var_names = set(VariablesCollector.collect(formula))
+        for intro_const_formula in intro_const_formulas:
+            fresh = fresh_constant(
+                used_var_names,
+                Constant(intro_const_formula.bound_variable.name, intro_const_formula.bound_variable.n_type))
+            formula = replace_formula(
+                formula,
+                intro_const_formula,
+                intro_const_formula.inner_formula.substitute_variables({intro_const_formula.bound_variable: fresh}))
+
+        return eliminate_quantifiers(formula)
+
+    return [formula]
+
+
 def evaluate(
         formula: Union[Formula, str],
-        reference_tree: Optional[DerivationTree] = None,
+        reference_tree: DerivationTree,
         structural_predicates: Optional[Dict[str, StructuralPredicate]] = None,
         semantic_predicates: Optional[Dict[str, SemanticPredicate]] = None) -> ThreeValuedTruth:
-    def evaluate_(formula: Formula, assignments: Dict[Variable, Tuple[Path, DerivationTree]]) -> ThreeValuedTruth:
-        if isinstance(formula, SMTFormula):
-            # TODO: Evaluation of formulas with numeric constants: Have to extract solutions from
-            #       the model, and solve all SMT formulas en bloc... Otherwise, will retrieve contradictions.
-            #       We might also have to evaluate universal formulas first, as for the solver...
-            instantiation = z3.substitute(
-                formula.formula,
-                *tuple({z3.String(symbol.name): z3.StringVal(str(symbol_assignment[1]))
-                        for symbol, symbol_assignment
-                        in assignments.items()}.items()))
+    def evaluate_clause(clause: List[Formula]) -> ThreeValuedTruth:
+        # Inside the clause, only (possily negated) predicate formulas and (not negated) SMT formulas should appear.
+        assert all(
+            isinstance(f, SMTFormula) or
+            isinstance(f, SemanticPredicateFormula) or
+            isinstance(f, StructuralPredicateFormula) or
+            (isinstance(f, NegatedFormula) and
+             (isinstance(f.args[0], StructuralPredicateFormula) or
+              isinstance(f.args[0], SemanticPredicateFormula)))
+            for f in clause)
 
-            # z3.set_param("smt.string_solver", "z3str3")
-            solver = z3.Solver()
-            solver.add(instantiation)
-            return ThreeValuedTruth.from_bool(solver.check() == z3.sat)  # Set timeout?
-        elif isinstance(formula, IntroduceNumericConstantFormula):
-            used_var_names = {var.name for var in VariablesCollector.collect(formula.inner_formula)}
-            idx = 0
-            bv_name = formula.bound_variable.name
-            fresh_name = f"{bv_name}_{idx}"
+        # Eliminate structural predicate formulas
+        for idx, formula in enumerate(clause):
+            if (not isinstance(formula, StructuralPredicateFormula) and
+                    not (isinstance(formula, NegatedFormula)
+                         and isinstance(formula.args[0], StructuralPredicateFormula))):
+                continue
 
-            while fresh_name in used_var_names:
-                idx += 1
-                fresh_name = f"{bv_name}_{idx}"
+            sf: StructuralPredicateFormula = (
+                formula if isinstance(formula, StructuralPredicateFormula) else formula.args[0])
+            paths: List[Path] = [reference_tree.find_node(arg) for arg in sf.args]
+            result = sf.predicate.evaluate(*paths)
 
-            return evaluate_(
-                formula.inner_formula.substitute_variables(
-                    {formula.bound_variable: Constant(fresh_name, Constant.NUMERIC_NTYPE)}),
-                assignments)
-        elif isinstance(formula, QuantifiedFormula):
-            if isinstance(formula.in_variable, DerivationTree):
-                in_inst = formula.in_variable
-            else:
-                assert formula.in_variable in assignments
-                in_inst: DerivationTree = assignments[formula.in_variable][1]
-
-            new_assignments = matches_for_quantified_formula(formula, in_inst, assignments)
-
-            if isinstance(formula, ForallFormula):
-                return ThreeValuedTruth.all(
-                    evaluate_(formula.inner_formula, new_assignment) for new_assignment in new_assignments)
-            elif isinstance(formula, ExistsFormula):
-                return ThreeValuedTruth.any(
-                    evaluate_(formula.inner_formula, new_assignment) for new_assignment in new_assignments)
-        elif isinstance(formula, StructuralPredicateFormula):
-            assert (not any(isinstance(arg, DerivationTree) for arg in formula.args)
-                    or reference_tree is not None)
-            arg_insts = [(reference_tree.find_node(arg), arg) if isinstance(arg, DerivationTree)
-                         else assignments[arg]
-                         for arg in formula.args]
-            return ThreeValuedTruth.from_bool(formula.predicate.evaluate(*arg_insts))
-        elif isinstance(formula, SemanticPredicateFormula):
-            arg_insts = [arg if isinstance(arg, DerivationTree) or arg not in assignments
-                         else assignments[arg][1]
-                         for arg in formula.args]
-            eval_res = formula.predicate.evaluate(*arg_insts)
-
-            if eval_res.true():
-                return ThreeValuedTruth.true()
-            elif eval_res.false():
+            if ((not result and isinstance(formula, StructuralPredicateFormula)) or
+                    (result and isinstance(formula, NegatedFormula))):
                 return ThreeValuedTruth.false()
 
-            if not eval_res.ready() or not all(isinstance(key, Constant) for key in eval_res.result):
-                # Evaluation resulted in a tree update; that is, the formula is satisfiable, but only
-                # after an update of its arguments. This result happens when evaluating formulas during
-                # solution search after instantiating variables with concrete trees.
-                return ThreeValuedTruth.unknown()
+            clause[idx] = SMTFormula(z3.BoolVal(True))
 
-            assignments.update({const: (tuple(), assgn) for const, assgn in eval_res.result.items()})
-            return ThreeValuedTruth.true()
-        elif isinstance(formula, NegatedFormula):
-            return ThreeValuedTruth.not_(evaluate_(formula.args[0], assignments))
-        elif isinstance(formula, ConjunctiveFormula):
-            return ThreeValuedTruth.all(evaluate_(sub_formula, assignments) for sub_formula in formula.args)
-        elif isinstance(formula, DisjunctiveFormula):
-            return ThreeValuedTruth.any(evaluate_(sub_formula, assignments) for sub_formula in formula.args)
-        else:
-            raise NotImplementedError()
+        # Eliminate semantic predicate formulas
+        for idx, formula in enumerate(clause):
+            if (not isinstance(formula, SemanticPredicateFormula) and
+                    not (isinstance(formula, NegatedFormula)
+                         and isinstance(formula.args[0], SemanticPredicateFormula))):
+                continue
+
+            sf: SemanticPredicateFormula = (
+                formula if isinstance(formula, SemanticPredicateFormula) else formula.args[0])
+            result = sf.predicate.evaluate(*sf.args)
+            assert result.ready()
+
+            if ((result.false() and isinstance(formula, SemanticPredicateFormula)) or
+                    (result.true() and isinstance(formula, NegatedFormula))):
+                return ThreeValuedTruth.false()
+
+            clause[idx] = SMTFormula(z3.BoolVal(True))
+
+            if result.false() or result.true():
+                continue
+
+            # Evaluation returned an assignment
+            assignment: Dict[Constant, DerivationTree] = result.result
+            assert all(c.is_numeric() for c in assignment.keys())
+            for other_idx in range(0, len(clause)):
+                if other_idx == idx:
+                    continue
+                clause[other_idx] = clause[other_idx].substitute_expressions(assignment)
+
+        smt_formulas: List[SMTFormula] = [f for f in clause if isinstance(f, SMTFormula)]
+        if smt_formulas:
+            smt_vars: Set[Variable] = {v for f in smt_formulas for v in f.free_variables()}
+            assert all(isinstance(v, Constant) and v.is_numeric() for v in smt_vars)
+            regex = z3.Union(z3.Re("0"), z3.Concat(z3.Range("1", "9"), z3.Star(z3.Range("0", "9"))))
+            smt_formulas.extend([SMTFormula(z3.InRe(v.to_smt(), regex), v) for v in smt_vars])
+            smt_result, _ = z3_solve([f.formula for f in smt_formulas])
+
+            return ThreeValuedTruth.from_bool(smt_result == z3.sat)
+
+        return ThreeValuedTruth.true()
 
     if isinstance(formula, str):
         formula = parse_isla(formula, structural_predicates, semantic_predicates)
@@ -1735,7 +1798,12 @@ def evaluate(
         formula = formula.substitute_expressions({top_level_constant: reference_tree})
 
     assert well_formed(formula)
-    return evaluate_(formula, {})
+
+    qfr_free: List[Formula] = eliminate_quantifiers(formula)
+    qfr_free_dnf: List[Formula] = [convert_to_dnf(convert_to_nnf(f)) for f in qfr_free]
+    clauses: List[List[Formula]] = [split_conjunction(_f) for f in qfr_free_dnf for _f in split_disjunction(f)]
+
+    return ThreeValuedTruth.any(evaluate_clause(clause) for clause in clauses)
 
 
 def matches_for_quantified_formula(
@@ -1823,6 +1891,10 @@ def replace_formula(in_formula: Formula,
             in_formula.in_variable,
             replace_formula(in_formula.inner_formula, to_replace, replace_with),
             in_formula.bind_expression)
+    elif isinstance(in_formula, IntroduceNumericConstantFormula):
+        return IntroduceNumericConstantFormula(
+            in_formula.bound_variable,
+            replace_formula(in_formula.inner_formula, to_replace, replace_with))
 
     return in_formula
 
@@ -1858,6 +1930,9 @@ def convert_to_nnf(formula: Formula, negate=False) -> Formula:
             )
         else:
             return formula
+    elif isinstance(formula, IntroduceNumericConstantFormula):
+        return IntroduceNumericConstantFormula(
+            formula.bound_variable, convert_to_nnf(formula.inner_formula, negate))
     elif isinstance(formula, QuantifiedFormula):
         inner_formula = convert_to_nnf(formula.inner_formula, negate) if negate else formula.inner_formula
         already_matched: Set[int] = formula.already_matched if isinstance(formula, ForallFormula) else set()
@@ -2046,7 +2121,7 @@ def parse_isla(
     variables: List[BoundVariable] = []
     for var_decl in var_decls:
         ids = [str(id) for _, id in var_decl[1].filter(lambda n: n.value == "<id>")]
-        ntype = [str(nt) for _, nt in var_decl[1].filter(lambda n: n.value == "<nonterminal>")][0]
+        ntype = [str(nt) for _, nt in var_decl[1].filter(lambda n: n.value == "<var_type>")][0]
         variables.extend([BoundVariable(id, ntype) for id in ids])
 
     all_vars = [cast(Variable, const)] + variables
@@ -2104,11 +2179,12 @@ def parse_isla(
                 raise SyntaxError(f"Unknown predicate {predicate_name} in {tree}")
 
             args = [
-                next(var for var in all_vars if var.name == str(arg[1].children[0]))
-                if arg[1].children[0].value == "<id>"
-                else int(str(arg)) if arg[1].children[0].value == "<number>"
+                next(var for var in all_vars if var.name == str(arg.children[0]))
+                if arg.children[0].value == "<id>"
+                else int(str(arg)) if arg.children[0].value == "<number>"
+                else str(arg)[1:-1] if arg.children[0].value == "<string>"
                 else str(arg)
-                for arg in tree.filter(lambda n: n.value == "<arg>")]
+                for _, arg in tree.filter(lambda n: n.value == "<arg>")]
 
             is_structural = predicate_name in structural_predicates
 
@@ -2177,3 +2253,25 @@ def parse_isla(
 
     return parse_constraint(
         tree.filter(lambda n: n.value == "<constraint_decl>", True)[0][1].children[-3])
+
+
+def get_conjuncts(formula: Formula) -> List[Formula]:
+    return [conjunct
+            for disjunct in split_disjunction(formula)
+            for conjunct in split_conjunction(disjunct)]
+
+
+def fresh_constant(used: Set[Variable], proposal: Constant, add: bool = True) -> Constant:
+    base_name, n_type = proposal.name, proposal.n_type
+
+    name = base_name
+    idx = 0
+    while any(used_var.name == name for used_var in used):
+        name = f"{base_name}_{idx}"
+        idx += 1
+
+    result = Constant(name, n_type)
+    if add:
+        used.add(result)
+
+    return result

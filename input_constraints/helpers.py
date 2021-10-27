@@ -168,6 +168,14 @@ def z3_solve(formulas: List[z3.BoolRef], timeout_ms=500) -> Tuple[z3.CheckSatRes
     return result, model
 
 
+def z3_and(formulas: List[z3.BoolRef]) -> z3.BoolRef:
+    if not formulas:
+        return z3.BoolRef(True)
+    if len(formulas) == 1:
+        return formulas[0]
+    return z3.And(*formulas)
+
+
 def tree_to_string(tree: ParseTree) -> str:
     result = []
     stack = [tree]

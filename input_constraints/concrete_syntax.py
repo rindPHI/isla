@@ -9,7 +9,8 @@ ISLA_GRAMMAR = {
 
     "<vars_block>": ["vars<mwss>{<mwss><var_decls><mwss>}<mwss>", ""],
     "<var_decls>": ["<var_decl><mwss><var_decls>", "<var_decl>"],
-    "<var_decl>": ["<ids_list><mwss>:<mwss><nonterminal><mwss>;"],
+    "<var_decl>": ["<ids_list><mwss>:<mwss><var_type><mwss>;"],
+    "<var_type>": ["<nonterminal>", "NUM"],
     "<nonterminal>": ["<<nonterminal_chars>>"],
 
     "<constraint_decl>": ["constraint<mwss>{<mwss><constraint><mwss>}"],

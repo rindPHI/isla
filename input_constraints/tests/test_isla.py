@@ -1,4 +1,3 @@
-import random
 import unittest
 from typing import cast
 
@@ -7,9 +6,23 @@ from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
 import input_constraints.isla_shortcuts as sc
 from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
-    DerivationTree, convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
-    matches_for_quantified_formula, QuantifiedFormula, DummyVariable, parse_isla
-from input_constraints.isla_predicates import count, is_before, COUNT_PREDICATE
+    DerivationTree, convert_to_dnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
+    matches_for_quantified_formula, QuantifiedFormula, DummyVariable
+from input_constraints.isla_predicates import count, COUNT_PREDICATE
+from input_constraints.tests.subject_languages import tinyc, tar
+from input_constraints.tests.test_data import *
+from input_constraints.tests.test_helpers import parse
+import unittest
+from typing import cast
+
+import z3
+from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
+
+import input_constraints.isla_shortcuts as sc
+from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
+    DerivationTree, convert_to_dnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
+    matches_for_quantified_formula, QuantifiedFormula, DummyVariable
+from input_constraints.isla_predicates import count, COUNT_PREDICATE
 from input_constraints.tests.subject_languages import tinyc, tar
 from input_constraints.tests.test_data import *
 from input_constraints.tests.test_helpers import parse
@@ -166,15 +179,15 @@ class TestISLa(unittest.TestCase):
         parser = EarleyParser(LANG_GRAMMAR)
 
         tree = DerivationTree.from_parse_tree(next(parser.parse(valid_prog_1)))
-        self.assertTrue(evaluate(formula(tree)).to_bool())
+        self.assertTrue(evaluate(formula(tree), tree))
 
         for valid_prog in [valid_prog_1, valid_prog_2]:
             tree = DerivationTree.from_parse_tree(next(parser.parse(valid_prog)))
-            self.assertTrue(evaluate(formula(tree)).to_bool())
+            self.assertTrue(evaluate(formula(tree), tree).to_bool())
 
         for invalid_prog in [invalid_prog_1, invalid_prog_2, invalid_prog_3, invalid_prog_4]:
             tree = DerivationTree.from_parse_tree(next(parser.parse(invalid_prog)))
-            self.assertFalse(evaluate(formula(tree)).to_bool())
+            self.assertFalse(evaluate(formula(tree), tree).to_bool())
 
     def test_evaluate_concrete_in_expr(self):
         parser = EarleyParser(LANG_GRAMMAR)
@@ -184,14 +197,14 @@ class TestISLa(unittest.TestCase):
         var = BoundVariable("$var", "<var>")
 
         formula = sc.forall(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("x")), var))
-        self.assertTrue(evaluate(formula).to_bool())
+        self.assertTrue(evaluate(formula, tree))
         formula = sc.forall(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("y")), var))
-        self.assertFalse(evaluate(formula).to_bool())
+        self.assertFalse(evaluate(formula, tree))
 
         formula = sc.exists(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("x")), var))
-        self.assertTrue(evaluate(formula).to_bool())
+        self.assertTrue(evaluate(formula, tree))
         formula = sc.exists(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("y")), var))
-        self.assertFalse(evaluate(formula).to_bool())
+        self.assertFalse(evaluate(formula, tree))
 
     def test_match(self):
         parser = EarleyParser(LANG_GRAMMAR)
@@ -263,7 +276,7 @@ class TestISLa(unittest.TestCase):
         fail = 0
         for _ in range(100):
             tree = DerivationTree.from_parse_tree(fuzzer.expand_tree(("<start>", None)))
-            if evaluate(formula(tree)).to_bool():
+            if evaluate(formula(tree), tree):
                 inp = tree_to_string(tree)
                 try:
                     eval_lang(inp)
@@ -399,11 +412,11 @@ class TestISLa(unittest.TestCase):
 
         csv_doc = "a;b;c\nd;e;f\n"
         tree = DerivationTree.from_parse_tree(parse(csv_doc, CSV_GRAMMAR))
-        self.assertTrue(evaluate(formula(tree)).to_bool())
+        self.assertTrue(evaluate(formula(tree), tree))
 
         csv_doc = "a;b;c\nd;e;f\ng;h;i;j\n"
         tree = DerivationTree.from_parse_tree(parse(csv_doc, CSV_GRAMMAR))
-        self.assertFalse(evaluate(formula(tree)).to_bool())
+        self.assertFalse(evaluate(formula(tree), tree))
 
         return
 
@@ -426,11 +439,11 @@ class TestISLa(unittest.TestCase):
 
         csv_doc = "a;b;c\nd;e\ng;h;i\n"
         tree = DerivationTree.from_parse_tree(parse(csv_doc, CSV_GRAMMAR))
-        self.assertTrue(evaluate(formula(tree)).to_bool())
+        self.assertTrue(evaluate(formula(tree), tree))
 
         csv_doc = "a;b;c\nd;e\ng;h;i;j\n"
         tree = DerivationTree.from_parse_tree(parse(csv_doc, CSV_GRAMMAR))
-        self.assertFalse(evaluate(formula(tree)).to_bool())
+        self.assertFalse(evaluate(formula(tree), tree))
 
     def test_to_tree_prefix_tar_file_name(self):
         mgr = VariableManager(tar.TAR_GRAMMAR)
@@ -472,17 +485,17 @@ class TestISLa(unittest.TestCase):
         wrong_tree = DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR).parse("8Cf<2>5</4n><Y i=s/>"))[0])
 
-        self.assertTrue(evaluate(formula.substitute_expressions({start: correct_tree})).is_true())
-        self.assertFalse(evaluate(formula.substitute_expressions({start: wrong_tree})).is_true())
+        self.assertTrue(evaluate(formula.substitute_expressions({start: correct_tree}), correct_tree))
+        self.assertFalse(evaluate(formula.substitute_expressions({start: wrong_tree}), correct_tree))
 
     def test_csv_property(self):
         property = """
 const start: <start>;
 
 vars {
-  colno: <NUM>;
+  colno: NUM;
   hline: <csv-header>;
-  line: <csv-line>;
+  line: <csv-record>;
 }
 
 constraint {
@@ -499,10 +512,10 @@ constraint {
 XYZ;\" asdf \";ABC
 123;!@#$;\"456 \n 789\"\n"""
 
-        # self.assertTrue(evaluate(
-        #     property,
-        #     reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(valid_test_input))[0]),
-        #     semantic_predicates={"count": COUNT_PREDICATE(CSV_GRAMMAR)}))
+        self.assertTrue(evaluate(
+            property,
+            reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(valid_test_input))[0]),
+            semantic_predicates={"count": COUNT_PREDICATE(CSV_GRAMMAR)}))
 
         invalid_test_input = """a;b;c
 XYZ;\" asdf \"

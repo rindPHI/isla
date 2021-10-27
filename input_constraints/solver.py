@@ -20,7 +20,7 @@ from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
     replace_line_breaks, z3_subst, z3_solve
 from input_constraints.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
-    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla
+    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts
 from input_constraints.type_defs import Grammar, Path
 
 
@@ -36,7 +36,7 @@ class SolutionState:
             # Have to instantiate variables first
             return isla.ThreeValuedTruth.unknown()
 
-        return isla.evaluate(self.constraint, reference_tree=self.tree)
+        return isla.evaluate(self.constraint, self.tree)
 
     def complete(self) -> bool:
         if not self.tree.is_complete():
@@ -649,7 +649,7 @@ class ISLaSolver:
 
             for constant in constants:
                 if constant.is_numeric():
-                    regex = z3.Concat(z3.Range("0", "9"), z3.Star(z3.Range("0", "9")))
+                    regex = z3.Union(z3.Re("0"), z3.Concat(z3.Range("1", "9"), z3.Star(z3.Range("0", "9"))))
                 else:
                     regex = self.extract_regular_expression(constant.n_type)
                 formulas.append(z3.InRe(z3.String(constant.name), regex))
@@ -962,25 +962,3 @@ class CostNormalizer:
 
         for idx, cost in enumerate(costs):
             self.history[idx].append(cost)
-
-
-def get_conjuncts(formula: isla.Formula) -> List[isla.Formula]:
-    return [conjunct
-            for disjunct in split_disjunction(formula)
-            for conjunct in split_conjunction(disjunct)]
-
-
-def fresh_constant(used: Set[isla.Variable], proposal: isla.Constant, add: bool = True) -> isla.Constant:
-    base_name, n_type = proposal.name, proposal.n_type
-
-    name = base_name
-    idx = 0
-    while any(used_var.name == name for used_var in used):
-        name = f"{base_name}_{idx}"
-        idx += 1
-
-    result = isla.Constant(name, n_type)
-    if add:
-        used.add(result)
-
-    return result
