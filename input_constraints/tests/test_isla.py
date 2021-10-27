@@ -8,22 +8,9 @@ import input_constraints.isla_shortcuts as sc
 from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
     DerivationTree, convert_to_dnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
     matches_for_quantified_formula, QuantifiedFormula, DummyVariable
+from input_constraints.isla_predicates import BEFORE_PREDICATE
 from input_constraints.isla_predicates import count, COUNT_PREDICATE
-from input_constraints.tests.subject_languages import tinyc, tar, rest
-from input_constraints.tests.subject_languages.rest import REST_GRAMMAR
-from input_constraints.tests.test_data import *
-from input_constraints.tests.test_helpers import parse
-import unittest
-from typing import cast
-
-import z3
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
-
-import input_constraints.isla_shortcuts as sc
-from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
-    DerivationTree, convert_to_dnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
-    matches_for_quantified_formula, QuantifiedFormula, DummyVariable
-from input_constraints.isla_predicates import count, COUNT_PREDICATE
+from input_constraints.tests.subject_languages import rest
 from input_constraints.tests.subject_languages import tinyc, tar
 from input_constraints.tests.test_data import *
 from input_constraints.tests.test_helpers import parse
@@ -547,7 +534,26 @@ XYZ;\" asdf \"
         tree = DerivationTree.from_parse_tree(list(EarleyParser(rest.REST_GRAMMAR).parse(inp))[0])
         self.assertFalse(evaluate(formula.substitute_expressions({Constant("start", "<start>"): tree}), tree))
 
+    def test_def_before_use(self):
+        tree = DerivationTree.from_parse_tree(
+            list(EarleyParser(LANG_GRAMMAR).parse("c := 6 ; x := c ; c := c ; c := c ; c := 9 ; x := c"))[0])
+        formula = """
+const start: <start>;
 
+vars {
+    lhs_1, var, lhs_2: <var>;
+    rhs_1, rhs_2: <rhs>;
+    assgn_1, assgn_2: <assgn>;
+}
+
+constraint {
+  forall assgn_1="{lhs_1} := {rhs_1}" in start:
+    forall var in rhs_1:
+      exists assgn_2="{lhs_2} := {rhs_2}" in start:
+        (before(assgn_2, assgn_1) and (= lhs_2 var))
+}
+"""
+        self.assertTrue(evaluate(formula, tree, structural_predicates={"before": BEFORE_PREDICATE}))
 
 
 if __name__ == '__main__':

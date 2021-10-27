@@ -65,7 +65,6 @@ ISLA_GRAMMAR = {
     "<number>": ["<digits>"],
     "<digits>": ["<digit><digits>", "<digit>"],
     "<digit>": srange(string.digits),
-    "<letters>": ["<letter><letters>", "<letter>"],
     "<idchar>": ["<letter>", "<digit>", "_"],
     "<idchars>": ["<idchar><idchars>", "<idchar>"],
     "<letter>": srange(string.ascii_lowercase),

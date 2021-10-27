@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 import unittest
@@ -11,6 +12,7 @@ from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 from input_constraints.concrete_syntax import ISLA_GRAMMAR
+from input_constraints.helpers import delete_unreachable
 from input_constraints.isla import VariablesCollector, parse_isla
 from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
 from input_constraints.solver import ISLaSolver, SolutionState
@@ -239,7 +241,7 @@ constraint {
             property,
             semantic_predicates={"count": COUNT_PREDICATE(CSV_GRAMMAR)},
             grammar=CSV_GRAMMAR,
-            num_solutions=40,
+            num_solutions=30,
             max_number_free_instantiations=2,
             max_number_smt_instantiations=2,
             enforce_unique_trees_in_queue=False,
@@ -308,13 +310,13 @@ constraint {
             cost_phase_lengths=(200,),
         )
 
-    def test_isla(self):
+    def Xtest_isla(self):
         # TODO
-        grammar = ISLA_GRAMMAR
-        # grammar = copy.deepcopy(ISLA_GRAMMAR)
-        # grammar["<smt_atom>"] = ["(= <id> <id>)"]
+        # grammar = ISLA_GRAMMAR
+        grammar = copy.deepcopy(ISLA_GRAMMAR)
+        grammar["<smt_atom>"] = ["(= <id> <id>)"]
         # grammar["<predicate_atom>"] = ["before(<id>, <id>)"]
-        # delete_unreachable(grammar)
+        delete_unreachable(grammar)
 
         fuzzer = GrammarCoverageFuzzer(grammar)
         logger = logging.getLogger(type(self).__name__)
