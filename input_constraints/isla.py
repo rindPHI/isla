@@ -1719,7 +1719,7 @@ def evaluate(
         structural_predicates: Optional[Dict[str, StructuralPredicate]] = None,
         semantic_predicates: Optional[Dict[str, SemanticPredicate]] = None) -> ThreeValuedTruth:
     def evaluate_clause(clause: List[Formula]) -> ThreeValuedTruth:
-        # Inside the clause, only (possily negated) predicate formulas and (not negated) SMT formulas should appear.
+        # Inside the clause, only (possibly negated) predicate formulas and (not negated) SMT formulas should appear.
         assert all(
             isinstance(f, SMTFormula) or
             isinstance(f, SemanticPredicateFormula) or
