@@ -54,7 +54,7 @@ constraint {
     "extend_crop": EXTEND_CROP_PREDICATE(REST_GRAMMAR)})
 
 # Below encoding results in timeouts for more complex input scaffolds, uses only SMT formulas,
-# but depends on an auxiliary numeric constant for better efficiency.
+# but depends on an auxiliary numeric constant for better efficiency & more diversity.
 #
 # LENGTH_UNDERLINE = parse_isla("""
 # const start: <start>;
