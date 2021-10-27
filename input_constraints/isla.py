@@ -1115,9 +1115,8 @@ class SMTFormula(Formula):
                               else subst_map[variable]
                               for variable in self.free_variables_]
 
-        # This method is only to be used in ensuring the normal form and not thereafter
-        assert not self.instantiated_variables
-        assert not self.substitutions
+        assert all(inst_var not in subst_map for inst_var in self.instantiated_variables)
+        assert all(inst_var not in subst_map for inst_var in self.substitutions.keys())
 
         return SMTFormula(cast(z3.BoolRef, new_smt_formula),
                           *new_free_variables,
@@ -1783,7 +1782,12 @@ def evaluate(
             assert all(isinstance(v, Constant) and v.is_numeric() for v in smt_vars)
             regex = z3.Union(z3.Re("0"), z3.Concat(z3.Range("1", "9"), z3.Star(z3.Range("0", "9"))))
             smt_formulas.extend([SMTFormula(z3.InRe(v.to_smt(), regex), v) for v in smt_vars])
-            smt_result, _ = z3_solve([f.formula for f in smt_formulas])
+            smt_result, _ = z3_solve([
+                cast(z3.BoolRef, z3_subst(
+                    f.formula,
+                    {v.to_smt(): z3.StringVal(str(s))
+                     for v, s in f.substitutions.items()}))
+                for f in smt_formulas])
 
             return ThreeValuedTruth.from_bool(smt_result == z3.sat)
 

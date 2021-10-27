@@ -53,7 +53,7 @@ ISLA_GRAMMAR = {
     "<fsymchar>": ["<letter>", "<digit>"] + srange("~!@$%^&*_-+=<>.?/"),
 
     "<predicate_atom>": ["<predicate>(<args>)"],
-    "<predicate>": ["<letters>"],
+    "<predicate>": ["<letter><idchars>", "<letter>"],
     "<args>": ["<arg>,<wss><args>", "<arg>"],
     "<arg>": ["<id>", "<number>", "<string>"],
 

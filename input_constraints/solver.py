@@ -236,7 +236,10 @@ class ISLaSolver:
                 continue
 
             # Instantiate numeric constant introduction
-            state = self.instantiate_numeric_constant_intros(state)
+            result_state = self.instantiate_numeric_constant_intros(state)
+            if result_state is not None:
+                yield from self.process_new_state(result_state)
+                continue
 
             # Match all universal formulas
             result_states = self.match_all_universal_formulas(state)
@@ -318,10 +321,13 @@ class ISLaSolver:
 
         return SolutionState(formula, state.tree)
 
-    def instantiate_numeric_constant_intros(self, state: SolutionState) -> SolutionState:
+    def instantiate_numeric_constant_intros(self, state: SolutionState) -> Optional[SolutionState]:
         numeric_constant_introdunctions = [
             conjunct for conjunct in get_conjuncts(state.constraint)
             if isinstance(conjunct, isla.IntroduceNumericConstantFormula)]
+
+        if not numeric_constant_introdunctions:
+            return None
 
         formula = state.constraint
         for numeric_constant_introduction in numeric_constant_introdunctions:
@@ -624,7 +630,7 @@ class ISLaSolver:
 
         # NODE: We need to cluster SMT formulas by tree substitutions! If there are two formulas
         # with a variable $var which is instantiated to different trees, we need two separate
-        # solution. If, however, $var is instantiated with the *same* tree, we need one solution
+        # solutions. If, however, $var is instantiated with the *same* tree, we need one solution
         # to both formulas together.
 
         old_smt_formulas = smt_formulas
@@ -681,6 +687,7 @@ class ISLaSolver:
                     formulas.append(z3.Not(constant.to_smt() == string_val))
 
             for smt_formula in smt_formulas:
+                # TODO: Do we have to apply substitutions???
                 formulas.append(smt_formula.formula)
 
             solver_result, maybe_model = z3_solve(formulas)

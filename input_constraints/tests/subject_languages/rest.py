@@ -5,10 +5,12 @@ import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.Grammars import srange
 
-from input_constraints.isla import VariableManager
+from input_constraints.isla import VariableManager, parse_isla
 
 from input_constraints import isla_shortcuts as sc, isla
+from input_constraints.isla_predicates import CROP_PREDICATE, LJUST_CROP_PREDICATE, EXTEND_CROP_PREDICATE
 from input_constraints.solver import ISLaSolver
+from input_constraints.tests.test_data import CSV_GRAMMAR
 
 REST_GRAMMAR = {
     "<start>": ["<body-elements>"],
@@ -26,32 +28,69 @@ REST_GRAMMAR = {
 
 start = isla.Constant("$start", "<start>")
 
-mgr = VariableManager(REST_GRAMMAR)
-LENGTH_UNDERLINE = mgr.create(
-    mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$length").to_smt()) > z3.IntVal(1))) &
-    mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$length").to_smt()) < z3.IntVal(10))) &
-    sc.forall_bind(
-        mgr.bv("$titletxt", "<nobr-string>") + "\n" + mgr.bv("$underline", "<underline>"),
-        mgr.bv("$title", "<section-title>"),
-        start,
-        mgr.smt(cast(z3.BoolRef, z3.Length(mgr.bv("$titletxt").to_smt()) ==
-                     z3.StrToInt(mgr.num_const("$length").to_smt()))) &
-        mgr.smt(cast(z3.BoolRef, z3.Length(mgr.bv("$underline").to_smt()) >=
-                     z3.StrToInt(mgr.num_const("$length").to_smt())))
-    )
-)
+# The below encoding is the most efficient one, but heavily uses semantic predicates
+LENGTH_UNDERLINE = parse_isla("""
+const start: <start>;
 
-print(LENGTH_UNDERLINE)
+vars {
+  title_length: NUM;
+  underline_length: NUM;
+  title: <section-title>;
+  titletxt: <nobr-string>;
+  underline: <underline>;
+}
 
-# Below encoding is less efficient to solve for z3
+constraint {
+  forall title="{titletxt}\n{underline}" in start:
+    num title_length:
+      num underline_length:
+        ((> (str.to_int title_length) 1) and
+        ((<= (str.to_int title_length) (str.to_int underline_length)) and
+        (ljust_crop(titletxt, title_length, " ") and
+         extend_crop(underline, underline_length))))
+}
+""", semantic_predicates={
+    "ljust_crop": LJUST_CROP_PREDICATE(REST_GRAMMAR),
+    "extend_crop": EXTEND_CROP_PREDICATE(REST_GRAMMAR)})
+
+# Below encoding results in timeouts for more complex input scaffolds, uses only SMT formulas,
+# but depends on an auxiliary numeric constant for better efficiency.
 #
-# length_underline = mgr.create(
-#     sc.forall_bind(
-#         mgr.bv("$titletxt", "<nobr-string>") + "\n" + mgr.bv("$underline", "<underline>"),
-#         mgr.bv("$title", "<section-title>"),
-#         mgr.const("$start", "<start>"),
-#         mgr.smt(cast(z3.BoolRef, z3.Length(mgr.bv("$titletxt").to_smt()) <= z3.Length(mgr.bv("$underline").to_smt())))
-#     )
-# )
+# LENGTH_UNDERLINE = parse_isla("""
+# const start: <start>;
+#
+# vars {
+#   length: NUM;
+#   title: <section-title>;
+#   titletxt: <nobr-string>;
+#   underline: <underline>;
+# }
+#
+# constraint {
+#   forall title="{titletxt}\n{underline}" in start:
+#     num length:
+#       ((> (str.to_int length) 1) and
+#       ((< (str.to_int length) 5) and
+#       ((= (str.len titletxt) (str.to_int length)) and
+#        (>= (str.len underline) (str.to_int length)))))
+# }
+# """)
 
-rest_constraints = LENGTH_UNDERLINE
+# Below encoding, which is the conceptually cleanest one, sometimes results in timeouts
+# and produces same lengths per input... The latter seems to be the SMT solver's fault,
+# the processing in the solver seems correct.
+#
+# LENGTH_UNDERLINE = parse_isla("""
+# const start: <start>;
+#
+# vars {
+#   title: <section-title>;
+#   titletxt: <nobr-string>;
+#   underline: <underline>;
+# }
+#
+# constraint {
+#   forall title="{titletxt}\n{underline}" in start:
+#     (>= (str.len underline) (str.len titletxt))
+# }
+# """)

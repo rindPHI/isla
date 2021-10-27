@@ -249,12 +249,12 @@ constraint {
 
     # Note: Disabling this for now since the z3 solver times out now that we solve
     # all SMT formulas en block (but doing so is the only sound way).
-    def Xtest_rest_titles(self):
+    def test_rest_titles(self):
         self.execute_generation_test(
             rest.LENGTH_UNDERLINE,
             grammar=rest.REST_GRAMMAR,
             max_number_free_instantiations=1,
-            max_number_smt_instantiations=5,
+            max_number_smt_instantiations=4,
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False)
 
@@ -276,33 +276,6 @@ constraint {
             cost_vectors=((20, 2, 5, .5),),
             cost_phase_lengths=(200,),
         )
-
-    # NOTE: Constraint does currently not implement scoping, and only imposes that
-    #       the variable has to be declared *somewhere* before, which might also
-    #       be in only one leg of a preceding if branch.
-    #
-    #     def test_tinyc_def_before_use_in_if_branch(self):
-    #         prog = """
-    # {
-    #     a = 17;
-    #     if (a < 42) {
-    #         b = 1;
-    #     } else {
-    #         c = 1;
-    #     }
-    #     d = c;
-    # }
-    # """
-    #         tree = isla.DerivationTree.from_parse_tree(next(EarleyParser(tinyc.TINYC_GRAMMAR).parse(prog)))
-    #
-    #         clang_result = compile_tinyc_clang(tree)
-    #         if clang_result is not True:
-    #             self.fail(clang_result)
-    #
-    #         self.assertFalse(isla.evaluate(
-    #             tinyc.TINYC_DEF_BEFORE_USE_CONSTRAINT.substitute_expressions({
-    #                 isla.Constant("$start", "<start>"): tree
-    #             })))
 
     def test_tar(self):
         self.execute_generation_test(

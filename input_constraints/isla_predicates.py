@@ -173,20 +173,54 @@ def embed_tree(
         yield assignment | {extended_path: orig_path}
 
 
-def just(ljust: bool,
-         crop: bool,
-         mk_parser: Callable[[str], Callable[[str], List[ParseTree]]],
+def crop(mk_parser: Callable[[str], Callable[[str], List[ParseTree]]],
          tree: DerivationTree,
-         width: Union[int, DerivationTree],
-         fill_char: str) -> SemPredEvalResult:
-    if len(fill_char) != 1:
-        raise TypeError("The fill character must be exactly one character long")
-
+         width: Union[int, DerivationTree]) -> SemPredEvalResult:
     if not tree.is_complete():
         return SemPredEvalResult(None)
 
     unparsed = str(tree)
 
+    if isinstance(width, Constant):
+        return SemPredEvalResult({width: DerivationTree(str(len(unparsed)), None)})
+
+    assert isinstance(width, DerivationTree)
+    if not width.is_complete():
+        return SemPredEvalResult(None)
+
+    width = int(str(width))
+
+    if len(unparsed) <= width:
+        return SemPredEvalResult(True)
+
+    parser = mk_parser(tree.value)
+    result = DerivationTree.from_parse_tree(parser(unparsed[:width])[0]).get_subtree((0,))
+    return SemPredEvalResult({tree: result})
+
+
+def just(ljust: bool,
+         crop: bool,
+         mk_parser: Callable[[str], Callable[[str], List[ParseTree]]],
+         tree: DerivationTree,
+         width: Union[int, DerivationTree],
+         fill_char: Optional[str] = None) -> SemPredEvalResult:
+    if not tree.is_complete():
+        return SemPredEvalResult(None)
+
+    unparsed = str(tree)
+
+    if isinstance(width, Constant):
+        return SemPredEvalResult({width: DerivationTree(str(len(unparsed)), None)})
+
+    if fill_char is None:
+        assert len(unparsed) > 0
+        assert unparsed == unparsed[0].ljust(len(unparsed), unparsed[0])
+        fill_char = unparsed[0]
+
+    if len(fill_char) != 1:
+        raise TypeError("The fill character must be exactly one character long")
+
+    assert isinstance(width, DerivationTree) or isinstance(width, int)
     if isinstance(width, DerivationTree):
         if not width.is_complete():
             return SemPredEvalResult(None)
@@ -220,6 +254,11 @@ def mk_parser(grammar: Grammar):
     return Parser
 
 
+CROP_PREDICATE = lambda grammar: SemanticPredicate(
+    "crop", 2,
+    lambda tree, width: crop(mk_parser(grammar), tree, width),
+    binds_tree=False)
+
 LJUST_PREDICATE = lambda grammar: SemanticPredicate(
     "ljust", 3,
     lambda tree, width, fillchar: just(True, False, mk_parser(grammar), tree, width, fillchar),
@@ -228,6 +267,11 @@ LJUST_PREDICATE = lambda grammar: SemanticPredicate(
 LJUST_CROP_PREDICATE = lambda grammar: SemanticPredicate(
     "ljust_crop", 3,
     lambda tree, width, fillchar: just(True, True, mk_parser(grammar), tree, width, fillchar),
+    binds_tree=False)
+
+EXTEND_CROP_PREDICATE = lambda grammar: SemanticPredicate(
+    "extend_crop", 2,
+    lambda tree, width: just(True, True, mk_parser(grammar), tree, width),
     binds_tree=False)
 
 RJUST_PREDICATE = lambda grammar: SemanticPredicate(

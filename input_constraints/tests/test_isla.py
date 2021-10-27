@@ -9,7 +9,8 @@ from input_constraints.isla import Constant, BoundVariable, Formula, well_formed
     DerivationTree, convert_to_dnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
     matches_for_quantified_formula, QuantifiedFormula, DummyVariable
 from input_constraints.isla_predicates import count, COUNT_PREDICATE
-from input_constraints.tests.subject_languages import tinyc, tar
+from input_constraints.tests.subject_languages import tinyc, tar, rest
+from input_constraints.tests.subject_languages.rest import REST_GRAMMAR
 from input_constraints.tests.test_data import *
 from input_constraints.tests.test_helpers import parse
 import unittest
@@ -525,6 +526,28 @@ XYZ;\" asdf \"
             property,
             reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(invalid_test_input))[0]),
             semantic_predicates={"count": COUNT_PREDICATE(CSV_GRAMMAR)}))
+
+    def test_rest_property_1(self):
+        tree = DerivationTree.from_parse_tree(list(EarleyParser(rest.REST_GRAMMAR).parse("0\n-\n\n"))[0])
+        formula = rest.LENGTH_UNDERLINE
+        self.assertTrue(evaluate(formula.substitute_expressions({Constant("start", "<start>"): tree}), tree))
+
+    def test_rest_property_2(self):
+        formula = rest.LENGTH_UNDERLINE
+
+        inp = "123\n-\n\n"
+        tree = DerivationTree.from_parse_tree(list(EarleyParser(rest.REST_GRAMMAR).parse(inp))[0])
+        self.assertFalse(evaluate(formula.substitute_expressions({Constant("start", "<start>"): tree}), tree))
+
+        inp = "00\n--------\n\n"
+        tree = DerivationTree.from_parse_tree(list(EarleyParser(rest.REST_GRAMMAR).parse(inp))[0])
+        self.assertTrue(evaluate(formula.substitute_expressions({Constant("start", "<start>"): tree}), tree))
+
+        inp = "0\n--------\n\n"
+        tree = DerivationTree.from_parse_tree(list(EarleyParser(rest.REST_GRAMMAR).parse(inp))[0])
+        self.assertFalse(evaluate(formula.substitute_expressions({Constant("start", "<start>"): tree}), tree))
+
+
 
 
 if __name__ == '__main__':

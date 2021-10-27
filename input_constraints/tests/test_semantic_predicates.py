@@ -3,8 +3,8 @@ from fuzzingbook.Parser import EarleyParser
 
 from input_constraints.helpers import delete_unreachable
 from input_constraints.isla import DerivationTree
-from input_constraints.isla_predicates import embed_tree
-from input_constraints.tests.subject_languages import tar
+from input_constraints.isla_predicates import embed_tree, mk_parser
+from input_constraints.tests.subject_languages import tar, rest
 
 
 class TestSemanticPredicates(unittest.TestCase):
@@ -105,6 +105,10 @@ class TestSemanticPredicates(unittest.TestCase):
                         for _, assgn_path in assignment.items())
                     for leaf_path, _ in orig_tree.leaves())
                 for assignment in result))
+
+    def test_parse_tar_heading(self):
+        parser = mk_parser(rest.REST_GRAMMAR)("<underline>")
+        print(parser("-----"))
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 from input_constraints.isla import *
 from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, LJUST_PREDICATE, LJUST_CROP_PREDICATE, \
-    RJUST_CROP_PREDICATE, RJUST_PREDICATE, AFTER_PREDICATE, OCTAL_TO_DEC_PREDICATE
+    RJUST_CROP_PREDICATE, RJUST_PREDICATE, AFTER_PREDICATE, OCTAL_TO_DEC_PREDICATE, CROP_PREDICATE
 
 
 def const(bound_variable: BoundVariable, inner_formula: Formula) -> IntroduceNumericConstantFormula:
@@ -59,6 +59,13 @@ def count(
         needle: str,
         num: Union[Constant, DerivationTree]) -> SemanticPredicateFormula:
     return SemanticPredicateFormula(COUNT_PREDICATE(grammar), in_tree, needle, num)
+
+
+def crop(
+        grammar: Grammar,
+        tree: Union[Variable, DerivationTree],
+        width: int) -> SemanticPredicateFormula:
+    return SemanticPredicateFormula(CROP_PREDICATE(grammar), tree, width)
 
 
 def ljust(
