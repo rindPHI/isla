@@ -16,12 +16,11 @@ from grammar_to_regex.cfg2regex import RegexConverter
 
 import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
-from input_constraints.concrete_syntax import parse_isla
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
     replace_line_breaks, z3_subst, z3_solve
 from input_constraints.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
-    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables
+    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla
 from input_constraints.type_defs import Grammar, Path
 
 

@@ -8,8 +8,8 @@ from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 import input_constraints.isla_shortcuts as sc
 from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
     DerivationTree, convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
-    matches_for_quantified_formula, QuantifiedFormula, DummyVariable
-from input_constraints.isla_predicates import count, is_before
+    matches_for_quantified_formula, QuantifiedFormula, DummyVariable, parse_isla
+from input_constraints.isla_predicates import count, is_before, COUNT_PREDICATE
 from input_constraints.tests.subject_languages import tinyc, tar
 from input_constraints.tests.test_data import *
 from input_constraints.tests.test_helpers import parse
@@ -474,6 +474,44 @@ class TestISLa(unittest.TestCase):
 
         self.assertTrue(evaluate(formula.substitute_expressions({start: correct_tree})).is_true())
         self.assertFalse(evaluate(formula.substitute_expressions({start: wrong_tree})).is_true())
+
+    def test_csv_property(self):
+        property = """
+const start: <start>;
+
+vars {
+  colno: <NUM>;
+  hline: <csv-header>;
+  line: <csv-line>;
+}
+
+constraint {
+  forall hline in start:
+    num colno:
+      ((>= (str.to_int colno) 3) and 
+      ((<= (str.to_int colno) 5) and 
+       (count(hline, "<raw-string>", colno) and 
+       forall line in start:
+         count(line, "<raw-string>", colno))))
+}
+"""
+        valid_test_input = """a;b;c
+XYZ;\" asdf \";ABC
+123;!@#$;\"456 \n 789\"\n"""
+
+        # self.assertTrue(evaluate(
+        #     property,
+        #     reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(valid_test_input))[0]),
+        #     semantic_predicates={"count": COUNT_PREDICATE(CSV_GRAMMAR)}))
+
+        invalid_test_input = """a;b;c
+XYZ;\" asdf \"
+123;!@#$;\"456 \n 789\"\n"""
+
+        self.assertFalse(evaluate(
+            property,
+            reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(invalid_test_input))[0]),
+            semantic_predicates={"count": COUNT_PREDICATE(CSV_GRAMMAR)}))
 
 
 if __name__ == '__main__':

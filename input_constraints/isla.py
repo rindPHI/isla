@@ -8,10 +8,11 @@ from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
 from fuzzingbook.Grammars import is_nonterminal, RE_NONTERMINAL, JSON_GRAMMAR
-from fuzzingbook.Parser import EarleyParser
+from fuzzingbook.Parser import EarleyParser, PEGParser
 from grammar_graph.gg import GrammarGraph
 from orderedset import OrderedSet
 
+from input_constraints.concrete_syntax import ISLA_GRAMMAR
 from input_constraints.helpers import get_symbols, z3_subst, path_iterator, replace_tree_path, is_valid, \
     replace_line_breaks, delete_unreachable, pop
 from input_constraints.type_defs import ParseTree, Path, Grammar
@@ -651,6 +652,9 @@ class FormulaVisitor:
     def visit_forall_formula(self, formula: 'ForallFormula'):
         pass
 
+    def visit_introduce_numeric_constant_formula(self, formula: 'IntroduceNumericConstantFormula'):
+        pass
+
 
 class Formula:
     def bound_variables(self) -> OrderedSet[BoundVariable]:
@@ -669,6 +673,9 @@ class Formula:
         raise NotImplementedError()
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> 'Formula':
+        raise NotImplementedError()
+
+    def accept(self, visitor: FormulaVisitor):
         raise NotImplementedError()
 
     def __hash__(self):
@@ -734,9 +741,6 @@ class Formula:
                 self.bound_variable, self.in_variable, -self.inner_formula, self.bind_expression)
 
         return NegatedFormula(self)
-
-    def accept(self, visitor: FormulaVisitor):
-        raise NotImplementedError()
 
 
 class StructuralPredicate:
@@ -1192,9 +1196,51 @@ class SMTFormula(Formula):
     def __hash__(self):
         return hash((self.formula, tuple(self.substitutions.items())))
 
+
 class IntroduceNumericConstantFormula(Formula):
-    def __init__(self, bound_variable: BoundVariable):
-        pass
+    def __init__(self, bound_variable: BoundVariable, inner_formula: Formula):
+        self.bound_variable = bound_variable
+        self.inner_formula = inner_formula
+
+    def bound_variables(self) -> OrderedSet[BoundVariable]:
+        """Non-recursive: Only non-empty for quantified formulas"""
+        return OrderedSet([self.bound_variable])
+
+    def free_variables(self) -> OrderedSet[Variable]:
+        """Recursive."""
+        return self.inner_formula.free_variables().difference(self.bound_variables())
+
+    def tree_arguments(self) -> OrderedSet[DerivationTree]:
+        return self.inner_formula.tree_arguments()
+
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> 'Formula':
+        return IntroduceNumericConstantFormula(
+            subst_map.get(self.bound_variable, self.bound_variable),
+            self.inner_formula.substitute_variables(subst_map))
+
+    def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> 'Formula':
+        assert self.bound_variable not in subst_map
+        return IntroduceNumericConstantFormula(
+            self.bound_variable,
+            self.inner_formula.substitute_expressions(subst_map))
+
+    def accept(self, visitor: FormulaVisitor):
+        visitor.visit_introduce_numeric_constant_formula(self)
+
+    def __hash__(self):
+        return hash((self.bound_variable, self.inner_formula))
+
+    def __eq__(self, other):
+        return (isinstance(other, IntroduceNumericConstantFormula)
+                and self.bound_variable == other.bound_variable
+                and self.inner_formula == other.inner_formula)
+
+    def __str__(self):
+        return f"num {self.bound_variable.name}: {self.inner_formula}"
+
+    def __repr__(self):
+        return f"IntroduceNumericConstantFormula({repr(self.bound_variable)}, {repr(self.inner_formula)})"
+
 
 class QuantifiedFormula(Formula):
     def __init__(self,
@@ -1390,6 +1436,9 @@ class VariablesCollector(FormulaVisitor):
         if formula.bind_expression is not None:
             self.result.update(formula.bind_expression.bound_variables())
 
+    def visit_introduce_numeric_constant_formula(self, formula: IntroduceNumericConstantFormula):
+        self.result.add(formula.bound_variable)
+
     def visit_predicate_formula(self, formula: StructuralPredicateFormula):
         self.result.update([arg for arg in formula.args if isinstance(arg, Variable)])
 
@@ -1454,7 +1503,19 @@ def well_formed(formula: Formula,
     if bound_by_smt is None:
         bound_by_smt = OrderedSet([])
 
-    if isinstance(formula, QuantifiedFormula):
+    if isinstance(formula, IntroduceNumericConstantFormula):
+        if formula.bound_variables().intersection(bound_vars):
+            return False
+        if any(free_var not in bound_vars for free_var in formula.free_variables() if type(free_var) is BoundVariable):
+            return False
+
+        return well_formed(
+            formula.inner_formula,
+            bound_vars | formula.bound_variables(),
+            in_expr_vars,
+            bound_by_smt
+        )
+    elif isinstance(formula, QuantifiedFormula):
         if formula.in_variable in bound_by_smt:
             return False
         if formula.bound_variables().intersection(bound_vars):
@@ -1498,7 +1559,7 @@ def well_formed(formula: Formula,
                    for free_var in formula.free_variables()
                    if type(free_var) is BoundVariable)
     else:
-        raise NotImplementedError()
+        raise NotImplementedError(f"Unsupported formula type {type(formula).__name__}")
 
 
 class ThreeValuedTruth:
@@ -1580,22 +1641,40 @@ class ThreeValuedTruth:
                 "UNKNOWN")
 
 
-def evaluate(formula: Formula,
-             reference_tree: Optional[DerivationTree] = None) -> ThreeValuedTruth:
-    assert well_formed(formula)
-
+def evaluate(
+        formula: Union[Formula, str],
+        reference_tree: Optional[DerivationTree] = None,
+        structural_predicates: Optional[Dict[str, StructuralPredicate]] = None,
+        semantic_predicates: Optional[Dict[str, SemanticPredicate]] = None) -> ThreeValuedTruth:
     def evaluate_(formula: Formula, assignments: Dict[Variable, Tuple[Path, DerivationTree]]) -> ThreeValuedTruth:
         if isinstance(formula, SMTFormula):
+            # TODO: Evaluation of formulas with numeric constants: Have to extract solutions from
+            #       the model, and solve all SMT formulas en bloc... Otherwise, will retrieve contradictions.
+            #       We might also have to evaluate universal formulas first, as for the solver...
             instantiation = z3.substitute(
                 formula.formula,
                 *tuple({z3.String(symbol.name): z3.StringVal(str(symbol_assignment[1]))
                         for symbol, symbol_assignment
                         in assignments.items()}.items()))
 
-            z3.set_param("smt.string_solver", "z3str3")
+            # z3.set_param("smt.string_solver", "z3str3")
             solver = z3.Solver()
             solver.add(instantiation)
             return ThreeValuedTruth.from_bool(solver.check() == z3.sat)  # Set timeout?
+        elif isinstance(formula, IntroduceNumericConstantFormula):
+            used_var_names = {var.name for var in VariablesCollector.collect(formula.inner_formula)}
+            idx = 0
+            bv_name = formula.bound_variable.name
+            fresh_name = f"{bv_name}_{idx}"
+
+            while fresh_name in used_var_names:
+                idx += 1
+                fresh_name = f"{bv_name}_{idx}"
+
+            return evaluate_(
+                formula.inner_formula.substitute_variables(
+                    {formula.bound_variable: Constant(fresh_name, Constant.NUMERIC_NTYPE)}),
+                assignments)
         elif isinstance(formula, QuantifiedFormula):
             if isinstance(formula.in_variable, DerivationTree):
                 in_inst = formula.in_variable
@@ -1646,6 +1725,16 @@ def evaluate(formula: Formula,
         else:
             raise NotImplementedError()
 
+    if isinstance(formula, str):
+        formula = parse_isla(formula, structural_predicates, semantic_predicates)
+        assert reference_tree is not None
+        top_level_constant = next(
+            c for c in VariablesCollector.collect(formula)
+            if isinstance(c, Constant)
+            and not c.is_numeric())
+        formula = formula.substitute_expressions({top_level_constant: reference_tree})
+
+    assert well_formed(formula)
     return evaluate_(formula, {})
 
 
@@ -1936,3 +2025,155 @@ class VariableManager:
             ph_var: next(var for var_name, var in self.variables.items() if var_name == ph_name)
             for ph_name, ph_var in self.placeholders.items()
         })
+
+
+def parse_isla(
+        inp: str,
+        structural_predicates: Optional[Dict[str, StructuralPredicate]] = None,
+        semantic_predicates: Optional[Dict[str, SemanticPredicate]] = None) -> Formula:
+    if structural_predicates is None:
+        structural_predicates = {}
+    if semantic_predicates is None:
+        semantic_predicates = {}
+
+    pegparser = PEGParser(ISLA_GRAMMAR)
+    tree = DerivationTree.from_parse_tree(pegparser.parse(inp.strip())[0])
+
+    const_decl = tree.filter(lambda n: n.value == "<const>", enforce_unique=True)[0][1]
+    const = Constant(str(const_decl.children[2]), str(const_decl.children[-4]))
+
+    var_decls = tree.filter(lambda n: n.value == "<var_decl>")
+    variables: List[BoundVariable] = []
+    for var_decl in var_decls:
+        ids = [str(id) for _, id in var_decl[1].filter(lambda n: n.value == "<id>")]
+        ntype = [str(nt) for _, nt in var_decl[1].filter(lambda n: n.value == "<nonterminal>")][0]
+        variables.extend([BoundVariable(id, ntype) for id in ids])
+
+    all_vars = [cast(Variable, const)] + variables
+
+    def check_undeclared_ids(tree: DerivationTree) -> None:
+        undeclared_ids = [
+            str(var[1]) for var in tree.filter(lambda n: n.value == "<id>")
+            if all(decl_var.name != str(var[1]) for decl_var in all_vars)
+        ]
+
+        if undeclared_ids:
+            raise SyntaxError(f"Undeclared symbols '{', '.join(undeclared_ids)}' in {tree}")
+
+    def parse_constraint(tree: DerivationTree) -> Formula:
+        if tree.value == "<constraint>":
+            return parse_constraint(tree.children[0])
+        if tree.value == "<disjunction>":
+            if len(tree.children) == 1:
+                return parse_constraint(tree.children[0])
+            else:
+                return parse_constraint(tree.children[2]) | parse_constraint(tree.children[-3])
+        elif tree.value == "<conjunction>":
+            if len(tree.children) == 1:
+                return parse_constraint(tree.children[0])
+            else:
+                return parse_constraint(tree.children[2]) & parse_constraint(tree.children[-3])
+        elif tree.value == "<negation>":
+            if len(tree.children) == 1:
+                return parse_constraint(tree.children[0])
+            else:
+                return -parse_constraint(tree.children[-2])
+        elif tree.value == "<num_intro>":
+            bvar_sym = str(tree.children[2])
+
+            if all(v.name != bvar_sym for v in all_vars):
+                raise SyntaxError(f"Undeclared symbol {bvar_sym} in {str(tree)}")
+
+            bvar = next(v for v in variables if v.name == bvar_sym)
+
+            return IntroduceNumericConstantFormula(bvar, parse_constraint(tree.children[-1]))
+        elif tree.value == "<smt_atom>":
+            check_undeclared_ids(tree)
+
+            z3_constr = z3.parse_smt2_string(
+                f"(assert {str(tree)})",
+                decls={var.name: z3.String(var.name) for var in all_vars})[0]
+            free_vars = [v for v in [cast(Variable, const)] + variables
+                         if v.name in [str(s) for s in get_symbols(z3_constr)]]
+            return SMTFormula(z3_constr, *free_vars)
+        elif tree.value == "<predicate_atom>":
+            check_undeclared_ids(tree)
+
+            predicate_name = str(tree.children[0])
+            if predicate_name not in structural_predicates and predicate_name not in semantic_predicates:
+                raise SyntaxError(f"Unknown predicate {predicate_name} in {tree}")
+
+            args = [
+                next(var for var in all_vars if var.name == str(arg[1].children[0]))
+                if arg[1].children[0].value == "<id>"
+                else int(str(arg)) if arg[1].children[0].value == "<number>"
+                else str(arg)
+                for arg in tree.filter(lambda n: n.value == "<arg>")]
+
+            is_structural = predicate_name in structural_predicates
+
+            predicate = (
+                structural_predicates[predicate_name] if is_structural
+                else semantic_predicates[predicate_name])
+
+            if len(args) != predicate.arity:
+                raise SyntaxError(
+                    f"Unexpected number {len(args)} for predicate {predicate_name} "
+                    f"({predicate.arity} expected) in {tree}")
+
+            if is_structural:
+                return StructuralPredicateFormula(predicate, *args)
+            else:
+                return SemanticPredicateFormula(predicate, *args)
+        elif tree.value == "<quantified_formula>":
+            qfr_sym = str(tree.children[0])
+            bvar_sym = str(tree.children[2])
+            invar_sym = str(tree.children[-4])
+
+            for sym in [bvar_sym, invar_sym]:
+                if all(v.name != sym for v in all_vars):
+                    raise SyntaxError(f"Undeclared symbol {sym} in {str(tree)}")
+
+            bvar = next(v for v in variables if v.name == bvar_sym)
+            invar = next(v for v in all_vars if v.name == invar_sym)
+
+            bexpr = None
+            if tree.children[4].value == "<bind_expr>":
+                bexpr = parse_bind_expr(tree.children[4])
+
+            inner_constraint = parse_constraint(tree.children[-1])
+
+            if qfr_sym == "forall":
+                return ForallFormula(bvar, invar, inner_constraint, bind_expression=bexpr)
+            else:
+                return ExistsFormula(bvar, invar, inner_constraint, bind_expression=bexpr)
+        else:
+            raise NotImplementedError(f"Cannot parse expression {str(tree)}, symbol {tree.value}")
+
+    def parse_bind_expr(tree: DerivationTree) -> BindExpression:
+        result_elements: List[Union[str, BoundVariable]] = []
+        curr_terminal = ""
+
+        leaves = cast(DerivationTree, tree.children[1]).filter(
+            lambda n: n.value in ["<var>", "<esc_char>"])
+
+        for _, leaf in leaves:
+            if leaf.value == "<esc_char>":
+                curr_terminal += str(leaf)
+            else:
+                if curr_terminal:
+                    result_elements.append(curr_terminal)
+                    curr_terminal = ""
+
+                try:
+                    result_elements.append(next(v for v in variables if v.name == str(leaf.children[1])))
+                except StopIteration:
+                    raise SyntaxError(f"Undeclared symbol {str(leaf.children[1])} in {str(tree)}")
+
+        if curr_terminal:
+            result_elements.append(curr_terminal)
+
+        return BindExpression(*result_elements)
+
+    return parse_constraint(
+        tree.filter(lambda n: n.value == "<constraint_decl>", True)[0][1].children[-3])

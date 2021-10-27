@@ -13,11 +13,11 @@ from fuzzingbook.Grammars import srange
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 from input_constraints.helpers import delete_unreachable
-from input_constraints.isla import VariablesCollector
+from input_constraints.isla import VariablesCollector, parse_isla
 from input_constraints.isla_predicates import BEFORE_PREDICATE
 from input_constraints.solver import ISLaSolver, SolutionState
 from input_constraints.tests.subject_languages import rest, tinyc, tar, simple_tar
-from input_constraints.concrete_syntax import ISLA_GRAMMAR, parse_isla
+from input_constraints.concrete_syntax import ISLA_GRAMMAR
 from input_constraints.tests.subject_languages.tar import extract_tar
 from input_constraints.tests.subject_languages.tinyc import compile_tinyc_clang
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR, XML_GRAMMAR

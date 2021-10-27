@@ -3,6 +3,10 @@ from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE,
     RJUST_CROP_PREDICATE, RJUST_PREDICATE, AFTER_PREDICATE, OCTAL_TO_DEC_PREDICATE
 
 
+def const(bound_variable: BoundVariable, inner_formula: Formula) -> IntroduceNumericConstantFormula:
+    return IntroduceNumericConstantFormula(bound_variable, inner_formula)
+
+
 def bexpr(terminal_symbol: str) -> BindExpression:
     return BindExpression(terminal_symbol)
 

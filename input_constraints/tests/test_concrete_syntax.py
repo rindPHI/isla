@@ -4,8 +4,7 @@ from typing import cast
 import z3
 
 from input_constraints import isla
-from input_constraints.concrete_syntax import parse_isla
-from input_constraints.isla import DummyVariable
+from input_constraints.isla import DummyVariable, parse_isla
 from input_constraints.isla_predicates import BEFORE_PREDICATE
 from input_constraints.tests.test_data import LANG_GRAMMAR
 import input_constraints.isla_shortcuts as sc
