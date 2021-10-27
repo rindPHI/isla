@@ -1698,10 +1698,10 @@ def eliminate_quantifiers(formula: Formula) -> List[Formula]:
 
     intro_const_formulas = [f for f in quantified_formulas if isinstance(f, IntroduceNumericConstantFormula)]
     if intro_const_formulas:
-        used_var_names = set(VariablesCollector.collect(formula))
+        used_vars = set(VariablesCollector.collect(formula))
         for intro_const_formula in intro_const_formulas:
             fresh = fresh_constant(
-                used_var_names,
+                used_vars,
                 Constant(intro_const_formula.bound_variable.name, intro_const_formula.bound_variable.n_type))
             formula = replace_formula(
                 formula,

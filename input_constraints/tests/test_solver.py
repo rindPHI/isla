@@ -1,25 +1,21 @@
-import copy
 import logging
 import os
 import unittest
-from typing import cast, Optional, Dict, List, Callable, Union, Tuple, IO
+from typing import cast, Optional, Dict, List, Callable, Union, Tuple
 from xml.dom import minidom
 from xml.sax.saxutils import escape
 
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
-from fuzzingbook.Grammars import srange
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
-from input_constraints.helpers import delete_unreachable
+from input_constraints.concrete_syntax import ISLA_GRAMMAR
 from input_constraints.isla import VariablesCollector, parse_isla
 from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
 from input_constraints.solver import ISLaSolver, SolutionState
 from input_constraints.tests.subject_languages import rest, tinyc, tar, simple_tar
-from input_constraints.concrete_syntax import ISLA_GRAMMAR
 from input_constraints.tests.subject_languages.tar import extract_tar
-from input_constraints.tests.subject_languages.tinyc import compile_tinyc_clang
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR, XML_GRAMMAR
 
 
@@ -219,8 +215,6 @@ constraint {
                                      enforce_unique_trees_in_queue=False)
 
     def test_csv_rows_equal_length(self):
-        # TODO: Something's wrong here, most generated CSV strings have empty columns...
-
         property = """
 const start: <start>;
 
@@ -245,8 +239,8 @@ constraint {
             property,
             semantic_predicates={"count": COUNT_PREDICATE(CSV_GRAMMAR)},
             grammar=CSV_GRAMMAR,
-            num_solutions=20,
-            max_number_free_instantiations=1,
+            num_solutions=40,
+            max_number_free_instantiations=2,
             max_number_smt_instantiations=2,
             enforce_unique_trees_in_queue=False,
             cost_vectors=((20, 2, 5, 5),),
@@ -423,7 +417,7 @@ constraint {
             try:
                 assignment = next(it)
                 self.assertTrue(
-                    isla.evaluate(formula.substitute_expressions({constant: assignment})).is_true(),
+                    isla.evaluate(formula.substitute_expressions({constant: assignment}), assignment),
                     f"Solution {assignment} does not satisfy constraint {formula}"
                 )
 

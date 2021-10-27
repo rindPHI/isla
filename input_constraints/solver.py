@@ -214,8 +214,6 @@ class ISLaSolver:
                 self.costs[state] = self.compute_cost(state)
 
     def solve(self) -> Generator[DerivationTree, None, None]:
-        fuzzer = GrammarCoverageFuzzer(self.grammar)
-
         while self.queue:
             cost: int
             state: SolutionState
@@ -236,6 +234,9 @@ class ISLaSolver:
 
             if state.constraint == sc.false():
                 continue
+
+            # Instantiate numeric constant introduction
+            state = self.instantiate_numeric_constant_intros(state)
 
             # Match all universal formulas
             result_states = self.match_all_universal_formulas(state)
@@ -288,6 +289,7 @@ class ISLaSolver:
                 f"Constraint is not true and contains semantic predicate formulas which bind open leaves in the tree: " \
                 f"{state.constraint}, leaves: {', '.join(list(map(str, [leaf for _, leaf in state.tree.open_leaves()])))}"
 
+            fuzzer = GrammarCoverageFuzzer(self.grammar, max_nonterminals=None)
             if state.constraint == sc.true():
                 for _ in range(self.max_number_free_instantiations):
                     yield DerivationTree.from_parse_tree(fuzzer.expand_tree(state.tree.to_parse_tree()))
@@ -313,6 +315,26 @@ class ISLaSolver:
             instantiation = isla.SMTFormula(z3.BoolVal(predicate_formula.evaluate(state.tree)))
             self.logger.debug("Eliminating (-> %s) structural predicate formula %s", instantiation, predicate_formula)
             formula = isla.replace_formula(formula, predicate_formula, instantiation)
+
+        return SolutionState(formula, state.tree)
+
+    def instantiate_numeric_constant_intros(self, state: SolutionState) -> SolutionState:
+        numeric_constant_introdunctions = [
+            conjunct for conjunct in get_conjuncts(state.constraint)
+            if isinstance(conjunct, isla.IntroduceNumericConstantFormula)]
+
+        formula = state.constraint
+        for numeric_constant_introduction in numeric_constant_introdunctions:
+            self.logger.debug("Instantiating numeric constant introduction %s", numeric_constant_introduction)
+            used_vars = set(VariablesCollector.collect(formula))
+            fresh = isla.fresh_constant(
+                used_vars,
+                isla.Constant(
+                    numeric_constant_introduction.bound_variable.name,
+                    numeric_constant_introduction.bound_variable.n_type))
+            instantiation = numeric_constant_introduction.inner_formula.substitute_variables(
+                {numeric_constant_introduction.bound_variable: fresh})
+            formula = isla.replace_formula(formula, numeric_constant_introduction, instantiation)
 
         return SolutionState(formula, state.tree)
 
