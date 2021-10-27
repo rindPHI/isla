@@ -38,7 +38,7 @@ constraint {
   forall title="{titletxt}\n{underline}" in start:
     num title_length:
       num underline_length:
-        ((> (str.to_int title_length) 1) and
+        ((> (str.to_int title_length) 0) and
         ((<= (str.to_int title_length) (str.to_int underline_length)) and
         (ljust_crop(titletxt, title_length, " ") and
          extend_crop(underline, underline_length))))
