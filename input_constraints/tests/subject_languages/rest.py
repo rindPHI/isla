@@ -1,16 +1,10 @@
 import string
-from typing import cast
 
-import z3
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.Grammars import srange
 
-from input_constraints.isla import VariableManager, parse_isla
-
-from input_constraints import isla_shortcuts as sc, isla
-from input_constraints.isla_predicates import CROP_PREDICATE, LJUST_CROP_PREDICATE, EXTEND_CROP_PREDICATE
-from input_constraints.solver import ISLaSolver
-from input_constraints.tests.test_data import CSV_GRAMMAR
+from input_constraints import isla
+from input_constraints.isla import parse_isla
+from input_constraints.isla_predicates import LJUST_CROP_PREDICATE, EXTEND_CROP_PREDICATE
 
 REST_GRAMMAR = {
     "<start>": ["<body-elements>"],
