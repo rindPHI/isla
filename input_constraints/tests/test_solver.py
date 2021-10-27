@@ -280,6 +280,9 @@ constraint {
         )
 
     def test_tar(self):
+        # TODO: On CI, get error message
+        # "AssertionError: tar: \r: Cannot create symlink to ‘’: No such file or directory",
+        # so obviously link name is empty. That shouldn't happen... Check!
         self.execute_generation_test(
             tar.TAR_CONSTRAINTS,
             grammar=tar.TAR_GRAMMAR,
@@ -391,6 +394,10 @@ constraint {
         for idx in range(num_solutions):
             try:
                 assignment = next(it)
+
+                solutions_found += 1
+                logger.info(f"Found solution no. %d: %s", solutions_found, assignment)
+
                 self.assertTrue(
                     isla.evaluate(formula.substitute_expressions({constant: assignment}), assignment),
                     f"Solution {assignment} does not satisfy constraint {formula}"
@@ -399,11 +406,8 @@ constraint {
                 if custom_test_func:
                     test_result = custom_test_func(assignment)
                     if test_result is not True:
-                        logger.info(f"Found (WRONG) solution: %s", assignment)
+                        logger.info(f"Solution WRONG: %s", assignment)
                         self.fail("" if not isinstance(test_result, str) else test_result)
-
-                solutions_found += 1
-                logger.info(f"Found solution no. %d: %s", solutions_found, assignment)
 
                 if print_solutions:
                     print(str(assignment))
