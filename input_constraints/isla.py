@@ -1776,6 +1776,7 @@ def evaluate(
                     continue
                 clause[other_idx] = clause[other_idx].substitute_expressions(assignment)
 
+        # Evaluate SMT formulas
         smt_formulas: List[SMTFormula] = [f for f in clause if isinstance(f, SMTFormula)]
         if smt_formulas:
             smt_vars: Set[Variable] = {v for f in smt_formulas for v in f.free_variables()}

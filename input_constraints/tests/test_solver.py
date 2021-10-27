@@ -14,7 +14,7 @@ from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 from input_constraints.helpers import delete_unreachable
 from input_constraints.isla import VariablesCollector, parse_isla
-from input_constraints.isla_predicates import BEFORE_PREDICATE
+from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
 from input_constraints.solver import ISLaSolver, SolutionState
 from input_constraints.tests.subject_languages import rest, tinyc, tar, simple_tar
 from input_constraints.concrete_syntax import ISLA_GRAMMAR
@@ -221,22 +221,29 @@ constraint {
     def test_csv_rows_equal_length(self):
         # TODO: Something's wrong here, most generated CSV strings have empty columns...
 
-        mgr = isla.VariableManager(CSV_GRAMMAR)
-        formula = mgr.create(
-            mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$num").to_smt()) >= z3.IntVal(3))) &
-            mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$num").to_smt()) <= z3.IntVal(5))) &
-            sc.forall(
-                mgr.bv("$hline", "<csv-header>"),
-                mgr.const("$start", "<start>"),
-                sc.count(CSV_GRAMMAR, mgr.bv("$hline"), "<raw-string>", mgr.num_const("$num"))) &
-            sc.forall(
-                mgr.bv("$line", "<csv-record>"),
-                mgr.const("$start", "<start>"),
-                sc.count(CSV_GRAMMAR, mgr.bv("$line"), "<raw-string>", mgr.num_const("$num")))
-        )
+        property = """
+const start: <start>;
+
+vars {
+  colno: NUM;
+  hline: <csv-header>;
+  line: <csv-record>;
+}
+
+constraint {
+  forall hline in start:
+    num colno:
+      ((>= (str.to_int colno) 3) and 
+      ((<= (str.to_int colno) 5) and 
+       (count(hline, "<raw-string>", colno) and 
+       forall line in start:
+         count(line, "<raw-string>", colno))))
+}
+"""
 
         self.execute_generation_test(
-            formula,
+            property,
+            semantic_predicates={"count": COUNT_PREDICATE(CSV_GRAMMAR)},
             grammar=CSV_GRAMMAR,
             num_solutions=20,
             max_number_free_instantiations=1,
