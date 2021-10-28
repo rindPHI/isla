@@ -93,6 +93,78 @@ class SolutionState:
         return f"{{{self.constraint}, {replace_line_breaks(str(self.tree))}}}"
 
 
+#                 tree_closing_cost,
+#                 match_cost,
+#                 constraint_cost,
+#                 state.level,
+#                 1 - state.tree.three_coverage(self.graph)
+
+class CostWeightVector:
+    def __init__(
+            self,
+            tree_closing_cost: float = 0,
+            vacuous_penalty: float = 0,
+            constraint_cost: float = 0,
+            derivation_depth_penalty: float = 0,
+            low_coverage_penalty: float = 0):
+        self.tree_closing_cost = tree_closing_cost
+        self.vacuous_penalty = vacuous_penalty
+        self.constraint_cost = constraint_cost
+        self.derivation_depth_penalty = derivation_depth_penalty
+        self.low_coverage_penalty = low_coverage_penalty
+
+    def __getitem__(self, item):
+        assert isinstance(item, int)
+        return [
+            self.tree_closing_cost,
+            self.vacuous_penalty,
+            self.constraint_cost,
+            self.derivation_depth_penalty,
+            self.low_coverage_penalty
+        ][item]
+
+    def __repr__(self):
+        return (f"CostWeightVector(tree_closing_cost = {self.tree_closing_cost}, "
+                f"vacuous_penalty = {self.vacuous_penalty}, "
+                f"constraint_cost = {self.constraint_cost}, "
+                f"derivation_depth_penalty = {self.derivation_depth_penalty}, "
+                f"low_coverage_penalty = {self.low_coverage_penalty}))")
+
+
+class CostSettings:
+    def __init__(
+            self,
+            weight_vectors: Tuple[CostWeightVector, ...],
+            cost_phase_lengths: Tuple[int, ...]):
+        assert len(weight_vectors) == len(cost_phase_lengths)
+        self.weight_vectors = weight_vectors
+        self.cost_phase_lengths = cost_phase_lengths
+
+    def __repr__(self):
+        return f"CostSettings(weight_vectors={repr(self.weight_vectors)}, " \
+               f"cost_phase_length={repr(self.cost_phase_lengths)})"
+
+
+STD_COST_SETTINGS = CostSettings(
+    (
+        CostWeightVector(
+            tree_closing_cost=6,
+            vacuous_penalty=2,
+            constraint_cost=4,
+            derivation_depth_penalty=3,
+            low_coverage_penalty=8),
+        CostWeightVector(derivation_depth_penalty=1),
+        CostWeightVector(
+            tree_closing_cost=8,
+            vacuous_penalty=.5,
+            constraint_cost=1,
+            derivation_depth_penalty=0,
+            low_coverage_penalty=2),
+    ),
+    (200, 100, 500)
+)
+
+
 class ISLaSolver:
     def __init__(self,
                  grammar: Grammar,
@@ -105,19 +177,7 @@ class ISLaSolver:
                  enforce_unique_trees_in_queue: bool = True,
                  precompute_reachability: bool = False,
                  debug: bool = False,
-                 # Current cost functions:
-                 # 1. "Tree finishing cost" --- Cost computed from the open nonterminals in a tree.
-                 # 2. "Univ. qfr. distance cost" --- Distance to satisfying universal quantifiers.
-                 # 3. "Constraint cost" --- Cost computed from the constraint. Currently, only counts existential qfrs.
-                 # 4. Number of ancestors --- The "derivation depth", increases strictly monotonically. Penalize to
-                 #                            prefer items longer in the queue.
-                 # 5. k-paths metric --- How much coverage is obtained by the tree?
-                 cost_vectors: Tuple[Tuple[float, float, float, float, float], ...] = (
-                         # (20, 5, 1, .5), (0, 0, 0, 1), (2, 1, 1, 0)
-                         # (20, 1, 1, .5, 20), (0, 0, 0, 1, 0), (2, .5, 1, 0, 2)
-                         (2, 1, 1, 2, 2), (0, 0, 0, 1, 0), (2, .5, 1, 0, 2)
-                 ),
-                 cost_phase_lengths: Tuple[int, ...] = (200, 100, 500),
+                 cost_settings: CostSettings = STD_COST_SETTINGS
                  ):
         """
         :param grammar: The underlying grammar.
@@ -162,12 +222,7 @@ class ISLaSolver:
         # self.expand_after_existential_elimination = expand_after_existential_elimination
         self.enforce_unique_trees_in_queue = enforce_unique_trees_in_queue
 
-        assert len(cost_vectors) == len(cost_phase_lengths)
-        # Expected cost_vector length can change if implementation of cost function changes
-        # (different number of cost factors).
-        assert all(len(cost_vector) == 5 for cost_vector in cost_vectors)
-        self.cost_vectors = cost_vectors
-        self.cost_phase_lengths = cost_phase_lengths
+        self.cost_settings = cost_settings
         self.current_cost_phase: int = 0
         self.current_cost_phase_since: int = 0
 
@@ -324,15 +379,15 @@ class ISLaSolver:
         return SolutionState(formula, state.tree)
 
     def instantiate_numeric_constant_intros(self, state: SolutionState) -> Optional[SolutionState]:
-        numeric_constant_introdunctions = [
+        numeric_constant_introductions = [
             conjunct for conjunct in get_conjuncts(state.constraint)
             if isinstance(conjunct, isla.IntroduceNumericConstantFormula)]
 
-        if not numeric_constant_introdunctions:
+        if not numeric_constant_introductions:
             return None
 
         formula = state.constraint
-        for numeric_constant_introduction in numeric_constant_introdunctions:
+        for numeric_constant_introduction in numeric_constant_introductions:
             self.logger.debug("Instantiating numeric constant introduction %s", numeric_constant_introduction)
             used_vars = set(VariablesCollector.collect(formula))
             fresh = isla.fresh_constant(
@@ -850,17 +905,18 @@ class ISLaSolver:
 
         match_cost = sum(match_costs)
 
-        if len(self.queue) - self.current_cost_phase_since > self.cost_phase_lengths[self.current_cost_phase]:
+        if (len(self.queue) - self.current_cost_phase_since >
+                self.cost_settings.cost_phase_lengths[self.current_cost_phase]):
             self.current_cost_phase_since = len(self.queue)
-            self.current_cost_phase = (self.current_cost_phase + 1) % len(self.cost_vectors)
+            self.current_cost_phase = (self.current_cost_phase + 1) % len(self.cost_settings.weight_vectors)
             self.logger.debug(
                 "Switching to cost phase %d of %d, vector %s",
                 self.current_cost_phase + 1,
-                len(self.cost_vectors),
-                str(self.cost_vectors[self.current_cost_phase])
+                len(self.cost_settings.weight_vectors),
+                str(self.cost_settings.weight_vectors[self.current_cost_phase])
             )
 
-        cost_vector = self.cost_vectors[self.current_cost_phase]
+        cost_vector = self.cost_settings.weight_vectors[self.current_cost_phase]
 
         return self.cost_normalizer.compute(
             [

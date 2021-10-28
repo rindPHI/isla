@@ -2,7 +2,7 @@ import copy
 import logging
 import os
 import unittest
-from typing import cast, Optional, Dict, List, Callable, Union, Tuple
+from typing import cast, Optional, Dict, List, Callable, Union
 from xml.dom import minidom
 from xml.sax.saxutils import escape
 
@@ -15,7 +15,7 @@ from input_constraints.concrete_syntax import ISLA_GRAMMAR
 from input_constraints.helpers import delete_unreachable
 from input_constraints.isla import VariablesCollector, parse_isla
 from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
-from input_constraints.solver import ISLaSolver, SolutionState
+from input_constraints.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector
 from input_constraints.tests.subject_languages import rest, tinyc, tar, simple_tar
 from input_constraints.tests.subject_languages.tar import extract_tar
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR, XML_GRAMMAR
@@ -148,8 +148,6 @@ class TestSolver(unittest.TestCase):
         self.execute_generation_test(
             formula, grammar=XML_GRAMMAR, max_number_free_instantiations=1,
             num_solutions=500,
-            # cost_vectors=((2, 1, 1, 2, 2),),
-            # cost_phase_lengths=(200,),
             print_only=True
         )
 
@@ -248,8 +246,14 @@ constraint {
             max_number_free_instantiations=2,
             max_number_smt_instantiations=2,
             enforce_unique_trees_in_queue=False,
-            cost_vectors=((20, 2, 5, 5),),
-            cost_phase_lengths=(200,),
+            cost_settings=CostSettings(
+                (CostWeightVector(
+                    tree_closing_cost=20,
+                    vacuous_penalty=2,
+                    constraint_cost=5,
+                    derivation_depth_penalty=5,
+                    low_coverage_penalty=10),),
+                cost_phase_lengths=(200,)),
         )
 
     # Note: Disabling this for now since the z3 solver times out now that we solve
@@ -277,11 +281,6 @@ constraint {
             max_number_smt_instantiations=1,
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=True,
-            # custom_test_func=compile_tinyc_clang,
-            cost_phase_lengths=(200,),
-            cost_vectors=((20, 1, 5, .5, 10),),
-            # cost_vectors=((10, 1, 5, .5, 20),),
-            # cost_vectors=((3, 1, 1, 1, 2),),
         )
 
     def test_tar(self):
@@ -314,8 +313,7 @@ constraint {
             debug=True,
             num_solutions=10,
             precompute_reachability=False,
-            cost_vectors=((20, 2, 5, .5),),
-            cost_phase_lengths=(200,),
+            cost_settings=STD_COST_SETTINGS,
         )
 
     def Xtest_isla(self):
@@ -353,8 +351,7 @@ constraint {
             state_tree_out="/tmp/state_tree.xml",
             log_out="/tmp/isla_log.txt",
             custom_test_func: Optional[Callable[[isla.DerivationTree], Union[bool, str]]] = None,
-            cost_vectors: Optional[Tuple[Tuple[float, float, float, float, float], ...]] = None,
-            cost_phase_lengths: Optional[Tuple[int, ...]] = None,
+            cost_settings=STD_COST_SETTINGS,
             print_only: bool = False,
     ):
         logger = logging.getLogger(type(self).__name__)
@@ -363,25 +360,18 @@ constraint {
             for f in [f for f in [state_tree_out, log_out] if os.path.exists(f)]:
                 os.remove(f)
 
-        args = {
-            "grammar": grammar,
-            "formula": formula,
-            "structural_predicates": structural_predicates,
-            "semantic_predicates": semantic_predicates,
-            "max_number_free_instantiations": max_number_free_instantiations,
-            "max_number_smt_instantiations": max_number_smt_instantiations,
-            "expand_after_existential_elimination": expand_after_existential_elimination,
-            "enforce_unique_trees_in_queue": enforce_unique_trees_in_queue,
-            "precompute_reachability": precompute_reachability,
-            "debug": debug,
-        }
-
-        if cost_vectors:
-            args["cost_vectors"] = cost_vectors
-        if cost_phase_lengths:
-            args["cost_phase_lengths"] = cost_phase_lengths
-
-        solver = ISLaSolver(**args)
+        solver = ISLaSolver(
+            grammar=grammar,
+            formula=formula,
+            structural_predicates=structural_predicates,
+            semantic_predicates=semantic_predicates,
+            max_number_free_instantiations=max_number_free_instantiations,
+            max_number_smt_instantiations=max_number_smt_instantiations,
+            expand_after_existential_elimination=expand_after_existential_elimination,
+            enforce_unique_trees_in_queue=enforce_unique_trees_in_queue,
+            precompute_reachability=precompute_reachability,
+            debug=debug,
+        )
 
         if debug:
             file_handler = logging.FileHandler(log_out)
