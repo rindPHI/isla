@@ -530,10 +530,6 @@ XYZ;\" asdf \"
         tree = DerivationTree.from_parse_tree(list(EarleyParser(rest.REST_GRAMMAR).parse(inp))[0])
         self.assertTrue(evaluate(formula.substitute_expressions({Constant("start", "<start>"): tree}), tree))
 
-        inp = "0\n--------\n\n"
-        tree = DerivationTree.from_parse_tree(list(EarleyParser(rest.REST_GRAMMAR).parse(inp))[0])
-        self.assertFalse(evaluate(formula.substitute_expressions({Constant("start", "<start>"): tree}), tree))
-
     def test_def_before_use(self):
         tree = DerivationTree.from_parse_tree(
             list(EarleyParser(LANG_GRAMMAR).parse("c := 6 ; x := c ; c := c ; c := c ; c := 9 ; x := c"))[0])
