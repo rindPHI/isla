@@ -1100,7 +1100,8 @@ class DisjunctiveFormula(PropositionalCombinator):
 class SMTFormula(Formula):
     def __init__(self, formula: z3.BoolRef, *free_variables: Variable,
                  instantiated_variables: Optional[OrderedSet[Variable]] = None,
-                 substitutions: Optional[Dict[Variable, DerivationTree]] = None):
+                 substitutions: Optional[Dict[Variable, DerivationTree]] = None,
+                 auto_eval: bool = True):
         """
         Encapsulates an SMT formula.
         :param formula: The SMT formula.
@@ -1116,6 +1117,11 @@ class SMTFormula(Formula):
             raise RuntimeError(f"Supplied number of {len(free_variables)} symbols does not match "
                                f"actual number of symbols {len(actual_symbols)} in formula '{formula}'")
 
+        # When substituting expressions, the formula is automatically evaluated if this flag
+        # is set to True and all substituted expressions are closed trees, i.e., the formula
+        # is ground. Deactivate only for special purposes, e.g., vacuity checking.
+        self.auto_eval = auto_eval
+
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         new_smt_formula = z3_subst(self.formula, {v1.to_smt(): v2.to_smt() for v1, v2 in subst_map.items()})
 
@@ -1129,7 +1135,8 @@ class SMTFormula(Formula):
         return SMTFormula(cast(z3.BoolRef, new_smt_formula),
                           *new_free_variables,
                           instantiated_variables=self.instantiated_variables,
-                          substitutions=self.substitutions)
+                          substitutions=self.substitutions,
+                          auto_eval=self.auto_eval)
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         tree_subst_map = {k: v for k, v in subst_map.items()
@@ -1162,13 +1169,14 @@ class SMTFormula(Formula):
             variable for variable in self.free_variables_
             if variable not in var_subst_map])
 
-        if len(new_free_variables) + len(new_instantiated_variables) == 0:
+        if self.auto_eval and len(new_free_variables) + len(new_instantiated_variables) == 0:
             # Formula is ground, we can evaluate it!
             return SMTFormula(z3.BoolVal(is_valid(new_smt_formula)))
 
         return SMTFormula(cast(z3.BoolRef, new_smt_formula), *new_free_variables,
                           instantiated_variables=new_instantiated_variables,
-                          substitutions=new_substitutions)
+                          substitutions=new_substitutions,
+                          auto_eval=self.auto_eval)
 
     def tree_arguments(self) -> OrderedSet[DerivationTree]:
         return OrderedSet(self.substitutions.values())
@@ -1892,12 +1900,14 @@ def evaluate(
         semantic_predicates: Optional[Dict[str, SemanticPredicate]] = None) -> ThreeValuedTruth:
     if isinstance(formula, str):
         formula = parse_isla(formula, structural_predicates, semantic_predicates)
+
+    top_level_constants = {
+        c for c in VariablesCollector.collect(formula)
+        if isinstance(c, Constant) and not c.is_numeric()}
+    assert len(top_level_constants) <= 1
+    if len(top_level_constants) > 0:
         assert reference_tree is not None
-        top_level_constant = next(
-            c for c in VariablesCollector.collect(formula)
-            if isinstance(c, Constant)
-            and not c.is_numeric())
-        formula = formula.substitute_expressions({top_level_constant: reference_tree})
+        formula = formula.substitute_expressions({next(iter(top_level_constants)): reference_tree})
 
     assert well_formed(formula)
 

@@ -6,7 +6,7 @@ import z3
 from input_constraints import isla
 from input_constraints.isla import DummyVariable, parse_isla
 from input_constraints.isla_predicates import BEFORE_PREDICATE
-from input_constraints.tests.test_data import LANG_GRAMMAR
+from input_constraints.tests.test_data import LANG_GRAMMAR, XML_GRAMMAR
 import input_constraints.isla_shortcuts as sc
 
 
@@ -52,6 +52,29 @@ class TestConcreteSyntax(unittest.TestCase):
         parsed_formula = parse_isla(concr_syntax_formula, structural_predicates={"before": BEFORE_PREDICATE})
 
         self.assertEqual(python_formula, parsed_formula)
+
+    def test_xml(self):
+        # TODO: Check whether we can express this in concrete syntax (angular brackets in bind expressions!)
+        mgr = isla.VariableManager(XML_GRAMMAR)
+        start = mgr.const("$start", "<start>")
+        formula: isla.Formula = mgr.create(
+            sc.forall_bind(
+                sc.bexpr("<") + mgr.bv("$oid", "<id>") + ">" +
+                "<xml-tree>" +
+                "</" + mgr.bv("$cid", "<id>") + ">",
+                "<xml-tree>",
+                start,
+                mgr.smt(mgr.bv("$oid").to_smt() == mgr.bv("$cid").to_smt())
+            ) &
+            sc.forall_bind(
+                sc.bexpr("<") + mgr.bv("$oid", "<id>") + " " + "<xml-attribute>" + ">" +
+                "<xml-tree>" +
+                "</" + mgr.bv("$cid", "<id>") + ">",
+                "<xml-tree>",
+                start,
+                mgr.smt(mgr.bv("$oid").to_smt() == mgr.bv("$cid").to_smt())
+            )
+        )
 
 
 if __name__ == '__main__':
