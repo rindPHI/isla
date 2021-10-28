@@ -111,9 +111,11 @@ class ISLaSolver:
                  # 3. "Constraint cost" --- Cost computed from the constraint. Currently, only counts existential qfrs.
                  # 4. Number of ancestors --- The "derivation depth", increases strictly monotonically. Penalize to
                  #                            prefer items longer in the queue.
-                 cost_vectors: Tuple[Tuple[float, float, float], ...] = (
+                 # 5. k-paths metric --- How much coverage is obtained by the tree?
+                 cost_vectors: Tuple[Tuple[float, float, float, float, float], ...] = (
                          # (20, 5, 1, .5), (0, 0, 0, 1), (2, 1, 1, 0)
-                         (20, -1, 1, .5), (0, 0, 0, 1), (2, -.5, 1, 0)
+                         # (20, 1, 1, .5, 20), (0, 0, 0, 1, 0), (2, .5, 1, 0, 2)
+                         (2, 1, 1, 2, 2), (0, 0, 0, 1, 0), (2, .5, 1, 0, 2)
                  ),
                  cost_phase_lengths: Tuple[int, ...] = (200, 100, 500),
                  ):
@@ -163,7 +165,7 @@ class ISLaSolver:
         assert len(cost_vectors) == len(cost_phase_lengths)
         # Expected cost_vector length can change if implementation of cost function changes
         # (different number of cost factors).
-        assert all(len(cost_vector) == 4 for cost_vector in cost_vectors)
+        assert all(len(cost_vector) == 5 for cost_vector in cost_vectors)
         self.cost_vectors = cost_vectors
         self.cost_phase_lengths = cost_phase_lengths
         self.current_cost_phase: int = 0
@@ -795,6 +797,9 @@ class ISLaSolver:
     def compute_cost(self, state: SolutionState) -> float:
         """Cost of state. Best value: 0, Worst: Unbounded"""
 
+        if state.constraint == sc.true():
+            return 0
+
         # How costly is it to finish the tree?
         nonterminals = [leaf.value for _, leaf in state.tree.open_leaves()]
         tree_closing_cost = (
@@ -803,7 +808,7 @@ class ISLaSolver:
                  for nonterminal in nonterminals]))
 
         # Quantifiers are expensive (universal formulas have to be matched, tree insertion for existential
-        # formulas is even more costly).
+        # formulas is even more costly). TODO: Penalize nested quantifiers more.
         constraint_cost = len([sub for sub in get_conjuncts(state.constraint)
                                if isinstance(sub, isla.QuantifiedFormula)])
 
@@ -858,9 +863,15 @@ class ISLaSolver:
         cost_vector = self.cost_vectors[self.current_cost_phase]
 
         return self.cost_normalizer.compute(
-            [tree_closing_cost, match_cost, constraint_cost, state.level],
+            [
+                tree_closing_cost,
+                match_cost,
+                constraint_cost,
+                state.level,
+                1 - state.tree.three_coverage(self.graph)
+            ],
             cost_vector,
-            [True, False, False, False]
+            [True, False, False, False, False]
         )
 
     def compute_symbol_costs(self) -> Dict[str, int]:

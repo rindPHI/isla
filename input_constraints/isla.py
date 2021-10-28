@@ -9,6 +9,7 @@ import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
 from fuzzingbook.Grammars import is_nonterminal, RE_NONTERMINAL
 from fuzzingbook.Parser import EarleyParser, PEGParser
+from grammar_graph import gg
 from orderedset import OrderedSet
 
 from input_constraints.concrete_syntax import ISLA_GRAMMAR
@@ -134,6 +135,13 @@ class DerivationTree:
 
         self.__hash = None
         self.__structural_hash = None
+        self.__three_coverage: Optional[float] = None
+
+    def three_coverage(self, graph: gg.GrammarGraph):
+        if self.__three_coverage is None:
+            self.__three_coverage = graph.k_path_coverage(self.to_parse_tree(), 3)
+
+        return self.__three_coverage
 
     def root_nonterminal(self) -> str:
         if isinstance(self.value, Variable):

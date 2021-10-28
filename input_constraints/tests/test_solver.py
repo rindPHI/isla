@@ -147,7 +147,10 @@ class TestSolver(unittest.TestCase):
 
         self.execute_generation_test(
             formula, grammar=XML_GRAMMAR, max_number_free_instantiations=1,
-            num_solutions=500
+            num_solutions=500,
+            # cost_vectors=((2, 1, 1, 2, 2),),
+            # cost_phase_lengths=(200,),
+            print_only=True
         )
 
     def test_declared_before_used(self):
@@ -273,10 +276,12 @@ constraint {
             max_number_free_instantiations=1,
             max_number_smt_instantiations=1,
             expand_after_existential_elimination=False,
-            enforce_unique_trees_in_queue=False,
+            enforce_unique_trees_in_queue=True,
             # custom_test_func=compile_tinyc_clang,
-            cost_vectors=((20, 2, 5, .5),),
             cost_phase_lengths=(200,),
+            cost_vectors=((20, 1, 5, .5, 10),),
+            # cost_vectors=((10, 1, 5, .5, 20),),
+            # cost_vectors=((3, 1, 1, 1, 2),),
         )
 
     def test_tar(self):
@@ -348,8 +353,9 @@ constraint {
             state_tree_out="/tmp/state_tree.xml",
             log_out="/tmp/isla_log.txt",
             custom_test_func: Optional[Callable[[isla.DerivationTree], Union[bool, str]]] = None,
-            cost_vectors: Optional[Tuple[Tuple[float, float, float, float], ...]] = None,
-            cost_phase_lengths: Optional[Tuple[int, ...]] = None
+            cost_vectors: Optional[Tuple[Tuple[float, float, float, float, float], ...]] = None,
+            cost_phase_lengths: Optional[Tuple[int, ...]] = None,
+            print_only: bool = False,
     ):
         logger = logging.getLogger(type(self).__name__)
 
@@ -398,16 +404,17 @@ constraint {
                 solutions_found += 1
                 logger.info(f"Found solution no. %d: %s", solutions_found, assignment)
 
-                self.assertTrue(
-                    isla.evaluate(formula.substitute_expressions({constant: assignment}), assignment),
-                    f"Solution {assignment} does not satisfy constraint {formula}"
-                )
+                if not print_only:
+                    self.assertTrue(
+                        isla.evaluate(formula.substitute_expressions({constant: assignment}), assignment),
+                        f"Solution {assignment} does not satisfy constraint {formula}"
+                    )
 
-                if custom_test_func:
-                    test_result = custom_test_func(assignment)
-                    if test_result is not True:
-                        logger.info(f"Solution WRONG: %s", assignment)
-                        self.fail("" if not isinstance(test_result, str) else test_result)
+                    if custom_test_func:
+                        test_result = custom_test_func(assignment)
+                        if test_result is not True:
+                            logger.info(f"Solution WRONG: %s", assignment)
+                            self.fail("" if not isinstance(test_result, str) else test_result)
 
                 if print_solutions:
                     print(str(assignment))
