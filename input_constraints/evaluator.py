@@ -25,8 +25,8 @@ def vacuously_satisfies(inp: isla.DerivationTree, formula: isla.Formula) -> bool
     constant = next(
         c for c in isla.VariablesCollector.collect(formula)
         if isinstance(c, isla.Constant))
-    qfr_free: List[isla.Formula] = isla.eliminate_quantifiers(formula.substitute_expressions({constant: inp}))
 
+    qfr_free: List[isla.Formula] = isla.eliminate_quantifiers(formula.substitute_expressions({constant: inp}))
     qfr_free_dnf: List[isla.Formula] = [isla.convert_to_dnf(isla.convert_to_nnf(f)) for f in qfr_free]
     clauses: List[List[isla.Formula]] = [
         isla.split_conjunction(_f)
