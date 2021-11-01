@@ -1,6 +1,5 @@
 .idea/
-input_constraints/__pycache__/
-input_constraints/tests/__pycache__/
+__pycache__
 prof/
 isla.egg-info/
 .tox/
