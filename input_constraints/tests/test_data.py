@@ -4,7 +4,7 @@ from typing import Dict, Callable
 from fuzzingbook.GrammarFuzzer import tree_to_string
 from fuzzingbook.Grammars import convert_ebnf_grammar, srange
 from fuzzingbook.Parser import EarleyParser
-
+from xml.sax.saxutils import escape
 from input_constraints.type_defs import ParseTree, Path
 
 LANG_GRAMMAR = {
@@ -50,21 +50,34 @@ CSV_GRAMMAR = convert_ebnf_grammar(CSV_EBNF_GRAMMAR)
 XML_GRAMMAR = {
     "<start>": ["<xml-tree>"],
     "<xml-tree>": [
-        "<text>",
-        "<xml-open-tag><xml-tree><xml-close-tag>",
+        "<xml-open-tag><inner-xml-tree><xml-close-tag>",
         "<xml-openclose-tag>",
+    ],
+    "<inner-xml-tree>": [
+        "<text>",
+        "<xml-tree>"
         "<xml-tree><xml-tree>"
     ],
-
     "<xml-open-tag>": ["<<id>>", "<<id> <xml-attribute>>"],
     "<xml-openclose-tag>": ["<<id>/>", "<<id> <xml-attribute>/>"],
     "<xml-close-tag>": ["</<id>>"],
-    "<xml-attribute>": ["<id>=<id>", "<id>=\"<text>\"", "<xml-attribute> <xml-attribute>"],
+    "<xml-attribute>": ["<id>=\"<text>\"", "<xml-attribute> <xml-attribute>"],
 
-    "<id>": ["<letter>", "<letter><id>"],
-    "<letter>": srange(string.ascii_letters + string.digits + "\"'."),
-    "<text>": ["<text><letter_extended>", "<letter_extended>"],
-    "<letter_extended>": srange(string.ascii_letters + string.digits + "\"'. \t/?-,=:+"),
+    "<id>": [
+        "<id_start_char>",
+        "<id_start_char><id_chars>",
+        # "<id_with_prefix>"
+    ],
+    # "<id_with_prefix>": [
+    #     "<id_start_char>:<id_chars>",
+    #     "<id_start_char><id_chars>:<id_chars>"],
+    "<id_start_char>": srange("_" + string.ascii_letters),
+    "<id_chars>": ["<id_char>", "<id_char><id_chars>"],
+    "<id_char>": ["<id_start_char>"] + srange("-." + string.digits),
+    "<text>": ["<text_char><text>", "<text_char>"],
+    "<text_char>": [
+        escape(c, {'"': "&quot;"})
+        for c in srange(string.ascii_letters + string.digits + "\"'. \t/?-,=:+")],
 }
 
 

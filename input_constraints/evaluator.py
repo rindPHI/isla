@@ -1,10 +1,23 @@
 import copy
-from typing import List
+import datetime
+import logging
+import random
+import subprocess
+import time
+from textwrap import wrap
+from typing import List, Generator, Dict, Callable, Set, Tuple, Optional
 
+import matplotlib
+import matplotlib.pyplot as plt
 import z3
+from grammar_graph import gg
 
-from input_constraints import isla
 import input_constraints.isla_shortcuts as sc
+from input_constraints import isla
+from input_constraints.solver import ISLaSolver, CostWeightVector, CostSettings
+from input_constraints.type_defs import Grammar
+
+logger = logging.getLogger("evaluator")
 
 
 def set_smt_auto_eval(formula: isla.Formula, auto_eval: bool = False):
@@ -42,3 +55,384 @@ def vacuously_satisfies(inp: isla.DerivationTree, formula: isla.Formula) -> bool
     ]
 
     return not clauses
+
+
+def collect_data(
+        generator: Generator[isla.DerivationTree, None, None],
+        timeout_seconds: int = 60) -> Dict[float, isla.DerivationTree]:
+    start_time = time.time()
+    result: Dict[float, isla.DerivationTree] = {}
+    logger.info("Collecting data for %d seconds", timeout_seconds)
+
+    while int(time.time()) - int(start_time) <= timeout_seconds:
+        try:
+            inp = next(generator)
+        except StopIteration:
+            break
+
+        logger.debug("Input: %s", str(inp))
+        curr_relative_time = time.time() - start_time
+        assert curr_relative_time not in result
+        result[curr_relative_time] = inp
+
+    logger.info("Collected %d inputs in %d seconds", len(result), timeout_seconds)
+    return result
+
+
+class PerformanceEvaluationResult:
+    def __init__(
+            self,
+            accumulated_valid_inputs: Dict[float, int],
+            accumulated_k_path_coverage: Dict[float, int],
+            accumulated_non_vacuous_inputs: Dict[float, int]):
+        self.accumulated_valid_inputs = accumulated_valid_inputs
+        self.accumulated_k_path_coverage = accumulated_k_path_coverage
+        self.accumulated_non_vacuous_inputs = accumulated_non_vacuous_inputs
+
+        max_time = max(accumulated_valid_inputs.keys())
+        self.final_product_value: float = self.single_product_value(max_time)
+
+    def mean_data(self) -> Dict[float, float]:
+        return {
+            seconds: self.single_product_value(seconds)
+            for seconds in self.accumulated_valid_inputs}
+
+    def single_product_value(self, seconds):
+        return ((self.accumulated_valid_inputs[seconds] + 1) *
+                (self.accumulated_k_path_coverage[seconds] + 1) *
+                (self.accumulated_non_vacuous_inputs[seconds] + 1)) ** (1 / float(3)) - 1
+
+    def plot(self, outfile_pdf: str, title: str = "Performance Data"):
+        assert outfile_pdf.endswith(".pdf")
+        matplotlib.use("PDF")
+
+        fig, ax = plt.subplots()
+        ax.plot(
+            list(self.accumulated_valid_inputs.keys()),
+            list(self.accumulated_valid_inputs.values()),
+            label="Valid Inputs")
+        ax.plot(
+            list(self.accumulated_k_path_coverage.keys()),
+            list(self.accumulated_k_path_coverage.values()),
+            label="k-Path Coverage (%)")
+        ax.plot(
+            list(self.accumulated_non_vacuous_inputs.keys()),
+            list(self.accumulated_non_vacuous_inputs.values()),
+            label="Non-Vacuous Inputs")
+
+        mean = self.mean_data()
+        ax.plot(
+            list(mean.keys()),
+            list(mean.values()),
+            label="Geometric Mean")
+
+        for values in [
+            self.accumulated_valid_inputs.values(),
+            self.accumulated_k_path_coverage.values(),
+            self.accumulated_non_vacuous_inputs.values(),
+            mean.values()
+        ]:
+            plt.annotate(
+                max(values),
+                xy=(1, max(values)),
+                xytext=(8, 0),
+                xycoords=('axes fraction', 'data'),
+                textcoords='offset points')
+
+        ax.set_xlabel("Seconds")
+        ax.set_title(title)
+        ax.legend()
+        fig.tight_layout()
+        plt.plot()
+
+        logger.info("Saving performance analysis plot to %s", outfile_pdf)
+        matplotlib.pyplot.savefig(outfile_pdf)
+
+    def __repr__(self):
+        return (f"PerformanceEvaluationResult(accumulated_valid_inputs={self.accumulated_valid_inputs}, "
+                f"accumulated_k_path_coverage={self.accumulated_k_path_coverage}, "
+                f"accumulated_non_vacuous_inputs={self.accumulated_non_vacuous_inputs})")
+
+    def __str__(self):
+        return f"Mean Performance: {self.final_product_value}"
+
+
+def evaluate_data(
+        data: Dict[float, isla.DerivationTree],
+        formula: isla.Formula,
+        graph: gg.GrammarGraph,
+        validator: Callable[[isla.DerivationTree], bool],
+        k: int = 3) -> PerformanceEvaluationResult:
+    accumulated_valid_inputs: Dict[float, int] = {}
+    accumulated_k_path_coverage: Dict[float, int] = {}
+    accumulated_non_vacuous_inputs: Dict[float, int] = {}
+
+    valid_inputs: int = 0
+    covered_kpaths: Set[Tuple[gg.Node, ...]] = set()
+    non_vacuous_inputs: int = 0
+
+    for seconds, inp in data.items():
+        if validator(inp):
+            valid_inputs += 1
+        else:
+            logger.debug("Input %s invalid", str(inp))
+            continue
+
+        if not vacuously_satisfies(inp, formula):
+            non_vacuous_inputs += 1
+
+        covered_kpaths.update(graph.k_paths_in_tree(inp.to_parse_tree(), k))
+        accumulated_valid_inputs[seconds] = valid_inputs
+        accumulated_k_path_coverage[seconds] = int(len(covered_kpaths) * 100 / len(graph.k_paths(k)))
+        accumulated_non_vacuous_inputs[seconds] = non_vacuous_inputs
+
+    result = PerformanceEvaluationResult(
+        accumulated_valid_inputs,
+        accumulated_k_path_coverage,
+        accumulated_non_vacuous_inputs)
+
+    logger.info(
+        "Final evaluation values: %d valid inputs, %d %% coverage, %d non-vacuous inputs, final mean: %f",
+        valid_inputs,
+        int(len(covered_kpaths) * 100 / len(graph.k_paths(k))),
+        non_vacuous_inputs,
+        list(result.mean_data().values())[-1]
+    )
+
+    return result
+
+
+def evaluate_generator(
+        producer: Generator[isla.DerivationTree, None, None],
+        formula: isla.Formula,
+        graph: gg.GrammarGraph,
+        validator: Callable[[isla.DerivationTree], bool],
+        outfile_pdf: Optional[str] = None,
+        timeout_seconds: int = 60,
+        diagram_title: str = "Performance Data",
+        k=3) -> PerformanceEvaluationResult:
+    logger.info("Collecting performance data")
+    data = collect_data(producer, timeout_seconds=timeout_seconds)
+    logger.info("Evaluating Data")
+    evaluation_result = evaluate_data(data, formula, graph, validator, k)
+
+    if outfile_pdf:
+        logger.info(f"Plotting result to {outfile_pdf}")
+        evaluation_result.plot(outfile_pdf, title=diagram_title)
+
+    return evaluation_result
+
+
+def evaluate_isla_generator(
+        grammar: Grammar,
+        formula: isla.Formula,
+        v: CostWeightVector,
+        validator: Callable[[isla.DerivationTree], bool],
+        timeout: int,
+        outfile_name: Optional[str] = None,
+        k=3) -> PerformanceEvaluationResult:
+    logger.info("Evaluating weight vector %s", v)
+    isla_producer = ISLaSolver(
+        grammar,
+        formula,
+        max_number_free_instantiations=1,
+        max_number_smt_instantiations=1,
+        timeout_seconds=timeout,
+        cost_settings=CostSettings((v,), (200,))
+    ).solve()
+
+    return evaluate_generator(
+        outfile_pdf=outfile_name,
+        diagram_title="\n".join(wrap(str(v), 60)),
+        producer=isla_producer,
+        formula=formula,
+        graph=gg.GrammarGraph.from_grammar(grammar),
+        validator=validator,
+        timeout_seconds=timeout,
+        k=k)
+
+
+def randno() -> int:
+    return random.randint(0, 20)
+
+
+def evaluate_random_cost_vectors(
+        grammar: Grammar,
+        formula: isla.Formula,
+        validator: Callable[[isla.DerivationTree], bool],
+        final_out_file_name: str,
+        timeout: int = 60,
+        rounds: int = 30,
+        k: int = 3):
+    for i in range(rounds):
+        v = CostWeightVector(
+            tree_closing_cost=randno(),
+            vacuous_penalty=randno(),
+            constraint_cost=randno(),
+            derivation_depth_penalty=randno(),
+            low_coverage_penalty=randno()
+        )
+        logger.info("Round %d, cost vector %s", i + 1, str(v))
+        outfile_name = f"/tmp/xml_perf_eval_{str((i + 1)).rjust(len(str(rounds)), '0')}.pdf"
+
+        evaluate_isla_generator(grammar, formula, v, validator, timeout, outfile_name, k)
+
+    process = subprocess.run(
+        ["pdfjam"] +
+        [f"/tmp/xml_perf_eval_{str((i + 1)).rjust(len(str(rounds)), '0')}.pdf" for i in range(rounds)] +
+        ["--nup", "4x3", "--landscape", "--outfile", final_out_file_name],
+        stderr=subprocess.PIPE)
+
+    if process.returncode != 0:
+        logger.error("Combining output PDFs did not work, error message: %s", process.stderr)
+    else:
+        logger.info("Saved combined output file at %s", final_out_file_name)
+
+
+def mutate_cost_weight(w: float, max_add: int = 5, max_factor: int = 3) -> float:
+    if w == 0:
+        return w + random.choices(
+            range(1, max_add + 1),
+            list(reversed(list(map(lambda x: 2 ** x, range(max_add))))))[0]
+
+    else:
+        factor = random.choices(
+            range(1, max_factor + 1),
+            list(reversed(list(map(lambda x: 2 ** x, range(max_factor))))))[0]
+
+        return w * factor if random.random() < .5 else w / factor
+
+
+def evaluate_mutated_cost_vectors(
+        grammar: Grammar,
+        formula: isla.Formula,
+        base_vector: CostWeightVector,
+        validator: Callable[[isla.DerivationTree], bool],
+        final_out_file_name: str,
+        timeout: int = 60,
+        rounds: int = 30,
+        k: int = 3):
+    args = {
+        "tree_closing_cost": base_vector.tree_closing_cost,
+        "vacuous_penalty": base_vector.vacuous_penalty,
+        "constraint_cost": base_vector.constraint_cost,
+        "derivation_depth_penalty": base_vector.derivation_depth_penalty,
+        "low_coverage_penalty": base_vector.low_coverage_penalty
+    }
+
+    for i in range(rounds):
+        num_mutated_elements = random.choices(range(1, 5), weights=[400, 200, 100, 50], k=1)[0]
+        mutated_elements = random.sample(args.keys(), k=num_mutated_elements)
+
+        new_args = copy.copy(args)
+        new_args.update({elem: mutate_cost_weight(args[elem]) for elem in mutated_elements})
+        v = CostWeightVector(**new_args)
+
+        logger.info("Round %d, cost vector %s", i + 1, str(v))
+        outfile_name = f"/tmp/xml_perf_eval_{str((i + 1)).rjust(len(str(rounds)), '0')}.pdf"
+
+        evaluate_isla_generator(grammar, formula, v, validator, timeout, outfile_name, k)
+
+    process = subprocess.run(
+        ["pdfjam"] +
+        [f"/tmp/xml_perf_eval_{str((i + 1)).rjust(len(str(rounds)), '0')}.pdf" for i in range(rounds)] +
+        ["--nup", "4x3", "--landscape", "--outfile", final_out_file_name],
+        stderr=subprocess.PIPE)
+
+    if process.returncode != 0:
+        logger.error("Combining output PDFs did not work, error message: %s", process.stderr)
+    else:
+        logger.info("Saved combined output file at %s", final_out_file_name)
+
+
+def auto_tune_weight_vector(
+        grammar: Grammar,
+        formula: isla.Formula,
+        validator: Callable[[isla.DerivationTree], bool],
+        timeout: int = 60,
+        population_size: int = 10,
+        generations: int = 10,
+        k: int = 3,
+        seed_population: List[CostWeightVector] = None) -> Tuple[PerformanceEvaluationResult, CostWeightVector]:
+    assert population_size >= 4
+    assert population_size % 2 == 0
+    assert seed_population is None or len(seed_population) == population_size
+
+    time_estimate = timeout * population_size + (generations - 1) * (population_size // 2) * timeout
+    logger.info(
+        "Autotuning, estimated time > %ds, end: %s",
+        time_estimate,
+        (datetime.datetime.now() + datetime.timedelta(seconds=time_estimate)).strftime("%d/%m/%Y %H:%M:%S")
+    )
+
+    current_population: List[Tuple[PerformanceEvaluationResult, CostWeightVector]] = []
+
+    # Create initial population
+    for idx in range(population_size):
+        if not seed_population:
+            new_vector = CostWeightVector(
+                tree_closing_cost=randno(),
+                vacuous_penalty=randno(),
+                constraint_cost=randno(),
+                derivation_depth_penalty=randno(),
+                low_coverage_penalty=randno())
+        else:
+            new_vector = seed_population[idx]
+
+        current_population.append((
+            evaluate_isla_generator(grammar, formula, new_vector, validator, timeout, k=k),
+            new_vector))
+
+    current_population = sorted(current_population, key=lambda t: t[0].final_product_value)
+
+    logger.info(
+        "Initial population:\n%s\n",
+        "\n".join([f'{r.final_product_value}: {str(v)}' for r, v in current_population]))
+
+    for generation in range(generations - 1):
+        # Remove the five least fittest elements
+        current_population = current_population[population_size // 2:]
+
+        # Crossover
+        offspring: List[Tuple[PerformanceEvaluationResult, CostWeightVector]] = []
+        idx = 0
+        while len(offspring) < population_size // 2:
+            first_parent = current_population[idx % len(current_population)]
+            second_parent = current_population[(idx + 1) % len(current_population)]
+
+            # We take two features from the first, and three from the second parent
+            all_features = list(first_parent[1].__dict__.keys())
+            first_parent_features = random.sample(all_features, 2)
+            child = CostWeightVector(**{
+                feature:
+                    first_parent[1].__dict__[feature]
+                    if feature in first_parent_features
+                    else second_parent[1].__dict__[feature]
+                for feature in all_features
+            })
+
+            logger.debug("Crossover of\n%s\nand\n%s:\n%s", first_parent[1], second_parent[1], child)
+
+            # Mutate one child feature
+            mutated_feature = random.choice(all_features)
+            current_feature_value: int = getattr(child, mutated_feature)
+            setattr(child, mutated_feature, mutate_cost_weight(current_feature_value))
+
+            logger.debug("After Mutation: %s", child)
+
+            offspring.append((
+                evaluate_isla_generator(grammar, formula, child, validator, timeout, k=k),
+                child))
+
+        current_population += offspring
+        current_population = sorted(current_population, key=lambda t: t[0].final_product_value)
+        idx += 1
+
+        logger.info(
+            "Generation %d:\n%s\n",
+            generation + 1,
+            "\n".join([f'{r.final_product_value}: {str(v)}' for r, v in current_population]))
+
+    result = current_population[-1]
+    logger.info("Auto-tuning finished. Result: %s, fitness %d", result[1], result[0].final_product_value)
+    return result

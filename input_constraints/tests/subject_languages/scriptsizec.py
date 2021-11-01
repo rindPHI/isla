@@ -2,25 +2,24 @@ import string
 import subprocess
 import tempfile
 from subprocess import PIPE
-from typing import Union, Optional, IO
+from typing import Union
 
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
-from fuzzingbook.GrammarFuzzer import tree_to_string
 from fuzzingbook.Grammars import srange
 
 from input_constraints import isla
-
 # Based on:
 # Kartik Talwar. Tiny-C Compiler. https://gist.github.com/KartikTalwar/3095780.
+from input_constraints.isla import parse_isla
+from input_constraints.isla_predicates import BEFORE_PREDICATE, SAME_POSITION_PREDICATE
 
 SCRIPTSIZE_C_GRAMMAR = {
     "<start>": ["<statement>"],
     "<statement>": [
         "{<declarations><statements>}",
-        "if<paren_expr> <statement>",
-        "if<paren_expr> <statement> else <statement>",
-        "while<paren_expr> <statement>",
-        "do <statement> while<paren_expr>;",
+        # "if<paren_expr> <statement>",
+        # "if<paren_expr> <statement> else <statement>",
+        # "while<paren_expr> <statement>",
+        # "do <statement> while<paren_expr>;",
         "<expr>;",
         ";"
     ],
@@ -62,33 +61,77 @@ SCRIPTSIZE_C_GRAMMAR = {
     "<digit_nonzero>": list(set(srange(string.digits)) - {"0"}),
 }
 
+# TODO: Scoping!
+SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT = """
+const start: <start>;
 
-def compile_scriptsizec_clang(tree: isla.DerivationTree, outfile: Optional[IO] = None) -> Union[bool, str]:
+vars {
+  expr: <expr>;
+  def_id, use_id: <id>;
+  declaration: <declaration>;
+}
+
+constraint {
+  forall expr in start:
+    forall use_id in expr:
+      (exists declaration="int {def_id};" in start:
+         (before(declaration, expr) and
+          (= use_id def_id)) or
+       exists declaration="int {def_id} = <expr>;" in start:
+         (before(declaration, expr) and
+          (= use_id def_id)))
+}
+"""
+
+SCRIPTSIZE_C_DEF_USE_CONSTR = parse_isla(
+    SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT,
+    structural_predicates={"before": BEFORE_PREDICATE}
+)
+
+# TODO: Scoping!
+SCRIPTSIZE_C_NO_REDEF_TEXT = """
+const start: <start>;
+
+vars {
+  declaration, other_declaration: <declaration>;
+  def_id, other_def_id: <id>;
+}
+
+constraint {
+  (forall declaration="int {def_id};" in start:
+     (forall other_declaration="int {other_def_id};" in start:
+       (same_position(declaration, other_declaration) or
+        not (= def_id other_def_id)) and
+      forall other_declaration="int {other_def_id} = <expr>;" in start:
+        (same_position(declaration, other_declaration) or
+         not (= def_id other_def_id))) and
+   forall declaration="int {def_id} = <expr>;" in start:
+     (forall other_declaration="int {other_def_id};" in start:
+       (same_position(declaration, other_declaration) or
+        not (= def_id other_def_id)) and
+      forall other_declaration="int {other_def_id} = <expr>;" in start:
+        (same_position(declaration, other_declaration) or
+         not (= def_id other_def_id))))
+}
+"""
+
+SCRIPTSIZE_C_NO_REDEF_CONSTR = parse_isla(
+    SCRIPTSIZE_C_NO_REDEF_TEXT,
+    structural_predicates={"same_position": SAME_POSITION_PREDICATE}
+)
+
+
+def compile_scriptsizec_clang(tree: isla.DerivationTree) -> Union[bool, str]:
     contents = "int main() {\n"
     contents += "\n" + str(tree).replace("\n", "    \t")
     contents += "\n" + "}"
 
-    with tempfile.NamedTemporaryFile(suffix=".c") as tmp, tempfile.NamedTemporaryFile(suffix=".out") as _outfile:
-        the_outfile = outfile or _outfile
+    with tempfile.NamedTemporaryFile(suffix=".c") as tmp, tempfile.NamedTemporaryFile(suffix=".out") as outfile:
         tmp.write(contents.encode())
         tmp.flush()
-        cmd = ["clang", tmp.name, "-o", the_outfile.name]
+        cmd = ["clang", tmp.name, "-o", outfile.name]
         process = subprocess.Popen(cmd, stderr=PIPE)
-        (stdout, stderr) = process.communicate(timeout=2)
+        (stdout, stderr) = process.communicate()
         exit_code = process.wait()
 
         return True if exit_code == 0 else stderr.decode("utf-8")
-
-
-fuzzer = GrammarCoverageFuzzer(SCRIPTSIZE_C_GRAMMAR)
-success = 0
-for _ in range(1000):
-    prog = fuzzer.expand_tree(("<start>", None))
-    result = compile_scriptsizec_clang(isla.DerivationTree.from_parse_tree(prog))
-    if result is True:
-        success += 1
-        print(tree_to_string(prog))
-    else:
-        assert "use of undeclared" in result
-
-print(success)

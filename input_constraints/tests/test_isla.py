@@ -7,10 +7,10 @@ from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 import input_constraints.isla_shortcuts as sc
 from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
     DerivationTree, convert_to_dnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
-    matches_for_quantified_formula, QuantifiedFormula, DummyVariable
+    matches_for_quantified_formula, QuantifiedFormula, DummyVariable, eliminate_quantifiers
 from input_constraints.isla_predicates import BEFORE_PREDICATE
 from input_constraints.isla_predicates import count, COUNT_PREDICATE
-from input_constraints.tests.subject_languages import rest
+from input_constraints.tests.subject_languages import rest, scriptsizec
 from input_constraints.tests.subject_languages import tinyc, tar
 from input_constraints.tests.test_data import *
 from input_constraints.tests.test_helpers import parse
@@ -550,6 +550,70 @@ constraint {
 }
 """
         self.assertTrue(evaluate(formula, tree, structural_predicates={"before": BEFORE_PREDICATE}))
+
+    def test_eliminate_quantifiers_vacuously_satisfied(self):
+        inputs = ["{int a;int b;}", "{int a;}", "{int a;int b = 12;}", "17;"]
+        expected = [4, 4, 0, 6]
+
+        for inp, exp in zip(inputs, expected):
+            tree = DerivationTree.from_parse_tree(list(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp))[0])
+            formula = scriptsizec.SCRIPTSIZE_C_NO_REDEF_CONSTR.substitute_expressions(
+                {Constant("start", "<start>"): tree})
+
+            vs = set()
+            eliminate_quantifiers(formula, vs, grammar=scriptsizec.SCRIPTSIZE_C_GRAMMAR)
+            self.assertEqual(exp, len(vs))
+
+    def test_eliminate_quantifiers_open_tree(self):
+        tree = DerivationTree.from_parse_tree(("<start>", [
+            ("<statement>", [
+                ("{", []),
+                ("<declarations>", None),
+                ("<statements>", []),
+                ("}", [])])]))
+
+        formula = scriptsizec.SCRIPTSIZE_C_NO_REDEF_CONSTR.substitute_expressions(
+            {Constant("start", "<start>"): tree})
+
+        vs = set()
+        eliminate_quantifiers(formula, vs, grammar=scriptsizec.SCRIPTSIZE_C_GRAMMAR)
+        self.assertEqual(0, len(vs))
+
+        tree = DerivationTree.from_parse_tree(("<start>", [
+            ("<statement>", [
+                ("{", []),
+                ("<declarations>", [("<declaration>", [
+                    ("int ", []),
+                    ("<id>", None),
+                    (";", [])
+                ]), ("<declarations>", [])]),
+                ("<statements>", []),
+                ("}", [])])]))
+
+        formula = scriptsizec.SCRIPTSIZE_C_NO_REDEF_CONSTR.substitute_expressions(
+            {Constant("start", "<start>"): tree})
+
+        vs = set()
+        eliminate_quantifiers(formula, vs, grammar=scriptsizec.SCRIPTSIZE_C_GRAMMAR)
+        self.assertEqual(4, len(vs))
+
+        tree = DerivationTree.from_parse_tree(("<start>", [
+            ("<statement>", [
+                ("{", []),
+                ("<declarations>", [("<declaration>", [
+                    ("int ", []),
+                    ("<id>", None),
+                    (";", [])
+                ]), ("<declarations>", [])]),
+                ("<statements>", None),
+                ("}", [])])]))
+
+        formula = scriptsizec.SCRIPTSIZE_C_NO_REDEF_CONSTR.substitute_expressions(
+            {Constant("start", "<start>"): tree})
+
+        vs = set()
+        eliminate_quantifiers(formula, vs, grammar=scriptsizec.SCRIPTSIZE_C_GRAMMAR)
+        self.assertEqual(0, len(vs))
 
 
 if __name__ == '__main__':

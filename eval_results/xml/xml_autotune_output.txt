@@ -1,0 +1,555 @@
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 15 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 15 valid inputs, 60 % coverage, 14 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 60 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 59 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 14 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 14 valid inputs, 50 % coverage, 13 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 61 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 60 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 57 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 5 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 5 valid inputs, 29 % coverage, 4 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 5 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 5 valid inputs, 26 % coverage, 4 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 5 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 5 valid inputs, 30 % coverage, 4 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 59 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 5 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 5 valid inputs, 29 % coverage, 4 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 5 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 5 valid inputs, 29 % coverage, 4 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 61 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 5 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 5 valid inputs, 27 % coverage, 4 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 60 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 59 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 59 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 56 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 5 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 5 valid inputs, 30 % coverage, 4 non-vacuous inputs
+INFO:evaluator:Initial population:
+8.041451517178116: CostWeightVector(tree_closing_cost = 6, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 11, low_coverage_penalty = 2)
+8.14325284978472: CostWeightVector(tree_closing_cost = 19, vacuous_penalty = 1, constraint_cost = 2, derivation_depth_penalty = 11, low_coverage_penalty = 0)
+8.339550915402606: CostWeightVector(tree_closing_cost = 5, vacuous_penalty = 18, constraint_cost = 11, derivation_depth_penalty = 18, low_coverage_penalty = 18)
+8.339550915402606: CostWeightVector(tree_closing_cost = 1, vacuous_penalty = 14, constraint_cost = 10, derivation_depth_penalty = 16, low_coverage_penalty = 10)
+8.339550915402606: CostWeightVector(tree_closing_cost = 1, vacuous_penalty = 16, constraint_cost = 12, derivation_depth_penalty = 18, low_coverage_penalty = 16)
+8.434326653017491: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 7, constraint_cost = 3, derivation_depth_penalty = 16, low_coverage_penalty = 3)
+8.434326653017491: CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 6, constraint_cost = 12, derivation_depth_penalty = 18, low_coverage_penalty = 20)
+20.877594786634486: CostWeightVector(tree_closing_cost = 10, vacuous_penalty = 18, constraint_cost = 1, derivation_depth_penalty = 2, low_coverage_penalty = 17)
+23.269667714505616: CostWeightVector(tree_closing_cost = 18, vacuous_penalty = 0, constraint_cost = 11, derivation_depth_penalty = 1, low_coverage_penalty = 2)
+24.7886177389645: CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 7, constraint_cost = 19, derivation_depth_penalty = 10, low_coverage_penalty = 9)
+24.93529936422816: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 16, constraint_cost = 12, derivation_depth_penalty = 6, low_coverage_penalty = 18)
+25.223594262387916: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 20, constraint_cost = 17, derivation_depth_penalty = 4, low_coverage_penalty = 16)
+25.223594262387916: CostWeightVector(tree_closing_cost = 1, vacuous_penalty = 18, constraint_cost = 17, derivation_depth_penalty = 6, low_coverage_penalty = 2)
+25.223594262387916: CostWeightVector(tree_closing_cost = 19, vacuous_penalty = 12, constraint_cost = 13, derivation_depth_penalty = 14, low_coverage_penalty = 13)
+25.223594262387916: CostWeightVector(tree_closing_cost = 13, vacuous_penalty = 11, constraint_cost = 19, derivation_depth_penalty = 9, low_coverage_penalty = 10)
+25.365302821539984: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 17, constraint_cost = 18, derivation_depth_penalty = 14, low_coverage_penalty = 8)
+25.365302821539984: CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 13, constraint_cost = 19, derivation_depth_penalty = 15, low_coverage_penalty = 4)
+25.365302821539984: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 1, constraint_cost = 19, derivation_depth_penalty = 7, low_coverage_penalty = 7)
+25.50544546014674: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 5, constraint_cost = 18, derivation_depth_penalty = 12, low_coverage_penalty = 5)
+25.50544546014674: CostWeightVector(tree_closing_cost = 15, vacuous_penalty = 12, constraint_cost = 9, derivation_depth_penalty = 8, low_coverage_penalty = 15)
+
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 60 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 56 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 61 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 54 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 57 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 54 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 61 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 61 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 56 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 58 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Generation 1:
+24.489930611504086: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 20, constraint_cost = 18, derivation_depth_penalty = 6, low_coverage_penalty = 16)
+24.489930611504086: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 18, constraint_cost = 12, derivation_depth_penalty = 6, low_coverage_penalty = 16)
+24.7886177389645: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 20, constraint_cost = 12, derivation_depth_penalty = 7, low_coverage_penalty = 16)
+24.7886177389645: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 20, constraint_cost = 17, derivation_depth_penalty = 6, low_coverage_penalty = 14)
+24.93529936422816: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 16, constraint_cost = 12, derivation_depth_penalty = 6, low_coverage_penalty = 18)
+24.93529936422816: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 16, constraint_cost = 17, derivation_depth_penalty = 3, low_coverage_penalty = 18)
+25.080275292534296: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 19, constraint_cost = 17, derivation_depth_penalty = 6, low_coverage_penalty = 18)
+25.223594262387916: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 20, constraint_cost = 17, derivation_depth_penalty = 4, low_coverage_penalty = 16)
+25.223594262387916: CostWeightVector(tree_closing_cost = 1, vacuous_penalty = 18, constraint_cost = 17, derivation_depth_penalty = 6, low_coverage_penalty = 2)
+25.223594262387916: CostWeightVector(tree_closing_cost = 19, vacuous_penalty = 12, constraint_cost = 13, derivation_depth_penalty = 14, low_coverage_penalty = 13)
+25.223594262387916: CostWeightVector(tree_closing_cost = 13, vacuous_penalty = 11, constraint_cost = 19, derivation_depth_penalty = 9, low_coverage_penalty = 10)
+25.365302821539984: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 17, constraint_cost = 18, derivation_depth_penalty = 14, low_coverage_penalty = 8)
+25.365302821539984: CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 13, constraint_cost = 19, derivation_depth_penalty = 15, low_coverage_penalty = 4)
+25.365302821539984: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 1, constraint_cost = 19, derivation_depth_penalty = 7, low_coverage_penalty = 7)
+25.365302821539984: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 16, constraint_cost = 19, derivation_depth_penalty = 4, low_coverage_penalty = 18)
+25.50544546014674: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 5, constraint_cost = 18, derivation_depth_penalty = 12, low_coverage_penalty = 5)
+25.50544546014674: CostWeightVector(tree_closing_cost = 15, vacuous_penalty = 12, constraint_cost = 9, derivation_depth_penalty = 8, low_coverage_penalty = 15)
+25.50544546014674: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 14, constraint_cost = 17, derivation_depth_penalty = 4, low_coverage_penalty = 16)
+25.50544546014674: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 20, constraint_cost = 12, derivation_depth_penalty = 4, low_coverage_penalty = 18)
+25.50544546014674: CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 20, constraint_cost = 12, derivation_depth_penalty = 6, low_coverage_penalty = 16)
+
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 57 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 57 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 59 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 56 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 56 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 58 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 58 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 57 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 55 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 58 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Generation 2:
+24.640179343159694: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 11, constraint_cost = 18, derivation_depth_penalty = 15, low_coverage_penalty = 10)
+24.7886177389645: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 11, constraint_cost = 18, derivation_depth_penalty = 14, low_coverage_penalty = 8)
+24.7886177389645: CostWeightVector(tree_closing_cost = 13, vacuous_penalty = 16, constraint_cost = 18, derivation_depth_penalty = 14, low_coverage_penalty = 10)
+24.93529936422816: CostWeightVector(tree_closing_cost = 13, vacuous_penalty = 17, constraint_cost = 17, derivation_depth_penalty = 14, low_coverage_penalty = 8)
+24.93529936422816: CostWeightVector(tree_closing_cost = 12, vacuous_penalty = 17, constraint_cost = 19, derivation_depth_penalty = 14, low_coverage_penalty = 10)
+24.93529936422816: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 12, constraint_cost = 19, derivation_depth_penalty = 14, low_coverage_penalty = 8)
+25.080275292534296: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 17, constraint_cost = 22, derivation_depth_penalty = 14, low_coverage_penalty = 10)
+25.080275292534296: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 11, constraint_cost = 18, derivation_depth_penalty = 14, low_coverage_penalty = 8)
+25.080275292534296: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 17, constraint_cost = 19, derivation_depth_penalty = 9, low_coverage_penalty = 10)
+25.223594262387916: CostWeightVector(tree_closing_cost = 13, vacuous_penalty = 11, constraint_cost = 19, derivation_depth_penalty = 9, low_coverage_penalty = 10)
+25.223594262387916: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 11, constraint_cost = 19, derivation_depth_penalty = 14, low_coverage_penalty = 7)
+25.365302821539984: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 17, constraint_cost = 18, derivation_depth_penalty = 14, low_coverage_penalty = 8)
+25.365302821539984: CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 13, constraint_cost = 19, derivation_depth_penalty = 15, low_coverage_penalty = 4)
+25.365302821539984: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 1, constraint_cost = 19, derivation_depth_penalty = 7, low_coverage_penalty = 7)
+25.365302821539984: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 16, constraint_cost = 19, derivation_depth_penalty = 4, low_coverage_penalty = 18)
+25.50544546014674: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 5, constraint_cost = 18, derivation_depth_penalty = 12, low_coverage_penalty = 5)
+25.50544546014674: CostWeightVector(tree_closing_cost = 15, vacuous_penalty = 12, constraint_cost = 9, derivation_depth_penalty = 8, low_coverage_penalty = 15)
+25.50544546014674: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 14, constraint_cost = 17, derivation_depth_penalty = 4, low_coverage_penalty = 16)
+25.50544546014674: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 20, constraint_cost = 12, derivation_depth_penalty = 4, low_coverage_penalty = 18)
+25.50544546014674: CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 20, constraint_cost = 12, derivation_depth_penalty = 6, low_coverage_penalty = 16)
+
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 57 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 57 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 60 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 58 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 62 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 60 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 56 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 59 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 54 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 55 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Generation 3:
+24.489930611504086: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 11, constraint_cost = 18, derivation_depth_penalty = 13, low_coverage_penalty = 8)
+24.640179343159694: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 11, constraint_cost = 18, derivation_depth_penalty = 11, low_coverage_penalty = 8)
+24.7886177389645: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 11, constraint_cost = 19, derivation_depth_penalty = 13, low_coverage_penalty = 8)
+24.93529936422816: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 19, constraint_cost = 19, derivation_depth_penalty = 14, low_coverage_penalty = 8)
+24.93529936422816: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 17, constraint_cost = 18, derivation_depth_penalty = 14, low_coverage_penalty = 6)
+25.080275292534296: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 17, constraint_cost = 19, derivation_depth_penalty = 14, low_coverage_penalty = 7)
+25.223594262387916: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 11, constraint_cost = 19, derivation_depth_penalty = 14, low_coverage_penalty = 7)
+25.223594262387916: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 11, constraint_cost = 19, derivation_depth_penalty = 15, low_coverage_penalty = 8)
+25.365302821539984: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 17, constraint_cost = 18, derivation_depth_penalty = 14, low_coverage_penalty = 8)
+25.365302821539984: CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 13, constraint_cost = 19, derivation_depth_penalty = 15, low_coverage_penalty = 4)
+25.365302821539984: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 1, constraint_cost = 19, derivation_depth_penalty = 7, low_coverage_penalty = 7)
+25.365302821539984: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 16, constraint_cost = 19, derivation_depth_penalty = 4, low_coverage_penalty = 18)
+25.365302821539984: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 17, constraint_cost = 18, derivation_depth_penalty = 14, low_coverage_penalty = 7)
+25.365302821539984: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 17, constraint_cost = 18, derivation_depth_penalty = 14, low_coverage_penalty = 10)
+25.50544546014674: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 5, constraint_cost = 18, derivation_depth_penalty = 12, low_coverage_penalty = 5)
+25.50544546014674: CostWeightVector(tree_closing_cost = 15, vacuous_penalty = 12, constraint_cost = 9, derivation_depth_penalty = 8, low_coverage_penalty = 15)
+25.50544546014674: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 14, constraint_cost = 17, derivation_depth_penalty = 4, low_coverage_penalty = 16)
+25.50544546014674: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 20, constraint_cost = 12, derivation_depth_penalty = 4, low_coverage_penalty = 18)
+25.50544546014674: CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 20, constraint_cost = 12, derivation_depth_penalty = 6, low_coverage_penalty = 16)
+25.64406473379555: CostWeightVector(tree_closing_cost = 10, vacuous_penalty = 17, constraint_cost = 19, derivation_depth_penalty = 14, low_coverage_penalty = 7)
+
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 58 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 57 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 60 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 57 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 57 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 61 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 57 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 14 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 14 valid inputs, 47 % coverage, 13 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 57 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 61 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Generation 4:
+20.45140183637957: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 1, constraint_cost = 19, derivation_depth_penalty = 2, low_coverage_penalty = 7)
+24.93529936422816: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 17, constraint_cost = 19, derivation_depth_penalty = 4, low_coverage_penalty = 7)
+24.93529936422816: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 16, constraint_cost = 18, derivation_depth_penalty = 7, low_coverage_penalty = 7)
+24.93529936422816: CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 16, constraint_cost = 19, derivation_depth_penalty = 7, low_coverage_penalty = 18)
+24.93529936422816: CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 16, constraint_cost = 19, derivation_depth_penalty = 4, low_coverage_penalty = 7)
+24.93529936422816: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 17, constraint_cost = 19, derivation_depth_penalty = 7, low_coverage_penalty = 7)
+25.080275292534296: CostWeightVector(tree_closing_cost = 5, vacuous_penalty = 16, constraint_cost = 19, derivation_depth_penalty = 7, low_coverage_penalty = 7)
+25.365302821539984: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 1, constraint_cost = 19, derivation_depth_penalty = 7, low_coverage_penalty = 7)
+25.365302821539984: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 16, constraint_cost = 19, derivation_depth_penalty = 4, low_coverage_penalty = 18)
+25.365302821539984: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 17, constraint_cost = 18, derivation_depth_penalty = 14, low_coverage_penalty = 7)
+25.365302821539984: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 17, constraint_cost = 18, derivation_depth_penalty = 14, low_coverage_penalty = 10)
+25.365302821539984: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 1, constraint_cost = 20, derivation_depth_penalty = 4, low_coverage_penalty = 18)
+25.50544546014674: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 5, constraint_cost = 18, derivation_depth_penalty = 12, low_coverage_penalty = 5)
+25.50544546014674: CostWeightVector(tree_closing_cost = 15, vacuous_penalty = 12, constraint_cost = 9, derivation_depth_penalty = 8, low_coverage_penalty = 15)
+25.50544546014674: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 14, constraint_cost = 17, derivation_depth_penalty = 4, low_coverage_penalty = 16)
+25.50544546014674: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 20, constraint_cost = 12, derivation_depth_penalty = 4, low_coverage_penalty = 18)
+25.50544546014674: CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 20, constraint_cost = 12, derivation_depth_penalty = 6, low_coverage_penalty = 16)
+25.50544546014674: CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 1, constraint_cost = 19, derivation_depth_penalty = 7, low_coverage_penalty = 18)
+25.50544546014674: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 4, constraint_cost = 19, derivation_depth_penalty = 4, low_coverage_penalty = 18)
+25.64406473379555: CostWeightVector(tree_closing_cost = 10, vacuous_penalty = 17, constraint_cost = 19, derivation_depth_penalty = 14, low_coverage_penalty = 7)
+
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 57 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 60 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 60 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 54 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 58 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 58 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 14 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 14 valid inputs, 51 % coverage, 13 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 57 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 54 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 58 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Generation 5:
+21.015861033220094: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 17, constraint_cost = 18, derivation_depth_penalty = 2, low_coverage_penalty = 18)
+24.489930611504086: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 1, constraint_cost = 18, derivation_depth_penalty = 4, low_coverage_penalty = 8)
+24.489930611504086: CostWeightVector(tree_closing_cost = 12, vacuous_penalty = 17, constraint_cost = 20, derivation_depth_penalty = 4, low_coverage_penalty = 18)
+24.93529936422816: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 1, constraint_cost = 18, derivation_depth_penalty = 11, low_coverage_penalty = 18)
+24.93529936422816: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = -2, constraint_cost = 20, derivation_depth_penalty = 14, low_coverage_penalty = 18)
+25.080275292534296: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 16, constraint_cost = 20, derivation_depth_penalty = 14, low_coverage_penalty = 18)
+25.080275292534296: CostWeightVector(tree_closing_cost = 10, vacuous_penalty = 1, constraint_cost = 20, derivation_depth_penalty = 4, low_coverage_penalty = 10)
+25.080275292534296: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 1, constraint_cost = 20, derivation_depth_penalty = 4, low_coverage_penalty = 10)
+25.365302821539984: CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 17, constraint_cost = 18, derivation_depth_penalty = 14, low_coverage_penalty = 10)
+25.365302821539984: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 1, constraint_cost = 20, derivation_depth_penalty = 4, low_coverage_penalty = 18)
+25.365302821539984: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 17, constraint_cost = 20, derivation_depth_penalty = 14, low_coverage_penalty = 19)
+25.365302821539984: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 2, constraint_cost = 20, derivation_depth_penalty = 14, low_coverage_penalty = 10)
+25.50544546014674: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 5, constraint_cost = 18, derivation_depth_penalty = 12, low_coverage_penalty = 5)
+25.50544546014674: CostWeightVector(tree_closing_cost = 15, vacuous_penalty = 12, constraint_cost = 9, derivation_depth_penalty = 8, low_coverage_penalty = 15)
+25.50544546014674: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 14, constraint_cost = 17, derivation_depth_penalty = 4, low_coverage_penalty = 16)
+25.50544546014674: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 20, constraint_cost = 12, derivation_depth_penalty = 4, low_coverage_penalty = 18)
+25.50544546014674: CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 20, constraint_cost = 12, derivation_depth_penalty = 6, low_coverage_penalty = 16)
+25.50544546014674: CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 1, constraint_cost = 19, derivation_depth_penalty = 7, low_coverage_penalty = 18)
+25.50544546014674: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 4, constraint_cost = 19, derivation_depth_penalty = 4, low_coverage_penalty = 18)
+25.64406473379555: CostWeightVector(tree_closing_cost = 10, vacuous_penalty = 17, constraint_cost = 19, derivation_depth_penalty = 14, low_coverage_penalty = 7)
+
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 60 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 58 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 57 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 58 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 57 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 60 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 58 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 60 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 58 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Collecting performance data
+INFO:evaluator:Collecting data for 30 seconds
+INFO:evaluator:Collected 17 inputs in 30 seconds
+INFO:evaluator:Evaluating Data
+INFO:evaluator:Final evaluation values: 17 valid inputs, 61 % coverage, 16 non-vacuous inputs
+INFO:evaluator:Generation 6:
+24.93529936422816: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 17, constraint_cost = 20, derivation_depth_penalty = 16, low_coverage_penalty = 10)
+24.93529936422816: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 0, constraint_cost = 20, derivation_depth_penalty = 14, low_coverage_penalty = 19)
+25.080275292534296: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 14, constraint_cost = 20, derivation_depth_penalty = 14, low_coverage_penalty = 10)
+25.080275292534296: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 17, constraint_cost = 20, derivation_depth_penalty = 13, low_coverage_penalty = 10)
+25.080275292534296: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 17, constraint_cost = 17, derivation_depth_penalty = 14, low_coverage_penalty = 10)
+25.080275292534296: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 5, constraint_cost = 20, derivation_depth_penalty = 14, low_coverage_penalty = 19)
+25.365302821539984: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 17, constraint_cost = 20, derivation_depth_penalty = 14, low_coverage_penalty = 19)
+25.365302821539984: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 2, constraint_cost = 20, derivation_depth_penalty = 14, low_coverage_penalty = 10)
+25.365302821539984: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 17, constraint_cost = 22, derivation_depth_penalty = 14, low_coverage_penalty = 10)
+25.365302821539984: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 17, constraint_cost = 20, derivation_depth_penalty = 17, low_coverage_penalty = 10)
+25.365302821539984: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 15, constraint_cost = 20, derivation_depth_penalty = 14, low_coverage_penalty = 19)
+25.50544546014674: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 5, constraint_cost = 18, derivation_depth_penalty = 12, low_coverage_penalty = 5)
+25.50544546014674: CostWeightVector(tree_closing_cost = 15, vacuous_penalty = 12, constraint_cost = 9, derivation_depth_penalty = 8, low_coverage_penalty = 15)
+25.50544546014674: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 14, constraint_cost = 17, derivation_depth_penalty = 4, low_coverage_penalty = 16)
+25.50544546014674: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 20, constraint_cost = 12, derivation_depth_penalty = 4, low_coverage_penalty = 18)
+25.50544546014674: CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 20, constraint_cost = 12, derivation_depth_penalty = 6, low_coverage_penalty = 16)
+25.50544546014674: CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 1, constraint_cost = 19, derivation_depth_penalty = 7, low_coverage_penalty = 18)
+25.50544546014674: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 4, constraint_cost = 19, derivation_depth_penalty = 4, low_coverage_penalty = 18)
+25.50544546014674: CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 2, constraint_cost = 20, derivation_depth_penalty = 14, low_coverage_penalty = 12)
+25.64406473379555: CostWeightVector(tree_closing_cost = 10, vacuous_penalty = 17, constraint_cost = 19, derivation_depth_penalty = 14, low_coverage_penalty = 7)
+
+INFO:evaluator:Auto-tuning finished. Result: CostWeightVector(tree_closing_cost = 10, vacuous_penalty = 17, constraint_cost = 19, derivation_depth_penalty = 14, low_coverage_penalty = 7), fitness 25

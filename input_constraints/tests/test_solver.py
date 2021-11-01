@@ -16,7 +16,7 @@ from input_constraints.helpers import delete_unreachable
 from input_constraints.isla import VariablesCollector, parse_isla
 from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
 from input_constraints.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector
-from input_constraints.tests.subject_languages import rest, tinyc, tar, simple_tar
+from input_constraints.tests.subject_languages import rest, tinyc, tar, simple_tar, scriptsizec
 from input_constraints.tests.subject_languages.tar import extract_tar
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR, XML_GRAMMAR
 
@@ -129,7 +129,7 @@ class TestSolver(unittest.TestCase):
         formula: isla.Formula = mgr.create(
             sc.forall_bind(
                 sc.bexpr("<") + mgr.bv("$oid", "<id>") + ">" +
-                "<xml-tree>" +
+                "<inner-xml-tree>" +
                 "</" + mgr.bv("$cid", "<id>") + ">",
                 "<xml-tree>",
                 start,
@@ -137,7 +137,7 @@ class TestSolver(unittest.TestCase):
             ) &
             sc.forall_bind(
                 sc.bexpr("<") + mgr.bv("$oid", "<id>") + " " + "<xml-attribute>" + ">" +
-                "<xml-tree>" +
+                "<inner-xml-tree>" +
                 "</" + mgr.bv("$cid", "<id>") + ">",
                 "<xml-tree>",
                 start,
@@ -146,9 +146,20 @@ class TestSolver(unittest.TestCase):
         )
 
         self.execute_generation_test(
-            formula, grammar=XML_GRAMMAR, max_number_free_instantiations=1,
-            num_solutions=500,
-            print_only=True
+            formula,
+            grammar=XML_GRAMMAR,
+            max_number_free_instantiations=1,
+            num_solutions=30,
+            cost_settings=CostSettings(
+                weight_vectors=(
+                    CostWeightVector(
+                        tree_closing_cost=14,
+                        vacuous_penalty=15,
+                        constraint_cost=18,
+                        derivation_depth_penalty=1,
+                        low_coverage_penalty=8)
+                    ,),
+                cost_phase_lengths=(200,))
         )
 
     def test_declared_before_used(self):
@@ -283,6 +294,36 @@ constraint {
             enforce_unique_trees_in_queue=True,
         )
 
+    def test_scriptsize_c_def_before_use(self):
+        # TODO: The compile_tinyc_lang test function is not totally precise, as it initializes
+        #       all assigned variables at the beginning to make the tinyc snippet c compatible.
+        #       Actually, we would have to localize the initializations, which requires some
+        #       more programming work; and then, the constraint would have to be refined (see
+        #       commented test case below).
+
+        self.execute_generation_test(
+            scriptsizec.SCRIPTSIZE_C_DEF_USE_CONSTR & scriptsizec.SCRIPTSIZE_C_NO_REDEF_CONSTR,
+            grammar=scriptsizec.SCRIPTSIZE_C_GRAMMAR,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=1,
+            expand_after_existential_elimination=False,
+            enforce_unique_trees_in_queue=True,
+            cost_settings=CostSettings(
+                (
+                    CostWeightVector(
+                        tree_closing_cost=18,
+                        vacuous_penalty=0,
+                        constraint_cost=11,
+                        derivation_depth_penalty=1,
+                        low_coverage_penalty=2),
+                ),
+                cost_phase_lengths=(200,),
+                k=3
+            ),
+            print_only=True,
+            num_solutions=1000
+        )
+
     def test_tar(self):
         # TODO: On CI, get error message
         # "AssertionError: tar: \r: Cannot create symlink to ‘’: No such file or directory",
@@ -371,6 +412,7 @@ constraint {
             enforce_unique_trees_in_queue=enforce_unique_trees_in_queue,
             precompute_reachability=precompute_reachability,
             debug=debug,
+            cost_settings=cost_settings,
         )
 
         if debug:

@@ -18,7 +18,7 @@ ISLA_GRAMMAR = {
     "<disjunction>": ["(<mwss><conjunction><wss>or<wss><disjunction><mwss>)", "<conjunction>"],
     "<conjunction>": ["(<mwss><negation><wss>and<wss><conjunction><mwss>)", "<negation>"],
     "<negation>": [
-        "not<wss>(<constraint>)",
+        "not<wss><constraint>",
         "<smt_atom>",
         "<num_intro>",
         "<quantified_formula>",

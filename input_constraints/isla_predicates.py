@@ -41,6 +41,23 @@ AFTER_PREDICATE = StructuralPredicate(
 )
 
 
+def is_same_position(path_1: Path, path_2: Path) -> bool:
+    return path_1 == path_2
+
+
+DIFFERENT_POSITION_PREDICATE = StructuralPredicate(
+    "different_position",
+    2,
+    lambda p1, p2: not is_same_position(p1, p2)
+)
+
+SAME_POSITION_PREDICATE = StructuralPredicate(
+    "same_position",
+    2,
+    is_same_position
+)
+
+
 def count(grammar: Grammar,
           in_tree: DerivationTree,
           needle: str,

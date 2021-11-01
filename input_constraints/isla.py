@@ -135,13 +135,13 @@ class DerivationTree:
 
         self.__hash = None
         self.__structural_hash = None
-        self.__three_coverage: Optional[float] = None
+        self.__k_coverage: Dict[int, float] = {}
 
-    def three_coverage(self, graph: gg.GrammarGraph):
-        if self.__three_coverage is None:
-            self.__three_coverage = graph.k_path_coverage(self.to_parse_tree(), 3)
+    def k_coverage(self, graph: gg.GrammarGraph, k: int):
+        if k not in self.__k_coverage:
+            self.__k_coverage[k] = graph.k_path_coverage(self.to_parse_tree(), k)
 
-        return self.__three_coverage
+        return self.__k_coverage[k]
 
     def root_nonterminal(self) -> str:
         if isinstance(self.value, Variable):
@@ -1318,14 +1318,25 @@ class QuantifiedFormula(Formula):
 
 
 class ForallFormula(QuantifiedFormula):
+    __next_id = 0
+
     def __init__(self,
                  bound_variable: Union[BoundVariable, str],
                  in_variable: Union[Variable, DerivationTree],
                  inner_formula: Formula,
                  bind_expression: Optional[BindExpression] = None,
-                 already_matched: Optional[Set[int]] = None):
+                 already_matched: Optional[Set[int]] = None,
+                 id: Optional[int] = None):
         super().__init__(bound_variable, in_variable, inner_formula, bind_expression)
         self.already_matched: Set[int] = copy.deepcopy(already_matched) or set()
+
+        # The id field is used by eliminate_quantifiers to avoid counting universal
+        # formulas twice when checking for vacuous satisfaction.
+        if id is None:
+            self.id = ForallFormula.__next_id
+            ForallFormula.__next_id += 1
+        else:
+            self.id = id
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         assert not self.already_matched
@@ -1335,7 +1346,8 @@ class ForallFormula(QuantifiedFormula):
             self.in_variable if self.in_variable not in subst_map else subst_map[self.in_variable],
             self.inner_formula.substitute_variables(subst_map),
             None if not self.bind_expression else self.bind_expression.substitute_variables(subst_map),
-            self.already_matched
+            self.already_matched,
+            id=self.id
         )
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
@@ -1358,7 +1370,9 @@ class ForallFormula(QuantifiedFormula):
             new_in_variable,
             new_inner_formula,
             self.bind_expression,
-            self.already_matched)
+            self.already_matched,
+            id=self.id
+        )
 
     def add_already_matched(self, trees: Union[DerivationTree, Iterable[DerivationTree]]) -> 'ForallFormula':
         return ForallFormula(
@@ -1366,7 +1380,9 @@ class ForallFormula(QuantifiedFormula):
             self.in_variable,
             self.inner_formula,
             self.bind_expression,
-            self.already_matched | ({trees.id} if isinstance(trees, DerivationTree) else {tree.id for tree in trees}))
+            self.already_matched | ({trees.id} if isinstance(trees, DerivationTree) else {tree.id for tree in trees}),
+            id=self.id
+        )
 
     def is_already_matched(self, tree: DerivationTree) -> bool:
         return tree.id in self.already_matched
@@ -1672,7 +1688,18 @@ def get_toplevel_quantified_formulas(formula: Formula) -> \
         return []
 
 
-def eliminate_quantifiers(formula: Formula) -> List[Formula]:
+def eliminate_quantifiers(
+        formula: Formula,
+        vacuously_satisfied: Optional[Set[ForallFormula]] = None,
+        grammar: Optional[Grammar] = None,
+        reachable: Optional[Callable[[str, str], bool]] = None) -> List[Formula]:
+    assert vacuously_satisfied is None or grammar is not None
+    graph: Optional[gg.GrammarGraph] = None
+    if grammar is not None:
+        graph = gg.GrammarGraph.from_grammar(grammar)
+    if grammar is not None and reachable is None:
+        reachable = lambda n1, n2: graph.get_node(n1).reachable(graph.get_node(n2))
+
     quantified_formulas = get_toplevel_quantified_formulas(formula)
     universal_formulas = [f for f in quantified_formulas if isinstance(f, ForallFormula)]
 
@@ -1685,6 +1712,7 @@ def eliminate_quantifiers(formula: Formula) -> List[Formula]:
             instantiations = [
                 universal_formula.inner_formula.substitute_expressions(match)
                 for match in matches]
+
             if instantiations:
                 formula = replace_formula(
                     formula,
@@ -1693,7 +1721,26 @@ def eliminate_quantifiers(formula: Formula) -> List[Formula]:
             else:
                 formula = replace_formula(formula, universal_formula, SMTFormula(z3.BoolVal(True)))
 
-        return eliminate_quantifiers(formula)
+                if (vacuously_satisfied is not None and
+                        not any(f.id == universal_formula.id for f in vacuously_satisfied)):
+
+                    # Check if there is still a chance to match the quantifier
+                    if any(quantified_formula_might_match(
+                            universal_formula,
+                            leaf_path,
+                            universal_formula.in_variable,
+                            grammar,
+                            reachable)
+                           for leaf_path, leaf_node in universal_formula.in_variable.open_leaves()):
+                        continue
+
+                    vacuously_satisfied.add(universal_formula)
+                    vacuously_satisfied.update(
+                        cast(List[ForallFormula],
+                             FilterVisitor(lambda f: isinstance(f, ForallFormula))
+                             .collect(universal_formula.inner_formula)))
+
+        return eliminate_quantifiers(formula, vacuously_satisfied, grammar, reachable)
 
     existential_formulas = [f for f in quantified_formulas if isinstance(f, ExistsFormula)]
     if existential_formulas:
@@ -1716,7 +1763,8 @@ def eliminate_quantifiers(formula: Formula) -> List[Formula]:
                     replace_formula(result, existential_formula, SMTFormula(z3.BoolVal(False)))
                     for result in results]
 
-        return list({f for r in results for f in eliminate_quantifiers(r)})
+        return list({f for r in results
+                     for f in eliminate_quantifiers(r, vacuously_satisfied, grammar, reachable)})
 
     intro_const_formulas = [f for f in quantified_formulas if isinstance(f, IntroduceNumericConstantFormula)]
     if intro_const_formulas:
@@ -1730,7 +1778,7 @@ def eliminate_quantifiers(formula: Formula) -> List[Formula]:
                 intro_const_formula,
                 intro_const_formula.inner_formula.substitute_variables({intro_const_formula.bound_variable: fresh}))
 
-        return eliminate_quantifiers(formula)
+        return eliminate_quantifiers(formula, vacuously_satisfied)
 
     return [formula]
 
@@ -1962,6 +2010,43 @@ def matches_for_quantified_formula(
     return new_assignments
 
 
+def quantified_formula_might_match(
+        qfd_formula: QuantifiedFormula,
+        path_to_nonterminal: Path,
+        tree: DerivationTree,
+        grammar: Grammar,
+        reachable: Callable[[str, str], bool]) -> bool:
+    node = tree.get_subtree(path_to_nonterminal)
+
+    if qfd_formula.in_variable.find_node(node) is None:
+        return False
+
+    if qfd_formula.is_already_matched(node):
+        # This formula won't match node IFF there is no subtree in node that matches.
+        return any(quantified_formula_might_match(qfd_formula, path, node, grammar, reachable)
+                   for path, _ in node.paths() if path)
+
+    qfd_nonterminal = qfd_formula.bound_variable.n_type
+    if qfd_nonterminal == node.value or reachable(node.value, qfd_nonterminal):
+        return True
+
+    if qfd_formula.bind_expression is None:
+        return False
+
+    # Is there an extension of some tree `node` is a subtree of, such that the
+    # bind expression tree is a prefix tree of that extension?
+
+    maybe_prefix_tree, _ = qfd_formula.bind_expression.to_tree_prefix(
+        qfd_formula.bound_variable.n_type, grammar)
+
+    for idx in reversed(range(len(path_to_nonterminal))):
+        subtree = tree.get_subtree(path_to_nonterminal[:idx])
+        if maybe_prefix_tree.is_potential_prefix(subtree) and not qfd_formula.is_already_matched(subtree):
+            return True
+
+    return False
+
+
 def replace_formula(in_formula: Formula,
                     to_replace: Union[Formula, Callable[[Formula], Union[bool, Formula]]],
                     replace_with: Optional[Formula] = None) -> Formula:
@@ -2000,7 +2085,8 @@ def replace_formula(in_formula: Formula,
             in_formula.in_variable,
             replace_formula(in_formula.inner_formula, to_replace, replace_with),
             in_formula.bind_expression,
-            in_formula.already_matched
+            in_formula.already_matched,
+            id=in_formula.id
         )
     elif isinstance(in_formula, ExistsFormula):
         return ExistsFormula(
@@ -2269,7 +2355,7 @@ def parse_isla(
             if len(tree.children) == 1:
                 return parse_constraint(tree.children[0])
             else:
-                return -parse_constraint(tree.children[-2])
+                return -parse_constraint(tree.children[-1])
         elif tree.value == "<num_intro>":
             bvar_sym = str(tree.children[2])
 

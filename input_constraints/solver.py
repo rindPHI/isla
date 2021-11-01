@@ -1,9 +1,11 @@
 import copy
 import heapq
 import logging
+import math
 import sys
+import time
 from functools import reduce, lru_cache
-from typing import Generator, Dict, List, Set, Optional, Tuple, Union, cast
+from typing import Generator, Dict, List, Set, Optional, Tuple, Union, cast, Callable
 
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
@@ -93,12 +95,6 @@ class SolutionState:
         return f"{{{self.constraint}, {replace_line_breaks(str(self.tree))}}}"
 
 
-#                 tree_closing_cost,
-#                 match_cost,
-#                 constraint_cost,
-#                 state.level,
-#                 1 - state.tree.three_coverage(self.graph)
-
 class CostWeightVector:
     def __init__(
             self,
@@ -112,6 +108,15 @@ class CostWeightVector:
         self.constraint_cost = constraint_cost
         self.derivation_depth_penalty = derivation_depth_penalty
         self.low_coverage_penalty = low_coverage_penalty
+
+    def __iter__(self):
+        return iter([
+            self.tree_closing_cost,
+            self.vacuous_penalty,
+            self.constraint_cost,
+            self.derivation_depth_penalty,
+            self.low_coverage_penalty
+        ])
 
     def __getitem__(self, item):
         assert isinstance(item, int)
@@ -128,21 +133,24 @@ class CostWeightVector:
                 f"vacuous_penalty = {self.vacuous_penalty}, "
                 f"constraint_cost = {self.constraint_cost}, "
                 f"derivation_depth_penalty = {self.derivation_depth_penalty}, "
-                f"low_coverage_penalty = {self.low_coverage_penalty}))")
+                f"low_coverage_penalty = {self.low_coverage_penalty})")
 
 
 class CostSettings:
     def __init__(
             self,
             weight_vectors: Tuple[CostWeightVector, ...],
-            cost_phase_lengths: Tuple[int, ...]):
+            cost_phase_lengths: Tuple[int, ...],
+            k: int = 3):
         assert len(weight_vectors) == len(cost_phase_lengths)
         self.weight_vectors = weight_vectors
         self.cost_phase_lengths = cost_phase_lengths
+        self.k = k
 
     def __repr__(self):
         return f"CostSettings(weight_vectors={repr(self.weight_vectors)}, " \
-               f"cost_phase_length={repr(self.cost_phase_lengths)})"
+               f"cost_phase_length={repr(self.cost_phase_lengths)}), " \
+               f"k={self.k}"
 
 
 STD_COST_SETTINGS = CostSettings(
@@ -161,7 +169,8 @@ STD_COST_SETTINGS = CostSettings(
             derivation_depth_penalty=0,
             low_coverage_penalty=2),
     ),
-    (200, 100, 500)
+    (200, 100, 500),
+    k=3
 )
 
 
@@ -177,8 +186,8 @@ class ISLaSolver:
                  enforce_unique_trees_in_queue: bool = True,
                  precompute_reachability: bool = False,
                  debug: bool = False,
-                 cost_settings: CostSettings = STD_COST_SETTINGS
-                 ):
+                 cost_settings: CostSettings = STD_COST_SETTINGS,
+                 timeout_seconds: Optional[int] = None):
         """
         :param grammar: The underlying grammar.
         :param formula: The formula to solve.
@@ -204,7 +213,7 @@ class ISLaSolver:
         self.graph = GrammarGraph.from_grammar(grammar)
         self.canonical_grammar = canonical(grammar)
         self.symbol_costs: Dict[str, int] = self.compute_symbol_costs()
-        self.cost_normalizer = CostNormalizer()
+        self.timeout_seconds = timeout_seconds
 
         if isinstance(formula, str):
             formula = parse_isla(formula, structural_predicates, semantic_predicates)
@@ -271,7 +280,13 @@ class ISLaSolver:
                 self.costs[state] = self.compute_cost(state)
 
     def solve(self) -> Generator[DerivationTree, None, None]:
+        start_time = int(time.time())
+
         while self.queue:
+            if self.timeout_seconds is not None:
+                if int(time.time()) - start_time > self.timeout_seconds:
+                    return
+
             cost: int
             state: SolutionState
             cost, state = heapq.heappop(self.queue)
@@ -362,8 +377,9 @@ class ISLaSolver:
 
                     if substitutions:
                         yield from self.process_new_state(
-                            SolutionState(state.constraint.substitute_expressions(substitutions),
-                                          state.tree.substitute(substitutions)))
+                            SolutionState(
+                                state.constraint.substitute_expressions(substitutions),
+                                state.tree.substitute(substitutions)))
 
     def instantiate_structural_predicates(self, state: SolutionState) -> SolutionState:
         predicate_formulas = [
@@ -419,7 +435,9 @@ class ISLaSolver:
                        [conjunct for conjunct in conjuncts if conjunct not in semantic_formulas],
                        sc.true()))
 
-        return self.eliminate_semantic_formula(prefix_conjunction, SolutionState(new_disjunct, state.tree))
+        return self.eliminate_semantic_formula(
+            prefix_conjunction,
+            SolutionState(new_disjunct, state.tree))
 
     def eliminate_all_ready_semantic_predicate_formulas(self, state: SolutionState) -> Optional[SolutionState]:
         semantic_predicate_formulas = [
@@ -463,7 +481,9 @@ class ISLaSolver:
                     isla.SemanticPredicateFormula,
                     semantic_predicate_formulas[k].substitute_expressions(evaluation_result.result))
 
-            result = SolutionState(new_constraint, result.tree.substitute(evaluation_result.result))
+            result = SolutionState(
+                new_constraint,
+                result.tree.substitute(evaluation_result.result))
 
         return result if changed else None
 
@@ -547,14 +567,15 @@ class ISLaSolver:
                 for idx in range(len(path) + 1)
             })
 
-            result.append(SolutionState(updated_constraint, expanded_tree))
+            result.append(
+                SolutionState(updated_constraint, expanded_tree))
 
         return result
 
     def match_universal_formulas(self,
                                  universal_formulas: List[isla.ForallFormula],
                                  state: SolutionState) -> List[SolutionState]:
-        matched = False
+        number_matches = 0
         context_formula = state.constraint
 
         for universal_formula in universal_formulas:
@@ -568,7 +589,7 @@ class ISLaSolver:
             })
 
             for match in matches:
-                matched = True
+                number_matches += 1
 
                 inst_formula = universal_formula_with_matches.inner_formula.substitute_expressions({
                     variable: match_tree for variable, (_, match_tree) in match.items()
@@ -578,7 +599,7 @@ class ISLaSolver:
                     context_formula, universal_formula, universal_formula_with_matches
                 )
 
-        if matched:
+        if number_matches:
             return [SolutionState(context_formula, state.tree)]
         else:
             return []
@@ -641,7 +662,8 @@ class ISLaSolver:
                  & isla.replace_formula(
                             state.constraint, existential_formula, sc.true()
                         ).substitute_expressions(tree_substitution)),
-                state.tree.substitute(tree_substitution))
+                state.tree.substitute(tree_substitution)
+            )
             for tree_substitution in tree_substitutions]
 
     def eliminate_semantic_formula(self, semantic_formula: isla.Formula, state: SolutionState) -> List[SolutionState]:
@@ -663,11 +685,13 @@ class ISLaSolver:
         results = []
         for solution in solutions:
             if solution:
-                new_state = SolutionState(state.constraint.substitute_expressions(solution),
-                                          state.tree.substitute(solution))
+                new_state = SolutionState(
+                    state.constraint.substitute_expressions(solution),
+                    state.tree.substitute(solution))
             else:
                 new_state = SolutionState(
-                    isla.replace_formula(state.constraint, semantic_formula, sc.true()), state.tree)
+                    isla.replace_formula(state.constraint, semantic_formula, sc.true()),
+                    state.tree)
 
             results.append(new_state)
 
@@ -847,63 +871,15 @@ class ISLaSolver:
 
     def establish_invariant(self, state: SolutionState) -> List[SolutionState]:
         formula = convert_to_dnf(convert_to_nnf(state.constraint))
-        return [SolutionState(disjunct, state.tree) for disjunct in split_disjunction(formula)]
+        return [
+            SolutionState(disjunct, state.tree)
+            for disjunct in split_disjunction(formula)]
 
     def compute_cost(self, state: SolutionState) -> float:
         """Cost of state. Best value: 0, Worst: Unbounded"""
 
         if state.constraint == sc.true():
             return 0
-
-        # How costly is it to finish the tree?
-        nonterminals = [leaf.value for _, leaf in state.tree.open_leaves()]
-        tree_closing_cost = (
-            # len(state.tree) +
-            sum([self.symbol_costs[nonterminal]
-                 for nonterminal in nonterminals]))
-
-        # Quantifiers are expensive (universal formulas have to be matched, tree insertion for existential
-        # formulas is even more costly). TODO: Penalize nested quantifiers more.
-        constraint_cost = len([sub for sub in get_conjuncts(state.constraint)
-                               if isinstance(sub, isla.QuantifiedFormula)])
-
-        # How far are we from matching a universal quantifier?
-        match_costs = []
-        for universal_formula in [f for f in get_conjuncts(state.constraint) if isinstance(f, isla.ForallFormula)]:
-            current_min_cost = sys.maxsize
-            for path, leaf_node in state.tree.open_leaves():
-                if not universal_formula.in_variable.find_node(leaf_node):
-                    continue
-                if universal_formula.is_already_matched(leaf_node):
-                    continue
-
-                if leaf_node.value == universal_formula.bound_variable.n_type:
-                    current_min_cost = 0
-                    break
-
-                dist = self.node_distance(leaf_node.value, universal_formula.bound_variable.n_type)
-                if dist < current_min_cost:
-                    current_min_cost = dist
-
-                if universal_formula.bind_expression is not None:
-                    prefix = universal_formula.bind_expression.to_tree_prefix(
-                        universal_formula.bound_variable.n_type, self.grammar)
-
-                    i = 1
-                    while i < prefix[0].depth() and i < len(path):
-                        if state.tree.get_subtree(path[:-i]).is_prefix(prefix[0]):
-                            current_min_cost = 0
-                            break
-                        i += 1
-                    else:
-                        continue
-
-                    break
-
-            if current_min_cost < sys.maxsize:
-                match_costs.append(current_min_cost)
-
-        match_cost = sum(match_costs)
 
         if (len(self.queue) - self.current_cost_phase_since >
                 self.cost_settings.cost_phase_lengths[self.current_cost_phase]):
@@ -916,19 +892,14 @@ class ISLaSolver:
                 str(self.cost_settings.weight_vectors[self.current_cost_phase])
             )
 
-        cost_vector = self.cost_settings.weight_vectors[self.current_cost_phase]
+        cost_weight_vector = self.cost_settings.weight_vectors[self.current_cost_phase]
+        symbol_costs = self.symbol_costs
+        node_distance: Callable[[str, str], int] = self.node_distance
+        grammar = self.grammar
+        graph = self.graph
+        k = self.cost_settings.k
 
-        return self.cost_normalizer.compute(
-            [
-                tree_closing_cost,
-                match_cost,
-                constraint_cost,
-                state.level,
-                1 - state.tree.three_coverage(self.graph)
-            ],
-            cost_vector,
-            [True, False, False, False, False]
-        )
+        return compute_cost(state, symbol_costs, cost_weight_vector, node_distance, k, grammar, graph)
 
     def compute_symbol_costs(self) -> Dict[str, int]:
         self.logger.info("Computing symbol costs")
@@ -943,7 +914,50 @@ class ISLaSolver:
                      if any(is_nonterminal(symbol) for symbol in expansion)])
                 for _, tree in DerivationTree.from_parse_tree(tree).paths()
                 if is_nonterminal(tree.value)
-            ]) + 1  # Addition of 1 to avoid 0 cost
+            ])
+
+        nonterminal_parents = [
+            nonterminal for nonterminal in self.canonical_grammar
+            if any(all(not is_nonterminal(symbol) for symbol in expansion)
+                   for expansion in self.canonical_grammar[nonterminal])
+        ]
+
+        def all_paths(
+                from_node: gg.NonterminalNode,
+                to_node: gg.NonterminalNode, cycles_allowed: int = 1) -> List[List[gg.NonterminalNode]]:
+            """Compute all paths between two nodes, allowing up to `cycles_allowd` cycle"""
+            result: List[List[gg.NonterminalNode]] = []
+            visited: Dict[gg.NonterminalNode, int] = {n: 0 for n in self.graph.all_nodes}
+
+            queue: List[List[gg.NonterminalNode]] = [[from_node]]
+            while queue:
+                p = queue.pop(0)
+                if p[-1] == to_node:
+                    result.append(p)
+                    continue
+
+                for child in p[-1].children:
+                    if not isinstance(child, gg.NonterminalNode) or visited[child] > cycles_allowed + 1:
+                        continue
+
+                    visited[child] += 1
+                    queue.append(p + [child])
+
+            return [[n for n in p if not isinstance(n, gg.ChoiceNode)] for p in result]
+
+        # Sometimes this computation results in some nonterminals having lower cost values
+        # than nonterminals that are reachable from those (but not vice versa), which is
+        # undesired. We counteract this by assuring that on paths with at most one cycle
+        # from the root to any nonterminal parent, the costs are strictly monotonically
+        # decreasing.
+        for nonterminal_parent in nonterminal_parents:
+            for path in all_paths(self.graph.root, self.graph.get_node(nonterminal_parent)):
+                for idx in reversed(range(1, len(path))):
+                    source: gg.Node = path[idx - 1]
+                    target: gg.Node = path[idx]
+
+                    if result[source.symbol] <= result[target.symbol]:
+                        result[source.symbol] += result[target.symbol]
 
         return result
 
@@ -954,7 +968,8 @@ class ISLaSolver:
             if (universal_formula.in_variable.is_complete()
                     and not isla.matches_for_quantified_formula(universal_formula)):
                 result = SolutionState(
-                    isla.replace_formula(result.constraint, universal_formula, sc.true()), result.tree)
+                    isla.replace_formula(result.constraint, universal_formula, sc.true()),
+                    result.tree)
 
         return result
 
@@ -969,41 +984,19 @@ class ISLaSolver:
                     or [match for match in isla.matches_for_quantified_formula(universal_formula)
                         if not universal_formula.is_already_matched(match[universal_formula.bound_variable][1])]):
                 result = SolutionState(
-                    isla.replace_formula(result.constraint, universal_formula, sc.true()), result.tree)
+                    isla.replace_formula(result.constraint, universal_formula, sc.true()),
+                    result.tree)
 
         return result
 
     def quantified_formula_might_match(
             self, qfd_formula: isla.QuantifiedFormula, path_to_nonterminal: Path, tree: DerivationTree) -> bool:
-        node = tree.get_subtree(path_to_nonterminal)
-
-        if qfd_formula.in_variable.find_node(node) is None:
-            return False
-
-        if qfd_formula.is_already_matched(node):
-            # This formula won't match node IFF there is no subtree in node that matches.
-            return any(self.quantified_formula_might_match(qfd_formula, path, node)
-                       for path, _ in node.paths() if path)
-
-        qfd_nonterminal = qfd_formula.bound_variable.n_type
-        if qfd_nonterminal == node.value or self.reachable(node.value, qfd_nonterminal):
-            return True
-
-        if qfd_formula.bind_expression is None:
-            return False
-
-        # Is there an extension of some tree `node` is a subtree of, such that the
-        # bind expression tree is a prefix tree of that extension?
-
-        maybe_prefix_tree, _ = qfd_formula.bind_expression.to_tree_prefix(
-            qfd_formula.bound_variable.n_type, self.grammar)
-
-        for idx in reversed(range(len(path_to_nonterminal))):
-            subtree = tree.get_subtree(path_to_nonterminal[:idx])
-            if maybe_prefix_tree.is_potential_prefix(subtree) and not qfd_formula.is_already_matched(subtree):
-                return True
-
-        return False
+        return isla.quantified_formula_might_match(
+            qfd_formula,
+            path_to_nonterminal,
+            tree,
+            self.grammar,
+            self.reachable)
 
     @lru_cache(maxsize=None)
     def node_distance(self, nonterminal: str, to_nonterminal: str) -> int:
@@ -1034,27 +1027,81 @@ class ISLaSolver:
         return DerivationTree.from_parse_tree(list(parser.parse(input))[0][1][0])
 
 
-class CostNormalizer:
-    def __init__(self):
-        self.history: List[List[float]] = []
+def compute_cost(
+        state: SolutionState,
+        symbol_costs: Dict[str, int],
+        cost_weight_vector: CostWeightVector,
+        node_distance: Callable[[str, str], int],
+        k: int,
+        grammar: Grammar,
+        graph: gg.GrammarGraph) -> float:
+    # How costly is it to finish the tree?
+    nonterminals = [leaf.value for _, leaf in state.tree.open_leaves()]
+    tree_closing_cost = sum([symbol_costs[nonterminal] for nonterminal in nonterminals])
 
-    def compute(self, costs: List[float], weights: List[float], do_average: Optional[List[bool]] = None) -> float:
-        if len(self.history) < 100:
-            self.add_to_history(costs)
-        else:
-            self.add_to_history(costs)
+    # Quantifiers are expensive (universal formulas have to be matched, tree insertion for existential
+    # formulas is even more costly). TODO: Penalize nested quantifiers more.
+    constraint_cost = len([sub for sub in get_conjuncts(state.constraint)
+                           if isinstance(sub, isla.QuantifiedFormula)])
 
-        averages = [1 if not do_average or not do_average[idx]
-                    else sum(subhistory) / len(subhistory)
-                    for idx, subhistory in enumerate(self.history)]
-        return max(0, sum([a_cost * weights[idx] / averages[idx] for idx, a_cost in enumerate(costs)]))
+    # How far are we from matching a yet unmatched universal quantifier?
+    # match_dist = compute_match_dist(state, grammar, node_distance)
+    vacuous_penalty = compute_match_dist(state, grammar, node_distance)
+    # Also consider how many quantifiers we have matched already
+    # vacuous_penalty = match_dist / (state.matched_quantifiers + 1)
 
-    def add_to_history(self, costs: List[float]):
-        if not self.history:
-            self.history.extend([[] for _ in costs])
+    k_cov_cost = (math.prod([1 - state.tree.k_coverage(graph, k) for k in range(1, k + 1)])
+                  ** (1 / float(k))) * 100
 
-        if len(self.history[0]) > 100:
-            self.history = [subhistory[1:] for subhistory in self.history]
+    costs = [tree_closing_cost, vacuous_penalty, constraint_cost, state.level, k_cov_cost]
+    assert all(c >= 0 for c in costs)
 
-        for idx, cost in enumerate(costs):
-            self.history[idx].append(cost)
+    # Compute geometric mean, accounting for 0 values by adding 1 to all factors
+    return (math.prod(
+        [c + 1 for c in
+         map(math.prod, zip(costs, cost_weight_vector))]) ** (1 / 5)) - 1
+
+
+def compute_match_dist(
+        state: SolutionState, grammar: Grammar,
+        node_distance: Callable[[str, str], int],
+        max_cost: float = 100, ) -> float:
+    match_costs = []
+    for universal_formula in [
+        f for f in get_conjuncts(state.constraint)
+        if isinstance(f, isla.ForallFormula) and
+           f.already_matched]:
+        current_min_cost = max_cost
+        for path, leaf_node in state.tree.open_leaves():
+            if not universal_formula.in_variable.find_node(leaf_node):
+                continue
+            if universal_formula.is_already_matched(leaf_node):
+                continue
+
+            if leaf_node.value == universal_formula.bound_variable.n_type:
+                current_min_cost = 0
+                break
+
+            dist = node_distance(leaf_node.value, universal_formula.bound_variable.n_type)
+            if dist < current_min_cost:
+                current_min_cost = dist
+
+            if universal_formula.bind_expression is not None:
+                prefix = universal_formula.bind_expression.to_tree_prefix(
+                    universal_formula.bound_variable.n_type, grammar)
+
+                i = 1
+                while i < prefix[0].depth() and i < len(path):
+                    if state.tree.get_subtree(path[:-i]).is_prefix(prefix[0]):
+                        current_min_cost = 0
+                        break
+                    i += 1
+                else:
+                    continue
+
+                break
+
+        if current_min_cost < max_cost:
+            match_costs.append(current_min_cost)
+
+    return math.prod(match_costs) ** (1 / len(match_costs)) if match_costs else max_cost
