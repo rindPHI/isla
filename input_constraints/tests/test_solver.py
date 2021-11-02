@@ -315,11 +315,11 @@ constraint {
             cost_settings=CostSettings(
                 (
                     CostWeightVector(
-                        tree_closing_cost=20,
-                        vacuous_penalty=9,
-                        constraint_cost=8,
-                        derivation_depth_penalty=10,
-                        low_coverage_penalty=35),
+                        tree_closing_cost=4,
+                        vacuous_penalty=3,
+                        constraint_cost=24,
+                        derivation_depth_penalty=7,
+                        low_coverage_penalty=12),
                 ),
                 cost_phase_lengths=(200,),
                 k=3

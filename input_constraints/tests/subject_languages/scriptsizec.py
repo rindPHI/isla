@@ -16,10 +16,10 @@ SCRIPTSIZE_C_GRAMMAR = {
     "<start>": ["<statement>"],
     "<statement>": [
         "{<declarations><statements>}",
-        # "if<paren_expr> <statement>",
-        # "if<paren_expr> <statement> else <statement>",
-        # "while<paren_expr> <statement>",
-        # "do <statement> while<paren_expr>;",
+        "if<paren_expr> <statement>",
+        "if<paren_expr> <statement> else <statement>",
+        "while<paren_expr> <statement>",
+        "do <statement> while<paren_expr>;",
         "<expr>;",
         ";"
     ],
