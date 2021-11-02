@@ -55,8 +55,8 @@ XML_GRAMMAR = {
     ],
     "<inner-xml-tree>": [
         "<text>",
-        "<xml-tree>"
-        "<xml-tree><xml-tree>"
+        "<xml-tree>",
+        "<inner-xml-tree><inner-xml-tree>"
     ],
     "<xml-open-tag>": ["<<id>>", "<<id> <xml-attribute>>"],
     "<xml-openclose-tag>": ["<<id>/>", "<<id> <xml-attribute>/>"],

@@ -1,7 +1,9 @@
+import logging
 import unittest
 from typing import cast
 
 import z3
+from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.Parser import EarleyParser
 
 from input_constraints import isla, evaluator
@@ -16,7 +18,7 @@ class TestEvaluator(unittest.TestCase):
         formula: isla.Formula = mgr.create(
             sc.forall_bind(
                 sc.bexpr("<") + mgr.bv("$oid", "<id>") + ">" +
-                "<xml-tree>" +
+                "<inner-xml-tree>" +
                 "</" + mgr.bv("$cid", "<id>") + ">",
                 "<xml-tree>",
                 start,
@@ -24,7 +26,7 @@ class TestEvaluator(unittest.TestCase):
             ) &
             sc.forall_bind(
                 sc.bexpr("<") + mgr.bv("$oid", "<id>") + " " + "<xml-attribute>" + ">" +
-                "<xml-tree>" +
+                "<inner-xml-tree>" +
                 "</" + mgr.bv("$cid", "<id>") + ">",
                 "<xml-tree>",
                 start,
@@ -32,20 +34,17 @@ class TestEvaluator(unittest.TestCase):
             )
         )
 
-        inp = "<vM/><a xhILyXld8=Tpm7R/>"
-        tree = isla.DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse(inp))[0])
-        self.assertTrue(evaluator.vacuously_satisfies(tree, formula))
-
         inp = "<a><b/>Test</a>"
         tree = isla.DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse(inp))[0])
         self.assertFalse(evaluator.vacuously_satisfies(tree, formula))
 
     def test_vacuously_satisfied_lang(self):
         mgr = isla.VariableManager(LANG_GRAMMAR)
+        start = mgr.const("$start", "<start>")
         formula: isla.Formula = mgr.create(sc.forall_bind(
             mgr.bv("$lhs_1", "<var>") + " := " + mgr.bv("$rhs_1", "<rhs>"),
             mgr.bv("$assgn_1", "<assgn>"),
-            mgr.const("$start", "<start>"),
+            start,
             sc.forall(
                 mgr.bv("$var", "<var>"),
                 mgr.bv("$rhs_1"),

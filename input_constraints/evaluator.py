@@ -13,7 +13,7 @@ import z3
 from grammar_graph import gg
 
 import input_constraints.isla_shortcuts as sc
-from input_constraints import isla
+from input_constraints import isla, solver
 from input_constraints.solver import ISLaSolver, CostWeightVector, CostSettings
 from input_constraints.type_defs import Grammar
 
@@ -84,10 +84,10 @@ class PerformanceEvaluationResult:
             self,
             accumulated_valid_inputs: Dict[float, int],
             accumulated_k_path_coverage: Dict[float, int],
-            accumulated_non_vacuous_inputs: Dict[float, int]):
+            accumulated_non_vacuous_index: Dict[float, float]):
         self.accumulated_valid_inputs = accumulated_valid_inputs
         self.accumulated_k_path_coverage = accumulated_k_path_coverage
-        self.accumulated_non_vacuous_inputs = accumulated_non_vacuous_inputs
+        self.accumulated_non_vacuous_index = accumulated_non_vacuous_index
 
         max_time = max(accumulated_valid_inputs.keys())
         self.final_product_value: float = self.single_product_value(max_time)
@@ -100,7 +100,7 @@ class PerformanceEvaluationResult:
     def single_product_value(self, seconds):
         return ((self.accumulated_valid_inputs[seconds] + 1) *
                 (self.accumulated_k_path_coverage[seconds] + 1) *
-                (self.accumulated_non_vacuous_inputs[seconds] + 1)) ** (1 / float(3)) - 1
+                (self.accumulated_non_vacuous_index[seconds] + 1)) ** (1 / float(3)) - 1
 
     def plot(self, outfile_pdf: str, title: str = "Performance Data"):
         assert outfile_pdf.endswith(".pdf")
@@ -116,9 +116,9 @@ class PerformanceEvaluationResult:
             list(self.accumulated_k_path_coverage.values()),
             label="k-Path Coverage (%)")
         ax.plot(
-            list(self.accumulated_non_vacuous_inputs.keys()),
-            list(self.accumulated_non_vacuous_inputs.values()),
-            label="Non-Vacuous Inputs")
+            list(self.accumulated_non_vacuous_index.keys()),
+            list(self.accumulated_non_vacuous_index.values()),
+            label="Non-Vacuity Index")
 
         mean = self.mean_data()
         ax.plot(
@@ -129,7 +129,7 @@ class PerformanceEvaluationResult:
         for values in [
             self.accumulated_valid_inputs.values(),
             self.accumulated_k_path_coverage.values(),
-            self.accumulated_non_vacuous_inputs.values(),
+            self.accumulated_non_vacuous_index.values(),
             mean.values()
         ]:
             plt.annotate(
@@ -151,7 +151,7 @@ class PerformanceEvaluationResult:
     def __repr__(self):
         return (f"PerformanceEvaluationResult(accumulated_valid_inputs={self.accumulated_valid_inputs}, "
                 f"accumulated_k_path_coverage={self.accumulated_k_path_coverage}, "
-                f"accumulated_non_vacuous_inputs={self.accumulated_non_vacuous_inputs})")
+                f"accumulated_non_vacuous_inputs={self.accumulated_non_vacuous_index})")
 
     def __str__(self):
         return f"Mean Performance: {self.final_product_value}"
@@ -165,11 +165,11 @@ def evaluate_data(
         k: int = 3) -> PerformanceEvaluationResult:
     accumulated_valid_inputs: Dict[float, int] = {}
     accumulated_k_path_coverage: Dict[float, int] = {}
-    accumulated_non_vacuous_inputs: Dict[float, int] = {}
+    accumulated_non_vacuous_index: Dict[float, float] = {}
 
     valid_inputs: int = 0
     covered_kpaths: Set[Tuple[gg.Node, ...]] = set()
-    non_vacuous_inputs: int = 0
+    non_vacuous_index: float = 0.0
 
     for seconds, inp in data.items():
         if validator(inp):
@@ -178,24 +178,25 @@ def evaluate_data(
             logger.debug("Input %s invalid", str(inp))
             continue
 
-        if not vacuously_satisfies(inp, formula):
-            non_vacuous_inputs += 1
+        non_vacuous_index += (1 - solver.compute_vacuous_penalty(graph.to_grammar(), formula, inp))
+        # if not vacuously_satisfies(inp, formula):
+        #     non_vacuous_inputs += 1
 
         covered_kpaths.update(graph.k_paths_in_tree(inp.to_parse_tree(), k))
         accumulated_valid_inputs[seconds] = valid_inputs
         accumulated_k_path_coverage[seconds] = int(len(covered_kpaths) * 100 / len(graph.k_paths(k)))
-        accumulated_non_vacuous_inputs[seconds] = non_vacuous_inputs
+        accumulated_non_vacuous_index[seconds] = non_vacuous_index
 
     result = PerformanceEvaluationResult(
         accumulated_valid_inputs,
         accumulated_k_path_coverage,
-        accumulated_non_vacuous_inputs)
+        accumulated_non_vacuous_index)
 
     logger.info(
-        "Final evaluation values: %d valid inputs, %d %% coverage, %d non-vacuous inputs, final mean: %f",
+        "Final evaluation values: %d valid inputs, %d %% coverage, %f non-vacuous index, final mean: %f",
         valid_inputs,
         int(len(covered_kpaths) * 100 / len(graph.k_paths(k))),
-        non_vacuous_inputs,
+        non_vacuous_index,
         list(result.mean_data().values())[-1]
     )
 
@@ -252,8 +253,8 @@ def evaluate_isla_generator(
         k=k)
 
 
-def randno() -> int:
-    return random.randint(0, 20)
+def randno(maxno: int = 40) -> int:
+    return random.choices(range(maxno + 1), weights=list(reversed([n // 10 + 1 for n in range(maxno + 1)])))[0]
 
 
 def evaluate_random_cost_vectors(
@@ -416,7 +417,7 @@ def auto_tune_weight_vector(
             # Mutate one child feature
             mutated_feature = random.choice(all_features)
             current_feature_value: int = getattr(child, mutated_feature)
-            setattr(child, mutated_feature, mutate_cost_weight(current_feature_value))
+            setattr(child, mutated_feature, mutate_cost_weight(current_feature_value, max_add=10, max_factor=5))
 
             logger.debug("After Mutation: %s", child)
 

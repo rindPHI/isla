@@ -22,7 +22,7 @@ from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
     replace_line_breaks, z3_subst, z3_solve
 from input_constraints.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
-    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts
+    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, FilterVisitor
 from input_constraints.type_defs import Grammar, Path
 
 
@@ -153,23 +153,35 @@ class CostSettings:
                f"k={self.k}"
 
 
+# STD_COST_SETTINGS = CostSettings(
+#     (
+#         CostWeightVector(
+#             tree_closing_cost=6,
+#             vacuous_penalty=2,
+#             constraint_cost=4,
+#             derivation_depth_penalty=3,
+#             low_coverage_penalty=8),
+#         CostWeightVector(derivation_depth_penalty=1),
+#         CostWeightVector(
+#             tree_closing_cost=8,
+#             vacuous_penalty=.5,
+#             constraint_cost=1,
+#             derivation_depth_penalty=0,
+#             low_coverage_penalty=2),
+#     ),
+#     (200, 100, 500),
+#     k=3
+# )
 STD_COST_SETTINGS = CostSettings(
     (
         CostWeightVector(
-            tree_closing_cost=6,
-            vacuous_penalty=2,
-            constraint_cost=4,
-            derivation_depth_penalty=3,
-            low_coverage_penalty=8),
-        CostWeightVector(derivation_depth_penalty=1),
-        CostWeightVector(
-            tree_closing_cost=8,
-            vacuous_penalty=.5,
-            constraint_cost=1,
-            derivation_depth_penalty=0,
-            low_coverage_penalty=2),
+            tree_closing_cost=20,
+            vacuous_penalty=10,
+            constraint_cost=3,
+            derivation_depth_penalty=1,
+            low_coverage_penalty=15),
     ),
-    (200, 100, 500),
+    (200,),
     k=3
 )
 
@@ -894,12 +906,11 @@ class ISLaSolver:
 
         cost_weight_vector = self.cost_settings.weight_vectors[self.current_cost_phase]
         symbol_costs = self.symbol_costs
-        node_distance: Callable[[str, str], int] = self.node_distance
         grammar = self.grammar
         graph = self.graph
         k = self.cost_settings.k
 
-        return compute_cost(state, symbol_costs, cost_weight_vector, node_distance, k, grammar, graph)
+        return compute_cost(state, symbol_costs, cost_weight_vector, k, self.formula, grammar, graph)
 
     def compute_symbol_costs(self) -> Dict[str, int]:
         self.logger.info("Computing symbol costs")
@@ -925,7 +936,10 @@ class ISLaSolver:
         def all_paths(
                 from_node: gg.NonterminalNode,
                 to_node: gg.NonterminalNode, cycles_allowed: int = 1) -> List[List[gg.NonterminalNode]]:
-            """Compute all paths between two nodes, allowing up to `cycles_allowd` cycle"""
+            """Compute all paths between two nodes. Note: We allow to visit each nonterminal twice.
+            This is not really allowing up to `cycles_allowed` cycles (which was the original intention
+            of the parameter), since then we would have to check per path; yet, the number of paths would
+            explode then and the current implementation provides reasonably good results."""
             result: List[List[gg.NonterminalNode]] = []
             visited: Dict[gg.NonterminalNode, int] = {n: 0 for n in self.graph.all_nodes}
 
@@ -1031,8 +1045,8 @@ def compute_cost(
         state: SolutionState,
         symbol_costs: Dict[str, int],
         cost_weight_vector: CostWeightVector,
-        node_distance: Callable[[str, str], int],
         k: int,
+        orig_formula: isla.Formula,
         grammar: Grammar,
         graph: gg.GrammarGraph) -> float:
     # How costly is it to finish the tree?
@@ -1045,21 +1059,74 @@ def compute_cost(
                            if isinstance(sub, isla.QuantifiedFormula)])
 
     # How far are we from matching a yet unmatched universal quantifier?
-    # match_dist = compute_match_dist(state, grammar, node_distance)
-    vacuous_penalty = compute_match_dist(state, grammar, node_distance)
-    # Also consider how many quantifiers we have matched already
-    # vacuous_penalty = match_dist / (state.matched_quantifiers + 1)
+    # vacuous_penalty = compute_match_dist(state, grammar, node_distance)
 
+    # What is the proportion of vacuously satisfied universal quantifiers *chains* in (extensions of) this tree?
+    vacuous_penalty = compute_vacuous_penalty(grammar, orig_formula, state.tree)
+
+    # k-Path coverage: Fewer covered -> higher penalty
     k_cov_cost = (math.prod([1 - state.tree.k_coverage(graph, k) for k in range(1, k + 1)])
-                  ** (1 / float(k))) * 100
+                  ** (1 / float(k)))
 
     costs = [tree_closing_cost, vacuous_penalty, constraint_cost, state.level, k_cov_cost]
     assert all(c >= 0 for c in costs)
 
-    # Compute geometric mean, accounting for 0 values by adding 1 to all factors
-    return (math.prod(
-        [c + 1 for c in
-         map(math.prod, zip(costs, cost_weight_vector))]) ** (1 / 5)) - 1
+    # Compute geometric mean, filtering out zero weights
+    costs_with_weights = [(c, w) for c, w in zip(costs, cost_weight_vector) if w > 0]
+    result = math.prod([c + 1 for c in map(math.prod, costs_with_weights)]) ** (1 / len(costs_with_weights)) - 1
+
+    logging.getLogger(type(ISLaSolver).__name__).debug(
+        "Computed cost for state %s:\n%d, individual costs: %s, weights: %s",
+        f"({(str(state.constraint)[:50] + '...') if len(str(state.constraint)) > 53 else str(state.constraint)}, "
+        f"{state.tree})", result, costs, cost_weight_vector)
+
+    return result
+
+
+def compute_vacuous_penalty(grammar: Grammar, orig_formula: isla.Formula, tree: DerivationTree) -> float:
+    # Returns a value between 0 (best) and 1 (worst).
+
+    top_constant: isla.Constant = next(
+        c for c in VariablesCollector.collect(orig_formula)
+        if isinstance(c, isla.Constant) and not c.is_numeric())
+    formula = orig_formula.substitute_expressions({top_constant: tree})
+    toplevel_qfrs = isla.get_toplevel_quantified_formulas(formula)
+
+    def get_quantifier_chains(formula: isla.Formula) -> List[Tuple[isla.ForallFormula, ...]]:
+        # TODO: Consider numeric constant intros and existential formulas...
+        univ_toplevel_formulas = {
+            f for f in isla.get_toplevel_quantified_formulas(formula)
+            if isinstance(f, isla.ForallFormula)}
+        children_chains = [get_quantifier_chains(f.inner_formula) for f in univ_toplevel_formulas]
+        children_chains = [c for c in children_chains if c]
+        if children_chains:
+            return [(f,) + c for f in univ_toplevel_formulas for c in get_quantifier_chains(f.inner_formula)]
+        else:
+            return [(f,) for f in univ_toplevel_formulas]
+
+    quantifier_chains = get_quantifier_chains(formula)
+    vacuous_penalty = 0
+    if quantifier_chains:
+        vacuously_matched_quantifiers = set()
+        isla.eliminate_quantifiers(formula, vacuously_matched_quantifiers, grammar)
+
+        vacuous_chains = {
+            c for c in quantifier_chains if
+            all(any(of.id == f.id
+                    for of in vacuously_matched_quantifiers)
+                for f in c)}
+
+        # Only consider one chain per top-level quantifier
+        vacuous_chains = set([
+            chains[0] for chains in
+            set([tuple(d for d in vacuous_chains
+                       if d[0].id == c[0].id)
+                 for c in vacuous_chains])])
+
+        vacuous_penalty = len(vacuous_chains) / len(toplevel_qfrs)
+        assert 0 <= vacuous_penalty <= 1
+
+    return vacuous_penalty
 
 
 def compute_match_dist(

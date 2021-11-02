@@ -1692,11 +1692,23 @@ def eliminate_quantifiers(
         formula: Formula,
         vacuously_satisfied: Optional[Set[ForallFormula]] = None,
         grammar: Optional[Grammar] = None,
-        reachable: Optional[Callable[[str, str], bool]] = None) -> List[Formula]:
+        reachable: Optional[Callable[[str, str], bool]] = None,
+        non_vacuously_satisfied: Optional[Set[ForallFormula]] = None) -> List[Formula]:
+    def in_vacuous(formula: ForallFormula) -> bool:
+        return any(f.id == formula.id for f in vacuously_satisfied)
+
+    def in_non_vacuous(formula: ForallFormula) -> bool:
+        return any(f.id == formula.id for f in non_vacuously_satisfied)
+
     assert vacuously_satisfied is None or grammar is not None
     graph: Optional[gg.GrammarGraph] = None
-    if grammar is not None:
+    if vacuously_satisfied is not None:
+        if non_vacuously_satisfied is None:
+            non_vacuously_satisfied = set()
+
         graph = gg.GrammarGraph.from_grammar(grammar)
+        vacuously_satisfied.difference_update({f for f in vacuously_satisfied if in_non_vacuous(f)})
+
     if grammar is not None and reachable is None:
         reachable = lambda n1, n2: graph.get_node(n1).reachable(graph.get_node(n2))
 
@@ -1718,11 +1730,19 @@ def eliminate_quantifiers(
                     formula,
                     universal_formula,
                     reduce(lambda f1, f2: f1 & f2, instantiations))
+
+                if vacuously_satisfied is not None:
+                    if in_vacuous(universal_formula):
+                        vacuously_satisfied.difference_update(
+                            {f for f in vacuously_satisfied if f.id == universal_formula.id})
+                    if not in_non_vacuous(universal_formula):
+                        non_vacuously_satisfied.add(universal_formula)
             else:
                 formula = replace_formula(formula, universal_formula, SMTFormula(z3.BoolVal(True)))
 
                 if (vacuously_satisfied is not None and
-                        not any(f.id == universal_formula.id for f in vacuously_satisfied)):
+                        not in_vacuous(universal_formula) and
+                        not in_non_vacuous(universal_formula)):
 
                     # Check if there is still a chance to match the quantifier
                     if any(quantified_formula_might_match(
@@ -1740,7 +1760,7 @@ def eliminate_quantifiers(
                              FilterVisitor(lambda f: isinstance(f, ForallFormula))
                              .collect(universal_formula.inner_formula)))
 
-        return eliminate_quantifiers(formula, vacuously_satisfied, grammar, reachable)
+        return eliminate_quantifiers(formula, vacuously_satisfied, grammar, reachable, non_vacuously_satisfied)
 
     existential_formulas = [f for f in quantified_formulas if isinstance(f, ExistsFormula)]
     if existential_formulas:
@@ -1763,8 +1783,9 @@ def eliminate_quantifiers(
                     replace_formula(result, existential_formula, SMTFormula(z3.BoolVal(False)))
                     for result in results]
 
-        return list({f for r in results
-                     for f in eliminate_quantifiers(r, vacuously_satisfied, grammar, reachable)})
+        return list(
+            {f for r in results
+             for f in eliminate_quantifiers(r, vacuously_satisfied, grammar, reachable, non_vacuously_satisfied)})
 
     intro_const_formulas = [f for f in quantified_formulas if isinstance(f, IntroduceNumericConstantFormula)]
     if intro_const_formulas:
@@ -1778,7 +1799,7 @@ def eliminate_quantifiers(
                 intro_const_formula,
                 intro_const_formula.inner_formula.substitute_variables({intro_const_formula.bound_variable: fresh}))
 
-        return eliminate_quantifiers(formula, vacuously_satisfied)
+        return eliminate_quantifiers(formula, vacuously_satisfied, grammar, reachable, non_vacuously_satisfied)
 
     return [formula]
 

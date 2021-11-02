@@ -181,7 +181,11 @@ class TestSolver(unittest.TestCase):
             )
         ))
 
-        self.execute_generation_test(formula, max_number_free_instantiations=1, num_solutions=30)
+        self.execute_generation_test(
+            formula,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=3,
+            num_solutions=50)
 
     def test_declared_before_used_concrete_syntax(self):
         formula = """
@@ -311,17 +315,17 @@ constraint {
             cost_settings=CostSettings(
                 (
                     CostWeightVector(
-                        tree_closing_cost=18,
-                        vacuous_penalty=0,
-                        constraint_cost=11,
-                        derivation_depth_penalty=1,
-                        low_coverage_penalty=2),
+                        tree_closing_cost=16,
+                        vacuous_penalty=9,
+                        constraint_cost=2,
+                        derivation_depth_penalty=10,
+                        low_coverage_penalty=35),
                 ),
                 cost_phase_lengths=(200,),
                 k=3
             ),
-            print_only=True,
-            num_solutions=1000
+            # print_only=True,
+            num_solutions=20
         )
 
     def test_tar(self):
