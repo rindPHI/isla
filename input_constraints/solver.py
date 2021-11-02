@@ -1110,6 +1110,7 @@ def compute_vacuous_penalty(
     quantifier_chains: List[Tuple[isla.ForallFormula, ...]] = [
         tuple([f for f in c if isinstance(f, isla.ForallFormula)])
         for c in get_quantifier_chains(formula)]
+    quantifier_chains = [c for c in quantifier_chains if c]
 
     vacuous_penalty = 0
     if quantifier_chains:

@@ -440,14 +440,14 @@ class TestISLa(unittest.TestCase):
                          bind_expression.to_tree_prefix("<file_name>", tar.TAR_GRAMMAR)[0].to_parse_tree())
 
     def test_matches_xml_property(self):
-        inp = "<a/><b>k</b>"
+        inp = "<b>k</b>"
         tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse(inp))[0])
 
         mgr = VariableManager(XML_GRAMMAR)
         start = mgr.const("$start", "<start>")
         formula: QuantifiedFormula = cast(QuantifiedFormula, mgr.create(sc.forall_bind(
             sc.bexpr("<") + mgr.bv("$oid", "<id>") + ">" +
-            "<xml-tree>" +
+            "<inner-xml-tree>" +
             "</" + mgr.bv("$cid", "<id>") + ">",
             "<xml-tree>",
             start,
@@ -462,16 +462,16 @@ class TestISLa(unittest.TestCase):
         start = mgr.const("$start", "<start>")
         formula: Formula = mgr.create(sc.forall_bind(
             sc.bexpr("<") + mgr.bv("$oid", "<id>") + ">" +
-            "<xml-tree>" +
+            "<inner-xml-tree>" +
             "</" + mgr.bv("$cid", "<id>") + ">",
             "<xml-tree>",
             start,
             mgr.smt(mgr.bv("$oid").to_smt() == mgr.bv("$cid").to_smt())
         ))
 
-        correct_tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse("<a/><b>k</b>"))[0])
+        correct_tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse("<b>k</b>"))[0])
         wrong_tree = DerivationTree.from_parse_tree(
-            list(EarleyParser(XML_GRAMMAR).parse("8Cf<2>5</4n><Y i=s/>"))[0])
+            list(EarleyParser(XML_GRAMMAR).parse("<a>asdf</r>"))[0])
 
         self.assertTrue(evaluate(formula.substitute_expressions({start: correct_tree}), correct_tree))
         self.assertFalse(evaluate(formula.substitute_expressions({start: wrong_tree}), correct_tree))
