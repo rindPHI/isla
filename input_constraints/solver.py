@@ -2,6 +2,7 @@ import copy
 import heapq
 import logging
 import math
+import multiprocessing
 import sys
 import time
 from functools import reduce, lru_cache
@@ -850,7 +851,7 @@ class ISLaSolver:
             # and expansion; also, tree insertion can yield different trees that have intersecting
             # expansions. We drop those to output more diverse solutions (numbers for SMT solutions
             # and free nonterminals are configurable, so you get more outputs by playing with those!).
-            self.logger.debug("Discarding state %s, tree already in queue", str(state))
+            self.logger.debug("Discarding state %s, tree already in queue", state)
             return False
 
         if state.constraint == sc.false():
@@ -1065,8 +1066,7 @@ def compute_cost(
     vacuous_penalty = compute_vacuous_penalty(grammar, orig_formula, state.tree)
 
     # k-Path coverage: Fewer covered -> higher penalty
-    k_cov_cost = (math.prod([1 - state.tree.k_coverage(graph, k) for k in range(1, k + 1)])
-                  ** (1 / float(k)))
+    k_cov_cost = compute_k_coverage_cost(graph, k, state)
 
     costs = [tree_closing_cost, vacuous_penalty, constraint_cost, state.level, k_cov_cost]
     assert all(c >= 0 for c in costs)
@@ -1083,28 +1083,34 @@ def compute_cost(
     return result
 
 
-def compute_vacuous_penalty(grammar: Grammar, orig_formula: isla.Formula, tree: DerivationTree) -> float:
+def compute_k_coverage_cost(graph: GrammarGraph, k: int, state: SolutionState) -> float:
+    return math.prod([1 - state.tree.k_coverage(graph, k) for k in range(1, k + 1)]) ** (1 / float(k))
+
+
+def get_quantifier_chains(formula: isla.Formula) -> \
+        List[Tuple[Union[isla.QuantifiedFormula, isla.IntroduceNumericConstantFormula], ...]]:
+    univ_toplevel_formulas = isla.get_toplevel_quantified_formulas(formula)
+    children_chains = [get_quantifier_chains(f.inner_formula) for f in univ_toplevel_formulas]
+    children_chains = [c for c in children_chains if c]
+    if children_chains:
+        return [(f,) + c for f in univ_toplevel_formulas for c in get_quantifier_chains(f.inner_formula)]
+    else:
+        return [(f,) for f in univ_toplevel_formulas]
+
+
+def compute_vacuous_penalty(
+        grammar: Grammar,
+        orig_formula: isla.Formula,
+        tree: DerivationTree) -> float:
     # Returns a value between 0 (best) and 1 (worst).
 
-    top_constant: isla.Constant = next(
-        c for c in VariablesCollector.collect(orig_formula)
-        if isinstance(c, isla.Constant) and not c.is_numeric())
-    formula = orig_formula.substitute_expressions({top_constant: tree})
+    formula = isla.instantiate_top_constant(orig_formula, tree)
     toplevel_qfrs = isla.get_toplevel_quantified_formulas(formula)
 
-    def get_quantifier_chains(formula: isla.Formula) -> List[Tuple[isla.ForallFormula, ...]]:
-        # TODO: Consider numeric constant intros and existential formulas...
-        univ_toplevel_formulas = {
-            f for f in isla.get_toplevel_quantified_formulas(formula)
-            if isinstance(f, isla.ForallFormula)}
-        children_chains = [get_quantifier_chains(f.inner_formula) for f in univ_toplevel_formulas]
-        children_chains = [c for c in children_chains if c]
-        if children_chains:
-            return [(f,) + c for f in univ_toplevel_formulas for c in get_quantifier_chains(f.inner_formula)]
-        else:
-            return [(f,) for f in univ_toplevel_formulas]
+    quantifier_chains: List[Tuple[isla.ForallFormula, ...]] = [
+        tuple([f for f in c if isinstance(f, isla.ForallFormula)])
+        for c in get_quantifier_chains(formula)]
 
-    quantifier_chains = get_quantifier_chains(formula)
     vacuous_penalty = 0
     if quantifier_chains:
         vacuously_matched_quantifiers = set()
@@ -1129,6 +1135,7 @@ def compute_vacuous_penalty(grammar: Grammar, orig_formula: isla.Formula, tree: 
     return vacuous_penalty
 
 
+# No longer used...
 def compute_match_dist(
         state: SolutionState, grammar: Grammar,
         node_distance: Callable[[str, str], int],

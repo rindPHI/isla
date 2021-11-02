@@ -315,17 +315,17 @@ constraint {
             cost_settings=CostSettings(
                 (
                     CostWeightVector(
-                        tree_closing_cost=16,
+                        tree_closing_cost=20,
                         vacuous_penalty=9,
-                        constraint_cost=2,
+                        constraint_cost=8,
                         derivation_depth_penalty=10,
                         low_coverage_penalty=35),
                 ),
                 cost_phase_lengths=(200,),
                 k=3
             ),
-            # print_only=True,
-            num_solutions=20
+            print_only=True,
+            num_solutions=30
         )
 
     def test_tar(self):

@@ -1,6 +1,7 @@
 import copy
 import itertools
 import logging
+import pickle
 import re
 from functools import reduce
 from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable
@@ -664,6 +665,12 @@ class FormulaVisitor:
 
 
 class Formula:
+    # def __getstate__(self):
+    #     return {f: pickle.dumps(v) for f, v in self.__dict__.items()} | {"cls": type(self).__name__}
+    #
+    # def __setstate__(self, state):
+    #     pass
+
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         """Non-recursive: Only non-empty for quantified formulas"""
         raise NotImplementedError()
@@ -1121,6 +1128,23 @@ class SMTFormula(Formula):
         # is set to True and all substituted expressions are closed trees, i.e., the formula
         # is ground. Deactivate only for special purposes, e.g., vacuity checking.
         self.auto_eval = auto_eval
+
+    def __getstate__(self) -> Dict[str, bytes]:
+        result: Dict[str, bytes] = {f: pickle.dumps(v) for f, v in self.__dict__.items() if f != "formula"}
+        result["formula"] = self.formula.sexpr().encode("utf-8")
+        return result
+
+    def __setstate__(self, state: Dict[str, bytes]) -> None:
+        inst = {f: pickle.loads(v) for f, v in state.items() if f != "formula"}
+        free_variables: OrderedSet[Variable] = inst["free_variables_"]
+        instantiated_variables: OrderedSet[Variable] = inst["instantiated_variables"]
+
+        z3_constr = z3.parse_smt2_string(
+            f"(assert {state['formula'].decode('utf-8')})",
+            decls={var.name: z3.String(var.name) for var in free_variables | instantiated_variables})[0]
+
+        self.__dict__ = inst
+        self.formula = z3_constr
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         new_smt_formula = z3_subst(self.formula, {v1.to_smt(): v2.to_smt() for v1, v2 in subst_map.items()})
@@ -2499,3 +2523,10 @@ def fresh_constant(used: Set[Variable], proposal: Constant, add: bool = True) ->
         used.add(result)
 
     return result
+
+
+def instantiate_top_constant(formula: Formula, tree: DerivationTree) -> Formula:
+    top_constant: Constant = next(
+        c for c in VariablesCollector.collect(formula)
+        if isinstance(c, Constant) and not c.is_numeric())
+    return formula.substitute_expressions({top_constant: tree})

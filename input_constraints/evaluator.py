@@ -1,6 +1,7 @@
 import copy
 import datetime
 import logging
+import math
 import random
 import subprocess
 import time
@@ -167,9 +168,13 @@ def evaluate_data(
     accumulated_k_path_coverage: Dict[float, int] = {}
     accumulated_non_vacuous_index: Dict[float, float] = {}
 
+    quantifier_chains: List[Tuple[isla.ForallFormula, ...]] = [
+        tuple([f for f in c if isinstance(f, isla.ForallFormula)])
+        for c in solver.get_quantifier_chains(formula)]
+
     valid_inputs: int = 0
     covered_kpaths: Set[Tuple[gg.Node, ...]] = set()
-    non_vacuous_index: float = 0.0
+    chains_satisfied: Dict[Tuple[isla.ForallFormula, ...], int] = {c: 0 for c in quantifier_chains}
 
     for seconds, inp in data.items():
         if validator(inp):
@@ -178,14 +183,39 @@ def evaluate_data(
             logger.debug("Input %s invalid", str(inp))
             continue
 
-        non_vacuous_index += (1 - solver.compute_vacuous_penalty(graph.to_grammar(), formula, inp))
+        if quantifier_chains:
+            vacuously_matched_quantifiers = set()
+            isla.eliminate_quantifiers(
+                isla.instantiate_top_constant(formula, inp),
+                vacuously_matched_quantifiers, graph.to_grammar())
+
+            non_vacuous_chains = {
+                c for c in quantifier_chains if
+                all(of.id != f.id
+                    for of in vacuously_matched_quantifiers
+                    for f in c)}
+
+            for c in non_vacuous_chains:
+                assert c in chains_satisfied
+                chains_satisfied[c] += 1
+
         # if not vacuously_satisfies(inp, formula):
         #     non_vacuous_inputs += 1
 
         covered_kpaths.update(graph.k_paths_in_tree(inp.to_parse_tree(), k))
         accumulated_valid_inputs[seconds] = valid_inputs
         accumulated_k_path_coverage[seconds] = int(len(covered_kpaths) * 100 / len(graph.k_paths(k)))
-        accumulated_non_vacuous_index[seconds] = non_vacuous_index
+
+        if quantifier_chains:
+            # Values in chains_satisfied range between 0 and `valid_inputs`, and thus the mean, too.
+            chains_satisfied_mean = (
+                    math.prod([v + 1 for v in chains_satisfied.values()]) ** (1 / len(chains_satisfied)) - 1)
+            assert 0 <= chains_satisfied_mean <= valid_inputs
+            # We normalize to a percentage-like value between 0 and 100
+            accumulated_non_vacuous_index[seconds] = 100 * chains_satisfied_mean / valid_inputs
+            assert 0 <= accumulated_non_vacuous_index[seconds] <= 100
+        else:
+            accumulated_non_vacuous_index[seconds] = 0
 
     result = PerformanceEvaluationResult(
         accumulated_valid_inputs,
@@ -196,7 +226,7 @@ def evaluate_data(
         "Final evaluation values: %d valid inputs, %d %% coverage, %f non-vacuous index, final mean: %f",
         valid_inputs,
         int(len(covered_kpaths) * 100 / len(graph.k_paths(k))),
-        non_vacuous_index,
+        list(accumulated_non_vacuous_index.values())[-1],
         list(result.mean_data().values())[-1]
     )
 
