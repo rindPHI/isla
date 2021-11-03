@@ -191,8 +191,8 @@ class ISLaSolver:
     def __init__(self,
                  grammar: Grammar,
                  formula: Union[isla.Formula, str],
-                 structural_predicates: Optional[Dict[str, isla.StructuralPredicate]] = None,
-                 semantic_predicates: Optional[Dict[str, isla.SemanticPredicate]] = None,
+                 structural_predicates: Optional[Set[isla.StructuralPredicate]] = None,
+                 semantic_predicates: Optional[Set[isla.SemanticPredicate]] = None,
                  max_number_free_instantiations: int = 10,
                  max_number_smt_instantiations: int = 10,
                  expand_after_existential_elimination: bool = False,  # Currently not used, might be removed

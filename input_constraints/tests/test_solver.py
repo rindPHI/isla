@@ -2,7 +2,7 @@ import copy
 import logging
 import os
 import unittest
-from typing import cast, Optional, Dict, List, Callable, Union
+from typing import cast, Optional, Dict, List, Callable, Union, Set
 from xml.dom import minidom
 from xml.sax.saxutils import escape
 
@@ -207,7 +207,7 @@ constraint {
 
         self.execute_generation_test(
             formula,
-            structural_predicates={"before": BEFORE_PREDICATE},
+            structural_predicates={BEFORE_PREDICATE},
             max_number_free_instantiations=1,
             num_solutions=30)
 
@@ -226,11 +226,12 @@ constraint {
                 sc.count(SIMPLE_CSV_GRAMMAR, mgr.bv("$line"), "<csv-field>", mgr.num_const("$num")))
         )
 
-        self.execute_generation_test(formula,
-                                     grammar=SIMPLE_CSV_GRAMMAR,
-                                     max_number_free_instantiations=1,
-                                     max_number_smt_instantiations=2,
-                                     enforce_unique_trees_in_queue=False)
+        self.execute_generation_test(
+            formula,
+            grammar=SIMPLE_CSV_GRAMMAR,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=2,
+            enforce_unique_trees_in_queue=False)
 
     def test_csv_rows_equal_length(self):
         property = """
@@ -255,7 +256,7 @@ constraint {
 
         self.execute_generation_test(
             property,
-            semantic_predicates={"count": COUNT_PREDICATE(CSV_GRAMMAR)},
+            semantic_predicates={COUNT_PREDICATE(CSV_GRAMMAR)},
             grammar=CSV_GRAMMAR,
             num_solutions=30,
             max_number_free_instantiations=2,
@@ -382,8 +383,8 @@ constraint {
     def execute_generation_test(
             self,
             formula: Union[isla.Formula, str],
-            structural_predicates: Optional[Dict[str, isla.StructuralPredicate]] = None,
-            semantic_predicates: Optional[Dict[str, isla.SemanticPredicate]] = None,
+            structural_predicates: Optional[Set[isla.StructuralPredicate]] = None,
+            semantic_predicates: Optional[Set[isla.SemanticPredicate]] = None,
             grammar=LANG_GRAMMAR,
             num_solutions=50,
             print_solutions=False,

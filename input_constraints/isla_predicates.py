@@ -51,11 +51,14 @@ DIFFERENT_POSITION_PREDICATE = StructuralPredicate(
     lambda p1, p2: not is_same_position(p1, p2)
 )
 
-SAME_POSITION_PREDICATE = StructuralPredicate(
-    "same_position",
-    2,
-    is_same_position
-)
+SAME_POSITION_PREDICATE = StructuralPredicate("same_position", 2, is_same_position)
+
+
+def in_tree(path_1: Path, path_2: Path) -> bool:
+    return path_1 == path_2[:len(path_1)]
+
+
+IN_TREE_PREDICATE = StructuralPredicate("inside", 2, in_tree)
 
 
 def count(grammar: Grammar,

@@ -49,7 +49,7 @@ class TestConcreteSyntax(unittest.TestCase):
                      (before(assgn_2, assgn_1) and (= lhs_2 var))
              }"""
 
-        parsed_formula = parse_isla(concr_syntax_formula, structural_predicates={"before": BEFORE_PREDICATE})
+        parsed_formula = parse_isla(concr_syntax_formula, structural_predicates={BEFORE_PREDICATE})
 
         self.assertEqual(python_formula, parsed_formula)
 

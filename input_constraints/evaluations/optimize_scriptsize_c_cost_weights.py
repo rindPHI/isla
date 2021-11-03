@@ -17,15 +17,15 @@ logger.setLevel(logging.DEBUG)
 # logger.info("Seed: %d", seed)
 # random.seed(seed)
 
-random.seed(645)
+random.seed(45872897)
 
 tune_result = auto_tune_weight_vector(
     SCRIPTSIZE_C_GRAMMAR,
     SCRIPTSIZE_C_DEF_USE_CONSTR & SCRIPTSIZE_C_NO_REDEF_CONSTR,
     lambda t: compile_scriptsizec_clang(t) is True,
-    timeout=60,
+    timeout=90,
     population_size=20,
-    generations=3,
+    generations=4,
 )
 
 tune_result[0].plot("/tmp/scriptsize_c_autotune_result_state.pdf", "Scriptsize-C Auto-Tune Result Config Stats")

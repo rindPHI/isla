@@ -503,7 +503,7 @@ XYZ;\" asdf \";ABC
         self.assertTrue(evaluate(
             property,
             reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(valid_test_input))[0]),
-            semantic_predicates={"count": COUNT_PREDICATE(CSV_GRAMMAR)}))
+            semantic_predicates={COUNT_PREDICATE(CSV_GRAMMAR)}))
 
         invalid_test_input = """a;b;c
 XYZ;\" asdf \"
@@ -512,7 +512,7 @@ XYZ;\" asdf \"
         self.assertFalse(evaluate(
             property,
             reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(invalid_test_input))[0]),
-            semantic_predicates={"count": COUNT_PREDICATE(CSV_GRAMMAR)}))
+            semantic_predicates={COUNT_PREDICATE(CSV_GRAMMAR)}))
 
     def test_rest_property_1(self):
         tree = DerivationTree.from_parse_tree(list(EarleyParser(rest.REST_GRAMMAR).parse("0\n-\n\n"))[0])
@@ -549,7 +549,7 @@ constraint {
         (before(assgn_2, assgn_1) and (= lhs_2 var))
 }
 """
-        self.assertTrue(evaluate(formula, tree, structural_predicates={"before": BEFORE_PREDICATE}))
+        self.assertTrue(evaluate(formula, tree, structural_predicates={BEFORE_PREDICATE}))
 
     def test_vacuously_satisfied(self):
         inputs = ["{int a;int b;}", "{int a;}", "{int a;int b = 12;}", "17;"]
@@ -648,6 +648,9 @@ constraint {
         vs = set()
         eliminate_quantifiers(formula.substitute_expressions({start: tree}), vs, LANG_GRAMMAR)
         self.assertEqual(0, len(vs))
+
+    def test_scriptsize_c_defuse_propoerty(self):
+        pass
 
 
 if __name__ == '__main__':

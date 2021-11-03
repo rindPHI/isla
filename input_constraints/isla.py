@@ -1989,8 +1989,8 @@ def evaluate_legacy(
 def evaluate(
         formula: Union[Formula, str],
         reference_tree: DerivationTree,
-        structural_predicates: Optional[Dict[str, StructuralPredicate]] = None,
-        semantic_predicates: Optional[Dict[str, SemanticPredicate]] = None) -> ThreeValuedTruth:
+        structural_predicates: Optional[Set[StructuralPredicate]] = None,
+        semantic_predicates: Optional[Set[SemanticPredicate]] = None) -> ThreeValuedTruth:
     if isinstance(formula, str):
         formula = parse_isla(formula, structural_predicates, semantic_predicates)
 
@@ -2352,12 +2352,10 @@ class VariableManager:
 
 def parse_isla(
         inp: str,
-        structural_predicates: Optional[Dict[str, StructuralPredicate]] = None,
-        semantic_predicates: Optional[Dict[str, SemanticPredicate]] = None) -> Formula:
-    if structural_predicates is None:
-        structural_predicates = {}
-    if semantic_predicates is None:
-        semantic_predicates = {}
+        structural_predicates: Optional[Set[StructuralPredicate]] = None,
+        semantic_predicates: Optional[Set[SemanticPredicate]] = None) -> Formula:
+    structural_predicates_map = {} if not structural_predicates else {p.name: p for p in structural_predicates}
+    semantic_predicates_map = {} if not semantic_predicates else {p.name: p for p in semantic_predicates}
 
     pegparser = PEGParser(ISLA_GRAMMAR)
     tree = DerivationTree.from_parse_tree(pegparser.parse(inp.strip())[0])
@@ -2423,7 +2421,7 @@ def parse_isla(
             check_undeclared_ids(tree)
 
             predicate_name = str(tree.children[0])
-            if predicate_name not in structural_predicates and predicate_name not in semantic_predicates:
+            if predicate_name not in structural_predicates_map and predicate_name not in semantic_predicates_map:
                 raise SyntaxError(f"Unknown predicate {predicate_name} in {tree}")
 
             args = [
@@ -2434,11 +2432,11 @@ def parse_isla(
                 else str(arg)
                 for _, arg in tree.filter(lambda n: n.value == "<arg>")]
 
-            is_structural = predicate_name in structural_predicates
+            is_structural = predicate_name in structural_predicates_map
 
             predicate = (
-                structural_predicates[predicate_name] if is_structural
-                else semantic_predicates[predicate_name])
+                structural_predicates_map[predicate_name] if is_structural
+                else semantic_predicates_map[predicate_name])
 
             if len(args) != predicate.arity:
                 raise SyntaxError(

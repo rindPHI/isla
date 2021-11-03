@@ -61,8 +61,7 @@ SCRIPTSIZE_C_GRAMMAR = {
     "<digit_nonzero>": list(set(srange(string.digits)) - {"0"}),
 }
 
-# TODO: Scoping!
-SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT = """
+SCRIPTSIZE_C_DEF_USE_NO_SCOPING_CONSTR_TEXT = """
 const start: <start>;
 
 vars {
@@ -83,10 +82,31 @@ constraint {
 }
 """
 
-SCRIPTSIZE_C_DEF_USE_CONSTR = parse_isla(
-    SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT,
-    structural_predicates={"before": BEFORE_PREDICATE}
-)
+SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT = """
+const start: <start>;
+
+vars {
+  def_id, use_id: <id>;
+  decl: <declaration>;
+  decls: <declarations>;
+  stmts: <statements>;
+  stmt: <statement>;
+}
+
+constraint {
+  forall use_id in start:
+    exists stmt="{{{decls}{stmts}}}" in start:
+      (exists decl="int {def_id};" in start:
+         (before(decl, expr) and
+          (= use_id def_id)) or
+       exists decl="int {def_id} = <expr>;" in start:
+         (before(decl, expr) and
+          (= use_id def_id)))
+}
+"""
+
+# SCRIPTSIZE_C_DEF_USE_CONSTR = parse_isla(SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT, structural_predicates={BEFORE_PREDICATE})
+SCRIPTSIZE_C_DEF_USE_CONSTR = parse_isla(SCRIPTSIZE_C_DEF_USE_NO_SCOPING_CONSTR_TEXT, structural_predicates={BEFORE_PREDICATE})
 
 # TODO: Scoping!
 SCRIPTSIZE_C_NO_REDEF_TEXT = """
@@ -115,10 +135,7 @@ constraint {
 }
 """
 
-SCRIPTSIZE_C_NO_REDEF_CONSTR = parse_isla(
-    SCRIPTSIZE_C_NO_REDEF_TEXT,
-    structural_predicates={"same_position": SAME_POSITION_PREDICATE}
-)
+SCRIPTSIZE_C_NO_REDEF_CONSTR = parse_isla(SCRIPTSIZE_C_NO_REDEF_TEXT, structural_predicates={SAME_POSITION_PREDICATE})
 
 
 def compile_scriptsizec_clang(tree: isla.DerivationTree) -> Union[bool, str]:

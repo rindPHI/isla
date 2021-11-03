@@ -41,7 +41,7 @@ ISLA_GRAMMAR = {
     ],
     "<var>": ["{<id>}"],
     "<esc_chars>": ["<esc_char><esc_chars>", "<esc_char>"],
-    "<esc_char>": ['\\"', "\\{", "\\}"] + list(set(string.printable) - {'"', "{", "}"}),
+    "<esc_char>": ['\\"', "{{", "}}"] + list(set(string.printable) - {'"', "{", "}"}),
 
     "<smt_atom>": ["<smt_bool_term>"],
     "<smt_bool_term>": ["true", "false", "(<fsym><wss><sexpr_list>)"],
