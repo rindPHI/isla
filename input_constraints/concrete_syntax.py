@@ -32,16 +32,20 @@ ISLA_GRAMMAR = {
         "<quantifier><wss><id><wss>in<wss><id>:<mwss><constraint>",
     ],
     "<quantifier>": ["forall", "exists"],
-    "<bind_expr>": ["\"<var_or_esc_chars_list>\""],
-    "<var_or_esc_chars_list>": [
-        "<var><var_or_esc_chars_list>",
-        "<esc_chars><var_or_esc_chars_list>",
+    "<bind_expr>": ["\"<bind_expr_elements>\""],
+    "<bind_expr_elements>": [
+        "<bind_expr_element><bind_expr_elements>",
+        "<bind_expr_element>"
+    ],
+    "<bind_expr_element>": [
         "<var>",
+        "<optional>",
         "<esc_chars>"
     ],
     "<var>": ["{<id>}"],
+    "<optional>": ["[<esc_chars>]"],
     "<esc_chars>": ["<esc_char><esc_chars>", "<esc_char>"],
-    "<esc_char>": ['\\"', "{{", "}}"] + list(set(string.printable) - {'"', "{", "}"}),
+    "<esc_char>": ['\\"', "{{", "}}", "[[", "]]"] + list(set(string.printable) - {'"', "{", "}", "[", "]"}),
 
     "<smt_atom>": ["<smt_bool_term>"],
     "<smt_bool_term>": ["true", "false", "(<fsym><wss><sexpr_list>)"],

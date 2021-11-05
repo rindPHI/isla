@@ -637,47 +637,54 @@ class ISLaSolver:
     def eliminate_existential_formula(self,
                                       existential_formula: isla.ExistsFormula,
                                       state: SolutionState) -> List[SolutionState]:
-        bind_expr_paths: Dict[isla.BoundVariable, Path] = {}
+        inserted_trees_and_bind_paths: List[Tuple[DerivationTree, Dict[isla.BoundVariable, Path]]] = []
         if existential_formula.bind_expression is not None:
-            tree_prefix, bind_expr_paths = existential_formula.bind_expression.to_tree_prefix(
+            inserted_trees_and_bind_paths = existential_formula.bind_expression.to_tree_prefix(
                 existential_formula.bound_variable.n_type, self.grammar)
-            inserted_tree = tree_prefix
         else:
-            inserted_tree = DerivationTree(existential_formula.bound_variable.n_type, None)
+            inserted_trees_and_bind_paths = [(DerivationTree(existential_formula.bound_variable.n_type, None), {})]
 
-        insertion_result = insert_tree(self.canonical_grammar, inserted_tree, state.tree, graph=self.graph)
+        result: List[SolutionState] = []
 
-        if not insertion_result:
-            return []
+        inserted_tree: DerivationTree
+        bind_expr_paths: Dict[isla.BoundVariable, Path]
+        for inserted_tree, bind_expr_paths in inserted_trees_and_bind_paths:
+            insertion_result = insert_tree(self.canonical_grammar, inserted_tree, state.tree, graph=self.graph)
 
-        tree_substitutions = [
-            {
-                original_tree: result_tree.get_subtree(path)
-                for path, original_tree in state.tree.paths()
-                if result_tree.is_valid_path(path)
-            }
-            for result_tree in insertion_result]
+            if not insertion_result:
+                continue
 
-        variable_substitutions = (
-                {existential_formula.bound_variable: inserted_tree} |
-                ({} if not bind_expr_paths else {
-                    var: inserted_tree.get_subtree(path)
-                    for var, path in bind_expr_paths.items()
-                    if var in existential_formula.bind_expression.bound_variables()
-                }))
+            tree_substitutions = [
+                {
+                    original_tree: result_tree.get_subtree(path)
+                    for path, original_tree in state.tree.paths()
+                    if result_tree.is_valid_path(path)
+                }
+                for result_tree in insertion_result]
 
-        instantiated_formula = existential_formula.inner_formula.substitute_expressions(variable_substitutions)
+            variable_substitutions = (
+                    {existential_formula.bound_variable: inserted_tree} |
+                    ({} if not bind_expr_paths else {
+                        var: inserted_tree.get_subtree(path)
+                        for var, path in bind_expr_paths.items()
+                        if var in existential_formula.bind_expression.bound_variables()
+                    }))
 
-        return [
-            SolutionState(
-                (instantiated_formula
-                 & self.formula.substitute_expressions({self.top_constant: state.tree.substitute(tree_substitution)})
-                 & isla.replace_formula(
-                            state.constraint, existential_formula, sc.true()
-                        ).substitute_expressions(tree_substitution)),
-                state.tree.substitute(tree_substitution)
-            )
-            for tree_substitution in tree_substitutions]
+            instantiated_formula = existential_formula.inner_formula.substitute_expressions(variable_substitutions)
+
+            result.extend([
+                SolutionState(
+                    (instantiated_formula
+                     & self.formula.substitute_expressions(
+                                {self.top_constant: state.tree.substitute(tree_substitution)})
+                     & isla.replace_formula(
+                                state.constraint, existential_formula, sc.true()
+                            ).substitute_expressions(tree_substitution)),
+                    state.tree.substitute(tree_substitution)
+                )
+                for tree_substitution in tree_substitutions])
+
+        return result
 
     def eliminate_semantic_formula(self, semantic_formula: isla.Formula, state: SolutionState) -> List[SolutionState]:
         """
@@ -839,7 +846,8 @@ class ISLaSolver:
         assert all(state.tree.find_node(arg)
                    for predicate_formula in get_conjuncts(state.constraint)
                    if isinstance(predicate_formula, isla.StructuralPredicateFormula)
-                   for arg in predicate_formula.args)
+                   for arg in predicate_formula.args
+                   if isinstance(arg, DerivationTree))
 
         assert all(state.tree.find_node(arg)
                    for semantic_formula in get_conjuncts(state.constraint)

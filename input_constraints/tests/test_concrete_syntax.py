@@ -5,7 +5,7 @@ import z3
 
 from input_constraints import isla
 from input_constraints.isla import DummyVariable, parse_isla
-from input_constraints.isla_predicates import BEFORE_PREDICATE
+from input_constraints.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
 from input_constraints.tests.test_data import LANG_GRAMMAR, XML_GRAMMAR
 import input_constraints.isla_shortcuts as sc
 
@@ -75,6 +75,31 @@ class TestConcreteSyntax(unittest.TestCase):
                 mgr.smt(mgr.bv("$oid").to_smt() == mgr.bv("$cid").to_smt())
             )
         )
+
+    def test_parse_conditional_bind_expression(self):
+        constr = """
+const start: <start>;
+
+vars {
+  expr: <expr>;
+  def_id, use_id: <id>;
+  decl: <declaration>;
+}
+
+constraint {
+  forall expr in start:
+    forall use_id in expr:
+      exists decl="int {def_id}[ = <expr>];" in start:
+        (level("GE", "<block>", decl, expr) and 
+        (before(decl, expr) and 
+        (= use_id def_id)))
+}
+"""
+
+        parsed_formula = parse_isla(constr, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
+        self.assertTrue(
+            any(isinstance(e, list)
+                for e in parsed_formula.inner_formula.inner_formula.bind_expression.bound_elements))
 
 
 if __name__ == '__main__':

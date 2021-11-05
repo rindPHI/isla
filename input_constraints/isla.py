@@ -15,7 +15,7 @@ from orderedset import OrderedSet
 
 from input_constraints.concrete_syntax import ISLA_GRAMMAR
 from input_constraints.helpers import get_symbols, z3_subst, is_valid, \
-    replace_line_breaks, delete_unreachable, pop, z3_solve
+    replace_line_breaks, delete_unreachable, pop, z3_solve, powerset
 from input_constraints.type_defs import ParseTree, Path, Grammar
 
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
@@ -517,22 +517,32 @@ class DerivationTree:
 
 
 class BindExpression:
-    def __init__(self, *bound_elements: Union[str, BoundVariable]):
-        self.bound_elements: List[Union[str, BoundVariable]] = []
+    def __init__(self, *bound_elements: Union[str, BoundVariable, List[str]]):
+        self.bound_elements: List[Union[BoundVariable, List[Union[BoundVariable]]]] = []
         for bound_elem in bound_elements:
             if isinstance(bound_elem, BoundVariable):
                 self.bound_elements.append(bound_elem)
                 continue
 
+            if isinstance(bound_elem, list):
+                if len(bound_elem) > 1 or not isinstance(bound_elem[0], str):
+                    self.bound_elements.append(bound_elem)
+                    continue
+
+                self.bound_elements.append([
+                    DummyVariable(token)
+                    for token in re.split(RE_NONTERMINAL, bound_elem[0])
+                    if token
+                ])
+                continue
+
             self.bound_elements.extend([
-                # token if not is_nonterminal(token)
-                # else DummyVariable(token)
                 DummyVariable(token)
                 for token in re.split(RE_NONTERMINAL, bound_elem)
                 if token
             ])
 
-        self.prefixes: Dict[str, Tuple[DerivationTree, Dict[BoundVariable, Path]]] = {}
+        self.prefixes: Dict[str, List[Tuple[DerivationTree, Dict[BoundVariable, Path]]]] = {}
 
     def __add__(self, other: Union[str, 'BoundVariable']) -> 'BindExpression':
         assert type(other) == str or type(other) == BoundVariable
@@ -541,95 +551,128 @@ class BindExpression:
         return result
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
-        return BindExpression(*[elem if elem not in subst_map else subst_map[elem]
+        return BindExpression(*[elem if isinstance(elem, list)
+                                else subst_map.get(elem, elem)
                                 for elem in self.bound_elements])
 
     def bound_variables(self) -> OrderedSet[BoundVariable]:
+        # Not isinstance(var, BoundVariable) since we want to exclude dummy variables
         return OrderedSet([var for var in self.bound_elements if type(var) is BoundVariable])
 
-    def to_tree_prefix(self, in_nonterminal: str, grammar: Grammar) -> Tuple[DerivationTree, Dict[BoundVariable, Path]]:
+    def to_tree_prefix(self, in_nonterminal: str, grammar: Grammar) -> \
+            List[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
         if in_nonterminal in self.prefixes:
             cached = self.prefixes[in_nonterminal]
-            return cached[0].new_ids(), cached[1]
+            return [(opt[0].new_ids(), opt[1]) for opt in cached]
 
         fuzzer = GrammarFuzzer(grammar)
 
-        placeholder_map: Dict[Union[str, BoundVariable], str] = {}
+        result: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]] = []
 
-        for bound_element in self.bound_elements:
-            if isinstance(bound_element, str):
-                placeholder_map[bound_element] = bound_element
-            elif not is_nonterminal(bound_element.n_type):
-                placeholder_map[bound_element] = bound_element.n_type
-            else:
-                ph_candidate = fuzzer.expand_tree((bound_element.n_type, None))
-                placeholder_map[bound_element] = tree_to_string(ph_candidate)
+        for bound_elements in self.flatten_bound_elements():
+            placeholder_map: Dict[Union[str, BoundVariable], str] = {}
 
-        inp = "".join(list(map(lambda elem: placeholder_map[elem], self.bound_elements)))
+            for bound_element in bound_elements:
+                if isinstance(bound_element, str):
+                    placeholder_map[bound_element] = bound_element
+                elif not is_nonterminal(bound_element.n_type):
+                    placeholder_map[bound_element] = bound_element.n_type
+                else:
+                    ph_candidate = fuzzer.expand_tree((bound_element.n_type, None))
+                    placeholder_map[bound_element] = tree_to_string(ph_candidate)
 
-        subgrammar = copy.deepcopy(grammar)
-        subgrammar["<start>"] = [in_nonterminal]
-        delete_unreachable(subgrammar)
+            inp = "".join(list(map(lambda elem: placeholder_map[elem], bound_elements)))
 
-        parser = EarleyParser(subgrammar)
-        tree = DerivationTree.from_parse_tree(list(parser.parse(inp))[0][1][0])
+            subgrammar = copy.deepcopy(grammar)
+            subgrammar["<start>"] = [in_nonterminal]
+            delete_unreachable(subgrammar)
 
-        positions: Dict[BoundVariable, Path] = {}
-        bound_elements = copy.deepcopy(self.bound_elements)
-        curr_path = tuple()
-        while bound_elements:
-            curr_subtree = tree.get_subtree(curr_path)
-            curr_bound_elem = bound_elements[0]
+            parser = EarleyParser(subgrammar)
+            tree = DerivationTree.from_parse_tree(list(parser.parse(inp))[0][1][0])
 
-            if isinstance(curr_bound_elem, str):
-                if str(curr_subtree) == curr_bound_elem:
+            positions: Dict[BoundVariable, Path] = {}
+            curr_path = tuple()
+            while bound_elements:
+                curr_subtree = tree.get_subtree(curr_path)
+                curr_bound_elem = bound_elements[0]
+
+                if isinstance(curr_bound_elem, str):
+                    if str(curr_subtree) == curr_bound_elem:
+                        bound_elements = bound_elements[1:]
+
+                if isinstance(curr_bound_elem, Variable) and curr_bound_elem.n_type == curr_subtree.value:
+                    positions[bound_elements[0]] = curr_path
+                    tree = tree.replace_path(curr_path, DerivationTree(
+                        curr_subtree.value, None if is_nonterminal(curr_bound_elem.n_type) else ()))
                     bound_elements = bound_elements[1:]
 
-            if isinstance(curr_bound_elem, Variable) and curr_bound_elem.n_type == curr_subtree.value:
-                positions[bound_elements[0]] = curr_path
-                tree = tree.replace_path(curr_path, DerivationTree(
-                    curr_subtree.value, None if is_nonterminal(curr_bound_elem.n_type) else ()))
-                bound_elements = bound_elements[1:]
+                curr_path = tree.next_path(curr_path)
+                if curr_path is None:
+                    break
 
-            curr_path = tree.next_path(curr_path)
-            if curr_path is None:
-                break
+            result.append((tree, positions))
 
-        assert ([elem.n_type for elem in self.bound_elements if isinstance(elem, Variable)] ==
-                [leaf[1].value for leaf in tree.leaves()])
-        own_string = ''.join(map(lambda e: f'{str(e)}' if type(e) is str else e.n_type, self.bound_elements))
-        assert tree.to_string(show_open_leaves=True) == own_string
+        self.prefixes[in_nonterminal] = result
+        return result
 
-        self.prefixes[in_nonterminal] = (tree, positions)
-        return tree, positions
+    def flatten_bound_elements(self):
+        """Returns all possible bound elements lists where each contained optional either has
+        been chosen or removed. If this BindExpression has no optionals, the returned list is
+        a singleton."""
+        bound_elements_combinations: List[List[BoundVariable]] = []
+
+        # Consider all possible on/off combinations for optional elements
+        optionals = [elem for elem in self.bound_elements if isinstance(elem, list)]
+        if optionals:
+            for combination in powerset(optionals):
+                # Inline all chosen, remove all not chosen optionals
+                bound_elements = []
+                for bound_element in self.bound_elements:
+                    if not isinstance(bound_element, list):
+                        bound_elements.append(bound_element)
+                        continue
+
+                    if bound_element in combination:
+                        bound_elements.extend(bound_element)
+
+                bound_elements_combinations.append(bound_elements)
+
+        return bound_elements_combinations
 
     def match(self, tree: DerivationTree) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
         result: Dict[BoundVariable, Tuple[Path, DerivationTree]] = {}
 
-        bound_variables = list(self.bound_elements)
-        subtrees = list(tree.paths())
-        curr_elem = bound_variables.pop(0)
+        for bound_variables in reversed(self.flatten_bound_elements()):
+            subtrees = list(tree.paths())
+            curr_elem = bound_variables.pop(0)
 
-        while subtrees and curr_elem:
-            path, subtree = pop(subtrees)
+            while subtrees and curr_elem:
+                path, subtree = pop(subtrees)
 
-            if subtree.value == curr_elem.n_type:
-                result[curr_elem] = (path, subtree)
-                curr_elem = pop(bound_variables, default=None)
+                if subtree.value == curr_elem.n_type:
+                    result[curr_elem] = (path, subtree)
+                    curr_elem = pop(bound_variables, default=None)
 
-                subtrees = [(p, s) for p, s in subtrees
-                            if not p[:len(path)] == path]
+                    subtrees = [(p, s) for p, s in subtrees
+                                if not p[:len(path)] == path]
 
-        return None if subtrees or curr_elem else result
+            if not subtrees and not curr_elem:
+                return result
+
+        return None
 
     def __repr__(self):
         return f'BindExpression({", ".join(map(repr, self.bound_elements))})'
 
     def __str__(self):
-        return ''.join(map(lambda e: f'{str(e)}' if type(e) is str else str(e), self.bound_elements))
+        return ''.join(map(
+            lambda e: f'{str(e)}'
+            if isinstance(e, str)
+            else ("[" + "".join(map(str, e)) + "]") if isinstance(e, list)
+            else str(e), self.bound_elements))
 
     def __hash__(self):
-        return hash(tuple(self.bound_elements))
+        return hash(tuple([tuple(e) if isinstance(e, list) else e for e in self.bound_elements]))
 
     def __eq__(self, other):
         return self.bound_elements == other.bound_elements
@@ -758,13 +801,13 @@ class Formula:
 
 
 class StructuralPredicate:
-    def __init__(self, name: str, arity: int, eval_fun: Callable[[Path, ...], bool]):
+    def __init__(self, name: str, arity: int, eval_fun: Callable[[DerivationTree, Union[Path, str], ...], bool]):
         self.name = name
         self.arity = arity
         self.eval_fun = eval_fun
 
-    def evaluate(self, *instantiations: Path):
-        return self.eval_fun(*instantiations)
+    def evaluate(self, context_tree: DerivationTree, *instantiations: Union[Path, str]):
+        return self.eval_fun(context_tree, *instantiations)
 
     def __eq__(self, other):
         return type(other) is StructuralPredicate and (self.name, self.arity) == (other.name, other.arity)
@@ -780,29 +823,30 @@ class StructuralPredicate:
 
 
 class StructuralPredicateFormula(Formula):
-    def __init__(self, predicate: StructuralPredicate, *args: Union[Variable, DerivationTree]):
+    def __init__(self, predicate: StructuralPredicate, *args: Union[str, DerivationTree]):
         assert len(args) == predicate.arity
         self.predicate = predicate
         self.args: List[Union[Variable, DerivationTree]] = list(args)
 
     def evaluate(self, context_tree: DerivationTree) -> bool:
-        args_with_paths: List[Tuple[Path, DerivationTree]] = \
-            [(context_tree.find_node(tree), tree) if isinstance(tree, DerivationTree)
-             else context_tree.filter(
-                lambda subtree: subtree.value == tree and subtree.children is None, enforce_unique=True)[0]
-             for tree in self.args]
+        args_with_paths: List[Union[str, Tuple[Path, DerivationTree]]] = \
+            [arg if isinstance(arg, str) else
+             (context_tree.find_node(arg), arg)
+             for arg in self.args]
 
-        if any(path is None for path, _ in args_with_paths):
-            raise RuntimeError("Could not find paths for all predicate arguments in context tree:\n" +
-                               str([str(tree) for path, tree in args_with_paths if path is None]) +
-                               f"\nContext tree:\n{context_tree}")
+        if any(arg[0] is None for arg in args_with_paths if isinstance(arg, tuple)):
+            raise RuntimeError(
+                "Could not find paths for all predicate arguments in context tree:\n" +
+                str([str(tree) for path, tree in args_with_paths if path is None]) +
+                f"\nContext tree:\n{context_tree}")
 
-        return self.predicate.eval_fun(*[path for path, _ in args_with_paths])
+        return self.predicate.eval_fun(
+            context_tree, *[arg if isinstance(arg, str) else arg[0] for arg in args_with_paths])
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
-        return StructuralPredicateFormula(self.predicate,
-                                          *[arg if arg not in subst_map
-                                            else subst_map[arg] for arg in self.args])
+        return StructuralPredicateFormula(
+            self.predicate,
+            *[arg if arg not in subst_map else subst_map[arg] for arg in self.args])
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         new_args = []
@@ -814,6 +858,11 @@ class StructuralPredicateFormula(Formula):
                     new_args.append(arg)
                 continue
 
+            if isinstance(arg, str):
+                new_args.append(arg)
+                continue
+
+            assert isinstance(arg, DerivationTree)
             tree: DerivationTree = arg
             if tree in subst_map:
                 new_args.append(subst_map[tree])
@@ -1848,8 +1897,12 @@ def evaluate_clause(clause: List[Formula], reference_tree: DerivationTree) -> Th
 
         sf: StructuralPredicateFormula = (
             formula if isinstance(formula, StructuralPredicateFormula) else formula.args[0])
-        paths: List[Path] = [reference_tree.find_node(arg) for arg in sf.args]
-        result = sf.predicate.evaluate(*paths)
+        args: List[Union[str, Path]] = [
+            reference_tree.find_node(arg)
+            if isinstance(arg, DerivationTree)
+            else arg
+            for arg in sf.args]
+        result = sf.predicate.evaluate(reference_tree, *args)
 
         if ((not result and isinstance(formula, StructuralPredicateFormula)) or
                 (result and isinstance(formula, NegatedFormula))):
@@ -1949,12 +2002,13 @@ def evaluate_legacy(
                 evaluate_legacy(formula.inner_formula, new_assignment, reference_tree)
                 for new_assignment in new_assignments)
     elif isinstance(formula, StructuralPredicateFormula):
-        assert (not any(isinstance(arg, DerivationTree) for arg in formula.args)
-                or reference_tree is not None)
-        arg_insts = [(reference_tree.find_node(arg), arg) if isinstance(arg, DerivationTree)
-                     else assignments[arg]
-                     for arg in formula.args]
-        return ThreeValuedTruth.from_bool(formula.predicate.evaluate(*arg_insts))
+        arg_insts = [
+            arg if isinstance(arg, str)
+            else reference_tree.find_node(arg)
+            if isinstance(arg, DerivationTree)
+            else assignments[arg][0]
+            for arg in formula.args]
+        return ThreeValuedTruth.from_bool(formula.predicate.evaluate(reference_tree, *arg_insts))
     elif isinstance(formula, SemanticPredicateFormula):
         arg_insts = [arg if isinstance(arg, DerivationTree) or arg not in assignments
                      else assignments[arg][1]
@@ -2007,6 +2061,7 @@ def evaluate(
     v = FilterVisitor(lambda f: isinstance(f, IntroduceNumericConstantFormula))
     formula.accept(v)
     if not v.result:
+        # The legacy evaluation performs better, but only works w/o IntroduceNumericConstantFormulas.
         return evaluate_legacy(formula, {}, reference_tree)
 
     qfr_free: List[Formula] = eliminate_quantifiers(formula)
@@ -2473,27 +2528,24 @@ def parse_isla(
             raise NotImplementedError(f"Cannot parse expression {str(tree)}, symbol {tree.value}")
 
     def parse_bind_expr(tree: DerivationTree) -> BindExpression:
-        result_elements: List[Union[str, BoundVariable]] = []
-        curr_terminal = ""
+        result_elements: List[Union[str, BoundVariable, List[str]]] = []
 
         leaves = cast(DerivationTree, tree.children[1]).filter(
-            lambda n: n.value in ["<var>", "<esc_char>"])
+            lambda n: n.value == "<bind_expr_element>")
 
         for _, leaf in leaves:
-            if leaf.value == "<esc_char>":
-                curr_terminal += str(leaf)
-            else:
-                if curr_terminal:
-                    result_elements.append(curr_terminal)
-                    curr_terminal = ""
+            leaf = leaf.children[0]
+            assert leaf.value in ["<var>", "<optional>", "<esc_chars>"]
 
+            if leaf.value == "<esc_chars>":
+                result_elements.append(str(leaf))
+            elif leaf.value == "<optional>":
+                result_elements.append([str(leaf.children[1])])
+            else:
                 try:
                     result_elements.append(next(v for v in variables if v.name == str(leaf.children[1])))
                 except StopIteration:
                     raise SyntaxError(f"Undeclared symbol {str(leaf.children[1])} in {str(tree)}")
-
-        if curr_terminal:
-            result_elements.append(curr_terminal)
 
         return BindExpression(*result_elements)
 

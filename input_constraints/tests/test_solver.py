@@ -300,14 +300,8 @@ constraint {
         )
 
     def test_scriptsize_c_def_before_use(self):
-        # TODO: The compile_tinyc_lang test function is not totally precise, as it initializes
-        #       all assigned variables at the beginning to make the tinyc snippet c compatible.
-        #       Actually, we would have to localize the initializations, which requires some
-        #       more programming work; and then, the constraint would have to be refined (see
-        #       commented test case below).
-
         self.execute_generation_test(
-            scriptsizec.SCRIPTSIZE_C_DEF_USE_CONSTR & scriptsizec.SCRIPTSIZE_C_NO_REDEF_CONSTR,
+            scriptsizec.SCRIPTSIZE_C_DEF_USE_CONSTR,  # & scriptsizec.SCRIPTSIZE_C_NO_REDEF_CONSTR,
             grammar=scriptsizec.SCRIPTSIZE_C_GRAMMAR,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=1,

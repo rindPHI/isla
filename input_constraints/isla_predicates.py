@@ -30,12 +30,12 @@ def is_before(path_1: Path, path_2: Path) -> bool:
         return is_before(tuple(cdr_1), tuple(cdr_2))
 
 
-BEFORE_PREDICATE = StructuralPredicate("before", 2, is_before)
+BEFORE_PREDICATE = StructuralPredicate("before", 2, lambda _, p1, p2: is_before(p1, p2))
 
 AFTER_PREDICATE = StructuralPredicate(
     "after",
     2,
-    lambda path_1, path_2:
+    lambda _, path_1, path_2:
     not is_before(path_1, path_2) and
     path_1 != path_2[:len(path_1)]  # No prefix
 )
@@ -48,17 +48,75 @@ def is_same_position(path_1: Path, path_2: Path) -> bool:
 DIFFERENT_POSITION_PREDICATE = StructuralPredicate(
     "different_position",
     2,
-    lambda p1, p2: not is_same_position(p1, p2)
+    lambda _, p1, p2: not is_same_position(p1, p2)
 )
 
-SAME_POSITION_PREDICATE = StructuralPredicate("same_position", 2, is_same_position)
+SAME_POSITION_PREDICATE = StructuralPredicate("same_position", 2, lambda _, p1, p2: is_same_position(p1, p2))
 
 
 def in_tree(path_1: Path, path_2: Path) -> bool:
     return path_1 == path_2[:len(path_1)]
 
 
-IN_TREE_PREDICATE = StructuralPredicate("inside", 2, in_tree)
+IN_TREE_PREDICATE = StructuralPredicate("inside", 2, lambda _, p1, p2: in_tree(p1, p2))
+
+
+def level_check(
+        context_tree: DerivationTree,
+        pred: str,
+        nonterminal: str,
+        path_1: Path,
+        path_2: Path) -> bool:
+    assert pred in ["EQ", "GE", "LE", "GT", "LT"]
+
+    # There has to be a common prefix of both paths pointing to a `nonterminal` node, such that
+    #
+    # EQ: the remaining path fragments do not point to any `nonterminal` node.
+    # GE: the remaining path fragment for `arg_1` does not point to any `nonterminal` nodes.
+    # LE: the remaining path fragment for `arg_2` does not point to any `nonterminal` nodes.
+    # GT: the remaining path fragment for `arg_1` does not point to any `nonterminal` nodes,
+    #     and the remaining path fragment for `arg_2` points to at least one `nonterminal` node.
+    # LT: the remaining path fragment for `arg_2` does not point to any `nonterminal` nodes,
+    #     and the remaining path fragment for `arg_1` points to at least one `nonterminal` node.
+
+    # It is also possible to be outside of any `nonterminal` scope; then, the arguments may still be
+    # at the same of different levels. So, we also consider the empty prefix.
+    common_nonterminal_prefixes: List[Path] = [tuple()]
+    for idx in range(min(len(path_1), len(path_2))):
+        if path_1[idx] != path_2[idx]:
+            break
+
+        prefix = path_1[:idx]
+        if context_tree.get_subtree(prefix).value == nonterminal:
+            common_nonterminal_prefixes.append(prefix)
+
+    for prefix in common_nonterminal_prefixes:
+        nonterminal_occs_1, nonterminal_occs_2 = [[
+            path[:idx]
+            for idx in range(len(prefix) + 1, len(path))
+            if context_tree.get_subtree(path[:idx]).value == nonterminal
+        ] for path in [path_1, path_2]]
+
+        if pred == "EQ":
+            if not nonterminal_occs_1 and not nonterminal_occs_2:
+                return True
+        elif pred == "GE":
+            if not nonterminal_occs_1:
+                return True
+        elif pred == "LE":
+            if not nonterminal_occs_2:
+                return True
+        elif pred == "GT":
+            if not nonterminal_occs_1 and nonterminal_occs_2:
+                return True
+        elif pred == "LT":
+            if not nonterminal_occs_2 and nonterminal_occs_1:
+                return True
+
+    return False
+
+
+LEVEL_PREDICATE = StructuralPredicate("level", 4, level_check)
 
 
 def count(grammar: Grammar,

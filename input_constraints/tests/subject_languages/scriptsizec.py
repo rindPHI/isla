@@ -10,103 +10,83 @@ from input_constraints import isla
 # Based on:
 # Kartik Talwar. Tiny-C Compiler. https://gist.github.com/KartikTalwar/3095780.
 from input_constraints.isla import parse_isla
-from input_constraints.isla_predicates import BEFORE_PREDICATE, SAME_POSITION_PREDICATE
+from input_constraints.isla_predicates import BEFORE_PREDICATE, SAME_POSITION_PREDICATE, LEVEL_PREDICATE
 
 SCRIPTSIZE_C_GRAMMAR = {
     "<start>": ["<statement>"],
     "<statement>": [
-        "{<declarations><statements>}",
-        "if<paren_expr> <statement>",
+        "<block>",
+        "<declaration>",
         "if<paren_expr> <statement> else <statement>",
+        "if<paren_expr> <statement>",
         "while<paren_expr> <statement>",
         "do <statement> while<paren_expr>;",
         "<expr>;",
         ";"
     ],
-    "<statements>": ["", "<statement><statements>"],
-    "<declarations>": ["", "<declaration><declarations>"],
+    "<block>": ["{<statements>}"],
+    "<statements>": ["<statement><statements>", ""],
     "<declaration>": [
         "int <id> = <expr>;",
         "int <id>;"
     ],
     "<paren_expr>": ["(<expr>)"],
     "<expr>": [
+        "<id> = <expr>",
         "<test>",
-        "<id> = <expr>"
     ],
     "<test>": [
+        "<sum> < <sum>",
         "<sum>",
-        "<sum> < <sum>"
     ],
     "<sum>": [
-        "<term>",
         "<sum> + <term>",
-        "<sum> - <term>"
+        "<sum> - <term>",
+        "<term>",
     ],
     "<term>": [
+        "<paren_expr>",
         "<id>",
         "<int>",
-        "<paren_expr>"
     ],
     "<id>": srange(string.ascii_lowercase),
     "<int>": [
+        "<digit_nonzero><digits>",
         "<digit>",
-        "<digit_nonzero><digits>"
     ],
     "<digits>": [
+        "<digit><int>",
         "<digit>",
-        "<digit><int>"
     ],
     "<digit>": srange(string.digits),
     "<digit_nonzero>": list(set(srange(string.digits)) - {"0"}),
 }
 
-SCRIPTSIZE_C_DEF_USE_NO_SCOPING_CONSTR_TEXT = """
+# Forall <id>s use_id in any expression (i.e., only RHSs),
+#   there must be a <declaration> decl,
+#     which occurs before use_id and on the same or a higher <block> level,
+#       that assigns use_id a value.
+SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT = """
 const start: <start>;
 
 vars {
   expr: <expr>;
   def_id, use_id: <id>;
-  declaration: <declaration>;
+  decl: <declaration>;
 }
 
 constraint {
   forall expr in start:
     forall use_id in expr:
-      (exists declaration="int {def_id};" in start:
-         (before(declaration, expr) and
-          (= use_id def_id)) or
-       exists declaration="int {def_id} = <expr>;" in start:
-         (before(declaration, expr) and
-          (= use_id def_id)))
+      exists decl="int {def_id}[ = <expr>];" in start:
+        (level("GE", "<block>", decl, expr) and 
+        (before(decl, expr) and 
+        (= use_id def_id)))
 }
 """
 
-SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT = """
-const start: <start>;
-
-vars {
-  def_id, use_id: <id>;
-  decl: <declaration>;
-  decls: <declarations>;
-  stmts: <statements>;
-  stmt: <statement>;
-}
-
-constraint {
-  forall use_id in start:
-    exists stmt="{{{decls}{stmts}}}" in start:
-      (exists decl="int {def_id};" in start:
-         (before(decl, expr) and
-          (= use_id def_id)) or
-       exists decl="int {def_id} = <expr>;" in start:
-         (before(decl, expr) and
-          (= use_id def_id)))
-}
-"""
-
-# SCRIPTSIZE_C_DEF_USE_CONSTR = parse_isla(SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT, structural_predicates={BEFORE_PREDICATE})
-SCRIPTSIZE_C_DEF_USE_CONSTR = parse_isla(SCRIPTSIZE_C_DEF_USE_NO_SCOPING_CONSTR_TEXT, structural_predicates={BEFORE_PREDICATE})
+SCRIPTSIZE_C_DEF_USE_CONSTR = parse_isla(
+    SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
 
 # TODO: Scoping!
 SCRIPTSIZE_C_NO_REDEF_TEXT = """

@@ -8,7 +8,7 @@ import input_constraints.isla_shortcuts as sc
 from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
     DerivationTree, convert_to_dnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
     matches_for_quantified_formula, QuantifiedFormula, DummyVariable, eliminate_quantifiers
-from input_constraints.isla_predicates import BEFORE_PREDICATE
+from input_constraints.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
 from input_constraints.isla_predicates import count, COUNT_PREDICATE
 from input_constraints.tests.subject_languages import rest, scriptsizec
 from input_constraints.tests.subject_languages import tinyc, tar
@@ -649,9 +649,48 @@ constraint {
         eliminate_quantifiers(formula.substitute_expressions({start: tree}), vs, LANG_GRAMMAR)
         self.assertEqual(0, len(vs))
 
-    def test_scriptsize_c_defuse_propoerty(self):
-        pass
+    def test_scriptsize_c_defuse_property(self):
+        constr = """
+const start: <start>;
 
+vars {
+  expr: <expr>;
+  def_id, use_id: <id>;
+  decl: <declaration>;
+}
+
+constraint {
+  forall expr in start:
+    forall use_id in expr:
+      exists decl="int {def_id}[ = <expr>];" in start:
+        (level("GE", "<block>", decl, expr) and 
+        (before(decl, expr) and 
+        (= use_id def_id)))
+}
+"""
+        inp = "{int c;c;}"
+        tree = DerivationTree.from_parse_tree(list(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp))[0])
+        self.assertTrue(evaluate(constr, tree, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE}))
+
+        inp = "{int c;{c;}}"
+        tree = DerivationTree.from_parse_tree(list(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp))[0])
+        self.assertTrue(evaluate(constr, tree, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE}))
+
+        inp = "{int c = 17;c;}"
+        tree = DerivationTree.from_parse_tree(list(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp))[0])
+        self.assertTrue(evaluate(constr, tree, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE}))
+
+        inp = "{int c = 17;{c;}}"
+        tree = DerivationTree.from_parse_tree(list(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp))[0])
+        self.assertTrue(evaluate(constr, tree, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE}))
+
+        inp = "{{int c;}c;}"
+        tree = DerivationTree.from_parse_tree(list(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp))[0])
+        self.assertFalse(evaluate(constr, tree, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE}))
+
+        inp = "{{int c;}{c;}}"
+        tree = DerivationTree.from_parse_tree(list(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp))[0])
+        self.assertFalse(evaluate(constr, tree, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE}))
 
 if __name__ == '__main__':
     unittest.main()
