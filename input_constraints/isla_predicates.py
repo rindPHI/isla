@@ -12,7 +12,7 @@ from input_constraints.isla import DerivationTree, Constant, SemPredEvalResult, 
 from input_constraints.type_defs import Grammar, Path, ParseTree
 
 
-def is_before(path_1: Path, path_2: Path) -> bool:
+def is_before(_: Optional[DerivationTree], path_1: Path, path_2: Path) -> bool:
     if not path_1 or not path_2:
         # Note: (1,) is not before (1,0), since it's a prefix!
         # Also, (1,) cannot be before ().
@@ -27,38 +27,38 @@ def is_before(path_1: Path, path_2: Path) -> bool:
     elif car_2 < car_1:
         return False
     else:
-        return is_before(tuple(cdr_1), tuple(cdr_2))
+        return is_before(_, tuple(cdr_1), tuple(cdr_2))
 
 
-BEFORE_PREDICATE = StructuralPredicate("before", 2, lambda _, p1, p2: is_before(p1, p2))
-
-AFTER_PREDICATE = StructuralPredicate(
-    "after",
-    2,
-    lambda _, path_1, path_2:
-    not is_before(path_1, path_2) and
-    path_1 != path_2[:len(path_1)]  # No prefix
-)
+BEFORE_PREDICATE = StructuralPredicate("before", 2, is_before)
 
 
-def is_same_position(path_1: Path, path_2: Path) -> bool:
+def is_after(_: DerivationTree, path_1: Path, path_2: Path) -> bool:
+    return (not is_before(_, path_1, path_2)
+            and path_1 != path_2[:len(path_1)])  # No prefix
+
+
+AFTER_PREDICATE = StructuralPredicate("after", 2, is_after)
+
+
+def is_same_position(_: Optional[DerivationTree], path_1: Path, path_2: Path) -> bool:
     return path_1 == path_2
 
 
-DIFFERENT_POSITION_PREDICATE = StructuralPredicate(
-    "different_position",
-    2,
-    lambda _, p1, p2: not is_same_position(p1, p2)
-)
-
-SAME_POSITION_PREDICATE = StructuralPredicate("same_position", 2, lambda _, p1, p2: is_same_position(p1, p2))
+def is_different_position(_: Optional[DerivationTree], path_1: Path, path_2: Path) -> bool:
+    return not is_same_position(_, path_1, path_2)
 
 
-def in_tree(path_1: Path, path_2: Path) -> bool:
+DIFFERENT_POSITION_PREDICATE = StructuralPredicate("different_position", 2, is_different_position)
+
+SAME_POSITION_PREDICATE = StructuralPredicate("same_position", 2, is_same_position)
+
+
+def in_tree(_: Optional[DerivationTree], path_1: Path, path_2: Path) -> bool:
     return path_1 == path_2[:len(path_1)]
 
 
-IN_TREE_PREDICATE = StructuralPredicate("inside", 2, lambda _, p1, p2: in_tree(p1, p2))
+IN_TREE_PREDICATE = StructuralPredicate("inside", 2, in_tree)
 
 
 def level_check(

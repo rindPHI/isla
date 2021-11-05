@@ -5,8 +5,10 @@ import math
 import random
 import subprocess
 import time
+import multiprocessing as mp
 from textwrap import wrap
 from typing import List, Generator, Dict, Callable, Set, Tuple, Optional
+import dill  # To pickle lambdas
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -98,7 +100,7 @@ class PerformanceEvaluationResult:
             seconds: self.single_product_value(seconds)
             for seconds in self.accumulated_valid_inputs}
 
-    def single_product_value(self, seconds):
+    def single_product_value(self, seconds: float, weights: tuple[int, ...]=(4,3,1)) -> float:
         return ((self.accumulated_valid_inputs[seconds] + 1) *
                 (self.accumulated_k_path_coverage[seconds] + 1) *
                 (self.accumulated_non_vacuous_index[seconds] + 1)) ** (1 / float(3)) - 1
@@ -152,10 +154,13 @@ class PerformanceEvaluationResult:
     def __repr__(self):
         return (f"PerformanceEvaluationResult(accumulated_valid_inputs={self.accumulated_valid_inputs}, "
                 f"accumulated_k_path_coverage={self.accumulated_k_path_coverage}, "
-                f"accumulated_non_vacuous_inputs={self.accumulated_non_vacuous_index})")
+                f"accumulated_non_vacuous_index={self.accumulated_non_vacuous_index})")
 
     def __str__(self):
-        return f"Mean Performance: {self.final_product_value}"
+        return f"Performance: {self.final_product_value} (" \
+               f"valid inputs: {list(self.accumulated_valid_inputs.values())[-1]}, " \
+               f"k-Path Coverage: {list(self.accumulated_k_path_coverage.values())[-1]}, " \
+               f"Non-Vacuity Index: {list(self.accumulated_non_vacuous_index.values())[-1]})"
 
 
 def evaluate_data(
@@ -376,6 +381,24 @@ def evaluate_mutated_cost_vectors(
         logger.info("Saved combined output file at %s", final_out_file_name)
 
 
+def evaluate_cost_vectors_isla(
+        population: List[CostWeightVector],
+        grammar: Grammar,
+        formula: isla.Formula,
+        validator: Callable[[isla.DerivationTree], bool],
+        timeout: int,
+        k=3) -> List[PerformanceEvaluationResult]:
+    with mp.Pool(processes=mp.cpu_count()) as pool:
+        start_time = datetime.datetime.now()
+        result = pool.starmap(evaluate_isla_generator, [
+            (grammar, formula, vector, validator, timeout, None, k)
+            for vector in population])
+        logger.info(
+            "Time taken for evaluating population w/ parallel processing: %s",
+            (datetime.datetime.now() - start_time))
+        return result
+
+
 def auto_tune_weight_vector(
         grammar: Grammar,
         formula: isla.Formula,
@@ -389,43 +412,47 @@ def auto_tune_weight_vector(
     assert population_size % 2 == 0
     assert seed_population is None or len(seed_population) == population_size
 
-    time_estimate = timeout * population_size + (generations - 1) * (population_size // 2) * timeout
+    time_estimate = 2.5 * (
+            timeout * population_size / mp.cpu_count() +
+            (generations - 1) * (population_size // 2) * timeout / mp.cpu_count())
     logger.info(
         "Autotuning, estimated time > %ds, end: %s",
         time_estimate,
         (datetime.datetime.now() + datetime.timedelta(seconds=time_estimate)).strftime("%d/%m/%Y %H:%M:%S")
     )
 
-    current_population: List[Tuple[PerformanceEvaluationResult, CostWeightVector]] = []
-
     # Create initial population
-    for idx in range(population_size):
-        if not seed_population:
-            new_vector = CostWeightVector(
+    if not seed_population:
+        seed_population = [
+            CostWeightVector(
                 tree_closing_cost=randno(),
                 vacuous_penalty=randno(),
                 constraint_cost=randno(),
                 derivation_depth_penalty=randno(),
                 low_coverage_penalty=randno())
-        else:
-            new_vector = seed_population[idx]
+            for _ in range(population_size)]
 
-        current_population.append((
-            evaluate_isla_generator(grammar, formula, new_vector, validator, timeout, k=k),
-            new_vector))
-
-    current_population = sorted(current_population, key=lambda t: t[0].final_product_value)
+    current_population = sorted(zip(
+        evaluate_cost_vectors_isla(
+            seed_population,
+            grammar,
+            formula,
+            validator,
+            timeout,
+            k),
+        seed_population),
+        key=lambda t: t[0].final_product_value)
 
     logger.info(
         "Initial population:\n%s\n",
-        "\n".join([f'{r.final_product_value}: {str(v)}' for r, v in current_population]))
+        "\n".join([f'{str(v)}, {str(r)}' for r, v in current_population]))
 
     for generation in range(generations - 1):
         # Remove the five least fittest elements
         current_population = current_population[population_size // 2:]
 
         # Crossover
-        offspring: List[Tuple[PerformanceEvaluationResult, CostWeightVector]] = []
+        offspring: List[CostWeightVector] = []
         idx = 0
         while len(offspring) < population_size // 2:
             first_parent = current_population[idx % len(current_population)]
@@ -451,19 +478,19 @@ def auto_tune_weight_vector(
 
             logger.debug("After Mutation: %s", child)
 
-            offspring.append((
-                evaluate_isla_generator(grammar, formula, child, validator, timeout, k=k),
-                child))
+            offspring.append(child)
 
-        current_population += offspring
+        eval_results = evaluate_cost_vectors_isla(offspring, grammar, formula, validator, timeout, k)
+        current_population.extend(list(zip(eval_results, seed_population)))
         current_population = sorted(current_population, key=lambda t: t[0].final_product_value)
-        idx += 1
 
         logger.info(
             "Generation %d:\n%s\n",
             generation + 1,
-            "\n".join([f'{r.final_product_value}: {str(v)}' for r, v in current_population]))
+            "\n".join([f'{str(v)}, {str(r)}' for r, v in current_population]))
+
+        idx += 1
 
     result = current_population[-1]
-    logger.info("Auto-tuning finished. Result: %s, fitness %d", result[1], result[0].final_product_value)
+    logger.info("Auto-tuning finished. Result: %s, %s", result[1], result[0])
     return result

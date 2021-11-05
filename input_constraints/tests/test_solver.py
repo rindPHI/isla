@@ -309,12 +309,18 @@ constraint {
             enforce_unique_trees_in_queue=True,
             cost_settings=CostSettings(
                 (
+                    # CostWeightVector(
+                    #     tree_closing_cost=4,
+                    #     vacuous_penalty=3,
+                    #     constraint_cost=24,
+                    #     derivation_depth_penalty=7,
+                    #     low_coverage_penalty=12),
                     CostWeightVector(
-                        tree_closing_cost=4,
-                        vacuous_penalty=3,
-                        constraint_cost=24,
-                        derivation_depth_penalty=7,
-                        low_coverage_penalty=12),
+                        tree_closing_cost=38,
+                        vacuous_penalty=5,
+                        constraint_cost=9,
+                        derivation_depth_penalty=5,
+                        low_coverage_penalty=13),
                 ),
                 cost_phase_lengths=(200,),
                 k=3

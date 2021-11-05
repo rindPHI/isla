@@ -547,16 +547,22 @@ class ISLaSolver:
         :return: A (possibly empty) list of expanded trees.
         """
 
-        possible_expansions: List[Dict[Path, List[DerivationTree]]] = dict_of_lists_to_list_of_dicts({
+        nonterminal_expansions = {
             leaf_path: [
-                [DerivationTree(child, None if is_nonterminal(child) else []) for child in expansion]
+                [DerivationTree(child, None if is_nonterminal(child) else [])
+                 for child in expansion]
                 for expansion in self.canonical_grammar[leaf_node.value]
             ]
             for leaf_path, leaf_node in state.tree.open_leaves()
-            if any(self.quantified_formula_might_match(formula, leaf_path, state.tree)
-                   for formula in get_conjuncts(state.constraint)
-                   if isinstance(formula, isla.ForallFormula))
-        })
+            if any(
+                self.quantified_formula_might_match(formula, leaf_path, state.tree)
+                for formula in get_conjuncts(state.constraint)
+                if isinstance(formula, isla.ForallFormula))}
+
+        possible_expansions: List[Dict[Path, List[DerivationTree]]] = \
+            dict_of_lists_to_list_of_dicts(nonterminal_expansions)
+
+        assert len(possible_expansions) == math.prod(len(values) for values in nonterminal_expansions.values())
 
         if len(possible_expansions) == 1 and not possible_expansions[0]:
             return []

@@ -27,12 +27,12 @@ class TestHelpers(unittest.TestCase):
             paths)
 
     def test_is_before(self):
-        self.assertFalse(is_before(tuple(), tuple()))
-        self.assertFalse(is_before((1,), (1, 0)))
-        self.assertTrue(is_before((1, 0), (1, 1)))
-        self.assertTrue(is_before((1, 1, 0), (1, 2)))
-        self.assertFalse(is_before((1, 2, 0), (1, 2)))
-        self.assertTrue(is_before((1, 2, 0), (1, 3, 0, 0, 9)))
+        self.assertFalse(is_before(None, tuple(), tuple()))
+        self.assertFalse(is_before(None, (1,), (1, 0)))
+        self.assertTrue(is_before(None, (1, 0), (1, 1)))
+        self.assertTrue(is_before(None, (1, 1, 0), (1, 2)))
+        self.assertFalse(is_before(None, (1, 2, 0), (1, 2)))
+        self.assertTrue(is_before(None, (1, 2, 0), (1, 3, 0, 0, 9)))
 
     def test_is_prefix(self):
         self.assertTrue(is_prefix((1, 0, 1), (1, 0, 1)))
