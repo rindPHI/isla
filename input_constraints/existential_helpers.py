@@ -65,7 +65,7 @@ def insert_tree(grammar: CanonicalGrammar,
         #  if node == to_insert_nonterminal:
         #      perfect_matches.append(subtree_path)
 
-        if graph.get_node(node).reachable(graph.get_node(to_insert_nonterminal)):
+        if graph.reachable(graph.get_node(node), graph.get_node(to_insert_nonterminal)):
             embeddable_matches.append((subtree_path, subtree))
 
     for match_path_embeddable, match_tree in embeddable_matches:
@@ -106,7 +106,7 @@ def insert_tree(grammar: CanonicalGrammar,
         # the place where `current_tree` is added.
 
         current_graph_node: NonterminalNode = graph.get_node(curr_node)
-        if current_graph_node.reachable(current_graph_node):
+        if graph.reachable(current_graph_node, current_graph_node):
             for self_embedding_path in paths_between(graph, curr_node, curr_node):
                 for self_embedding_tree in path_to_tree(grammar, self_embedding_path):
                     # For each the curr_tree and the tree to insert, have to find one leaf s.t. either
@@ -148,7 +148,7 @@ def insert_tree(grammar: CanonicalGrammar,
                                 else:
                                     leaf_nonterm_node = graph.get_node(leaf_nonterm)
                                     to_insert_nonterm_node = graph.get_node(nonterm_to_insert)
-                                    if not leaf_nonterm_node.reachable(to_insert_nonterm_node):
+                                    if not graph.reachable(leaf_nonterm_node, to_insert_nonterm_node):
                                         continue
 
                                     for connecting_path in paths_between(graph, leaf_nonterm, nonterm_to_insert):
@@ -210,7 +210,7 @@ def wrap_in_tree_starting_in(start_nonterminal: str,
     start_node = graph.get_node(start_nonterminal)
     end_node = graph.get_node(tree.root_nonterminal())
     parse_tree = tree.to_parse_tree()
-    assert start_node.reachable(end_node)
+    assert graph.reachable(start_node, end_node)
 
     derivation_path = [n.symbol for n in graph.shortest_non_trivial_path(start_node, end_node)]
 
@@ -304,9 +304,10 @@ def paths_between(graph: GrammarGraph, start: str, dest: str) -> Generator[Tuple
 
     assert isinstance(start_node, NonterminalNode)
 
-    prefixes: List[Tuple[Set[Node], List[Node]]] = [(set()
-                                                     if start_node == dest_node and start_node.reachable(start_node)
-                                                     else {start_node}, [start_node])]
+    prefixes: List[Tuple[Set[Node], List[Node]]] = [
+        (set()
+         if start_node == dest_node and graph.reachable(start_node, start_node)
+         else {start_node}, [start_node])]
     result: OrderedSet[Tuple[str, ...]] = OrderedSet([])
 
     while prefixes:

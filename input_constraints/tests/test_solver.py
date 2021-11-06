@@ -157,7 +157,7 @@ class TestSolver(unittest.TestCase):
                         vacuous_penalty=15,
                         constraint_cost=18,
                         derivation_depth_penalty=1,
-                        low_coverage_penalty=8)
+                        low_k_coverage_penalty=8)
                     ,),
                 cost_phase_lengths=(200,))
         )
@@ -268,7 +268,7 @@ constraint {
                     vacuous_penalty=2,
                     constraint_cost=5,
                     derivation_depth_penalty=5,
-                    low_coverage_penalty=10),),
+                    low_k_coverage_penalty=10),),
                 cost_phase_lengths=(200,)),
         )
 
@@ -320,13 +320,15 @@ constraint {
                         vacuous_penalty=5,
                         constraint_cost=9,
                         derivation_depth_penalty=5,
-                        low_coverage_penalty=13),
+                        low_k_coverage_penalty=13,
+                        low_global_k_path_coverage_penalty=5
+                    ),
                 ),
                 cost_phase_lengths=(200,),
                 k=3
             ),
             print_only=True,
-            num_solutions=30
+            num_solutions=400
         )
 
     def test_tar(self):

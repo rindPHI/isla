@@ -103,12 +103,14 @@ class CostWeightVector:
             vacuous_penalty: float = 0,
             constraint_cost: float = 0,
             derivation_depth_penalty: float = 0,
-            low_coverage_penalty: float = 0):
+            low_k_coverage_penalty: float = 0,
+            low_global_k_path_coverage_penalty: float = 0):
         self.tree_closing_cost = tree_closing_cost
         self.vacuous_penalty = vacuous_penalty
         self.constraint_cost = constraint_cost
         self.derivation_depth_penalty = derivation_depth_penalty
-        self.low_coverage_penalty = low_coverage_penalty
+        self.low_k_coverage_penalty = low_k_coverage_penalty
+        self.low_global_k_path_coverage_penalty = low_global_k_path_coverage_penalty
 
     def __iter__(self):
         return iter([
@@ -116,7 +118,8 @@ class CostWeightVector:
             self.vacuous_penalty,
             self.constraint_cost,
             self.derivation_depth_penalty,
-            self.low_coverage_penalty
+            self.low_k_coverage_penalty,
+            self.low_global_k_path_coverage_penalty
         ])
 
     def __getitem__(self, item):
@@ -126,7 +129,8 @@ class CostWeightVector:
             self.vacuous_penalty,
             self.constraint_cost,
             self.derivation_depth_penalty,
-            self.low_coverage_penalty
+            self.low_k_coverage_penalty,
+            self.low_global_k_path_coverage_penalty
         ][item]
 
     def __repr__(self):
@@ -134,7 +138,8 @@ class CostWeightVector:
                 f"vacuous_penalty = {self.vacuous_penalty}, "
                 f"constraint_cost = {self.constraint_cost}, "
                 f"derivation_depth_penalty = {self.derivation_depth_penalty}, "
-                f"low_coverage_penalty = {self.low_coverage_penalty})")
+                f"low_k_coverage_penalty = {self.low_k_coverage_penalty}), "
+                f"low_global_k_path_coverage_penalty = {self.low_global_k_path_coverage_penalty})")
 
 
 class CostSettings:
@@ -180,7 +185,9 @@ STD_COST_SETTINGS = CostSettings(
             vacuous_penalty=10,
             constraint_cost=3,
             derivation_depth_penalty=1,
-            low_coverage_penalty=15),
+            low_k_coverage_penalty=15,
+            low_global_k_path_coverage_penalty=15
+        ),
     ),
     (200,),
     k=3
@@ -247,6 +254,7 @@ class ISLaSolver:
         self.cost_settings = cost_settings
         self.current_cost_phase: int = 0
         self.current_cost_phase_since: int = 0
+        self.covered_k_paths: Set[Tuple[gg.Node, ...]] = set()
 
         self.precompute_reachability = precompute_reachability
         if precompute_reachability:
@@ -845,8 +853,14 @@ class ISLaSolver:
         Returns True if the given state is valid, such that it can be yielded. Returns False and enqueues the state
         if the state is not yet complete, otherwise returns False and discards the state.
         """
+
         if state.complete():
             assert state.formula_satisfied().is_true()
+
+            self.covered_k_paths.update(state.tree.k_paths(self.graph, self.cost_settings.k))
+            if self.covered_k_paths == self.graph.k_paths(self.cost_settings.k):
+                self.covered_k_paths = set()
+
             return True
 
         assert all(state.tree.find_node(arg)
@@ -925,7 +939,9 @@ class ISLaSolver:
         graph = self.graph
         k = self.cost_settings.k
 
-        return compute_cost(state, symbol_costs, cost_weight_vector, k, self.formula, grammar, graph)
+        return compute_cost(
+            state, symbol_costs, cost_weight_vector, k, self.covered_k_paths,
+            self.formula, grammar, graph, self.reachable)
 
     def compute_symbol_costs(self) -> Dict[str, int]:
         self.logger.info("Computing symbol costs")
@@ -1061,9 +1077,11 @@ def compute_cost(
         symbol_costs: Dict[str, int],
         cost_weight_vector: CostWeightVector,
         k: int,
+        covered_k_paths: Set[Tuple[gg.Node, ...]],
         orig_formula: isla.Formula,
         grammar: Grammar,
-        graph: gg.GrammarGraph) -> float:
+        graph: gg.GrammarGraph,
+        is_reachable: Callable[[str, str], bool]) -> float:
     # How costly is it to finish the tree?
     nonterminals = [leaf.value for _, leaf in state.tree.open_leaves()]
     tree_closing_cost = sum([symbol_costs[nonterminal] for nonterminal in nonterminals])
@@ -1077,12 +1095,15 @@ def compute_cost(
     # vacuous_penalty = compute_match_dist(state, grammar, node_distance)
 
     # What is the proportion of vacuously satisfied universal quantifiers *chains* in (extensions of) this tree?
-    vacuous_penalty = compute_vacuous_penalty(grammar, orig_formula, state.tree)
+    vacuous_penalty = compute_vacuous_penalty(grammar, graph, orig_formula, state.tree)
 
     # k-Path coverage: Fewer covered -> higher penalty
     k_cov_cost = compute_k_coverage_cost(graph, k, state)
 
-    costs = [tree_closing_cost, vacuous_penalty, constraint_cost, state.level, k_cov_cost]
+    # Covered k-paths: Fewer contributed -> higher penalty
+    global_k_path_cost = compute_global_k_coverage_cost(covered_k_paths, graph, k, state)
+
+    costs = [tree_closing_cost, vacuous_penalty, constraint_cost, state.level, k_cov_cost, global_k_path_cost]
     assert all(c >= 0 for c in costs)
 
     # Compute geometric mean, filtering out zero weights
@@ -1095,6 +1116,17 @@ def compute_cost(
         f"{state.tree})", result, costs, cost_weight_vector)
 
     return result
+
+
+def compute_global_k_coverage_cost(
+        covered_k_paths: Set[Tuple[gg.Node, ...]], graph: gg.GrammarGraph, k: int, state: SolutionState):
+    num_contributed_k_paths = len(
+        {path for path in graph.k_paths(k)
+         if path in state.tree.k_paths(graph, k) and
+         path not in covered_k_paths})
+    num_missing_k_paths = len(graph.k_paths(k)) - len(covered_k_paths)
+
+    return 1 - (num_contributed_k_paths / num_missing_k_paths)
 
 
 def compute_k_coverage_cost(graph: GrammarGraph, k: int, state: SolutionState) -> float:
@@ -1114,6 +1146,7 @@ def get_quantifier_chains(formula: isla.Formula) -> \
 
 def compute_vacuous_penalty(
         grammar: Grammar,
+        graph: gg.GrammarGraph,
         orig_formula: isla.Formula,
         tree: DerivationTree) -> float:
     # Returns a value between 0 (best) and 1 (worst).
@@ -1129,7 +1162,11 @@ def compute_vacuous_penalty(
     vacuous_penalty = 0
     if quantifier_chains:
         vacuously_matched_quantifiers = set()
-        isla.eliminate_quantifiers(formula, vacuously_matched_quantifiers, grammar)
+        isla.eliminate_quantifiers(
+            formula,
+            vacuously_satisfied=vacuously_matched_quantifiers,
+            grammar=grammar,
+            graph=graph)
 
         vacuous_chains = {
             c for c in quantifier_chains if

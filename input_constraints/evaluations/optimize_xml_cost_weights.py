@@ -60,7 +60,7 @@ evaluate_isla_generator(
         vacuous_penalty=15,
         constraint_cost=18,
         derivation_depth_penalty=1,
-        low_coverage_penalty=8),
+        low_k_coverage_penalty=8),
     validate_xml,
     60,
     "/tmp/xml_perf_eval_1.pdf")
@@ -73,7 +73,7 @@ evaluate_isla_generator(
         vacuous_penalty=17,
         constraint_cost=19,
         derivation_depth_penalty=14,
-        low_coverage_penalty=7),
+        low_k_coverage_penalty=7),
     validate_xml,
     60,
     "/tmp/xml_perf_eval_2.pdf")

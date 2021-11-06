@@ -115,7 +115,8 @@ class DerivationTree:
 
     def __init__(self, value: Union[str, Variable],
                  children: Optional[List['DerivationTree']] = None,
-                 id: Optional[int] = None):
+                 id: Optional[int] = None,
+                 k_paths: Optional[Dict[int, Set[Tuple[gg.Node, ...]]]] = None):
         assert isinstance(value, str) or isinstance(value, Variable)
         assert not isinstance(value, Variable) or not children
         assert children is None or all(isinstance(child, DerivationTree) for child in children)
@@ -136,13 +137,17 @@ class DerivationTree:
 
         self.__hash = None
         self.__structural_hash = None
-        self.__k_coverage: Dict[int, float] = {}
+        self.__k_paths: Dict[int, Set[Tuple[gg.Node, ...]]] = k_paths or {}
 
-    def k_coverage(self, graph: gg.GrammarGraph, k: int):
-        if k not in self.__k_coverage:
-            self.__k_coverage[k] = graph.k_path_coverage(self.to_parse_tree(), k)
+    def k_coverage(self, graph: gg.GrammarGraph, k: int) -> float:
+        return len(self.k_paths(graph, k)) / len(graph.k_paths(k))
 
-        return self.__k_coverage[k]
+    def k_paths(self, graph: gg.GrammarGraph, k: int) -> Set[Tuple[gg.Node, ...]]:
+        # TODO: Could reuse previously cached k-paths when expanding trees!
+        if k not in self.__k_paths:
+            self.__k_paths[k] = set(graph.k_paths_in_tree(self.to_parse_tree(), k))
+
+        return self.__k_paths[k]
 
     def root_nonterminal(self) -> str:
         if isinstance(self.value, Variable):
@@ -260,6 +265,25 @@ class DerivationTree:
             while stack_2:
                 action(*stack_2.pop())
 
+    def nonterminals(self) -> Set[str]:
+        result: Set[str] = set()
+
+        def add_if_nonterminal(_: Path, tree: DerivationTree):
+            if is_nonterminal(tree.value):
+                result.add(tree.value)
+
+        self.traverse(action=add_if_nonterminal)
+
+        return result
+
+    def reachable_symbols(self, grammar: Grammar, is_reachable: Callable[[str, str], bool]) -> Set[str]:
+        return self.nonterminals() | {
+            nonterminal for nonterminal in grammar
+            if any(is_reachable(leaf[1].value, nonterminal)
+                   for leaf in self.leaves()
+                   if is_nonterminal(leaf[1].value))
+        }
+
     def next_path(self, path: Path, skip_children=False) -> Optional[Path]:
         """
         Returns the next path in the tree. Repeated calls result in an iterator over the paths in the tree.
@@ -291,8 +315,6 @@ class DerivationTree:
     def replace_path(self, path: Path, replacement_tree: 'DerivationTree', retain_id=False) -> 'DerivationTree':
         """Returns tree where replacement_tree has been inserted at `path` instead of the original subtree"""
         node, children = self
-        self.__hash = None
-        self.__structural_hash = None
 
         assert isinstance(replacement_tree, DerivationTree)
 
@@ -1765,6 +1787,7 @@ def eliminate_quantifiers(
         formula: Formula,
         vacuously_satisfied: Optional[Set[ForallFormula]] = None,
         grammar: Optional[Grammar] = None,
+        graph: Optional[gg.GrammarGraph] = None,
         reachable: Optional[Callable[[str, str], bool]] = None,
         non_vacuously_satisfied: Optional[Set[ForallFormula]] = None) -> List[Formula]:
     def in_vacuous(formula: ForallFormula) -> bool:
@@ -1774,16 +1797,17 @@ def eliminate_quantifiers(
         return any(f.id == formula.id for f in non_vacuously_satisfied)
 
     assert vacuously_satisfied is None or grammar is not None
-    graph: Optional[gg.GrammarGraph] = None
     if vacuously_satisfied is not None:
         if non_vacuously_satisfied is None:
             non_vacuously_satisfied = set()
 
-        graph = gg.GrammarGraph.from_grammar(grammar)
+        if graph is None:
+            graph = gg.GrammarGraph.from_grammar(grammar)
+
         vacuously_satisfied.difference_update({f for f in vacuously_satisfied if in_non_vacuous(f)})
 
     if grammar is not None and reachable is None:
-        reachable = lambda n1, n2: graph.get_node(n1).reachable(graph.get_node(n2))
+        reachable = lambda n1, n2: graph.reachable(graph.get_node(n1), graph.get_node(n2))
 
     quantified_formulas = get_toplevel_quantified_formulas(formula)
     universal_formulas = [f for f in quantified_formulas if isinstance(f, ForallFormula)]
@@ -1833,7 +1857,7 @@ def eliminate_quantifiers(
                              FilterVisitor(lambda f: isinstance(f, ForallFormula))
                              .collect(universal_formula.inner_formula)))
 
-        return eliminate_quantifiers(formula, vacuously_satisfied, grammar, reachable, non_vacuously_satisfied)
+        return eliminate_quantifiers(formula, vacuously_satisfied, grammar, graph, reachable, non_vacuously_satisfied)
 
     existential_formulas = [f for f in quantified_formulas if isinstance(f, ExistsFormula)]
     if existential_formulas:
@@ -1858,7 +1882,8 @@ def eliminate_quantifiers(
 
         return list(
             {f for r in results
-             for f in eliminate_quantifiers(r, vacuously_satisfied, grammar, reachable, non_vacuously_satisfied)})
+             for f in eliminate_quantifiers(
+                r, vacuously_satisfied, grammar, graph, reachable, non_vacuously_satisfied)})
 
     intro_const_formulas = [f for f in quantified_formulas if isinstance(f, IntroduceNumericConstantFormula)]
     if intro_const_formulas:
@@ -1872,7 +1897,7 @@ def eliminate_quantifiers(
                 intro_const_formula,
                 intro_const_formula.inner_formula.substitute_variables({intro_const_formula.bound_variable: fresh}))
 
-        return eliminate_quantifiers(formula, vacuously_satisfied, grammar, reachable, non_vacuously_satisfied)
+        return eliminate_quantifiers(formula, vacuously_satisfied, grammar, graph, reachable, non_vacuously_satisfied)
 
     return [formula]
 

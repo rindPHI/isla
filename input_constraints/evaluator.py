@@ -306,7 +306,7 @@ def evaluate_random_cost_vectors(
             vacuous_penalty=randno(),
             constraint_cost=randno(),
             derivation_depth_penalty=randno(),
-            low_coverage_penalty=randno()
+            low_k_coverage_penalty=randno()
         )
         logger.info("Round %d, cost vector %s", i + 1, str(v))
         outfile_name = f"/tmp/xml_perf_eval_{str((i + 1)).rjust(len(str(rounds)), '0')}.pdf"
@@ -353,7 +353,7 @@ def evaluate_mutated_cost_vectors(
         "vacuous_penalty": base_vector.vacuous_penalty,
         "constraint_cost": base_vector.constraint_cost,
         "derivation_depth_penalty": base_vector.derivation_depth_penalty,
-        "low_coverage_penalty": base_vector.low_coverage_penalty
+        "low_coverage_penalty": base_vector.low_k_coverage_penalty
     }
 
     for i in range(rounds):
@@ -429,7 +429,7 @@ def auto_tune_weight_vector(
                 vacuous_penalty=randno(),
                 constraint_cost=randno(),
                 derivation_depth_penalty=randno(),
-                low_coverage_penalty=randno())
+                low_k_coverage_penalty=randno())
             for _ in range(population_size)]
 
     current_population = sorted(zip(
