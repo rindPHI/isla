@@ -158,6 +158,10 @@ class DerivationTree:
 
         graph_node = graph.get_node(self.value)
 
+        if self.children is None:
+            self.__k_paths[k] = set(graph.nonterminal_kpaths(graph_node, k))
+            return self.__k_paths[k]
+
         if not self.children:
             assert self.children is not None  # Needs to be implemented yet!
             self.__k_paths[k] = {(graph_node,)} if k == 1 else set()
@@ -200,7 +204,7 @@ class DerivationTree:
                 if not path or t_node.value != path[0].symbol:
                     continue
 
-                if len(path) == 1 and t_node.value == path[0].symbol:
+                if t_node.children is None or (len(path) == 1 and t_node.value == path[0].symbol):
                     result = True
                     break
 

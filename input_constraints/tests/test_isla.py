@@ -1,6 +1,7 @@
 import logging
+import random
 import unittest
-from typing import cast
+from typing import cast, Tuple
 
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
@@ -18,7 +19,12 @@ from input_constraints.tests.test_data import *
 from input_constraints.tests.test_helpers import parse
 
 
+def path_to_string(p: Tuple[gg.Node, ...]) -> str:
+    return " ".join([n.symbol for n in p])
+
+
 class TestISLa(unittest.TestCase):
+
     def test_wellformed(self):
         prog = Constant("$prog", "<prog>")
         lhs_1 = BoundVariable("$lhs_1", "<var>")
@@ -695,9 +701,6 @@ constraint {
         self.assertFalse(evaluate(constr, tree, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE}))
 
     def test_tree_k_paths(self):
-        def path_to_string(p) -> str:
-            return " ".join([n.symbol for n in p])
-
         graph = gg.GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR)
 
         fuzzer = GrammarCoverageFuzzer(scriptsizec.SCRIPTSIZE_C_GRAMMAR)
@@ -707,6 +710,22 @@ constraint {
                 self.assertEqual(
                     {path_to_string(p) for p in tree.k_paths(graph, k)},
                     {path_to_string(p) for p in set(graph.k_paths_in_tree(tree.to_parse_tree(), k))},
+                    f"Paths for tree {tree} differ"
+                )
+
+    def test_open_tree_k_paths(self):
+        graph = gg.GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR)
+
+        fuzzer = GrammarCoverageFuzzer(scriptsizec.SCRIPTSIZE_C_GRAMMAR)
+        for k in range(1, 5):
+            for i in range(20):
+                tree = ("<start>", None)
+                for _ in range(random.randint(1, 10)):
+                    tree = fuzzer.expand_tree_once(tree)
+                d_tree = DerivationTree.from_parse_tree(tree)
+                self.assertEqual(
+                    {path_to_string(p) for p in d_tree.k_paths(graph, k)},
+                    {path_to_string(p) for p in set(graph.k_paths_in_tree(d_tree.to_parse_tree(), k))},
                     f"Paths for tree {tree} differ"
                 )
 
