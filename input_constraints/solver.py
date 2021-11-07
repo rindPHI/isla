@@ -1111,7 +1111,7 @@ def compute_cost(
     result = math.prod([c + 1 for c in map(math.prod, costs_with_weights)]) ** (1 / len(costs_with_weights)) - 1
 
     logging.getLogger(type(ISLaSolver).__name__).debug(
-        "Computed cost for state %s:\n%d, individual costs: %s, weights: %s",
+        "Computed cost for state %s:\n%f, individual costs: %s, weights: %s",
         f"({(str(state.constraint)[:50] + '...') if len(str(state.constraint)) > 53 else str(state.constraint)}, "
         f"{state.tree})", result, costs, cost_weight_vector)
 

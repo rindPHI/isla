@@ -1,8 +1,10 @@
+import logging
 import unittest
 from typing import cast
 
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
+from grammar_graph import gg
 
 import input_constraints.isla_shortcuts as sc
 from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
@@ -691,6 +693,23 @@ constraint {
         inp = "{{int c;}{c;}}"
         tree = DerivationTree.from_parse_tree(list(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp))[0])
         self.assertFalse(evaluate(constr, tree, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE}))
+
+    def test_tree_k_paths(self):
+        def path_to_string(p) -> str:
+            return " ".join([n.symbol for n in p])
+
+        graph = gg.GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR)
+
+        fuzzer = GrammarCoverageFuzzer(scriptsizec.SCRIPTSIZE_C_GRAMMAR)
+        for k in range(1, 5):
+            for i in range(10):
+                tree = DerivationTree.from_parse_tree(fuzzer.expand_tree(("<start>", None)))
+                self.assertEqual(
+                    {path_to_string(p) for p in tree.k_paths(graph, k)},
+                    {path_to_string(p) for p in set(graph.k_paths_in_tree(tree.to_parse_tree(), k))},
+                    f"Paths for tree {tree} differ"
+                )
+
 
 if __name__ == '__main__':
     unittest.main()
