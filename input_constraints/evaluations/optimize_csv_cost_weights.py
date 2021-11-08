@@ -20,8 +20,8 @@ if __name__ == '__main__':
         CSV.CSV_GRAMMAR,
         CSV.CSV_COLNO_PROPERTY,
         validator,
-        timeout=60,
-        population_size=20,
+        timeout=90,
+        population_size=16,
         generations=5,
         cpu_count=-1
     )

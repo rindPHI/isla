@@ -2,7 +2,7 @@ import itertools
 import logging
 import random
 import math
-from typing import Optional, Set, Generator, Tuple, List, Dict, Union, TypeVar
+from typing import Optional, Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence
 
 import z3
 from fuzzingbook.Grammars import unreachable_nonterminals, is_nonterminal
@@ -227,7 +227,7 @@ def powerset(iterable):
         for r in range(len(s) + 1))
 
 
-def weighted_geometric_mean(seq: List[float], weights: List[float]) -> float:
+def weighted_geometric_mean(seq: Sequence[float], weights: Sequence[float]) -> float:
     assert len(seq) == len(weights)
     assert all(w >= 0 for w in weights)
 

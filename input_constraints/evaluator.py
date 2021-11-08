@@ -16,6 +16,7 @@ from grammar_graph import gg
 
 import input_constraints.isla_shortcuts as sc
 from input_constraints import isla, solver
+from input_constraints.helpers import weighted_geometric_mean
 from input_constraints.solver import ISLaSolver, CostWeightVector, CostSettings
 from input_constraints.type_defs import Grammar
 
@@ -102,10 +103,12 @@ class PerformanceEvaluationResult:
             seconds: self.single_product_value(seconds)
             for seconds in self.accumulated_valid_inputs}
 
-    def single_product_value(self, seconds: float, weights: tuple[int, ...] = (4, 3, 1)) -> float:
-        return ((self.accumulated_valid_inputs[seconds] + 1) *
-                (self.accumulated_k_path_coverage[seconds] + 1) *
-                (self.accumulated_non_vacuous_index[seconds] + 1)) ** (1 / float(3)) - 1
+    def single_product_value(self, seconds: float, weights: tuple[float, ...] = (1, 1, 1)) -> float:
+        return weighted_geometric_mean(
+            [self.accumulated_valid_inputs[seconds],
+             self.accumulated_k_path_coverage[seconds],
+             self.accumulated_non_vacuous_index[seconds]],
+            weights)
 
     def plot(self, outfile_pdf: str, title: str = "Performance Data"):
         assert outfile_pdf.endswith(".pdf")
