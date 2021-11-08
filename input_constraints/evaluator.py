@@ -2,13 +2,12 @@ import copy
 import datetime
 import logging
 import math
+import multiprocessing as mp
 import random
 import subprocess
 import time
-import multiprocessing as mp
 from textwrap import wrap
 from typing import List, Generator, Dict, Callable, Set, Tuple, Optional
-import dill  # To pickle lambdas
 
 import matplotlib
 import matplotlib.pyplot as plt
