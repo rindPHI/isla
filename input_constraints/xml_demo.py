@@ -1,8 +1,8 @@
 import logging
 import string
 import sys
-from html import escape
 import xml.etree.ElementTree as ET
+from html import escape
 from typing import Optional, List
 
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
@@ -11,7 +11,7 @@ from fuzzingbook.Parser import EarleyParser
 
 from input_constraints.evaluator import auto_tune_weight_vector
 from input_constraints.isla import parse_isla, evaluate, DerivationTree
-from input_constraints.solver import ISLaSolver, CostSettings, CostWeightVector
+from input_constraints.solver import ISLaSolver, CostSettings
 
 XML_GRAMMAR = {
     "<start>": ["<xml-tree>"],
@@ -59,18 +59,18 @@ def validate_xml(inp: DerivationTree, out: Optional[List[str]] = None) -> bool:
 
 if __name__ == '__main__':
     constraint = """
-    const start: <start>;
-    
-    vars {
-        tree: <xml-tree>;
-        opid, clid: <id>;
-    }
-    
-    constraint {
-        forall tree="<{opid}[ <xml-attribute>]><inner-xml-tree></{clid}>" in start:
-            (= opid clid)
-    }
-    """
+const start: <start>;
+
+vars {
+    tree: <xml-tree>;
+    opid, clid: <id>;
+}
+
+constraint {
+    forall tree="<{opid}[ <xml-attribute>]><inner-xml-tree></{clid}>" in start:
+        (= opid clid)
+}
+"""
 
     # Check whether constraint can be parsed
     parsed_constraint = parse_isla(constraint)
@@ -104,10 +104,10 @@ if __name__ == '__main__':
         XML_GRAMMAR,
         parsed_constraint,
         validator=validate_xml,
-        timeout=30,
-        population_size=20,
-        generations=4,
-        cpu_count=-1  # use all cores
+        timeout=30,  # How long should a single configuration be evaluated
+        population_size=20,  # How many configurations should be produced at the beginning
+        generations=4,  # Evolutionary tuning: How many generations should I produce using crossover / mutation
+        cpu_count=-1  # Run in parallel: Use all cores (cpu_count == 1 implies single-threaded)
     )
 
     print(f"Optimal cost vector: {tune_result[1]}")
@@ -116,12 +116,12 @@ if __name__ == '__main__':
     solver = ISLaSolver(
         XML_GRAMMAR,
         constraint,
-        max_number_smt_instantiations=1,
-        max_number_free_instantiations=1,
+        max_number_smt_instantiations=1,  # Number of solutions for symbols bound by SMT formulas
+        max_number_free_instantiations=1,  # Number of solutions for symbols not bound by any formula
         cost_settings=CostSettings(
-            (tune_result[1],),
-            cost_phase_lengths=(200,),
-            k=3
+            (tune_result[1],),  # Cost weight(s)
+            cost_phase_lengths=(200,),  # If multiple weights: Number of states for which each weight should be applied
+            k=3  # For k-Path coverage: Sequences of which length in grammar graph / trees should be considered
         ),
     )
 
