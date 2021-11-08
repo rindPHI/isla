@@ -154,8 +154,8 @@ class DerivationTree:
         return self.__k_paths[k]
 
     def recompute_k_paths(self, graph: gg.GrammarGraph, k: int) -> Set[Tuple[gg.Node, ...]]:
-        # self.__k_paths[k] =  set(graph.k_paths_in_tree(self.to_parse_tree(), k))
-        # return self.__k_paths[k]
+        self.__k_paths[k] =  set(graph.k_paths_in_tree(self.to_parse_tree(), k))
+        return self.__k_paths[k]
 
         if not is_nonterminal(self.value):
             assert k > 0
@@ -422,8 +422,8 @@ class DerivationTree:
                         (children[head].replace_path(path[1:], replacement_tree, retain_id, is_root=False),) +
                         children[head + 1:])
 
-        # result = DerivationTree(node, new_children, id=self.id)
-        # return result
+        result = DerivationTree(node, new_children, id=self.id)
+        return result
 
         # We re-use cached k-paths if possible
         result = DerivationTree(node, new_children, id=self.id, k_paths=self.__k_paths)

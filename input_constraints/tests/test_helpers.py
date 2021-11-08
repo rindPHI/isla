@@ -7,7 +7,7 @@ from grammar_graph.gg import GrammarGraph
 
 from input_constraints.existential_helpers import path_to_tree, paths_between
 from input_constraints.helpers import is_prefix, path_iterator, delete_unreachable, \
-    dict_of_lists_to_list_of_dicts
+    dict_of_lists_to_list_of_dicts, weighted_geometric_mean
 from input_constraints.isla_predicates import is_before
 from input_constraints.tests.test_data import LANG_GRAMMAR
 from input_constraints.type_defs import Grammar, ParseTree
@@ -100,6 +100,14 @@ class TestHelpers(unittest.TestCase):
              {1: 4, 2: 6, 7: 9},
              {1: 4, 2: 6, 7: 10}],
             dict_of_lists_to_list_of_dicts({1: [3, 4], 2: [5, 6], 7: [8, 9, 10]}))
+
+    def test_weighted_geometric_mean(self):
+        for i in range(1, 30):
+            self.assertAlmostEqual(i, weighted_geometric_mean([i, i, i], [1, 1, 1]), 10)
+            self.assertAlmostEqual(i, weighted_geometric_mean([i, i, i], [0, 0, 1]), 10)
+
+        self.assertAlmostEqual(1.449, weighted_geometric_mean([0, 1, 2], [0, 1, 1]), 3)
+        self.assertAlmostEqual(0.817, weighted_geometric_mean([0, 1, 2], [1, 1, 1]), 3)
 
 
 if __name__ == '__main__':

@@ -231,5 +231,5 @@ def weighted_geometric_mean(seq: List[float], weights: List[float]) -> float:
     assert len(seq) == len(weights)
     assert all(w >= 0 for w in weights)
 
-    weights = [w for w in weights if w > 0]
-    return math.prod([(n + 1) ** w for n, w in zip(seq, weights)]) ** (1 / math.prod(weights)) - 1
+    return (math.prod([(n + 1) ** w for n, w in zip(seq, weights) if w > 0]) **
+            (1 / sum([w for w in weights if w > 0]))) - 1

@@ -158,35 +158,15 @@ class CostSettings:
                f"k={self.k}"
 
 
-# STD_COST_SETTINGS = CostSettings(
-#     (
-#         CostWeightVector(
-#             tree_closing_cost=6,
-#             vacuous_penalty=2,
-#             constraint_cost=4,
-#             derivation_depth_penalty=3,
-#             low_coverage_penalty=8),
-#         CostWeightVector(derivation_depth_penalty=1),
-#         CostWeightVector(
-#             tree_closing_cost=8,
-#             vacuous_penalty=.5,
-#             constraint_cost=1,
-#             derivation_depth_penalty=0,
-#             low_coverage_penalty=2),
-#     ),
-#     (200, 100, 500),
-#     k=3
-# )
 STD_COST_SETTINGS = CostSettings(
     (
         CostWeightVector(
-            tree_closing_cost=20,
-            vacuous_penalty=10,
-            constraint_cost=3,
-            derivation_depth_penalty=1,
-            low_k_coverage_penalty=15,
-            low_global_k_path_coverage_penalty=15
-        ),
+            tree_closing_cost=11,
+            vacuous_penalty=8,
+            constraint_cost=27,
+            derivation_depth_penalty=16,
+            low_k_coverage_penalty=18,
+            low_global_k_path_coverage_penalty=20),
     ),
     (200,),
     k=3

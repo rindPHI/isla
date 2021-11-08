@@ -248,7 +248,7 @@ def wrap_in_tree_starting_in(start_nonterminal: str,
     # Ensure ID is corect
     for path, t in path_iterator(result_pt):
         if t is parse_tree:
-            result = result.replace_path(path, tree)
+            result = result.replace_path(path, tree, graph)
             break
 
     return result

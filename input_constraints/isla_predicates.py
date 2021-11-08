@@ -128,7 +128,7 @@ def count(grammar: Grammar,
     def reachable(fr: str, to: str) -> bool:
         f_node = graph.get_node(fr)
         t_node = graph.get_node(to)
-        return f_node.reachable(t_node)
+        return graph.reachable(f_node, t_node)
 
     num_needle_occurrences = len(in_tree.filter(lambda t: t.value == needle))
 

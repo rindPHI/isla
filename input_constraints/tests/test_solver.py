@@ -103,6 +103,7 @@ class TestSolver(unittest.TestCase):
         self.execute_generation_test(formula, num_solutions=1)
 
     def test_conjunction_of_qfd_formulas(self):
+        # TODO: Problem here... Generated inputs do not seem correct
         start = isla.Constant("$start", "<start>")
         assgn = isla.BoundVariable("$assgn", "<assgn>")
         rhs_1 = isla.BoundVariable("$rhs_1", "<rhs>")
@@ -153,11 +154,12 @@ class TestSolver(unittest.TestCase):
             cost_settings=CostSettings(
                 weight_vectors=(
                     CostWeightVector(
-                        tree_closing_cost=14,
-                        vacuous_penalty=15,
-                        constraint_cost=18,
-                        derivation_depth_penalty=1,
-                        low_k_coverage_penalty=8)
+                        tree_closing_cost=28,
+                        vacuous_penalty=5,
+                        constraint_cost=40,
+                        derivation_depth_penalty=3,
+                        low_k_coverage_penalty=23,
+                        low_global_k_path_coverage_penalty=5)
                     ,),
                 cost_phase_lengths=(200,))
         )
@@ -321,7 +323,8 @@ constraint {
                 cost_phase_lengths=(200,),
                 k=3
             ),
-            num_solutions=30
+            num_solutions=50,
+            print_only=True
         )
 
     def test_tar(self):

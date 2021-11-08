@@ -15,7 +15,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.ERROR)
     logging.getLogger("evaluator").setLevel(logging.DEBUG)
 
-    random.seed(96895684797480689)
+    random.seed(654316843521684)
 
     tune_result = auto_tune_weight_vector(
         SCRIPTSIZE_C_GRAMMAR,

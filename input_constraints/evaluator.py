@@ -402,7 +402,7 @@ def evaluate_cost_vectors_isla(
         result = pool.starmap(evaluate_isla_generator, [
             (grammar, formula, vector, validator, timeout, None, k)
             for vector in population])
-        logger.info(
+        logger.debug(
             "Time taken for evaluating population w/ parallel processing: %s",
             (datetime.datetime.now() - start_time))
         return result

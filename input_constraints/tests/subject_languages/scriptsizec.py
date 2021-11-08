@@ -113,10 +113,10 @@ def compile_scriptsizec_clang(tree: isla.DerivationTree) -> Union[bool, str]:
     contents += "\n" + str(tree).replace("\n", "    \t")
     contents += "\n" + "}"
 
-    with tempfile.NamedTemporaryFile(suffix=".c") as tmp:
+    with tempfile.NamedTemporaryFile(suffix=".c") as tmp, tempfile.NamedTemporaryFile(suffix=".o") as outfile:
         tmp.write(contents.encode())
         tmp.flush()
-        cmd = ["clang", tmp.name]
+        cmd = ["clang", tmp.name, "-o", outfile.name]
         process = subprocess.Popen(cmd, stderr=PIPE)
         (stdout, stderr) = process.communicate()
         exit_code = process.wait()
