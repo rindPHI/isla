@@ -16,7 +16,7 @@ from input_constraints.helpers import delete_unreachable
 from input_constraints.isla import VariablesCollector, parse_isla
 from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
 from input_constraints.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector
-from input_constraints.tests.subject_languages import rest, tinyc, tar, simple_tar, scriptsizec
+from input_constraints.tests.subject_languages import rest, tar, simple_tar, scriptsizec
 from input_constraints.tests.subject_languages.tar import extract_tar
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR, XML_GRAMMAR
 
@@ -103,7 +103,6 @@ class TestSolver(unittest.TestCase):
         self.execute_generation_test(formula, num_solutions=1)
 
     def test_conjunction_of_qfd_formulas(self):
-        # TODO: Problem here... Generated inputs do not seem correct
         start = isla.Constant("$start", "<start>")
         assgn = isla.BoundVariable("$assgn", "<assgn>")
         rhs_1 = isla.BoundVariable("$rhs_1", "<rhs>")
@@ -124,30 +123,22 @@ class TestSolver(unittest.TestCase):
         self.execute_generation_test(formula)
 
     def test_xml(self):
-        mgr = isla.VariableManager(XML_GRAMMAR)
-        start = mgr.const("$start", "<start>")
+        constraint = """
+const start: <start>;
 
-        formula: isla.Formula = mgr.create(
-            sc.forall_bind(
-                sc.bexpr("<") + mgr.bv("$oid", "<id>") + ">" +
-                "<inner-xml-tree>" +
-                "</" + mgr.bv("$cid", "<id>") + ">",
-                "<xml-tree>",
-                start,
-                mgr.smt(mgr.bv("$oid").to_smt() == mgr.bv("$cid").to_smt())
-            ) &
-            sc.forall_bind(
-                sc.bexpr("<") + mgr.bv("$oid", "<id>") + " " + "<xml-attribute>" + ">" +
-                "<inner-xml-tree>" +
-                "</" + mgr.bv("$cid", "<id>") + ">",
-                "<xml-tree>",
-                start,
-                mgr.smt(mgr.bv("$oid").to_smt() == mgr.bv("$cid").to_smt())
-            )
-        )
+vars {
+    tree: <xml-tree>;
+    opid, clid: <id>;
+}
+
+constraint {
+    forall tree="<{opid}[ <xml-attribute>]><inner-xml-tree></{clid}>" in start:
+        (= opid clid)
+}
+"""
 
         self.execute_generation_test(
-            formula,
+            constraint,
             grammar=XML_GRAMMAR,
             max_number_free_instantiations=1,
             num_solutions=30,
@@ -264,14 +255,6 @@ constraint {
             max_number_free_instantiations=2,
             max_number_smt_instantiations=2,
             enforce_unique_trees_in_queue=False,
-            cost_settings=CostSettings(
-                (CostWeightVector(
-                    tree_closing_cost=20,
-                    vacuous_penalty=2,
-                    constraint_cost=5,
-                    derivation_depth_penalty=5,
-                    low_k_coverage_penalty=10),),
-                cost_phase_lengths=(200,)),
         )
 
     # Note: Disabling this for now since the z3 solver times out now that we solve
@@ -284,22 +267,6 @@ constraint {
             max_number_smt_instantiations=4,
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False)
-
-    def test_tiny_c_def_before_use(self):
-        # TODO: The compile_tinyc_lang test function is not totally precise, as it initializes
-        #       all assigned variables at the beginning to make the tinyc snippet c compatible.
-        #       Actually, we would have to localize the initializations, which requires some
-        #       more programming work; and then, the constraint would have to be refined (see
-        #       commented test case below).
-
-        self.execute_generation_test(
-            tinyc.TINYC_DEF_BEFORE_USE_CONSTRAINT,
-            grammar=tinyc.TINYC_GRAMMAR,
-            max_number_free_instantiations=1,
-            max_number_smt_instantiations=1,
-            expand_after_existential_elimination=False,
-            enforce_unique_trees_in_queue=True,
-        )
 
     def test_scriptsize_c_def_before_use(self):
         self.execute_generation_test(

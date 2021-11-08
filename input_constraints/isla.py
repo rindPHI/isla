@@ -149,8 +149,8 @@ class DerivationTree:
             self.recompute_k_paths(graph, k)
             assert k in self.__k_paths
 
-        assert bool(is_nonterminal(self.value)) or k == 1 or not self.__k_paths[k]
-        assert not is_nonterminal(self.value) or self.__k_paths[k] == graph.k_paths_in_tree(self.to_parse_tree(), k)
+        # assert bool(is_nonterminal(self.value)) or k == 1 or not self.__k_paths[k]
+        # assert not is_nonterminal(self.value) or self.__k_paths[k] == graph.k_paths_in_tree(self.to_parse_tree(), k)
         return self.__k_paths[k]
 
     def recompute_k_paths(self, graph: gg.GrammarGraph, k: int) -> Set[Tuple[gg.Node, ...]]:
@@ -759,19 +759,18 @@ class BindExpression:
 
         # Consider all possible on/off combinations for optional elements
         optionals = [elem for elem in self.bound_elements if isinstance(elem, list)]
-        if optionals:
-            for combination in powerset(optionals):
-                # Inline all chosen, remove all not chosen optionals
-                bound_elements = []
-                for bound_element in self.bound_elements:
-                    if not isinstance(bound_element, list):
-                        bound_elements.append(bound_element)
-                        continue
+        for combination in powerset(optionals):
+            # Inline all chosen, remove all not chosen optionals
+            bound_elements = []
+            for bound_element in self.bound_elements:
+                if not isinstance(bound_element, list):
+                    bound_elements.append(bound_element)
+                    continue
 
-                    if bound_element in combination:
-                        bound_elements.extend(bound_element)
+                if bound_element in combination:
+                    bound_elements.extend(bound_element)
 
-                bound_elements_combinations.append(bound_elements)
+            bound_elements_combinations.append(bound_elements)
 
         return bound_elements_combinations
 

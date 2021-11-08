@@ -112,6 +112,15 @@ constraint {
 
     print(f"Optimal cost vector: {tune_result[1]}")
 
+    # Result is something like
+    # CostWeightVector(
+    #     tree_closing_cost=28,
+    #     vacuous_penalty=5,
+    #     constraint_cost=40,
+    #     derivation_depth_penalty=3,
+    #     low_k_coverage_penalty=23,
+    #     low_global_k_path_coverage_penalty=5)
+
     # Run solver
     solver = ISLaSolver(
         XML_GRAMMAR,
