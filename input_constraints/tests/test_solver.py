@@ -321,8 +321,7 @@ constraint {
                 cost_phase_lengths=(200,),
                 k=3
             ),
-            print_only=True,
-            num_solutions=20
+            num_solutions=30
         )
 
     def test_tar(self):
