@@ -1,0 +1,695 @@
+INFO:evaluator:Autotuning, estimated time > 1687s, end: 08/11/2021 07:37:46
+INFO:evaluator:Time taken for evaluating population w/ parallel processing: 0:05:02.360980
+INFO:evaluator:Initial population:
+CostWeightVector(tree_closing_cost = 5, vacuous_penalty = 27, constraint_cost = 1, derivation_depth_penalty = 40, low_k_coverage_penalty = 5, low_global_k_path_coverage_penalty = 2), Performance: 5.062517715058092 (valid inputs: 5, k-Path Coverage: 3, Non-Vacuity Index: 8.284271247461904)
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 1, constraint_cost = 25, derivation_depth_penalty = 28, low_k_coverage_penalty = 32, low_global_k_path_coverage_penalty = 18), Performance: 5.54305653312393 (valid inputs: 9, k-Path Coverage: 4, Non-Vacuity Index: 4.602372915256613)
+CostWeightVector(tree_closing_cost = 10, vacuous_penalty = 40, constraint_cost = 2, derivation_depth_penalty = 22, low_k_coverage_penalty = 34, low_global_k_path_coverage_penalty = 10), Performance: 5.54305653312393 (valid inputs: 9, k-Path Coverage: 4, Non-Vacuity Index: 4.602372915256613)
+CostWeightVector(tree_closing_cost = 1, vacuous_penalty = 22, constraint_cost = 5, derivation_depth_penalty = 3, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 9), Performance: 5.701120328971986 (valid inputs: 15, k-Path Coverage: 4, Non-Vacuity Index: 2.761423749153968)
+CostWeightVector(tree_closing_cost = 2, vacuous_penalty = 12, constraint_cost = 9, derivation_depth_penalty = 4, low_k_coverage_penalty = 17, low_global_k_path_coverage_penalty = 6), Performance: 6.796437072737505 (valid inputs: 16, k-Path Coverage: 4, Non-Vacuity Index: 4.575317547305483)
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 9, constraint_cost = 1, derivation_depth_penalty = 3, low_k_coverage_penalty = 39, low_global_k_path_coverage_penalty = 24), Performance: 7.625096361559166 (valid inputs: 7, k-Path Coverage: 6, Non-Vacuity Index: 10.45786867955539)
+CostWeightVector(tree_closing_cost = 10, vacuous_penalty = 27, constraint_cost = 40, derivation_depth_penalty = 0, low_k_coverage_penalty = 27, low_global_k_path_coverage_penalty = 9), Performance: 8.398099784296576 (valid inputs: 7, k-Path Coverage: 14, Non-Vacuity Index: 5.917336605329931)
+CostWeightVector(tree_closing_cost = 3, vacuous_penalty = 13, constraint_cost = 15, derivation_depth_penalty = 1, low_k_coverage_penalty = 11, low_global_k_path_coverage_penalty = 9), Performance: 8.430393048127026 (valid inputs: 36, k-Path Coverage: 5, Non-Vacuity Index: 2.7777777777777777)
+CostWeightVector(tree_closing_cost = 8, vacuous_penalty = 7, constraint_cost = 35, derivation_depth_penalty = 8, low_k_coverage_penalty = 2, low_global_k_path_coverage_penalty = 11), Performance: 8.64193054616533 (valid inputs: 9, k-Path Coverage: 15, Non-Vacuity Index: 4.602372915256613)
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9), Performance: 9.428079934659348 (valid inputs: 5, k-Path Coverage: 8, Non-Vacuity Index: 20.0)
+CostWeightVector(tree_closing_cost = 3, vacuous_penalty = 11, constraint_cost = 13, derivation_depth_penalty = 5, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 11), Performance: 9.455307822055182 (valid inputs: 41, k-Path Coverage: 5, Non-Vacuity Index: 3.5353408360565317)
+CostWeightVector(tree_closing_cost = 26, vacuous_penalty = 4, constraint_cost = 18, derivation_depth_penalty = 17, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 19), Performance: 10.291151746886795 (valid inputs: 5, k-Path Coverage: 7, Non-Vacuity Index: 28.989794855663558)
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 27, constraint_cost = 10, derivation_depth_penalty = 19, low_k_coverage_penalty = 6, low_global_k_path_coverage_penalty = 6), Performance: 10.291151746886795 (valid inputs: 5, k-Path Coverage: 7, Non-Vacuity Index: 28.989794855663558)
+CostWeightVector(tree_closing_cost = 35, vacuous_penalty = 22, constraint_cost = 26, derivation_depth_penalty = 3, low_k_coverage_penalty = 26, low_global_k_path_coverage_penalty = 1), Performance: 10.743271046161736 (valid inputs: 5, k-Path Coverage: 8, Non-Vacuity Index: 28.989794855663558)
+CostWeightVector(tree_closing_cost = 23, vacuous_penalty = 8, constraint_cost = 27, derivation_depth_penalty = 2, low_k_coverage_penalty = 23, low_global_k_path_coverage_penalty = 3), Performance: 11.83274015940152 (valid inputs: 6, k-Path Coverage: 11, Non-Vacuity Index: 24.15816237971963)
+CostWeightVector(tree_closing_cost = 23, vacuous_penalty = 28, constraint_cost = 1, derivation_depth_penalty = 8, low_k_coverage_penalty = 26, low_global_k_path_coverage_penalty = 2), Performance: 11.840074253824403 (valid inputs: 6, k-Path Coverage: 13, Non-Vacuity Index: 20.60113295832983)
+CostWeightVector(tree_closing_cost = 18, vacuous_penalty = 8, constraint_cost = 8, derivation_depth_penalty = 0, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 28), Performance: 12.43218201715618 (valid inputs: 6, k-Path Coverage: 10, Non-Vacuity Index: 30.473785412436502)
+CostWeightVector(tree_closing_cost = 26, vacuous_penalty = 21, constraint_cost = 13, derivation_depth_penalty = 17, low_k_coverage_penalty = 25, low_global_k_path_coverage_penalty = 19), Performance: 12.82747096415897 (valid inputs: 6, k-Path Coverage: 11, Non-Vacuity Index: 30.473785412436502)
+CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 0, constraint_cost = 11, derivation_depth_penalty = 7, low_k_coverage_penalty = 9, low_global_k_path_coverage_penalty = 29), Performance: 13.004275847103782 (valid inputs: 16, k-Path Coverage: 12, Non-Vacuity Index: 11.427669529663689)
+CostWeightVector(tree_closing_cost = 5, vacuous_penalty = 38, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 8), Performance: 13.247543828463868 (valid inputs: 11, k-Path Coverage: 16, Non-Vacuity Index: 13.177179479847071)
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7), Performance: 13.912867897409852 (valid inputs: 7, k-Path Coverage: 12, Non-Vacuity Index: 30.88968085954828)
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1), Performance: 14.011333333798772 (valid inputs: 24, k-Path Coverage: 21, Non-Vacuity Index: 5.150283239582458)
+CostWeightVector(tree_closing_cost = 22, vacuous_penalty = 38, constraint_cost = 2, derivation_depth_penalty = 4, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 40), Performance: 14.305481853413275 (valid inputs: 13, k-Path Coverage: 16, Non-Vacuity Index: 14.064824036509155)
+CostWeightVector(tree_closing_cost = 27, vacuous_penalty = 39, constraint_cost = 29, derivation_depth_penalty = 27, low_k_coverage_penalty = 7, low_global_k_path_coverage_penalty = 33), Performance: 14.641454644271887 (valid inputs: 7, k-Path Coverage: 14, Non-Vacuity Index: 30.88968085954828)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0), Performance: 14.655193286448151 (valid inputs: 9, k-Path Coverage: 17, Non-Vacuity Index: 20.315856941624336)
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 3, constraint_cost = 21, derivation_depth_penalty = 13, low_k_coverage_penalty = 9, low_global_k_path_coverage_penalty = 20), Performance: 15.534222165564774 (valid inputs: 21, k-Path Coverage: 25, Non-Vacuity Index: 6.902332108491324)
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21), Performance: 16.319226215801006 (valid inputs: 8, k-Path Coverage: 12, Non-Vacuity Index: 43.40169943749474)
+CostWeightVector(tree_closing_cost = 23, vacuous_penalty = 5, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 1), Performance: 17.375920770575828 (valid inputs: 9, k-Path Coverage: 13, Non-Vacuity Index: 43.32199428407062)
+CostWeightVector(tree_closing_cost = 24, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 2, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 17), Performance: 18.21231765791367 (valid inputs: 9, k-Path Coverage: 15, Non-Vacuity Index: 43.32199428407062)
+CostWeightVector(tree_closing_cost = 35, vacuous_penalty = 4, constraint_cost = 1, derivation_depth_penalty = 16, low_k_coverage_penalty = 34, low_global_k_path_coverage_penalty = 10), Performance: 18.21231765791367 (valid inputs: 9, k-Path Coverage: 15, Non-Vacuity Index: 43.32199428407062)
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14), Performance: 18.296104451342593 (valid inputs: 35, k-Path Coverage: 34, Non-Vacuity Index: 4.702146603041688)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33), Performance: 20.074841306366828 (valid inputs: 11, k-Path Coverage: 17, Non-Vacuity Index: 42.335038631748915)
+CostWeightVector(tree_closing_cost = 27, vacuous_penalty = 1, constraint_cost = 3, derivation_depth_penalty = 40, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 30), Performance: 21.558981815275068 (valid inputs: 13, k-Path Coverage: 18, Non-Vacuity Index: 42.15954383390662)
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35), Performance: 24.307426435323887 (valid inputs: 15, k-Path Coverage: 24, Non-Vacuity Index: 39.521354868503394)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 4, constraint_cost = 7, derivation_depth_penalty = 24, low_k_coverage_penalty = 23, low_global_k_path_coverage_penalty = 7), Performance: 24.307426435323887 (valid inputs: 15, k-Path Coverage: 24, Non-Vacuity Index: 39.521354868503394)
+CostWeightVector(tree_closing_cost = 28, vacuous_penalty = 39, constraint_cost = 39, derivation_depth_penalty = 0, low_k_coverage_penalty = 8, low_global_k_path_coverage_penalty = 15), Performance: 24.66871597371776 (valid inputs: 19, k-Path Coverage: 31, Non-Vacuity Index: 25.42606260444895)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 14, constraint_cost = 14, derivation_depth_penalty = 20, low_k_coverage_penalty = 14, low_global_k_path_coverage_penalty = 28), Performance: 25.30056603851946 (valid inputs: 24, k-Path Coverage: 24, Non-Vacuity Index: 28.108194551728474)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 8, constraint_cost = 27, derivation_depth_penalty = 16, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 20), Performance: 26.408849883270687 (valid inputs: 20, k-Path Coverage: 31, Non-Vacuity Index: 29.641016151377546)
+CostWeightVector(tree_closing_cost = 6, vacuous_penalty = 13, constraint_cost = 14, derivation_depth_penalty = 4, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 14), Performance: 30.191270080732057 (valid inputs: 71, k-Path Coverage: 35, Non-Vacuity Index: 10.707500376116375)
+CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 23, constraint_cost = 20, derivation_depth_penalty = 11, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 19), Performance: 31.743910290962155 (valid inputs: 57, k-Path Coverage: 39, Non-Vacuity Index: 14.132254628311259)
+
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 7)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 21.0, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 7)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 22, derivation_depth_penalty = 27.5, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 14.0, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 27, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 7)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 27, constraint_cost = 4.0, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 7)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 10, constraint_cost = 55.0, derivation_depth_penalty = 11, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 12, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 7)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 12, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 24.5)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 7)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 21.0, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 7)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 94.5, constraint_cost = 12, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 27, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10.8, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 10, constraint_cost = 12, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 10, constraint_cost = 12, derivation_depth_penalty = 2.0, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 27, constraint_cost = 22, derivation_depth_penalty = 18, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 27, constraint_cost = 22, derivation_depth_penalty = 18, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 0.2857142857142857)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 10, constraint_cost = 12, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 10, constraint_cost = 12, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1.5)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 33.0, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 18, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 18, low_k_coverage_penalty = 77.5, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 27, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 7)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 27, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 4.666666666666667)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 19.5, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 12, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 7)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 54.0, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 7)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 18, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 5.142857142857143, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 2.888888888888889, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7)
+and
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1):
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 27, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 1)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 67.5, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 1)
+INFO:evaluator:Time taken for evaluating population w/ parallel processing: 0:03:14.351366
+INFO:evaluator:Generation 1:
+CostWeightVector(tree_closing_cost = 28, vacuous_penalty = 39, constraint_cost = 39, derivation_depth_penalty = 0, low_k_coverage_penalty = 8, low_global_k_path_coverage_penalty = 15), Performance: 7.555875443436392 (valid inputs: 19, k-Path Coverage: 4, Non-Vacuity Index: 5.2631578947368425)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0), Performance: 7.893870768388053 (valid inputs: 37, k-Path Coverage: 4, Non-Vacuity Index: 2.7027027027027026)
+CostWeightVector(tree_closing_cost = 23, vacuous_penalty = 5, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 1), Performance: 7.893870768388053 (valid inputs: 37, k-Path Coverage: 4, Non-Vacuity Index: 2.7027027027027026)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 14, constraint_cost = 14, derivation_depth_penalty = 20, low_k_coverage_penalty = 14, low_global_k_path_coverage_penalty = 28), Performance: 10.815404615489456 (valid inputs: 37, k-Path Coverage: 9, Non-Vacuity Index: 3.3407242635129455)
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1), Performance: 10.825333673921504 (valid inputs: 19, k-Path Coverage: 25, Non-Vacuity Index: 2.180071380911027)
+CostWeightVector(tree_closing_cost = 5, vacuous_penalty = 27, constraint_cost = 1, derivation_depth_penalty = 40, low_k_coverage_penalty = 5, low_global_k_path_coverage_penalty = 2), Performance: 12.83951208286307 (valid inputs: 55, k-Path Coverage: 26, Non-Vacuity Index: 0.7531155679510821)
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 3, constraint_cost = 21, derivation_depth_penalty = 13, low_k_coverage_penalty = 9, low_global_k_path_coverage_penalty = 20), Performance: 13.015427783409207 (valid inputs: 8, k-Path Coverage: 15, Non-Vacuity Index: 18.118621784789724)
+CostWeightVector(tree_closing_cost = 14, vacuous_penalty = 27, constraint_cost = 12, derivation_depth_penalty = 18, low_k_coverage_penalty = 13, low_global_k_path_coverage_penalty = 7), Performance: 13.912867897409852 (valid inputs: 7, k-Path Coverage: 12, Non-Vacuity Index: 30.88968085954828)
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1), Performance: 14.011333333798772 (valid inputs: 24, k-Path Coverage: 21, Non-Vacuity Index: 5.150283239582458)
+CostWeightVector(tree_closing_cost = 22, vacuous_penalty = 38, constraint_cost = 2, derivation_depth_penalty = 4, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 40), Performance: 14.305481853413275 (valid inputs: 13, k-Path Coverage: 16, Non-Vacuity Index: 14.064824036509155)
+CostWeightVector(tree_closing_cost = 1, vacuous_penalty = 22, constraint_cost = 5, derivation_depth_penalty = 3, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 9), Performance: 14.55678232559299 (valid inputs: 7, k-Path Coverage: 12, Non-Vacuity Index: 35.20145164482506)
+CostWeightVector(tree_closing_cost = 27, vacuous_penalty = 39, constraint_cost = 29, derivation_depth_penalty = 27, low_k_coverage_penalty = 7, low_global_k_path_coverage_penalty = 33), Performance: 14.641454644271887 (valid inputs: 7, k-Path Coverage: 14, Non-Vacuity Index: 30.88968085954828)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0), Performance: 14.655193286448151 (valid inputs: 9, k-Path Coverage: 17, Non-Vacuity Index: 20.315856941624336)
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 3, constraint_cost = 21, derivation_depth_penalty = 13, low_k_coverage_penalty = 9, low_global_k_path_coverage_penalty = 20), Performance: 15.534222165564774 (valid inputs: 21, k-Path Coverage: 25, Non-Vacuity Index: 6.902332108491324)
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21), Performance: 16.319226215801006 (valid inputs: 8, k-Path Coverage: 12, Non-Vacuity Index: 43.40169943749474)
+CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 23, constraint_cost = 20, derivation_depth_penalty = 11, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 19), Performance: 16.319226215801006 (valid inputs: 8, k-Path Coverage: 12, Non-Vacuity Index: 43.40169943749474)
+CostWeightVector(tree_closing_cost = 6, vacuous_penalty = 13, constraint_cost = 14, derivation_depth_penalty = 4, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 14), Performance: 17.32552720717537 (valid inputs: 26, k-Path Coverage: 22, Non-Vacuity Index: 8.910095347520768)
+CostWeightVector(tree_closing_cost = 23, vacuous_penalty = 5, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 1), Performance: 17.375920770575828 (valid inputs: 9, k-Path Coverage: 13, Non-Vacuity Index: 43.32199428407062)
+CostWeightVector(tree_closing_cost = 24, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 2, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 17), Performance: 18.21231765791367 (valid inputs: 9, k-Path Coverage: 15, Non-Vacuity Index: 43.32199428407062)
+CostWeightVector(tree_closing_cost = 35, vacuous_penalty = 4, constraint_cost = 1, derivation_depth_penalty = 16, low_k_coverage_penalty = 34, low_global_k_path_coverage_penalty = 10), Performance: 18.21231765791367 (valid inputs: 9, k-Path Coverage: 15, Non-Vacuity Index: 43.32199428407062)
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14), Performance: 18.296104451342593 (valid inputs: 35, k-Path Coverage: 34, Non-Vacuity Index: 4.702146603041688)
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9), Performance: 18.446626080060664 (valid inputs: 14, k-Path Coverage: 24, Non-Vacuity Index: 18.611080539028496)
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35), Performance: 19.046489363301056 (valid inputs: 10, k-Path Coverage: 15, Non-Vacuity Index: 44.77225575051661)
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21), Performance: 19.046489363301056 (valid inputs: 10, k-Path Coverage: 15, Non-Vacuity Index: 44.77225575051661)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 4, constraint_cost = 7, derivation_depth_penalty = 24, low_k_coverage_penalty = 23, low_global_k_path_coverage_penalty = 7), Performance: 19.924918859324848 (valid inputs: 39, k-Path Coverage: 34, Non-Vacuity Index: 5.544301692739435)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33), Performance: 20.074841306366828 (valid inputs: 11, k-Path Coverage: 17, Non-Vacuity Index: 42.335038631748915)
+CostWeightVector(tree_closing_cost = 27, vacuous_penalty = 1, constraint_cost = 3, derivation_depth_penalty = 40, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 30), Performance: 21.272929789455727 (valid inputs: 13, k-Path Coverage: 19, Non-Vacuity Index: 38.46153846153846)
+CostWeightVector(tree_closing_cost = 27, vacuous_penalty = 1, constraint_cost = 3, derivation_depth_penalty = 40, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 30), Performance: 21.558981815275068 (valid inputs: 13, k-Path Coverage: 18, Non-Vacuity Index: 42.15954383390662)
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35), Performance: 24.307426435323887 (valid inputs: 15, k-Path Coverage: 24, Non-Vacuity Index: 39.521354868503394)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 4, constraint_cost = 7, derivation_depth_penalty = 24, low_k_coverage_penalty = 23, low_global_k_path_coverage_penalty = 7), Performance: 24.307426435323887 (valid inputs: 15, k-Path Coverage: 24, Non-Vacuity Index: 39.521354868503394)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33), Performance: 24.353889081445548 (valid inputs: 67, k-Path Coverage: 32, Non-Vacuity Index: 6.262914063741242)
+CostWeightVector(tree_closing_cost = 35, vacuous_penalty = 4, constraint_cost = 1, derivation_depth_penalty = 16, low_k_coverage_penalty = 34, low_global_k_path_coverage_penalty = 10), Performance: 24.3629968789544 (valid inputs: 21, k-Path Coverage: 31, Non-Vacuity Index: 22.175496426154194)
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14), Performance: 24.36480041606786 (valid inputs: 20, k-Path Coverage: 31, Non-Vacuity Index: 23.284271247461902)
+CostWeightVector(tree_closing_cost = 28, vacuous_penalty = 39, constraint_cost = 39, derivation_depth_penalty = 0, low_k_coverage_penalty = 8, low_global_k_path_coverage_penalty = 15), Performance: 24.66871597371776 (valid inputs: 19, k-Path Coverage: 31, Non-Vacuity Index: 25.42606260444895)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 14, constraint_cost = 14, derivation_depth_penalty = 20, low_k_coverage_penalty = 14, low_global_k_path_coverage_penalty = 28), Performance: 25.30056603851946 (valid inputs: 24, k-Path Coverage: 24, Non-Vacuity Index: 28.108194551728474)
+CostWeightVector(tree_closing_cost = 24, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 2, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 17), Performance: 26.033216327057325 (valid inputs: 39, k-Path Coverage: 41, Non-Vacuity Index: 10.759365186427262)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 8, constraint_cost = 27, derivation_depth_penalty = 16, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 20), Performance: 26.408849883270687 (valid inputs: 20, k-Path Coverage: 31, Non-Vacuity Index: 29.641016151377546)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 8, constraint_cost = 27, derivation_depth_penalty = 16, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 20), Performance: 29.16078653387982 (valid inputs: 20, k-Path Coverage: 33, Non-Vacuity Index: 37.426406871192846)
+CostWeightVector(tree_closing_cost = 6, vacuous_penalty = 13, constraint_cost = 14, derivation_depth_penalty = 4, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 14), Performance: 30.191270080732057 (valid inputs: 71, k-Path Coverage: 35, Non-Vacuity Index: 10.707500376116375)
+CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 23, constraint_cost = 20, derivation_depth_penalty = 11, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 19), Performance: 31.743910290962155 (valid inputs: 57, k-Path Coverage: 39, Non-Vacuity Index: 14.132254628311259)
+
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 21, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 14)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 115.5, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 14)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 14)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 13.333333333333334, low_global_k_path_coverage_penalty = 14)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 0, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 14)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 0, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 4.0)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 0, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 0, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 36.0, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 0, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 14)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 6, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 14)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 10.857142857142858, vacuous_penalty = 26, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 0, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 14)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 0, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 110.0, low_global_k_path_coverage_penalty = 14)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 3.5555555555555554, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 26, constraint_cost = 6, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 26, constraint_cost = 6, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 13.5)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 0, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 14)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 57.0, vacuous_penalty = 0, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 14)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 0, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 5, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 26, constraint_cost = 6, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 26, constraint_cost = 4.0, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 21, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 21, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 3.6)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 26, constraint_cost = 6, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 2.5714285714285716, vacuous_penalty = 26, constraint_cost = 6, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 0, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 0, constraint_cost = 3, derivation_depth_penalty = 3.5555555555555554, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 3, derivation_depth_penalty = 10.666666666666666, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 0, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 8, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 14)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 56.0, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 14)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 56.0, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14)
+and
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9):
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 0, constraint_cost = 3, derivation_depth_penalty = 21, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 1, constraint_cost = 3, derivation_depth_penalty = 21, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9)
+INFO:evaluator:Time taken for evaluating population w/ parallel processing: 0:03:08.251724
+INFO:evaluator:Generation 2:
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33), Performance: 2.0 (valid inputs: 8, k-Path Coverage: 2, Non-Vacuity Index: 0.0)
+CostWeightVector(tree_closing_cost = 1, vacuous_penalty = 22, constraint_cost = 5, derivation_depth_penalty = 3, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 9), Performance: 5.062517715058092 (valid inputs: 5, k-Path Coverage: 3, Non-Vacuity Index: 8.284271247461904)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 14, constraint_cost = 14, derivation_depth_penalty = 20, low_k_coverage_penalty = 14, low_global_k_path_coverage_penalty = 28), Performance: 11.19696952522011 (valid inputs: 6, k-Path Coverage: 11, Non-Vacuity Index: 20.60113295832983)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 8, constraint_cost = 27, derivation_depth_penalty = 16, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 20), Performance: 11.384080419879744 (valid inputs: 15, k-Path Coverage: 8, Non-Vacuity Index: 12.189514164974602)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 4, constraint_cost = 7, derivation_depth_penalty = 24, low_k_coverage_penalty = 23, low_global_k_path_coverage_penalty = 7), Performance: 11.384080419879744 (valid inputs: 15, k-Path Coverage: 8, Non-Vacuity Index: 12.189514164974602)
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 3, constraint_cost = 21, derivation_depth_penalty = 13, low_k_coverage_penalty = 9, low_global_k_path_coverage_penalty = 20), Performance: 12.717136176601938 (valid inputs: 8, k-Path Coverage: 14, Non-Vacuity Index: 18.118621784789724)
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9), Performance: 12.82747096415897 (valid inputs: 6, k-Path Coverage: 11, Non-Vacuity Index: 30.473785412436502)
+CostWeightVector(tree_closing_cost = 24, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 2, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 17), Performance: 13.153688705103228 (valid inputs: 27, k-Path Coverage: 9, Non-Vacuity Index: 9.12630227828798)
+CostWeightVector(tree_closing_cost = 27, vacuous_penalty = 1, constraint_cost = 3, derivation_depth_penalty = 40, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 30), Performance: 13.84785650744152 (valid inputs: 26, k-Path Coverage: 10, Non-Vacuity Index: 10.021351059476881)
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1), Performance: 15.94514537890182 (valid inputs: 8, k-Path Coverage: 16, Non-Vacuity Index: 30.80127018922193)
+CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 23, constraint_cost = 20, derivation_depth_penalty = 11, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 19), Performance: 16.319226215801006 (valid inputs: 8, k-Path Coverage: 12, Non-Vacuity Index: 43.40169943749474)
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14), Performance: 16.752385189356275 (valid inputs: 8, k-Path Coverage: 13, Non-Vacuity Index: 43.40169943749474)
+CostWeightVector(tree_closing_cost = 35, vacuous_penalty = 4, constraint_cost = 1, derivation_depth_penalty = 16, low_k_coverage_penalty = 34, low_global_k_path_coverage_penalty = 10), Performance: 18.209273818211805 (valid inputs: 23, k-Path Coverage: 32, Non-Vacuity Index: 7.949683151070392)
+CostWeightVector(tree_closing_cost = 28, vacuous_penalty = 39, constraint_cost = 39, derivation_depth_penalty = 0, low_k_coverage_penalty = 8, low_global_k_path_coverage_penalty = 15), Performance: 18.21231765791367 (valid inputs: 9, k-Path Coverage: 15, Non-Vacuity Index: 43.32199428407062)
+CostWeightVector(tree_closing_cost = 5, vacuous_penalty = 27, constraint_cost = 1, derivation_depth_penalty = 40, low_k_coverage_penalty = 5, low_global_k_path_coverage_penalty = 2), Performance: 18.21231765791367 (valid inputs: 9, k-Path Coverage: 15, Non-Vacuity Index: 43.32199428407062)
+CostWeightVector(tree_closing_cost = 6, vacuous_penalty = 13, constraint_cost = 14, derivation_depth_penalty = 4, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 14), Performance: 18.21231765791367 (valid inputs: 9, k-Path Coverage: 15, Non-Vacuity Index: 43.32199428407062)
+CostWeightVector(tree_closing_cost = 23, vacuous_penalty = 5, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 1), Performance: 18.21231765791367 (valid inputs: 9, k-Path Coverage: 15, Non-Vacuity Index: 43.32199428407062)
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14), Performance: 18.296104451342593 (valid inputs: 35, k-Path Coverage: 34, Non-Vacuity Index: 4.702146603041688)
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35), Performance: 18.30364905025884 (valid inputs: 20, k-Path Coverage: 28, Non-Vacuity Index: 10.811388300841898)
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9), Performance: 18.446626080060664 (valid inputs: 14, k-Path Coverage: 24, Non-Vacuity Index: 18.611080539028496)
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35), Performance: 19.046489363301056 (valid inputs: 10, k-Path Coverage: 15, Non-Vacuity Index: 44.77225575051661)
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21), Performance: 19.046489363301056 (valid inputs: 10, k-Path Coverage: 15, Non-Vacuity Index: 44.77225575051661)
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21), Performance: 19.229796996100955 (valid inputs: 25, k-Path Coverage: 32, Non-Vacuity Index: 8.649110640673518)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 4, constraint_cost = 7, derivation_depth_penalty = 24, low_k_coverage_penalty = 23, low_global_k_path_coverage_penalty = 7), Performance: 19.924918859324848 (valid inputs: 39, k-Path Coverage: 34, Non-Vacuity Index: 5.544301692739435)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33), Performance: 20.074841306366828 (valid inputs: 11, k-Path Coverage: 17, Non-Vacuity Index: 42.335038631748915)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0), Performance: 20.129316813989387 (valid inputs: 22, k-Path Coverage: 19, Non-Vacuity Index: 19.50683010058719)
+CostWeightVector(tree_closing_cost = 27, vacuous_penalty = 1, constraint_cost = 3, derivation_depth_penalty = 40, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 30), Performance: 21.272929789455727 (valid inputs: 13, k-Path Coverage: 19, Non-Vacuity Index: 38.46153846153846)
+CostWeightVector(tree_closing_cost = 27, vacuous_penalty = 1, constraint_cost = 3, derivation_depth_penalty = 40, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 30), Performance: 21.558981815275068 (valid inputs: 13, k-Path Coverage: 18, Non-Vacuity Index: 42.15954383390662)
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35), Performance: 24.307426435323887 (valid inputs: 15, k-Path Coverage: 24, Non-Vacuity Index: 39.521354868503394)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 4, constraint_cost = 7, derivation_depth_penalty = 24, low_k_coverage_penalty = 23, low_global_k_path_coverage_penalty = 7), Performance: 24.307426435323887 (valid inputs: 15, k-Path Coverage: 24, Non-Vacuity Index: 39.521354868503394)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33), Performance: 24.353889081445548 (valid inputs: 67, k-Path Coverage: 32, Non-Vacuity Index: 6.262914063741242)
+CostWeightVector(tree_closing_cost = 35, vacuous_penalty = 4, constraint_cost = 1, derivation_depth_penalty = 16, low_k_coverage_penalty = 34, low_global_k_path_coverage_penalty = 10), Performance: 24.3629968789544 (valid inputs: 21, k-Path Coverage: 31, Non-Vacuity Index: 22.175496426154194)
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14), Performance: 24.36480041606786 (valid inputs: 20, k-Path Coverage: 31, Non-Vacuity Index: 23.284271247461902)
+CostWeightVector(tree_closing_cost = 28, vacuous_penalty = 39, constraint_cost = 39, derivation_depth_penalty = 0, low_k_coverage_penalty = 8, low_global_k_path_coverage_penalty = 15), Performance: 24.66871597371776 (valid inputs: 19, k-Path Coverage: 31, Non-Vacuity Index: 25.42606260444895)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 14, constraint_cost = 14, derivation_depth_penalty = 20, low_k_coverage_penalty = 14, low_global_k_path_coverage_penalty = 28), Performance: 25.30056603851946 (valid inputs: 24, k-Path Coverage: 24, Non-Vacuity Index: 28.108194551728474)
+CostWeightVector(tree_closing_cost = 24, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 2, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 17), Performance: 26.033216327057325 (valid inputs: 39, k-Path Coverage: 41, Non-Vacuity Index: 10.759365186427262)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 8, constraint_cost = 27, derivation_depth_penalty = 16, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 20), Performance: 26.408849883270687 (valid inputs: 20, k-Path Coverage: 31, Non-Vacuity Index: 29.641016151377546)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 8, constraint_cost = 27, derivation_depth_penalty = 16, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 20), Performance: 29.16078653387982 (valid inputs: 20, k-Path Coverage: 33, Non-Vacuity Index: 37.426406871192846)
+CostWeightVector(tree_closing_cost = 6, vacuous_penalty = 13, constraint_cost = 14, derivation_depth_penalty = 4, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 14), Performance: 30.191270080732057 (valid inputs: 71, k-Path Coverage: 35, Non-Vacuity Index: 10.707500376116375)
+CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 23, constraint_cost = 20, derivation_depth_penalty = 11, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 19), Performance: 31.743910290962155 (valid inputs: 57, k-Path Coverage: 39, Non-Vacuity Index: 14.132254628311259)
+
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 11, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 6, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 11, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 7.777777777777778)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 4, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 35)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 11.6, vacuous_penalty = 3, constraint_cost = 4, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 35)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 11, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 11, low_k_coverage_penalty = 2.5, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 19.5, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 11, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 11, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 14.0)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 50.0, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 4, derivation_depth_penalty = 20, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 4, derivation_depth_penalty = 20, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 4.666666666666667)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 11.6, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 31.5)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 11, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 35)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 4.4, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 35)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 35)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 1, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 35)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 4, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 35)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 2.0, constraint_cost = 4, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 35)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 11, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 35)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 16.5, constraint_cost = 17, derivation_depth_penalty = 11, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 35)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 4, derivation_depth_penalty = 20, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 4, derivation_depth_penalty = 3.6363636363636362, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 43.5, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 42.5, derivation_depth_penalty = 20, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 3, constraint_cost = 4, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 3, constraint_cost = 4, derivation_depth_penalty = 20, low_k_coverage_penalty = 1.5, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 8.0, low_global_k_path_coverage_penalty = 35)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35)
+and
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21):
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 13, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 21)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3.7142857142857144, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 21)
+INFO:evaluator:Time taken for evaluating population w/ parallel processing: 0:03:11.724347
+INFO:evaluator:Generation 3:
+CostWeightVector(tree_closing_cost = 27, vacuous_penalty = 1, constraint_cost = 3, derivation_depth_penalty = 40, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 30), Performance: 1.7589241763811203 (valid inputs: 6, k-Path Coverage: 2, Non-Vacuity Index: 0.0)
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21), Performance: 5.101126560600895 (valid inputs: 4, k-Path Coverage: 3, Non-Vacuity Index: 10.35533905932738)
+CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 23, constraint_cost = 20, derivation_depth_penalty = 11, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 19), Performance: 8.16635567908343 (valid inputs: 18, k-Path Coverage: 7, Non-Vacuity Index: 4.0669489309382065)
+CostWeightVector(tree_closing_cost = 1, vacuous_penalty = 22, constraint_cost = 5, derivation_depth_penalty = 3, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 9), Performance: 9.457846663567317 (valid inputs: 11, k-Path Coverage: 19, Non-Vacuity Index: 3.7655778397554105)
+CostWeightVector(tree_closing_cost = 28, vacuous_penalty = 39, constraint_cost = 39, derivation_depth_penalty = 0, low_k_coverage_penalty = 8, low_global_k_path_coverage_penalty = 15), Performance: 11.159723573604689 (valid inputs: 52, k-Path Coverage: 6, Non-Vacuity Index: 3.8461538461538463)
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1), Performance: 11.465887800216056 (valid inputs: 6, k-Path Coverage: 10, Non-Vacuity Index: 24.15816237971963)
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 3, constraint_cost = 21, derivation_depth_penalty = 13, low_k_coverage_penalty = 9, low_global_k_path_coverage_penalty = 20), Performance: 12.012148365579883 (valid inputs: 6, k-Path Coverage: 9, Non-Vacuity Index: 30.473785412436502)
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9), Performance: 12.82747096415897 (valid inputs: 6, k-Path Coverage: 11, Non-Vacuity Index: 30.473785412436502)
+CostWeightVector(tree_closing_cost = 6, vacuous_penalty = 13, constraint_cost = 14, derivation_depth_penalty = 4, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 14), Performance: 16.319226215801006 (valid inputs: 8, k-Path Coverage: 12, Non-Vacuity Index: 43.40169943749474)
+CostWeightVector(tree_closing_cost = 35, vacuous_penalty = 4, constraint_cost = 1, derivation_depth_penalty = 16, low_k_coverage_penalty = 34, low_global_k_path_coverage_penalty = 10), Performance: 16.319226215801006 (valid inputs: 8, k-Path Coverage: 12, Non-Vacuity Index: 43.40169943749474)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 8, constraint_cost = 27, derivation_depth_penalty = 16, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 20), Performance: 16.752385189356275 (valid inputs: 8, k-Path Coverage: 13, Non-Vacuity Index: 43.40169943749474)
+CostWeightVector(tree_closing_cost = 23, vacuous_penalty = 5, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 1), Performance: 17.292504411917683 (valid inputs: 9, k-Path Coverage: 14, Non-Vacuity Index: 39.806396610620446)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 14, constraint_cost = 14, derivation_depth_penalty = 20, low_k_coverage_penalty = 14, low_global_k_path_coverage_penalty = 28), Performance: 18.21231765791367 (valid inputs: 9, k-Path Coverage: 15, Non-Vacuity Index: 43.32199428407062)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 4, constraint_cost = 7, derivation_depth_penalty = 24, low_k_coverage_penalty = 23, low_global_k_path_coverage_penalty = 7), Performance: 18.21231765791367 (valid inputs: 9, k-Path Coverage: 15, Non-Vacuity Index: 43.32199428407062)
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35), Performance: 19.046489363301056 (valid inputs: 10, k-Path Coverage: 15, Non-Vacuity Index: 44.77225575051661)
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21), Performance: 19.046489363301056 (valid inputs: 10, k-Path Coverage: 15, Non-Vacuity Index: 44.77225575051661)
+CostWeightVector(tree_closing_cost = 5, vacuous_penalty = 27, constraint_cost = 1, derivation_depth_penalty = 40, low_k_coverage_penalty = 5, low_global_k_path_coverage_penalty = 2), Performance: 19.046489363301056 (valid inputs: 10, k-Path Coverage: 15, Non-Vacuity Index: 44.77225575051661)
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35), Performance: 19.13208990964959 (valid inputs: 38, k-Path Coverage: 35, Non-Vacuity Index: 4.811650328279448)
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21), Performance: 19.229796996100955 (valid inputs: 25, k-Path Coverage: 32, Non-Vacuity Index: 8.649110640673518)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 4, constraint_cost = 7, derivation_depth_penalty = 24, low_k_coverage_penalty = 23, low_global_k_path_coverage_penalty = 7), Performance: 19.924918859324848 (valid inputs: 39, k-Path Coverage: 34, Non-Vacuity Index: 5.544301692739435)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33), Performance: 20.074841306366828 (valid inputs: 11, k-Path Coverage: 17, Non-Vacuity Index: 42.335038631748915)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0), Performance: 20.129316813989387 (valid inputs: 22, k-Path Coverage: 19, Non-Vacuity Index: 19.50683010058719)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33), Performance: 20.458103959714872 (valid inputs: 11, k-Path Coverage: 18, Non-Vacuity Index: 42.335038631748915)
+CostWeightVector(tree_closing_cost = 27, vacuous_penalty = 1, constraint_cost = 3, derivation_depth_penalty = 40, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 30), Performance: 21.272929789455727 (valid inputs: 13, k-Path Coverage: 19, Non-Vacuity Index: 38.46153846153846)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0), Performance: 21.348068816177026 (valid inputs: 124, k-Path Coverage: 14, Non-Vacuity Index: 4.952764861728105)
+CostWeightVector(tree_closing_cost = 27, vacuous_penalty = 1, constraint_cost = 3, derivation_depth_penalty = 40, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 30), Performance: 21.558981815275068 (valid inputs: 13, k-Path Coverage: 18, Non-Vacuity Index: 42.15954383390662)
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14), Performance: 23.13003946407134 (valid inputs: 15, k-Path Coverage: 25, Non-Vacuity Index: 32.773865220664106)
+CostWeightVector(tree_closing_cost = 24, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 2, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 17), Performance: 23.74464548176556 (valid inputs: 16, k-Path Coverage: 25, Non-Vacuity Index: 33.278470752104745)
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35), Performance: 24.307426435323887 (valid inputs: 15, k-Path Coverage: 24, Non-Vacuity Index: 39.521354868503394)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 4, constraint_cost = 7, derivation_depth_penalty = 24, low_k_coverage_penalty = 23, low_global_k_path_coverage_penalty = 7), Performance: 24.307426435323887 (valid inputs: 15, k-Path Coverage: 24, Non-Vacuity Index: 39.521354868503394)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33), Performance: 24.353889081445548 (valid inputs: 67, k-Path Coverage: 32, Non-Vacuity Index: 6.262914063741242)
+CostWeightVector(tree_closing_cost = 35, vacuous_penalty = 4, constraint_cost = 1, derivation_depth_penalty = 16, low_k_coverage_penalty = 34, low_global_k_path_coverage_penalty = 10), Performance: 24.3629968789544 (valid inputs: 21, k-Path Coverage: 31, Non-Vacuity Index: 22.175496426154194)
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14), Performance: 24.36480041606786 (valid inputs: 20, k-Path Coverage: 31, Non-Vacuity Index: 23.284271247461902)
+CostWeightVector(tree_closing_cost = 28, vacuous_penalty = 39, constraint_cost = 39, derivation_depth_penalty = 0, low_k_coverage_penalty = 8, low_global_k_path_coverage_penalty = 15), Performance: 24.66871597371776 (valid inputs: 19, k-Path Coverage: 31, Non-Vacuity Index: 25.42606260444895)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 14, constraint_cost = 14, derivation_depth_penalty = 20, low_k_coverage_penalty = 14, low_global_k_path_coverage_penalty = 28), Performance: 25.30056603851946 (valid inputs: 24, k-Path Coverage: 24, Non-Vacuity Index: 28.108194551728474)
+CostWeightVector(tree_closing_cost = 24, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 2, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 17), Performance: 26.033216327057325 (valid inputs: 39, k-Path Coverage: 41, Non-Vacuity Index: 10.759365186427262)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 8, constraint_cost = 27, derivation_depth_penalty = 16, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 20), Performance: 26.408849883270687 (valid inputs: 20, k-Path Coverage: 31, Non-Vacuity Index: 29.641016151377546)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 8, constraint_cost = 27, derivation_depth_penalty = 16, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 20), Performance: 29.16078653387982 (valid inputs: 20, k-Path Coverage: 33, Non-Vacuity Index: 37.426406871192846)
+CostWeightVector(tree_closing_cost = 6, vacuous_penalty = 13, constraint_cost = 14, derivation_depth_penalty = 4, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 14), Performance: 30.191270080732057 (valid inputs: 71, k-Path Coverage: 35, Non-Vacuity Index: 10.707500376116375)
+CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 23, constraint_cost = 20, derivation_depth_penalty = 11, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 19), Performance: 31.743910290962155 (valid inputs: 57, k-Path Coverage: 39, Non-Vacuity Index: 14.132254628311259)
+
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 6.0, low_global_k_path_coverage_penalty = 33)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 7, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 33)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0.2857142857142857, constraint_cost = 14, derivation_depth_penalty = 7, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 33)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 33)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 76.5, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 33)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 7, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 33)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 7, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 7.333333333333333)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 11.333333333333334, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 7, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 33)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 10.5, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 33)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 7, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 3.5, constraint_cost = 14, derivation_depth_penalty = 7, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 19, low_k_coverage_penalty = 50.0, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 7, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 33)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 7, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 82.5)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 25.5, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 7, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 42.5, vacuous_penalty = 1, constraint_cost = 7, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 7, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 33)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 7, low_k_coverage_penalty = 8.0, low_global_k_path_coverage_penalty = 33)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 50.0, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 5.6, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 4.0, derivation_depth_penalty = 19, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 76.5, vacuous_penalty = 0, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 2.727272727272727, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 2)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 7, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 7, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 8)
+DEBUG:evaluator:Crossover of
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33)
+and
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0):
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 14, derivation_depth_penalty = 7, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0)
+DEBUG:evaluator:After Mutation: CostWeightVector(tree_closing_cost = 76.5, vacuous_penalty = 0, constraint_cost = 14, derivation_depth_penalty = 7, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0)
+INFO:evaluator:Time taken for evaluating population w/ parallel processing: 0:03:15.684885
+INFO:evaluator:Generation 4:
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 3, constraint_cost = 21, derivation_depth_penalty = 13, low_k_coverage_penalty = 9, low_global_k_path_coverage_penalty = 20), Performance: 12.43218201715618 (valid inputs: 6, k-Path Coverage: 10, Non-Vacuity Index: 30.473785412436502)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 14, constraint_cost = 14, derivation_depth_penalty = 20, low_k_coverage_penalty = 14, low_global_k_path_coverage_penalty = 28), Performance: 14.123491760936087 (valid inputs: 28, k-Path Coverage: 32, Non-Vacuity Index: 2.6144671698888473)
+CostWeightVector(tree_closing_cost = 4, vacuous_penalty = 10, constraint_cost = 22, derivation_depth_penalty = 11, low_k_coverage_penalty = 31, low_global_k_path_coverage_penalty = 1), Performance: 14.655193286448151 (valid inputs: 9, k-Path Coverage: 17, Non-Vacuity Index: 20.315856941624336)
+CostWeightVector(tree_closing_cost = 38, vacuous_penalty = 26, constraint_cost = 3, derivation_depth_penalty = 16, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 9), Performance: 16.27109317264903 (valid inputs: 8, k-Path Coverage: 17, Non-Vacuity Index: 30.80127018922193)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 8, constraint_cost = 27, derivation_depth_penalty = 16, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 20), Performance: 16.319226215801006 (valid inputs: 8, k-Path Coverage: 12, Non-Vacuity Index: 43.40169943749474)
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14), Performance: 16.319226215801006 (valid inputs: 8, k-Path Coverage: 12, Non-Vacuity Index: 43.40169943749474)
+CostWeightVector(tree_closing_cost = 29, vacuous_penalty = 3, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 21), Performance: 16.319226215801006 (valid inputs: 8, k-Path Coverage: 12, Non-Vacuity Index: 43.40169943749474)
+CostWeightVector(tree_closing_cost = 27, vacuous_penalty = 1, constraint_cost = 3, derivation_depth_penalty = 40, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 30), Performance: 16.319226215801006 (valid inputs: 8, k-Path Coverage: 12, Non-Vacuity Index: 43.40169943749474)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33), Performance: 16.319226215801006 (valid inputs: 8, k-Path Coverage: 12, Non-Vacuity Index: 43.40169943749474)
+CostWeightVector(tree_closing_cost = 35, vacuous_penalty = 4, constraint_cost = 1, derivation_depth_penalty = 16, low_k_coverage_penalty = 34, low_global_k_path_coverage_penalty = 10), Performance: 16.319226215801006 (valid inputs: 8, k-Path Coverage: 12, Non-Vacuity Index: 43.40169943749474)
+CostWeightVector(tree_closing_cost = 1, vacuous_penalty = 22, constraint_cost = 5, derivation_depth_penalty = 3, low_k_coverage_penalty = 1, low_global_k_path_coverage_penalty = 9), Performance: 16.53543004248592 (valid inputs: 9, k-Path Coverage: 18, Non-Vacuity Index: 27.37890683486394)
+CostWeightVector(tree_closing_cost = 5, vacuous_penalty = 27, constraint_cost = 1, derivation_depth_penalty = 40, low_k_coverage_penalty = 5, low_global_k_path_coverage_penalty = 2), Performance: 16.681476039022538 (valid inputs: 27, k-Path Coverage: 30, Non-Vacuity Index: 5.368480528826585)
+CostWeightVector(tree_closing_cost = 28, vacuous_penalty = 39, constraint_cost = 39, derivation_depth_penalty = 0, low_k_coverage_penalty = 8, low_global_k_path_coverage_penalty = 15), Performance: 17.375920770575828 (valid inputs: 9, k-Path Coverage: 13, Non-Vacuity Index: 43.32199428407062)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0), Performance: 17.501033438467633 (valid inputs: 9, k-Path Coverage: 15, Non-Vacuity Index: 38.579288388884216)
+CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 23, constraint_cost = 20, derivation_depth_penalty = 11, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 19), Performance: 18.21231765791367 (valid inputs: 9, k-Path Coverage: 15, Non-Vacuity Index: 43.32199428407062)
+CostWeightVector(tree_closing_cost = 6, vacuous_penalty = 13, constraint_cost = 14, derivation_depth_penalty = 4, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 14), Performance: 18.21231765791367 (valid inputs: 9, k-Path Coverage: 15, Non-Vacuity Index: 43.32199428407062)
+CostWeightVector(tree_closing_cost = 23, vacuous_penalty = 5, constraint_cost = 17, derivation_depth_penalty = 20, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 1), Performance: 18.21231765791367 (valid inputs: 9, k-Path Coverage: 15, Non-Vacuity Index: 43.32199428407062)
+CostWeightVector(tree_closing_cost = 24, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 2, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 17), Performance: 18.363277681965975 (valid inputs: 120, k-Path Coverage: 9, Non-Vacuity Index: 5.0)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33), Performance: 20.074841306366828 (valid inputs: 11, k-Path Coverage: 17, Non-Vacuity Index: 42.335038631748915)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 4, constraint_cost = 7, derivation_depth_penalty = 24, low_k_coverage_penalty = 23, low_global_k_path_coverage_penalty = 7), Performance: 20.074841306366828 (valid inputs: 11, k-Path Coverage: 17, Non-Vacuity Index: 42.335038631748915)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0), Performance: 20.129316813989387 (valid inputs: 22, k-Path Coverage: 19, Non-Vacuity Index: 19.50683010058719)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33), Performance: 20.458103959714872 (valid inputs: 11, k-Path Coverage: 18, Non-Vacuity Index: 42.335038631748915)
+CostWeightVector(tree_closing_cost = 27, vacuous_penalty = 1, constraint_cost = 3, derivation_depth_penalty = 40, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 30), Performance: 21.272929789455727 (valid inputs: 13, k-Path Coverage: 19, Non-Vacuity Index: 38.46153846153846)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 1, constraint_cost = 14, derivation_depth_penalty = 19, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 0), Performance: 21.348068816177026 (valid inputs: 124, k-Path Coverage: 14, Non-Vacuity Index: 4.952764861728105)
+CostWeightVector(tree_closing_cost = 27, vacuous_penalty = 1, constraint_cost = 3, derivation_depth_penalty = 40, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 30), Performance: 21.558981815275068 (valid inputs: 13, k-Path Coverage: 18, Non-Vacuity Index: 42.15954383390662)
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14), Performance: 23.13003946407134 (valid inputs: 15, k-Path Coverage: 25, Non-Vacuity Index: 32.773865220664106)
+CostWeightVector(tree_closing_cost = 24, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 2, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 17), Performance: 23.74464548176556 (valid inputs: 16, k-Path Coverage: 25, Non-Vacuity Index: 33.278470752104745)
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35), Performance: 24.307426435323887 (valid inputs: 15, k-Path Coverage: 24, Non-Vacuity Index: 39.521354868503394)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 4, constraint_cost = 7, derivation_depth_penalty = 24, low_k_coverage_penalty = 23, low_global_k_path_coverage_penalty = 7), Performance: 24.307426435323887 (valid inputs: 15, k-Path Coverage: 24, Non-Vacuity Index: 39.521354868503394)
+CostWeightVector(tree_closing_cost = 0, vacuous_penalty = 13, constraint_cost = 4, derivation_depth_penalty = 11, low_k_coverage_penalty = 20, low_global_k_path_coverage_penalty = 35), Performance: 24.307426435323887 (valid inputs: 15, k-Path Coverage: 24, Non-Vacuity Index: 39.521354868503394)
+CostWeightVector(tree_closing_cost = 17, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 7, low_k_coverage_penalty = 15, low_global_k_path_coverage_penalty = 33), Performance: 24.353889081445548 (valid inputs: 67, k-Path Coverage: 32, Non-Vacuity Index: 6.262914063741242)
+CostWeightVector(tree_closing_cost = 35, vacuous_penalty = 4, constraint_cost = 1, derivation_depth_penalty = 16, low_k_coverage_penalty = 34, low_global_k_path_coverage_penalty = 10), Performance: 24.3629968789544 (valid inputs: 21, k-Path Coverage: 31, Non-Vacuity Index: 22.175496426154194)
+CostWeightVector(tree_closing_cost = 9, vacuous_penalty = 0, constraint_cost = 6, derivation_depth_penalty = 21, low_k_coverage_penalty = 24, low_global_k_path_coverage_penalty = 14), Performance: 24.36480041606786 (valid inputs: 20, k-Path Coverage: 31, Non-Vacuity Index: 23.284271247461902)
+CostWeightVector(tree_closing_cost = 28, vacuous_penalty = 39, constraint_cost = 39, derivation_depth_penalty = 0, low_k_coverage_penalty = 8, low_global_k_path_coverage_penalty = 15), Performance: 24.66871597371776 (valid inputs: 19, k-Path Coverage: 31, Non-Vacuity Index: 25.42606260444895)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 14, constraint_cost = 14, derivation_depth_penalty = 20, low_k_coverage_penalty = 14, low_global_k_path_coverage_penalty = 28), Performance: 25.30056603851946 (valid inputs: 24, k-Path Coverage: 24, Non-Vacuity Index: 28.108194551728474)
+CostWeightVector(tree_closing_cost = 24, vacuous_penalty = 0, constraint_cost = 7, derivation_depth_penalty = 2, low_k_coverage_penalty = 0, low_global_k_path_coverage_penalty = 17), Performance: 26.033216327057325 (valid inputs: 39, k-Path Coverage: 41, Non-Vacuity Index: 10.759365186427262)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 8, constraint_cost = 27, derivation_depth_penalty = 16, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 20), Performance: 26.408849883270687 (valid inputs: 20, k-Path Coverage: 31, Non-Vacuity Index: 29.641016151377546)
+CostWeightVector(tree_closing_cost = 11, vacuous_penalty = 8, constraint_cost = 27, derivation_depth_penalty = 16, low_k_coverage_penalty = 18, low_global_k_path_coverage_penalty = 20), Performance: 29.16078653387982 (valid inputs: 20, k-Path Coverage: 33, Non-Vacuity Index: 37.426406871192846)
+CostWeightVector(tree_closing_cost = 6, vacuous_penalty = 13, constraint_cost = 14, derivation_depth_penalty = 4, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 14), Performance: 30.191270080732057 (valid inputs: 71, k-Path Coverage: 35, Non-Vacuity Index: 10.707500376116375)
+CostWeightVector(tree_closing_cost = 7, vacuous_penalty = 23, constraint_cost = 20, derivation_depth_penalty = 11, low_k_coverage_penalty = 12, low_global_k_path_coverage_penalty = 19), Performance: 31.743910290962155 (valid inputs: 57, k-Path Coverage: 39, Non-Vacuity Index: 14.132254628311259)

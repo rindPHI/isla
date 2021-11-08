@@ -100,7 +100,7 @@ class PerformanceEvaluationResult:
             seconds: self.single_product_value(seconds)
             for seconds in self.accumulated_valid_inputs}
 
-    def single_product_value(self, seconds: float, weights: tuple[int, ...]=(4,3,1)) -> float:
+    def single_product_value(self, seconds: float, weights: tuple[int, ...] = (4, 3, 1)) -> float:
         return ((self.accumulated_valid_inputs[seconds] + 1) *
                 (self.accumulated_k_path_coverage[seconds] + 1) *
                 (self.accumulated_non_vacuous_index[seconds] + 1)) ** (1 / float(3)) - 1
@@ -329,12 +329,12 @@ def mutate_cost_weight(w: float, max_add: int = 5, max_factor: int = 3) -> float
     if w == 0:
         return w + random.choices(
             range(1, max_add + 1),
-            list(reversed(list(map(lambda x: 2 ** x, range(max_add))))))[0]
+            list(reversed(list(map(lambda x: 1.2 ** x, range(max_add))))))[0]
 
     else:
         factor = random.choices(
             range(1, max_factor + 1),
-            list(reversed(list(map(lambda x: 2 ** x, range(max_factor))))))[0]
+            list(reversed(list(map(lambda x: 1.2 ** x, range(max_factor))))))[0] + .5
 
         return w * factor if random.random() < .5 else w / factor
 
@@ -353,11 +353,12 @@ def evaluate_mutated_cost_vectors(
         "vacuous_penalty": base_vector.vacuous_penalty,
         "constraint_cost": base_vector.constraint_cost,
         "derivation_depth_penalty": base_vector.derivation_depth_penalty,
-        "low_coverage_penalty": base_vector.low_k_coverage_penalty
+        "low_coverage_penalty": base_vector.low_k_coverage_penalty,
+        "low_global_k_path_coverage_penalty": base_vector.low_global_k_path_coverage_penalty
     }
 
     for i in range(rounds):
-        num_mutated_elements = random.choices(range(1, 5), weights=[400, 200, 100, 50], k=1)[0]
+        num_mutated_elements = random.choices(range(1, 6), weights=[400, 200, 100, 50, 25], k=1)[0]
         mutated_elements = random.sample(args.keys(), k=num_mutated_elements)
 
         new_args = copy.copy(args)
@@ -387,8 +388,17 @@ def evaluate_cost_vectors_isla(
         formula: isla.Formula,
         validator: Callable[[isla.DerivationTree], bool],
         timeout: int,
+        cpu_count: int = -1,
         k=3) -> List[PerformanceEvaluationResult]:
-    with mp.Pool(processes=mp.cpu_count()) as pool:
+    if cpu_count < 0:
+        cpu_count = mp.cpu_count()
+
+    if cpu_count < 2:
+        return [
+            evaluate_isla_generator(grammar, formula, vector, validator, timeout, None, k)
+            for vector in population]
+
+    with mp.Pool(processes=cpu_count) as pool:
         start_time = datetime.datetime.now()
         result = pool.starmap(evaluate_isla_generator, [
             (grammar, formula, vector, validator, timeout, None, k)
@@ -407,7 +417,8 @@ def auto_tune_weight_vector(
         population_size: int = 10,
         generations: int = 10,
         k: int = 3,
-        seed_population: List[CostWeightVector] = None) -> Tuple[PerformanceEvaluationResult, CostWeightVector]:
+        seed_population: List[CostWeightVector] = None,
+        cpu_count: int = -1) -> Tuple[PerformanceEvaluationResult, CostWeightVector]:
     assert population_size >= 4
     assert population_size % 2 == 0
     assert seed_population is None or len(seed_population) == population_size
@@ -429,7 +440,9 @@ def auto_tune_weight_vector(
                 vacuous_penalty=randno(),
                 constraint_cost=randno(),
                 derivation_depth_penalty=randno(),
-                low_k_coverage_penalty=randno())
+                low_k_coverage_penalty=randno(),
+                low_global_k_path_coverage_penalty=randno()
+            )
             for _ in range(population_size)]
 
     current_population = sorted(zip(
@@ -439,7 +452,9 @@ def auto_tune_weight_vector(
             formula,
             validator,
             timeout,
-            k),
+            k=k,
+            cpu_count=cpu_count
+        ),
         seed_population),
         key=lambda t: t[0].final_product_value)
 
@@ -480,7 +495,8 @@ def auto_tune_weight_vector(
 
             offspring.append(child)
 
-        eval_results = evaluate_cost_vectors_isla(offspring, grammar, formula, validator, timeout, k)
+        eval_results = evaluate_cost_vectors_isla(
+            offspring, grammar, formula, validator, timeout, k=k, cpu_count=cpu_count)
         current_population.extend(list(zip(eval_results, seed_population)))
         current_population = sorted(current_population, key=lambda t: t[0].final_product_value)
 

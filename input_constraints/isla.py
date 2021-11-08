@@ -116,7 +116,9 @@ class DerivationTree:
     def __init__(self, value: Union[str, Variable],
                  children: Optional[List['DerivationTree']] = None,
                  id: Optional[int] = None,
-                 k_paths: Optional[Dict[int, Set[Tuple[gg.Node, ...]]]] = None):
+                 k_paths: Optional[Dict[int, Set[Tuple[gg.Node, ...]]]] = None,
+                 hash: Optional[int] = None,
+                 structural_hash: Optional[int] = None):
         assert isinstance(value, str) or isinstance(value, Variable)
         assert not isinstance(value, Variable) or not children
         assert children is None or all(isinstance(child, DerivationTree) for child in children)
@@ -135,8 +137,8 @@ class DerivationTree:
         else:
             self.__len = sum([child.__len for child in children]) + 1
 
-        self.__hash = None
-        self.__structural_hash = None
+        self.__hash = hash
+        self.__structural_hash = structural_hash
         self.__k_paths: Dict[int, Set[Tuple[gg.Node, ...]]] = k_paths or {}
 
     def k_coverage(self, graph: gg.GrammarGraph, k: int) -> float:
@@ -147,10 +149,14 @@ class DerivationTree:
             self.recompute_k_paths(graph, k)
             assert k in self.__k_paths
 
-        assert is_nonterminal(self.value) or k == 1 or not self.__k_paths[k]
+        assert bool(is_nonterminal(self.value)) or k == 1 or not self.__k_paths[k]
+        assert not is_nonterminal(self.value) or self.__k_paths[k] == graph.k_paths_in_tree(self.to_parse_tree(), k)
         return self.__k_paths[k]
 
     def recompute_k_paths(self, graph: gg.GrammarGraph, k: int) -> Set[Tuple[gg.Node, ...]]:
+        # self.__k_paths[k] =  set(graph.k_paths_in_tree(self.to_parse_tree(), k))
+        # return self.__k_paths[k]
+
         if not is_nonterminal(self.value):
             assert k > 0
             self.__k_paths[k] = set()
@@ -208,10 +214,16 @@ class DerivationTree:
                     result = True
                     break
 
-                assert len(path) >= 2
+                assert len(path) >= 3
                 assert isinstance(path[1], gg.ChoiceNode)
 
                 choice_node: gg.ChoiceNode = cast(gg.ChoiceNode, path[1])
+
+                if path[2] not in choice_node.children:
+                    # Filters out the "wrong" terminal paths (there may be multiple nodes for the same
+                    # terminal symbol in the graph).
+                    continue
+
                 if (len(choice_node.children) != len(t_node.children) or
                         any(c_1.symbol != c_2.value for c_1, c_2 in zip(choice_node.children, t_node.children))):
                     continue
@@ -387,7 +399,13 @@ class DerivationTree:
         assert skip_children or list(self.paths())[-1][0] == path
         return None
 
-    def replace_path(self, path: Path, replacement_tree: 'DerivationTree', retain_id=False) -> 'DerivationTree':
+    def replace_path(
+            self,
+            path: Path,
+            replacement_tree: 'DerivationTree',
+            graph: gg.GrammarGraph,
+            retain_id=False,
+            is_root: bool = True) -> 'DerivationTree':
         """Returns tree where replacement_tree has been inserted at `path` instead of the original subtree"""
         node, children = self
 
@@ -401,10 +419,28 @@ class DerivationTree:
 
         head = path[0]
         new_children = (children[:head] +
-                        (children[head].replace_path(path[1:], replacement_tree, retain_id),) +
+                        (children[head].replace_path(path[1:], replacement_tree, retain_id, is_root=False),) +
                         children[head + 1:])
 
-        return DerivationTree(node, new_children, id=self.id)
+        # result = DerivationTree(node, new_children, id=self.id)
+        # return result
+
+        # We re-use cached k-paths if possible
+        result = DerivationTree(node, new_children, id=self.id, k_paths=self.__k_paths)
+
+        # We have to re-compute the k-paths for the replaced path. This makes use of the cached
+        # k-path values of unaffected paths / nodes. We start at the bottom of the path to make
+        # sure that no outdated cached values are re-used
+
+        if is_root and self.__k_paths:
+            # Re-Computation only at the end.
+            for k in self.__k_paths.keys():
+                for idx in reversed(range(len(path) + 1)):
+                    subtree = result.get_subtree(path[:idx])
+                    subtree.__k_paths = {}
+                    subtree.recompute_k_paths(graph, k)
+
+        return result
 
     def leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
         return ((path, sub_tree)
@@ -656,7 +692,7 @@ class BindExpression:
         # Not isinstance(var, BoundVariable) since we want to exclude dummy variables
         return OrderedSet([var for var in self.bound_elements if type(var) is BoundVariable])
 
-    def to_tree_prefix(self, in_nonterminal: str, grammar: Grammar) -> \
+    def to_tree_prefix(self, in_nonterminal: str, grammar: Grammar, graph: gg.GrammarGraph) -> \
             List[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
         if in_nonterminal in self.prefixes:
             cached = self.prefixes[in_nonterminal]
@@ -699,8 +735,11 @@ class BindExpression:
 
                 if isinstance(curr_bound_elem, Variable) and curr_bound_elem.n_type == curr_subtree.value:
                     positions[bound_elements[0]] = curr_path
-                    tree = tree.replace_path(curr_path, DerivationTree(
-                        curr_subtree.value, None if is_nonterminal(curr_bound_elem.n_type) else ()))
+                    tree = tree.replace_path(
+                        curr_path,
+                        DerivationTree(curr_subtree.value, None if is_nonterminal(curr_bound_elem.n_type) else ()),
+                        graph
+                    )
                     bound_elements = bound_elements[1:]
 
                 curr_path = tree.next_path(curr_path)
@@ -1922,6 +1961,7 @@ def eliminate_quantifiers(
                             leaf_path,
                             universal_formula.in_variable,
                             grammar,
+                            graph,
                             reachable)
                            for leaf_path, leaf_node in universal_formula.in_variable.open_leaves()):
                         continue
@@ -2215,6 +2255,7 @@ def quantified_formula_might_match(
         path_to_nonterminal: Path,
         tree: DerivationTree,
         grammar: Grammar,
+        graph: gg.GrammarGraph,
         reachable: Callable[[str, str], bool]) -> bool:
     node = tree.get_subtree(path_to_nonterminal)
 
@@ -2223,7 +2264,7 @@ def quantified_formula_might_match(
 
     if qfd_formula.is_already_matched(node):
         # This formula won't match node IFF there is no subtree in node that matches.
-        return any(quantified_formula_might_match(qfd_formula, path, node, grammar, reachable)
+        return any(quantified_formula_might_match(qfd_formula, path, node, grammar, graph, reachable)
                    for path, _ in node.paths() if path)
 
     qfd_nonterminal = qfd_formula.bound_variable.n_type
@@ -2236,13 +2277,13 @@ def quantified_formula_might_match(
     # Is there an extension of some tree `node` is a subtree of, such that the
     # bind expression tree is a prefix tree of that extension?
 
-    maybe_prefix_tree, _ = qfd_formula.bind_expression.to_tree_prefix(
-        qfd_formula.bound_variable.n_type, grammar)
-
-    for idx in reversed(range(len(path_to_nonterminal))):
-        subtree = tree.get_subtree(path_to_nonterminal[:idx])
-        if maybe_prefix_tree.is_potential_prefix(subtree) and not qfd_formula.is_already_matched(subtree):
-            return True
+    maybe_prefix_tree: DerivationTree
+    for maybe_prefix_tree, _ in qfd_formula.bind_expression.to_tree_prefix(
+            qfd_formula.bound_variable.n_type, grammar, graph):
+        for idx in reversed(range(len(path_to_nonterminal))):
+            subtree = tree.get_subtree(path_to_nonterminal[:idx])
+            if maybe_prefix_tree.is_potential_prefix(subtree) and not qfd_formula.is_already_matched(subtree):
+                return True
 
     return False
 

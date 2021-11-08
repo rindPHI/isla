@@ -19,8 +19,8 @@ from input_constraints.tests.test_data import *
 from input_constraints.tests.test_helpers import parse
 
 
-def path_to_string(p: Tuple[gg.Node, ...]) -> str:
-    return " ".join([n.symbol for n in p])
+def path_to_string(p) -> str:
+    return " ".join([f'"{n.symbol}" ({n.id})' if isinstance(n, gg.TerminalNode) else n.symbol for n in p])
 
 
 class TestISLa(unittest.TestCase):
@@ -728,6 +728,76 @@ constraint {
                     {path_to_string(p) for p in set(graph.k_paths_in_tree(d_tree.to_parse_tree(), k))},
                     f"Paths for tree {tree} differ"
                 )
+
+    def test_open_tree_paths_replace(self):
+        graph = gg.GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR)
+
+        tree = DerivationTree.from_parse_tree(('<start>', [('<statement>', [('<block>', None)])]))
+        for k in range(1, 6):
+            self.assertEqual(graph.k_paths_in_tree(tree.to_parse_tree(), k), tree.k_paths(graph, k))
+
+        tree = DerivationTree.from_parse_tree(('<start>', [('<statement>', None)]))
+        for k in range(1, 6):
+            self.assertEqual(graph.k_paths_in_tree(tree.to_parse_tree(), k), tree.k_paths(graph, k))
+
+        rtree = tree.replace_path(
+            (0,), DerivationTree("<statement>", [DerivationTree("<block>", None)]), graph
+        )
+
+        for k in range(1, 6):
+            self.assertEqual(
+                {path_to_string(p) for p in graph.k_paths_in_tree(rtree.to_parse_tree(), k)},
+                {path_to_string(p) for p in rtree.k_paths(graph, k)}
+            )
+
+        tree = DerivationTree.from_parse_tree(('<start>', [('<statement>', None)]))
+
+        for k in range(1, 6):
+            self.assertEqual(graph.k_paths_in_tree(tree.to_parse_tree(), k), tree.k_paths(graph, k))
+
+        rtree = tree.replace_path(
+            (0,), DerivationTree.from_parse_tree(("<statement>", [
+                ('if', []), ('<paren_expr>', None), (' ', []), ('<statement>', None),
+                (' else ', []), ('<statement>', None)])), graph
+        )
+
+        for k in range(1, 6):
+            self.assertEqual(
+                {path_to_string(p) for p in graph.k_paths_in_tree(rtree.to_parse_tree(), k)},
+                {path_to_string(p) for p in rtree.k_paths(graph, k)}
+            )
+
+    def test_open_paths_replace_2(self):
+        graph = gg.GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR)
+        tree = DerivationTree('<start>', None)
+        for k in range(1, 6):
+            self.assertEqual(
+                {path_to_string(p) for p in graph.k_paths_in_tree(tree.to_parse_tree(), k)},
+                {path_to_string(p) for p in tree.k_paths(graph, k)})
+
+        tree_1 = tree.replace_path(
+            (),
+            DerivationTree("<start>", [DerivationTree("<statement>", None)]),
+            graph
+        )
+        for k in range(1, 6):
+            self.assertEqual(
+                {path_to_string(p) for p in graph.k_paths_in_tree(tree_1.to_parse_tree(), k)},
+                {path_to_string(p) for p in tree_1.k_paths(graph, k)})
+
+        tree_2 = tree_1.replace_path(
+            (0,),
+            DerivationTree.from_parse_tree(
+                ('<statement>', [('if', []), ('<paren_expr>', None), (' ', []), ('<statement>', None)])),
+            graph
+        )
+
+        for k in range(1, 6):
+            self.assertEqual(
+                {path_to_string(p) for p in graph.k_paths_in_tree(tree_2.to_parse_tree(), k)},
+                {path_to_string(p) for p in tree_2.k_paths(graph, k)})
+
+        print(graph.k_path_coverage(tree, 3))
 
 
 if __name__ == '__main__':

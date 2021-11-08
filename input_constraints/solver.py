@@ -2,7 +2,6 @@ import copy
 import heapq
 import logging
 import math
-import multiprocessing
 import sys
 import time
 from functools import reduce, lru_cache
@@ -21,9 +20,9 @@ import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
-    replace_line_breaks, z3_subst, z3_solve
+    replace_line_breaks, z3_subst, z3_solve, weighted_geometric_mean
 from input_constraints.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
-    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, FilterVisitor
+    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts
 from input_constraints.type_defs import Grammar, Path
 
 
@@ -138,7 +137,7 @@ class CostWeightVector:
                 f"vacuous_penalty = {self.vacuous_penalty}, "
                 f"constraint_cost = {self.constraint_cost}, "
                 f"derivation_depth_penalty = {self.derivation_depth_penalty}, "
-                f"low_k_coverage_penalty = {self.low_k_coverage_penalty}), "
+                f"low_k_coverage_penalty = {self.low_k_coverage_penalty}, "
                 f"low_global_k_path_coverage_penalty = {self.low_global_k_path_coverage_penalty})")
 
 
@@ -582,7 +581,7 @@ class ISLaSolver:
             for path, new_children in possible_expansion.items():
                 leaf_node = expanded_tree.get_subtree(path)
                 expanded_tree = expanded_tree.replace_path(
-                    path, DerivationTree(leaf_node.value, new_children, leaf_node.id))
+                    path, DerivationTree(leaf_node.value, new_children, leaf_node.id), self.graph)
 
                 assert expanded_tree is not state.tree
                 assert expanded_tree != state.tree
@@ -654,7 +653,7 @@ class ISLaSolver:
         inserted_trees_and_bind_paths: List[Tuple[DerivationTree, Dict[isla.BoundVariable, Path]]] = []
         if existential_formula.bind_expression is not None:
             inserted_trees_and_bind_paths = existential_formula.bind_expression.to_tree_prefix(
-                existential_formula.bound_variable.n_type, self.grammar)
+                existential_formula.bound_variable.n_type, self.grammar, self.graph)
         else:
             inserted_trees_and_bind_paths = [(DerivationTree(existential_formula.bound_variable.n_type, None), {})]
 
@@ -839,7 +838,14 @@ class ISLaSolver:
         return solutions
 
     def process_new_states(self, new_states: List[SolutionState]) -> List[DerivationTree]:
-        return [tree for new_state in new_states for tree in self.process_new_state(new_state)]
+        result = [tree for new_state in new_states for tree in self.process_new_state(new_state)]
+
+        for tree in result:
+            self.covered_k_paths.update(tree.k_paths(self.graph, self.cost_settings.k))
+        if self.covered_k_paths == self.graph.k_paths(self.cost_settings.k):
+            self.covered_k_paths = set()
+
+        return result
 
     def process_new_state(self, new_state: SolutionState) -> List[DerivationTree]:
         new_states = self.establish_invariant(new_state)
@@ -856,11 +862,6 @@ class ISLaSolver:
 
         if state.complete():
             assert state.formula_satisfied().is_true()
-
-            self.covered_k_paths.update(state.tree.k_paths(self.graph, self.cost_settings.k))
-            if self.covered_k_paths == self.graph.k_paths(self.cost_settings.k):
-                self.covered_k_paths = set()
-
             return True
 
         assert all(state.tree.find_node(arg)
@@ -1041,6 +1042,7 @@ class ISLaSolver:
             path_to_nonterminal,
             tree,
             self.grammar,
+            self.graph,
             self.reachable)
 
     @lru_cache(maxsize=None)
@@ -1106,9 +1108,8 @@ def compute_cost(
     costs = [tree_closing_cost, vacuous_penalty, constraint_cost, state.level, k_cov_cost, global_k_path_cost]
     assert all(c >= 0 for c in costs)
 
-    # Compute geometric mean, filtering out zero weights
-    costs_with_weights = [(c, w) for c, w in zip(costs, cost_weight_vector) if w > 0]
-    result = math.prod([c + 1 for c in map(math.prod, costs_with_weights)]) ** (1 / len(costs_with_weights)) - 1
+    # Compute geometric mean
+    result = weighted_geometric_mean(costs, list(cost_weight_vector))
 
     logging.getLogger(type(ISLaSolver).__name__).debug(
         "Computed cost for state %s:\n%f, individual costs: %s, weights: %s",
@@ -1185,49 +1186,3 @@ def compute_vacuous_penalty(
         assert 0 <= vacuous_penalty <= 1
 
     return vacuous_penalty
-
-
-# No longer used...
-def compute_match_dist(
-        state: SolutionState, grammar: Grammar,
-        node_distance: Callable[[str, str], int],
-        max_cost: float = 100, ) -> float:
-    match_costs = []
-    for universal_formula in [
-        f for f in get_conjuncts(state.constraint)
-        if isinstance(f, isla.ForallFormula) and
-           f.already_matched]:
-        current_min_cost = max_cost
-        for path, leaf_node in state.tree.open_leaves():
-            if not universal_formula.in_variable.find_node(leaf_node):
-                continue
-            if universal_formula.is_already_matched(leaf_node):
-                continue
-
-            if leaf_node.value == universal_formula.bound_variable.n_type:
-                current_min_cost = 0
-                break
-
-            dist = node_distance(leaf_node.value, universal_formula.bound_variable.n_type)
-            if dist < current_min_cost:
-                current_min_cost = dist
-
-            if universal_formula.bind_expression is not None:
-                prefix = universal_formula.bind_expression.to_tree_prefix(
-                    universal_formula.bound_variable.n_type, grammar)
-
-                i = 1
-                while i < prefix[0].depth() and i < len(path):
-                    if state.tree.get_subtree(path[:-i]).is_prefix(prefix[0]):
-                        current_min_cost = 0
-                        break
-                    i += 1
-                else:
-                    continue
-
-                break
-
-        if current_min_cost < max_cost:
-            match_costs.append(current_min_cost)
-
-    return math.prod(match_costs) ** (1 / len(match_costs)) if match_costs else max_cost

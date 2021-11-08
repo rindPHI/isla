@@ -171,7 +171,8 @@ def count(grammar: Grammar,
     num_needles = lambda candidate: len(candidate.filter(lambda t: t.value == needle))
 
     canonical_grammar = canonical(grammar)
-    candidates = [candidate for candidate in insert_tree(canonical_grammar, DerivationTree(needle, None), in_tree)
+    candidates = [candidate for candidate in insert_tree(
+        canonical_grammar, DerivationTree(needle, None), in_tree, graph=graph)
                   if num_needles(candidate) <= target_num_needle_occurrences]
     already_seen = {candidate.structural_hash() for candidate in candidates}
     while candidates:
@@ -188,7 +189,8 @@ def count(grammar: Grammar,
         if candidate_needle_occurrences < target_num_needle_occurrences:
             new_candidates = [
                 new_candidate
-                for new_candidate in insert_tree(canonical_grammar, DerivationTree(needle, None), candidate)
+                for new_candidate in insert_tree(
+                    canonical_grammar, DerivationTree(needle, None), candidate, graph=graph)
                 if (num_needles(new_candidate) <= target_num_needle_occurrences
                     and not new_candidate.structural_hash() in already_seen)]
 

@@ -98,20 +98,10 @@ vars {
 }
 
 constraint {
-  (forall declaration="int {def_id};" in start:
-     (forall other_declaration="int {other_def_id};" in start:
+  forall declaration="int {def_id}[ = <expr>];" in start:
+     forall other_declaration="int {other_def_id}[ = <expr>];" in start:
        (same_position(declaration, other_declaration) or
-        not (= def_id other_def_id)) and
-      forall other_declaration="int {other_def_id} = <expr>;" in start:
-        (same_position(declaration, other_declaration) or
-         not (= def_id other_def_id))) and
-   forall declaration="int {def_id} = <expr>;" in start:
-     (forall other_declaration="int {other_def_id};" in start:
-       (same_position(declaration, other_declaration) or
-        not (= def_id other_def_id)) and
-      forall other_declaration="int {other_def_id} = <expr>;" in start:
-        (same_position(declaration, other_declaration) or
-         not (= def_id other_def_id))))
+        not (= def_id other_def_id))
 }
 """
 
@@ -123,10 +113,10 @@ def compile_scriptsizec_clang(tree: isla.DerivationTree) -> Union[bool, str]:
     contents += "\n" + str(tree).replace("\n", "    \t")
     contents += "\n" + "}"
 
-    with tempfile.NamedTemporaryFile(suffix=".c") as tmp, tempfile.NamedTemporaryFile(suffix=".out") as outfile:
+    with tempfile.NamedTemporaryFile(suffix=".c") as tmp:
         tmp.write(contents.encode())
         tmp.flush()
-        cmd = ["clang", tmp.name, "-o", outfile.name]
+        cmd = ["clang", tmp.name]
         process = subprocess.Popen(cmd, stderr=PIPE)
         (stdout, stderr) = process.communicate()
         exit_code = process.wait()

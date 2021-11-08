@@ -301,34 +301,28 @@ constraint {
 
     def test_scriptsize_c_def_before_use(self):
         self.execute_generation_test(
-            scriptsizec.SCRIPTSIZE_C_DEF_USE_CONSTR,  # & scriptsizec.SCRIPTSIZE_C_NO_REDEF_CONSTR,
+            scriptsizec.SCRIPTSIZE_C_DEF_USE_CONSTR & scriptsizec.SCRIPTSIZE_C_NO_REDEF_CONSTR,
             grammar=scriptsizec.SCRIPTSIZE_C_GRAMMAR,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=1,
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=True,
+            custom_test_func=scriptsizec.compile_scriptsizec_clang,
             cost_settings=CostSettings(
                 (
-                    # CostWeightVector(
-                    #     tree_closing_cost=4,
-                    #     vacuous_penalty=3,
-                    #     constraint_cost=24,
-                    #     derivation_depth_penalty=7,
-                    #     low_coverage_penalty=12),
                     CostWeightVector(
-                        tree_closing_cost=38,
-                        vacuous_penalty=5,
-                        constraint_cost=9,
-                        derivation_depth_penalty=5,
-                        low_k_coverage_penalty=13,
-                        low_global_k_path_coverage_penalty=5
-                    ),
+                        tree_closing_cost=11,
+                        vacuous_penalty=8,
+                        constraint_cost=27,
+                        derivation_depth_penalty=16,
+                        low_k_coverage_penalty=18,
+                        low_global_k_path_coverage_penalty=20),
                 ),
                 cost_phase_lengths=(200,),
                 k=3
             ),
             print_only=True,
-            num_solutions=400
+            num_solutions=20
         )
 
     def test_tar(self):

@@ -1,3 +1,4 @@
+from functools import lru_cache
 from typing import Optional, List, Tuple, cast, Union, Set, Generator
 
 import z3
@@ -75,6 +76,7 @@ def insert_tree(grammar: CanonicalGrammar,
         if not add_to_result(in_tree.replace_path(
                 match_path_embeddable,
                 DerivationTree(t.value, t.children, orig_node.id),
+                graph,
                 retain_id=True)):
             return result
 
@@ -108,7 +110,7 @@ def insert_tree(grammar: CanonicalGrammar,
         current_graph_node: NonterminalNode = graph.get_node(curr_node)
         if graph.reachable(current_graph_node, current_graph_node):
             for self_embedding_path in paths_between(graph, curr_node, curr_node):
-                for self_embedding_tree in path_to_tree(grammar, self_embedding_path):
+                for self_embedding_tree in path_to_tree(grammar, graph, self_embedding_path):
                     # For each the curr_tree and the tree to insert, have to find one leaf s.t. either
                     # (1) we can replace the leaf with that tree, or
                     # (2) we can add that tree somewhere below that leaf.
@@ -136,15 +138,16 @@ def insert_tree(grammar: CanonicalGrammar,
                                 if leaf_nonterm == nonterm_to_insert:
                                     result += insert(trees_to_insert[:insert_tree_idx] +
                                                      trees_to_insert[insert_tree_idx + 1:],
-                                                     into_tree.replace_path(leaf_path, tree_to_insert),
+                                                     into_tree.replace_path(leaf_path, tree_to_insert, graph),
                                                      insert_paths + [leaf_path])
                                 elif (tree_to_insert.children is not None
                                       and tree_to_insert.num_children() == 1
                                       and tree_to_insert.children[0].value == leaf_nonterm):
-                                    result += insert(trees_to_insert[:insert_tree_idx] +
-                                                     trees_to_insert[insert_tree_idx + 1:],
-                                                     into_tree.replace_path(leaf_path, tree_to_insert.children[0]),
-                                                     insert_paths + [leaf_path])
+                                    result += insert(
+                                        trees_to_insert[:insert_tree_idx] +
+                                        trees_to_insert[insert_tree_idx + 1:],
+                                        into_tree.replace_path(leaf_path, tree_to_insert.children[0], graph),
+                                        insert_paths + [leaf_path])
                                 else:
                                     leaf_nonterm_node = graph.get_node(leaf_nonterm)
                                     to_insert_nonterm_node = graph.get_node(nonterm_to_insert)
@@ -152,18 +155,19 @@ def insert_tree(grammar: CanonicalGrammar,
                                         continue
 
                                     for connecting_path in paths_between(graph, leaf_nonterm, nonterm_to_insert):
-                                        for connecting_tree in path_to_tree(grammar, connecting_path):
+                                        for connecting_tree in path_to_tree(grammar, graph, connecting_path):
                                             for insert_leaf_path, (insert_leaf_nonterm, _) in \
                                                     connecting_tree.open_leaves():
                                                 if insert_leaf_nonterm != nonterm_to_insert:
                                                     continue
 
-                                                instantiated_connecting_tree = \
-                                                    connecting_tree.replace_path(insert_leaf_path, tree_to_insert)
+                                                instantiated_connecting_tree = connecting_tree.replace_path(
+                                                    insert_leaf_path, tree_to_insert, graph)
                                                 result += insert(
                                                     trees_to_insert[:insert_tree_idx] +
                                                     trees_to_insert[insert_tree_idx + 1:],
-                                                    into_tree.replace_path(leaf_path, instantiated_connecting_tree),
+                                                    into_tree.replace_path(
+                                                        leaf_path, instantiated_connecting_tree, graph),
                                                     insert_paths + [leaf_path + insert_leaf_path])
 
                         return result
@@ -174,7 +178,7 @@ def insert_tree(grammar: CanonicalGrammar,
                         assert instantiated_tree.value == orig_node.value
                         instantiated_tree.id = orig_node.id
 
-                        new_tree = in_tree.replace_path(current_path, instantiated_tree)
+                        new_tree = in_tree.replace_path(current_path, instantiated_tree, graph)
                         if not add_to_result(new_tree):
                             return result
 
@@ -250,7 +254,8 @@ def wrap_in_tree_starting_in(start_nonterminal: str,
     return result
 
 
-def path_to_tree(grammar: CanonicalGrammar, path: Union[Tuple[str], List[str]]) -> List[DerivationTree]:
+def path_to_tree(
+        grammar: CanonicalGrammar, graph: GrammarGraph, path: Union[Tuple[str], List[str]]) -> List[DerivationTree]:
     assert len(path) > 1
     result: List[DerivationTree] = []
     candidates: List[DerivationTree] = [DerivationTree(path[0], None)]
@@ -274,7 +279,7 @@ def path_to_tree(grammar: CanonicalGrammar, path: Union[Tuple[str], List[str]]) 
                                      else DerivationTree(nonterm, None)
                                      for idx, nonterm in enumerate(matching_expansion)]
 
-                    new_candidate = candidate.replace_path(leaf_path, DerivationTree(leaf_node, next_children))
+                    new_candidate = candidate.replace_path(leaf_path, DerivationTree(leaf_node, next_children), graph)
                     if len(path) == 1:
                         result.append(new_candidate)
                     else:
@@ -298,7 +303,8 @@ def make_leaves_open(tree: DerivationTree) -> DerivationTree:
     return DerivationTree(tree.value, [make_leaves_open(child) for child in tree.children], tree.id)
 
 
-def paths_between(graph: GrammarGraph, start: str, dest: str) -> Generator[Tuple[str, ...], None, None]:
+@lru_cache(maxsize=None)
+def paths_between(graph: GrammarGraph, start: str, dest: str) -> OrderedSet[Tuple[str, ...]]:
     start_node = graph.get_node(start)
     dest_node = graph.get_node(dest)
 
@@ -320,6 +326,8 @@ def paths_between(graph: GrammarGraph, start: str, dest: str) -> Generator[Tuple
                     s_path = tuple([n.symbol for n in new_path if type(n) is not ChoiceNode])
                     if s_path not in result:
                         result.add(s_path)
-                        yield s_path
+                        # yield s_path
                 elif isinstance(child, NonterminalNode):
                     prefixes.append((visited | {child}, new_path))
+
+    return result
