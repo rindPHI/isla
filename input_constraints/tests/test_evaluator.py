@@ -1,13 +1,11 @@
-import logging
 import unittest
 from typing import cast
 
 import z3
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.Parser import EarleyParser
 
-from input_constraints import isla, evaluator
 import input_constraints.isla_shortcuts as sc
+from input_constraints import isla, evaluator
 from input_constraints.tests.test_data import XML_GRAMMAR, LANG_GRAMMAR
 
 
@@ -36,7 +34,7 @@ class TestEvaluator(unittest.TestCase):
 
         inp = "<a><b/>Test</a>"
         tree = isla.DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse(inp))[0])
-        self.assertFalse(evaluator.vacuously_satisfies(tree, formula))
+        self.assertFalse(evaluator.vacuously_satisfies(tree, formula, XML_GRAMMAR))
 
     def test_vacuously_satisfied_lang(self):
         mgr = isla.VariableManager(LANG_GRAMMAR)
@@ -60,11 +58,11 @@ class TestEvaluator(unittest.TestCase):
 
         inp = "x := 1 ; y := 2 ; z := 3"
         tree = isla.DerivationTree.from_parse_tree(list(EarleyParser(LANG_GRAMMAR).parse(inp))[0])
-        self.assertTrue(evaluator.vacuously_satisfies(tree, formula))
+        self.assertTrue(evaluator.vacuously_satisfies(tree, formula, LANG_GRAMMAR))
 
         inp = "x := 1 ; y := x ; z := 3"
         tree = isla.DerivationTree.from_parse_tree(list(EarleyParser(LANG_GRAMMAR).parse(inp))[0])
-        self.assertFalse(evaluator.vacuously_satisfies(tree, formula))
+        self.assertFalse(evaluator.vacuously_satisfies(tree, formula, LANG_GRAMMAR))
 
 
 if __name__ == '__main__':

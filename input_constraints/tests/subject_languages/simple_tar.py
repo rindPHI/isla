@@ -5,11 +5,13 @@ from typing import cast, Union, List
 import z3
 from fuzzingbook.Grammars import srange
 from fuzzingbook.Parser import EarleyParser
+from grammar_graph import gg
 
 import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.helpers import delete_unreachable
 from input_constraints.tests.subject_languages.tar import ljust_crop_tar, rjust_crop_tar
+from input_constraints.type_defs import Grammar
 
 SIMPLE_TAR_GRAMMAR = {
     "<start>": ["<entries>"],
@@ -50,9 +52,12 @@ SIMPLE_TAR_GRAMMAR = {
 }
 
 
-def tar_checksum(header: isla.DerivationTree, checksum_tree: isla.DerivationTree) -> isla.SemPredEvalResult:
+def tar_checksum(
+        grammar: Grammar, header: isla.DerivationTree, checksum_tree: isla.DerivationTree) -> isla.SemPredEvalResult:
     if not header.is_complete():
         return isla.SemPredEvalResult(None)
+
+    graph = gg.GrammarGraph.from_grammar(grammar)
 
     current_checksum_path = header.find_node(checksum_tree)
 
@@ -63,7 +68,7 @@ def tar_checksum(header: isla.DerivationTree, checksum_tree: isla.DerivationTree
     checksum_parser = EarleyParser(checksum_grammar)
 
     space_checksum = isla.DerivationTree.from_parse_tree(list(checksum_parser.parse("        "))[0]).get_subtree((0,))
-    header_wo_checksum = header.replace_path(current_checksum_path, space_checksum)
+    header_wo_checksum = header.replace_path(current_checksum_path, space_checksum, graph)
 
     header_bytes: List[int] = list(str(header_wo_checksum).encode("ascii"))
 

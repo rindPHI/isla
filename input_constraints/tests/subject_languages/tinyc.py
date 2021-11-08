@@ -2,10 +2,11 @@ import string
 import subprocess
 import tempfile
 from subprocess import PIPE
-from typing import cast, Union, Optional, IO, Tuple, List, Set
+from typing import cast, Union, Optional, IO
 
 import z3
 from fuzzingbook.Grammars import srange
+
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
 

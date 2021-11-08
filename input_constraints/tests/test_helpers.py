@@ -3,6 +3,7 @@ import unittest
 from typing import Optional
 
 from fuzzingbook.Parser import EarleyParser, canonical
+from grammar_graph import gg
 from grammar_graph.gg import GrammarGraph
 
 from input_constraints.existential_helpers import path_to_tree, paths_between
@@ -43,20 +44,22 @@ class TestHelpers(unittest.TestCase):
         self.assertFalse(is_prefix((1,), (2,)))
 
     def test_path_to_tree(self):
+        graph = gg.GrammarGraph.from_grammar(LANG_GRAMMAR)
         self.assertEqual([('<stmt>', [('<assgn>', None)]),
                           ('<stmt>', [('<assgn>', None), (' ; ', []), ('<stmt>', None)])],
                          [tree.to_parse_tree()
-                          for tree in path_to_tree(canonical(LANG_GRAMMAR), ["<stmt>", "<assgn>"])])
+                          for tree in path_to_tree(canonical(LANG_GRAMMAR), graph, ["<stmt>", "<assgn>"])])
 
         self.assertEqual([('<stmt>', [('<assgn>', None), (' ; ', []), ('<stmt>', None)])],
                          [tree.to_parse_tree()
-                          for tree in path_to_tree(canonical(LANG_GRAMMAR), ["<stmt>", "<stmt>"])])
+                          for tree in path_to_tree(canonical(LANG_GRAMMAR), graph, ["<stmt>", "<stmt>"])])
 
         self.assertEqual([('<stmt>', [('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', [('<digit>', None)])])]),
                           ('<stmt>', [('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', [('<digit>', None)])]),
                                       (' ; ', []), ('<stmt>', None)])],
                          [tree.to_parse_tree()
-                          for tree in path_to_tree(canonical(LANG_GRAMMAR), ["<stmt>", "<assgn>", "<rhs>", "<digit>"])])
+                          for tree in path_to_tree(
+                             canonical(LANG_GRAMMAR), graph, ["<stmt>", "<assgn>", "<rhs>", "<digit>"])])
 
     def test_find_all_paths(self):
         graph = GrammarGraph.from_grammar(LANG_GRAMMAR)

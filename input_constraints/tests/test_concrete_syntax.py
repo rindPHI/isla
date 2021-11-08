@@ -99,7 +99,11 @@ constraint {
         parsed_formula = parse_isla(constr, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
         self.assertTrue(
             any(isinstance(e, list)
-                for e in parsed_formula.inner_formula.inner_formula.bind_expression.bound_elements))
+                for e in
+                cast(isla.ForallFormula,
+                     cast(isla.ForallFormula,
+                          cast(isla.ForallFormula,
+                               parsed_formula).inner_formula).inner_formula).bind_expression.bound_elements))
 
 
 if __name__ == '__main__':

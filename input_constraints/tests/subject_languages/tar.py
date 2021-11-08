@@ -3,18 +3,18 @@ import string
 import subprocess
 import tempfile
 from subprocess import PIPE
-from typing import Union, List, Optional, Tuple, cast, Callable, IO
+from typing import Union, List, Optional, cast, Callable
 
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string
 from fuzzingbook.Grammars import srange
-from fuzzingbook.Parser import EarleyParser
+from grammar_graph import gg
 
 import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.helpers import delete_unreachable, roundup
 from input_constraints.isla_predicates import just, OCTAL_TO_DEC_PREDICATE
-from input_constraints.type_defs import ParseTree
+from input_constraints.type_defs import ParseTree, Grammar
 
 TAR_GRAMMAR = {
     "<start>": ["<entries><final_entry>"],
@@ -76,11 +76,13 @@ TAR_GRAMMAR = {
 }
 
 
-def tar_checksum(header: isla.DerivationTree, checksum_tree: isla.DerivationTree) -> isla.SemPredEvalResult:
+def tar_checksum(
+        grammar: Grammar, header: isla.DerivationTree, checksum_tree: isla.DerivationTree) -> isla.SemPredEvalResult:
     if not header.is_complete():
         return isla.SemPredEvalResult(None)
 
     checksum_parser = TarParser(start_symbol="<checksum>")
+    graph = gg.GrammarGraph.from_grammar(grammar)
 
     space_checksum = ('<checksum>', [('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])]),
                                      ('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])]),
@@ -88,7 +90,9 @@ def tar_checksum(header: isla.DerivationTree, checksum_tree: isla.DerivationTree
 
     header_wo_checksum = header.replace_path(
         header.find_node(checksum_tree),
-        isla.DerivationTree.from_parse_tree(space_checksum))
+        isla.DerivationTree.from_parse_tree(space_checksum),
+        graph
+    )
 
     header_bytes: List[int] = list(str(header_wo_checksum).encode("ascii"))
 
@@ -118,12 +122,12 @@ def mk_tar_parser(start: str) -> Callable[[str], List[ParseTree]]:
 
 LJUST_CROP_TAR_PREDICATE = isla.SemanticPredicate(
     "ljust_crop_tar", 3,
-    lambda tree, width, fillchar: just(True, True, mk_tar_parser, tree, width, fillchar),
+    lambda grammar, tree, width, fillchar: just(True, True, mk_tar_parser, tree, width, fillchar),
     binds_tree=False)
 
 RJUST_CROP_TAR_PREDICATE = isla.SemanticPredicate(
     "rjust_crop_tar", 3,
-    lambda tree, width, fillchar: just(False, True, mk_tar_parser, tree, width, fillchar),
+    lambda grammar, tree, width, fillchar: just(False, True, mk_tar_parser, tree, width, fillchar),
     binds_tree=False)
 
 

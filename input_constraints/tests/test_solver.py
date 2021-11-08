@@ -17,6 +17,7 @@ from input_constraints.isla import VariablesCollector, parse_isla
 from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
 from input_constraints.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector
 from input_constraints.tests.subject_languages import rest, tar, simple_tar, scriptsizec
+from input_constraints.tests.subject_languages.csv import csv_lint
 from input_constraints.tests.subject_languages.tar import extract_tar
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR, XML_GRAMMAR
 
@@ -241,16 +242,17 @@ constraint {
     num colno:
       ((>= (str.to_int colno) 3) and 
       ((<= (str.to_int colno) 5) and 
-       (count(hline, "<raw-string>", colno) and 
+       (count(hline, "<raw-field>", colno) and 
        forall line in start:
-         count(line, "<raw-string>", colno))))
+         count(line, "<raw-field>", colno))))
 }
 """
 
         self.execute_generation_test(
             property,
-            semantic_predicates={COUNT_PREDICATE(CSV_GRAMMAR)},
+            semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR,
+            custom_test_func=csv_lint,
             num_solutions=30,
             max_number_free_instantiations=2,
             max_number_smt_instantiations=2,
@@ -408,7 +410,7 @@ constraint {
 
                 if not print_only:
                     self.assertTrue(
-                        isla.evaluate(formula.substitute_expressions({constant: assignment}), assignment),
+                        isla.evaluate(formula.substitute_expressions({constant: assignment}), assignment, grammar),
                         f"Solution {assignment} does not satisfy constraint {formula}"
                     )
 

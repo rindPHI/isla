@@ -82,8 +82,8 @@ constraint {
     c_tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse(c_inp))[0])
     w_tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse(w_inp))[0])
 
-    print(evaluate(constraint, reference_tree=c_tree))
-    print(evaluate(constraint, reference_tree=w_tree))
+    print(evaluate(constraint, reference_tree=c_tree, grammar=XML_GRAMMAR))
+    print(evaluate(constraint, reference_tree=w_tree, grammar=XML_GRAMMAR))
 
     # Demonstrate that grammar fuzzer produces "wrong" inputs
     fuzzer = GrammarCoverageFuzzer(XML_GRAMMAR)

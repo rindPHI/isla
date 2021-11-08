@@ -30,9 +30,9 @@ def set_smt_auto_eval(formula: isla.Formula, auto_eval: bool = False):
     formula.accept(AutoEvalVisitor())
 
 
-def vacuously_satisfies(inp: isla.DerivationTree, formula: isla.Formula) -> bool:
+def vacuously_satisfies(inp: isla.DerivationTree, formula: isla.Formula, grammar: Grammar) -> bool:
     # Note: This assumes that `inp` *does* satisfy `formula`!
-    assert isla.evaluate(formula, inp)
+    assert isla.evaluate(formula, inp, grammar)
 
     formula = copy.deepcopy(formula)
     set_smt_auto_eval(formula, False)
@@ -91,8 +91,11 @@ class PerformanceEvaluationResult:
         self.accumulated_k_path_coverage = accumulated_k_path_coverage
         self.accumulated_non_vacuous_index = accumulated_non_vacuous_index
 
-        max_time = max(accumulated_valid_inputs.keys())
-        self.final_product_value: float = self.single_product_value(max_time)
+        if accumulated_valid_inputs:
+            max_time = max(accumulated_valid_inputs.keys())
+            self.final_product_value: float = self.single_product_value(max_time)
+        else:
+            self.final_product_value = -1
 
     def mean_data(self) -> Dict[float, float]:
         return {
@@ -157,9 +160,9 @@ class PerformanceEvaluationResult:
 
     def __str__(self):
         return f"Performance: {self.final_product_value} (" \
-               f"valid inputs: {list(self.accumulated_valid_inputs.values())[-1]}, " \
-               f"k-Path Coverage: {list(self.accumulated_k_path_coverage.values())[-1]}, " \
-               f"Non-Vacuity Index: {list(self.accumulated_non_vacuous_index.values())[-1]})"
+               f"valid inputs: {(list(self.accumulated_valid_inputs.values()) or [0])[-1]}, " \
+               f"k-Path Coverage: {(list(self.accumulated_k_path_coverage.values()) or [0])[-1]}, " \
+               f"Non-Vacuity Index: {(list(self.accumulated_non_vacuous_index.values()) or [0])[-1]})"
 
 
 def evaluate_data(
@@ -230,8 +233,8 @@ def evaluate_data(
         "Final evaluation values: %d valid inputs, %d %% coverage, %f non-vacuous index, final mean: %f",
         valid_inputs,
         int(len(covered_kpaths) * 100 / len(graph.k_paths(k))),
-        list(accumulated_non_vacuous_index.values())[-1],
-        list(result.mean_data().values())[-1]
+        (list(accumulated_non_vacuous_index.values()) or [0])[-1],
+        (list(result.mean_data().values()) or [0])[-1]
     )
 
     return result

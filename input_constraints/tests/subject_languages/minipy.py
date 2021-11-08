@@ -1,8 +1,5 @@
-import random
 import string
 
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
-from fuzzingbook.GrammarFuzzer import GrammarFuzzer
 from fuzzingbook.Grammars import srange
 
 GRAMMAR = {

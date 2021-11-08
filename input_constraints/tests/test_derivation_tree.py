@@ -1,6 +1,8 @@
 import unittest
 from typing import List
 
+from grammar_graph import gg
+
 from input_constraints.helpers import parent_or_child
 from input_constraints.isla import DerivationTree
 from input_constraints.tests.test_data import LANG_GRAMMAR
@@ -100,7 +102,7 @@ class TestDerivationTree(unittest.TestCase):
         for path, subtree in tree.paths():
             self.assertTrue(subtree._DerivationTree__structural_hash)
 
-        new_tree = tree.replace_path((0, 0), DerivationTree.from_parse_tree(("8", [("9", [])])))
+        new_tree = tree.replace_path((0, 0), DerivationTree.from_parse_tree(("8", [("9", [])])), graph=None)
 
         self.assertFalse(new_tree._DerivationTree__structural_hash)
 

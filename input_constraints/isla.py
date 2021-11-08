@@ -154,7 +154,7 @@ class DerivationTree:
         return self.__k_paths[k]
 
     def recompute_k_paths(self, graph: gg.GrammarGraph, k: int) -> Set[Tuple[gg.Node, ...]]:
-        self.__k_paths[k] =  set(graph.k_paths_in_tree(self.to_parse_tree(), k))
+        self.__k_paths[k] = set(graph.k_paths_in_tree(self.to_parse_tree(), k))
         return self.__k_paths[k]
 
         if not is_nonterminal(self.value):
@@ -1065,10 +1065,21 @@ class SemPredEvalResult:
 SemPredArg = Union[DerivationTree, Constant, str, int]
 
 
+def binds_nothing(tree: DerivationTree, args: Tuple[SemPredArg, ...]) -> bool:
+    return False
+
+
+def binds_argument_trees(tree: DerivationTree, args: Tuple[SemPredArg, ...]) -> bool:
+    return any(
+        tree_arg.find_node(tree) is not None
+        for tree_arg in args
+        if isinstance(tree_arg, DerivationTree))
+
+
 class SemanticPredicate:
     def __init__(
             self, name: str, arity: int,
-            eval_fun: Callable[[Union[DerivationTree, Constant, str, int], ...], SemPredEvalResult],
+            eval_fun: Callable[[Grammar, Union[DerivationTree, Constant, str, int], ...], SemPredEvalResult],
             binds_tree: Optional[Union[Callable[[DerivationTree, Tuple[SemPredArg, ...]], bool], bool]] = None):
         """
         :param name:
@@ -1088,21 +1099,17 @@ class SemanticPredicate:
 
         if binds_tree is not None and binds_tree is not True:
             if binds_tree is False:
-                self.binds_tree = lambda tree, args: False
+                self.binds_tree = binds_nothing
             else:
                 self.binds_tree = binds_tree
         else:
-            self.binds_tree = (
-                lambda tree, args:
-                any(tree_arg.find_node(tree) is not None
-                    for tree_arg in args
-                    if isinstance(tree_arg, DerivationTree)))
+            self.binds_tree = binds_argument_trees
 
-    def evaluate(self, *instantiations: SemPredArg):
-        return self.eval_fun(*instantiations)
+    def evaluate(self, grammar: Grammar, *instantiations: SemPredArg):
+        return self.eval_fun(grammar, *instantiations)
 
     def __eq__(self, other):
-        return type(other) is SemanticPredicate and (self.name, self.arity) == (other.name, other.arity)
+        return isinstance(other, SemanticPredicate) and (self.name, self.arity) == (other.name, other.arity)
 
     def __hash__(self):
         return hash((self.name, self.arity))
@@ -1121,8 +1128,9 @@ class SemanticPredicateFormula(Formula):
         self.args: Tuple[SemPredArg, ...] = args
         self.order = order
 
-    def evaluate(self) -> SemPredEvalResult:
-        return self.predicate.eval_fun(*self.args)
+    def evaluate(self, grammar: Grammar) -> SemPredEvalResult:
+        assert isinstance(grammar, dict)
+        return self.predicate.eval_fun(grammar, *self.args)
 
     def binds_tree(self, tree: DerivationTree) -> bool:
         return self.predicate.binds_tree(tree, self.args)
@@ -2016,7 +2024,7 @@ def eliminate_quantifiers(
     return [formula]
 
 
-def evaluate_clause(clause: List[Formula], reference_tree: DerivationTree) -> ThreeValuedTruth:
+def evaluate_clause(grammar: Grammar, clause: List[Formula], reference_tree: DerivationTree) -> ThreeValuedTruth:
     # Inside the clause, only (possibly negated) predicate formulas and (not negated) SMT formulas should appear.
     assert all(
         isinstance(f, SMTFormula) or
@@ -2058,7 +2066,7 @@ def evaluate_clause(clause: List[Formula], reference_tree: DerivationTree) -> Th
 
         sf: SemanticPredicateFormula = (
             formula if isinstance(formula, SemanticPredicateFormula) else formula.args[0])
-        result = sf.predicate.evaluate(*sf.args)
+        result = sf.predicate.evaluate(grammar, *sf.args)
         assert result.ready()
 
         if ((result.false() and isinstance(formula, SemanticPredicateFormula)) or
@@ -2099,6 +2107,7 @@ def evaluate_clause(clause: List[Formula], reference_tree: DerivationTree) -> Th
 
 def evaluate_legacy(
         formula: Formula,
+        grammar: Grammar,
         assignments: Dict[Variable, Tuple[Path, DerivationTree]],
         reference_tree: DerivationTree) -> ThreeValuedTruth:
     """
@@ -2134,11 +2143,11 @@ def evaluate_legacy(
 
         if isinstance(formula, ForallFormula):
             return ThreeValuedTruth.all(
-                evaluate_legacy(formula.inner_formula, new_assignment, reference_tree)
+                evaluate_legacy(formula.inner_formula, grammar, new_assignment, reference_tree)
                 for new_assignment in new_assignments)
         elif isinstance(formula, ExistsFormula):
             return ThreeValuedTruth.any(
-                evaluate_legacy(formula.inner_formula, new_assignment, reference_tree)
+                evaluate_legacy(formula.inner_formula, grammar, new_assignment, reference_tree)
                 for new_assignment in new_assignments)
     elif isinstance(formula, StructuralPredicateFormula):
         arg_insts = [
@@ -2152,7 +2161,7 @@ def evaluate_legacy(
         arg_insts = [arg if isinstance(arg, DerivationTree) or arg not in assignments
                      else assignments[arg][1]
                      for arg in formula.args]
-        eval_res = formula.predicate.evaluate(*arg_insts)
+        eval_res = formula.predicate.evaluate(grammar, *arg_insts)
 
         if eval_res.true():
             return ThreeValuedTruth.true()
@@ -2168,13 +2177,13 @@ def evaluate_legacy(
         assignments.update({const: (tuple(), assgn) for const, assgn in eval_res.result.items()})
         return ThreeValuedTruth.true()
     elif isinstance(formula, NegatedFormula):
-        return ThreeValuedTruth.not_(evaluate_legacy(formula.args[0], assignments, reference_tree))
+        return ThreeValuedTruth.not_(evaluate_legacy(formula.args[0], grammar, assignments, reference_tree))
     elif isinstance(formula, ConjunctiveFormula):
         return ThreeValuedTruth.all(
-            evaluate_legacy(sub_formula, assignments, reference_tree) for sub_formula in formula.args)
+            evaluate_legacy(sub_formula, grammar, assignments, reference_tree) for sub_formula in formula.args)
     elif isinstance(formula, DisjunctiveFormula):
         return ThreeValuedTruth.any(
-            evaluate_legacy(sub_formula, assignments, reference_tree) for sub_formula in formula.args)
+            evaluate_legacy(sub_formula, grammar, assignments, reference_tree) for sub_formula in formula.args)
     else:
         raise NotImplementedError()
 
@@ -2182,6 +2191,7 @@ def evaluate_legacy(
 def evaluate(
         formula: Union[Formula, str],
         reference_tree: DerivationTree,
+        grammar: Grammar,
         structural_predicates: Optional[Set[StructuralPredicate]] = None,
         semantic_predicates: Optional[Set[SemanticPredicate]] = None) -> ThreeValuedTruth:
     if isinstance(formula, str):
@@ -2201,13 +2211,13 @@ def evaluate(
     formula.accept(v)
     if not v.result:
         # The legacy evaluation performs better, but only works w/o IntroduceNumericConstantFormulas.
-        return evaluate_legacy(formula, {}, reference_tree)
+        return evaluate_legacy(formula, grammar, {}, reference_tree)
 
     qfr_free: List[Formula] = eliminate_quantifiers(formula)
     qfr_free_dnf: List[Formula] = [convert_to_dnf(convert_to_nnf(f)) for f in qfr_free]
     clauses: List[List[Formula]] = [split_conjunction(_f) for f in qfr_free_dnf for _f in split_disjunction(f)]
 
-    return ThreeValuedTruth.any(evaluate_clause(clause, reference_tree) for clause in clauses)
+    return ThreeValuedTruth.any(evaluate_clause(grammar, clause, reference_tree) for clause in clauses)
 
 
 def matches_for_quantified_formula(

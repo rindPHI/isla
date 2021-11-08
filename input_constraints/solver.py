@@ -33,12 +33,12 @@ class SolutionState:
         self.level = level
         self.__hash = None
 
-    def formula_satisfied(self) -> isla.ThreeValuedTruth:
+    def formula_satisfied(self, grammar: Grammar) -> isla.ThreeValuedTruth:
         if self.tree.is_open():
             # Have to instantiate variables first
             return isla.ThreeValuedTruth.unknown()
 
-        return isla.evaluate(self.constraint, self.tree)
+        return isla.evaluate(self.constraint, self.tree, grammar)
 
     def complete(self) -> bool:
         if not self.tree.is_complete():
@@ -453,7 +453,7 @@ class ISLaSolver:
 
         changed = False
         for idx, semantic_predicate_formula in enumerate(semantic_predicate_formulas):
-            evaluation_result = semantic_predicate_formula.evaluate()
+            evaluation_result = semantic_predicate_formula.evaluate(self.grammar)
             if not evaluation_result.ready():
                 continue
 
@@ -841,7 +841,7 @@ class ISLaSolver:
         """
 
         if state.complete():
-            assert state.formula_satisfied().is_true()
+            assert state.formula_satisfied(self.grammar).is_true()
             return True
 
         assert all(state.tree.find_node(arg)

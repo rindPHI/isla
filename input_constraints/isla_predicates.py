@@ -1,13 +1,12 @@
 import copy
-import itertools
-from typing import Union, List, Optional, Dict, Tuple, Generator, Callable
+from typing import Union, List, Optional, Dict, Tuple, Callable
 
-from fuzzingbook.Parser import canonical, EarleyParser, PEGParser
+from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph.gg import GrammarGraph
 
 from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
-from input_constraints.helpers import delete_unreachable, path_iterator, parent_reflexive, parent_or_child
+from input_constraints.helpers import delete_unreachable, parent_reflexive, parent_or_child
 from input_constraints.isla import DerivationTree, Constant, SemPredEvalResult, StructuralPredicate, SemanticPredicate
 from input_constraints.type_defs import Grammar, Path, ParseTree
 
@@ -119,23 +118,25 @@ def level_check(
 LEVEL_PREDICATE = StructuralPredicate("level", 4, level_check)
 
 
+def reachable(graph: GrammarGraph, fr: str, to: str) -> bool:
+    f_node = graph.get_node(fr)
+    t_node = graph.get_node(to)
+    return graph.reachable(f_node, t_node)
+
+
 def count(grammar: Grammar,
           in_tree: DerivationTree,
           needle: str,
           num: Union[Constant, DerivationTree]) -> SemPredEvalResult:
     graph = GrammarGraph.from_grammar(grammar)
 
-    def reachable(fr: str, to: str) -> bool:
-        f_node = graph.get_node(fr)
-        t_node = graph.get_node(to)
-        return graph.reachable(f_node, t_node)
-
     num_needle_occurrences = len(in_tree.filter(lambda t: t.value == needle))
 
     leaf_nonterminals = [node.value for _, node in in_tree.open_leaves()]
 
-    more_needles_possible = any(reachable(leaf_nonterminal, needle)
-                                for leaf_nonterminal in leaf_nonterminals)
+    more_needles_possible = any(
+        reachable(graph, leaf_nonterminal, needle)
+        for leaf_nonterminal in leaf_nonterminals)
 
     if isinstance(num, Constant):
         # Return the number of needle occurrences in in_tree, or "not ready" if in_tree is not
@@ -180,7 +181,7 @@ def count(grammar: Grammar,
         candidate_needle_occurrences = num_needles(candidate)
 
         candidate_more_needles_possible = \
-            any(reachable(leaf_nonterminal, needle)
+            any(reachable(graph, leaf_nonterminal, needle)
                 for leaf_nonterminal in [node.value for _, node in candidate.open_leaves()])
 
         if not candidate_more_needles_possible and candidate_needle_occurrences == target_num_needle_occurrences:
@@ -201,8 +202,7 @@ def count(grammar: Grammar,
     return SemPredEvalResult(False)
 
 
-COUNT_PREDICATE = lambda grammar: SemanticPredicate(
-    "count", 3, lambda in_tree, needle, num: count(grammar, in_tree, needle, num), binds_tree=True)
+COUNT_PREDICATE = SemanticPredicate("count", 3, count, binds_tree=True)
 
 
 def embed_tree(
@@ -336,31 +336,31 @@ def mk_parser(grammar: Grammar):
 
 CROP_PREDICATE = lambda grammar: SemanticPredicate(
     "crop", 2,
-    lambda tree, width: crop(mk_parser(grammar), tree, width),
+    lambda grammar, tree, width: crop(mk_parser(grammar), tree, width),
     binds_tree=False)
 
 LJUST_PREDICATE = lambda grammar: SemanticPredicate(
     "ljust", 3,
-    lambda tree, width, fillchar: just(True, False, mk_parser(grammar), tree, width, fillchar),
+    lambda grammar, tree, width, fillchar: just(True, False, mk_parser(grammar), tree, width, fillchar),
     binds_tree=False)
 
 LJUST_CROP_PREDICATE = lambda grammar: SemanticPredicate(
     "ljust_crop", 3,
-    lambda tree, width, fillchar: just(True, True, mk_parser(grammar), tree, width, fillchar),
+    lambda grammar, tree, width, fillchar: just(True, True, mk_parser(grammar), tree, width, fillchar),
     binds_tree=False)
 
 EXTEND_CROP_PREDICATE = lambda grammar: SemanticPredicate(
     "extend_crop", 2,
-    lambda tree, width: just(True, True, mk_parser(grammar), tree, width),
+    lambda grammar, tree, width: just(True, True, mk_parser(grammar), tree, width),
     binds_tree=False)
 
 RJUST_PREDICATE = lambda grammar: SemanticPredicate(
-    "rjust", 3, lambda tree, width, fillchar: just(False, False, mk_parser(grammar), tree, width, fillchar),
+    "rjust", 3, lambda grammar, tree, width, fillchar: just(False, False, mk_parser(grammar), tree, width, fillchar),
     binds_tree=False)
 
 RJUST_CROP_PREDICATE = lambda grammar: SemanticPredicate(
     "rjust_crop", 3,
-    lambda tree, width, fillchar: just(False, True, mk_parser(grammar), tree, width, fillchar),
+    lambda grammar, tree, width, fillchar: just(False, True, mk_parser(grammar), tree, width, fillchar),
     binds_tree=False)
 
 
@@ -407,7 +407,7 @@ def octal_to_dec(
 
 OCTAL_TO_DEC_PREDICATE = lambda grammar, octal_start, decimal_start: SemanticPredicate(
     "octal_to_decimal", 2,
-    lambda octal, decimal: octal_to_dec(
+    lambda grammar, octal, decimal: octal_to_dec(
         mk_parser(grammar)(octal_start),
         mk_parser(grammar)(decimal_start),
         octal, decimal),
