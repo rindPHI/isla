@@ -1,11 +1,14 @@
+import copy
+import random
 import unittest
 from typing import List
 
-from grammar_graph import gg
+from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
+from fuzzingbook.GrammarFuzzer import GrammarFuzzer
 
 from input_constraints.helpers import parent_or_child
 from input_constraints.isla import DerivationTree
-from input_constraints.tests.test_data import LANG_GRAMMAR
+from input_constraints.tests.test_data import LANG_GRAMMAR, XML_GRAMMAR
 from input_constraints.tests.test_helpers import parse
 
 
@@ -102,7 +105,7 @@ class TestDerivationTree(unittest.TestCase):
         for path, subtree in tree.paths():
             self.assertTrue(subtree._DerivationTree__structural_hash)
 
-        new_tree = tree.replace_path((0, 0), DerivationTree.from_parse_tree(("8", [("9", [])])), graph=None)
+        new_tree = tree.replace_path((0, 0), DerivationTree.from_parse_tree(("8", [("9", [])])))
 
         self.assertFalse(new_tree._DerivationTree__structural_hash)
 
@@ -196,6 +199,24 @@ class TestDerivationTree(unittest.TestCase):
 
         self.assertTrue(other_tree.is_prefix(potential_prefix_tree))
         self.assertTrue(other_tree.is_potential_prefix(potential_prefix_tree))
+
+    def test_from_parse_tree(self):
+        for _ in range(20):
+            fuzzer = GrammarFuzzer(XML_GRAMMAR, max_nonterminals=50, min_nonterminals=10)
+            tree = ("<start>", None)
+            for _ in range(random.randint(1, 50)):
+                try:
+                    tree = fuzzer.expand_tree_once(tree)
+                except ValueError:
+                    # Tree already closed
+                    break
+
+            dtree = DerivationTree.from_parse_tree(tree)
+            self.assertEqual(tree, dtree.to_parse_tree())
+
+            tree = fuzzer.expand_tree(tree)
+            dtree = DerivationTree.from_parse_tree(tree)
+            self.assertEqual(tree, dtree.to_parse_tree())
 
 
 if __name__ == '__main__':

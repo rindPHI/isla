@@ -58,14 +58,14 @@ def count(
         in_tree: Union[Variable, DerivationTree],
         needle: str,
         num: Union[Constant, DerivationTree]) -> SemanticPredicateFormula:
-    return SemanticPredicateFormula(COUNT_PREDICATE(grammar), in_tree, needle, num)
+    return SemanticPredicateFormula(COUNT_PREDICATE, in_tree, needle, num)
 
 
 def crop(
         grammar: Grammar,
         tree: Union[Variable, DerivationTree],
         width: int) -> SemanticPredicateFormula:
-    return SemanticPredicateFormula(CROP_PREDICATE(grammar), tree, width)
+    return SemanticPredicateFormula(CROP_PREDICATE, tree, width)
 
 
 def ljust(
@@ -73,7 +73,7 @@ def ljust(
         tree: Union[Variable, DerivationTree],
         width: int,
         fillchar: str) -> SemanticPredicateFormula:
-    return SemanticPredicateFormula(LJUST_PREDICATE(grammar), tree, width, fillchar)
+    return SemanticPredicateFormula(LJUST_PREDICATE, tree, width, fillchar)
 
 
 def ljust_crop(
@@ -81,7 +81,7 @@ def ljust_crop(
         tree: Union[Variable, DerivationTree],
         width: int,
         fillchar: str) -> SemanticPredicateFormula:
-    return SemanticPredicateFormula(LJUST_CROP_PREDICATE(grammar), tree, width, fillchar)
+    return SemanticPredicateFormula(LJUST_CROP_PREDICATE, tree, width, fillchar)
 
 
 def rjust(
@@ -89,7 +89,7 @@ def rjust(
         tree: Union[Variable, DerivationTree],
         width: int,
         fillchar: str) -> SemanticPredicateFormula:
-    return SemanticPredicateFormula(RJUST_PREDICATE(grammar), tree, width, fillchar)
+    return SemanticPredicateFormula(RJUST_PREDICATE, tree, width, fillchar)
 
 
 def rjust_crop(
@@ -97,7 +97,7 @@ def rjust_crop(
         tree: Union[Variable, DerivationTree],
         width: int,
         fillchar: str) -> SemanticPredicateFormula:
-    return SemanticPredicateFormula(RJUST_CROP_PREDICATE(grammar), tree, width, fillchar)
+    return SemanticPredicateFormula(RJUST_CROP_PREDICATE, tree, width, fillchar)
 
 
 def octal_to_decimal(

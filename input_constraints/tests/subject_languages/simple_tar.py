@@ -68,7 +68,7 @@ def tar_checksum(
     checksum_parser = EarleyParser(checksum_grammar)
 
     space_checksum = isla.DerivationTree.from_parse_tree(list(checksum_parser.parse("        "))[0]).get_subtree((0,))
-    header_wo_checksum = header.replace_path(current_checksum_path, space_checksum, graph)
+    header_wo_checksum = header.replace_path(current_checksum_path, space_checksum)
 
     header_bytes: List[int] = list(str(header_wo_checksum).encode("ascii"))
 

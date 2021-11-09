@@ -4,7 +4,7 @@ import logging
 import pickle
 import re
 from functools import reduce
-from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable
+from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable, Sequence
 
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
@@ -114,7 +114,7 @@ class DerivationTree:
     TRAVERSE_POSTORDER = 1
 
     def __init__(self, value: Union[str, Variable],
-                 children: Optional[List['DerivationTree']] = None,
+                 children: Optional[Sequence['DerivationTree']] = None,
                  id: Optional[int] = None,
                  k_paths: Optional[Dict[int, Set[Tuple[gg.Node, ...]]]] = None,
                  hash: Optional[int] = None,
@@ -321,8 +321,7 @@ class DerivationTree:
             action: Callable[[Path, 'DerivationTree'], None],
             abort_condition: Callable[[Path, 'DerivationTree'], bool] = lambda p, n: False,
             kind: int = TRAVERSE_PREORDER,
-            reverse: bool = False
-    ) -> None:
+            reverse: bool = False) -> None:
         stack_1: List[Tuple[Path, DerivationTree]] = [((), self)]
         stack_2: List[Tuple[Path, DerivationTree]] = []
 
@@ -403,9 +402,7 @@ class DerivationTree:
             self,
             path: Path,
             replacement_tree: 'DerivationTree',
-            graph: gg.GrammarGraph,
-            retain_id=False,
-            is_root: bool = True) -> 'DerivationTree':
+            retain_id=False) -> 'DerivationTree':
         """Returns tree where replacement_tree has been inserted at `path` instead of the original subtree"""
         node, children = self
 
@@ -418,29 +415,12 @@ class DerivationTree:
             return replacement_tree
 
         head = path[0]
-        new_children = (children[:head] +
-                        (children[head].replace_path(path[1:], replacement_tree, retain_id, is_root=False),) +
-                        children[head + 1:])
+        new_children = (
+                children[:head] +
+                (children[head].replace_path(path[1:], replacement_tree, retain_id),) +
+                children[head + 1:])
 
-        result = DerivationTree(node, new_children, id=self.id)
-        return result
-
-        # We re-use cached k-paths if possible
-        result = DerivationTree(node, new_children, id=self.id, k_paths=self.__k_paths)
-
-        # We have to re-compute the k-paths for the replaced path. This makes use of the cached
-        # k-path values of unaffected paths / nodes. We start at the bottom of the path to make
-        # sure that no outdated cached values are re-used
-
-        if is_root and self.__k_paths:
-            # Re-Computation only at the end.
-            for k in self.__k_paths.keys():
-                for idx in reversed(range(len(path) + 1)):
-                    subtree = result.get_subtree(path[:idx])
-                    subtree.__k_paths = {}
-                    subtree.recompute_k_paths(graph, k)
-
-        return result
+        return DerivationTree(node, new_children, id=self.id)
 
     def leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
         return ((path, sub_tree)
@@ -481,16 +461,37 @@ class DerivationTree:
         return len(self) >= len(other)
 
     def substitute(self, subst_map: Dict[Union[Variable, 'DerivationTree'], 'DerivationTree']) -> 'DerivationTree':
-        if self in subst_map:
-            return subst_map[self]
+        # We perform an iterative reverse post-order depth-first traversal and use a stack
+        # to store intermediate results from lower levels.
 
-        if self.children is None:
-            return self
+        # Looking up IDs performs much better for big trees, since we do not necessarily
+        # have to compute hashes for all nodes (made necessary by tar case study)
+        id_subst_map = {
+            var_or_tree.id if isinstance(var_or_tree, DerivationTree) else var_or_tree: repl
+            for var_or_tree, repl in subst_map.items()
+        }
 
-        return DerivationTree(
-            self.value,
-            [child.substitute(subst_map) for child in self.children],
-            id=self.id)
+        stack: List[DerivationTree] = []
+
+        def action(_, node: DerivationTree) -> None:
+            if node.id in id_subst_map:
+                for _ in range(len(node.children or [])):
+                    stack.pop()
+                stack.append(id_subst_map[node.id])
+                return
+
+            if not node.children:
+                stack.append(node)
+                return
+
+            children = [stack.pop() for _ in range(len(node.children))]
+            new_node = DerivationTree(node.value, children, id=node.id)
+            stack.append(new_node)
+
+        self.traverse(action, kind=DerivationTree.TRAVERSE_POSTORDER, reverse=True)
+
+        assert len(stack) == 1
+        return stack.pop()
 
     def is_prefix(self, other: 'DerivationTree') -> bool:
         if len(self) > len(other):
@@ -538,9 +539,23 @@ class DerivationTree:
     @staticmethod
     def from_parse_tree(tree: ParseTree):
         node, children = tree
-        return DerivationTree(node,
-                              None if children is None
-                              else [DerivationTree.from_parse_tree(child) for child in children])
+        result = DerivationTree(node, None)
+
+        stack: List[Tuple[List[ParseTree], DerivationTree]] = [(children, result)]
+
+        while stack:
+            children, dtree = stack.pop(0)
+            if not children:
+                dtree.children = None if children is None else ()
+                continue
+
+            dtree.children = ()
+            for child in children:
+                new_node = DerivationTree(child[0], None)
+                dtree.children += (new_node,)
+                stack.append((child[1], new_node))
+
+        return result
 
     def to_parse_tree(self) -> ParseTree:
         return self.value, None if self.children is None else [child.to_parse_tree() for child in self.children]
@@ -557,6 +572,17 @@ class DerivationTree:
         stack: List[int] = []
 
         def action(_, node: DerivationTree) -> None:
+            if structural and node.__structural_hash is not None:
+                for _ in range(len(node.children or [])):
+                    stack.pop()
+                stack.append(node.__structural_hash)
+                return
+            if not structural and node.__hash is not None:
+                for _ in range(len(node.children or [])):
+                    stack.pop()
+                stack.append(node.__hash)
+                return
+
             if node.children is None:
                 node_hash = hash(node.value) if structural else hash((node.value, node.id))
             else:
@@ -612,13 +638,27 @@ class DerivationTree:
 
     def __eq__(self, other):
         """
-        Equality takes the randomly assigned ID into account! So trees with the same structure
-        might not be equal.
+        Equality takes the randomly assigned ID into account!
+        So trees with the same structure might not be equal.
         """
-        return (isinstance(other, DerivationTree)
-                and self.value == other.value
-                and self.children == other.children
-                and self.id == other.id)
+
+        stack: List[Tuple[DerivationTree, DerivationTree]] = [(self, other)]
+
+        while stack:
+            t1, t2 = stack.pop()
+            if (not isinstance(t2, DerivationTree)
+                    or t1.value != t2.value
+                    or t1.id != t2.id
+                    or (t1.children is None and t2.children is not None)
+                    or (t2.children is None and t1.children is not None)
+                    or len(t1.children or []) != len(t2.children or [])):
+                return False
+
+            if t1.children:
+                assert t2.children
+                stack.extend(list(zip(t1.children, t2.children)))
+
+        return True
 
     def __repr__(self):
         return f"DerivationTree({repr(self.value)}, {repr(self.children)})"
@@ -692,7 +732,7 @@ class BindExpression:
         # Not isinstance(var, BoundVariable) since we want to exclude dummy variables
         return OrderedSet([var for var in self.bound_elements if type(var) is BoundVariable])
 
-    def to_tree_prefix(self, in_nonterminal: str, grammar: Grammar, graph: gg.GrammarGraph) -> \
+    def to_tree_prefix(self, in_nonterminal: str, grammar: Grammar) -> \
             List[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
         if in_nonterminal in self.prefixes:
             cached = self.prefixes[in_nonterminal]
@@ -738,7 +778,6 @@ class BindExpression:
                     tree = tree.replace_path(
                         curr_path,
                         DerivationTree(curr_subtree.value, None if is_nonterminal(curr_bound_elem.n_type) else ()),
-                        graph
                     )
                     bound_elements = bound_elements[1:]
 
@@ -1141,6 +1180,12 @@ class SemanticPredicateFormula(Formula):
                                           else subst_map[arg] for arg in self.args], order=self.order)
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
+        tree_id_subst_map = {
+            tree.id: repl
+            for tree, repl in subst_map.items()
+            if isinstance(tree, DerivationTree)
+        }
+
         new_args = []
         for arg in self.args:
             if isinstance(arg, str) or isinstance(arg, int):
@@ -1155,8 +1200,8 @@ class SemanticPredicateFormula(Formula):
                 continue
 
             tree: DerivationTree = arg
-            if tree in subst_map:
-                new_args.append(subst_map[tree])
+            if tree.id in tree_id_subst_map:
+                new_args.append(tree_id_subst_map[tree.id])
                 continue
 
             new_args.append(tree.substitute({k: v for k, v in subst_map.items()}))
@@ -1968,7 +2013,6 @@ def eliminate_quantifiers(
                             leaf_path,
                             universal_formula.in_variable,
                             grammar,
-                            graph,
                             reachable)
                            for leaf_path, leaf_node in universal_formula.in_variable.open_leaves()):
                         continue
@@ -2264,7 +2308,6 @@ def quantified_formula_might_match(
         path_to_nonterminal: Path,
         tree: DerivationTree,
         grammar: Grammar,
-        graph: gg.GrammarGraph,
         reachable: Callable[[str, str], bool]) -> bool:
     node = tree.get_subtree(path_to_nonterminal)
 
@@ -2273,7 +2316,7 @@ def quantified_formula_might_match(
 
     if qfd_formula.is_already_matched(node):
         # This formula won't match node IFF there is no subtree in node that matches.
-        return any(quantified_formula_might_match(qfd_formula, path, node, grammar, graph, reachable)
+        return any(quantified_formula_might_match(qfd_formula, path, node, grammar, reachable)
                    for path, _ in node.paths() if path)
 
     qfd_nonterminal = qfd_formula.bound_variable.n_type
@@ -2288,7 +2331,7 @@ def quantified_formula_might_match(
 
     maybe_prefix_tree: DerivationTree
     for maybe_prefix_tree, _ in qfd_formula.bind_expression.to_tree_prefix(
-            qfd_formula.bound_variable.n_type, grammar, graph):
+            qfd_formula.bound_variable.n_type, grammar):
         for idx in reversed(range(len(path_to_nonterminal))):
             subtree = tree.get_subtree(path_to_nonterminal[:idx])
             if maybe_prefix_tree.is_potential_prefix(subtree) and not qfd_formula.is_already_matched(subtree):

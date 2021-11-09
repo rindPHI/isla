@@ -206,28 +206,37 @@ constraint {
             num_solutions=30)
 
     def test_simple_csv_rows_equal_length(self):
-        mgr = isla.VariableManager(SIMPLE_CSV_GRAMMAR)
-        formula = mgr.create(
-            mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$num").to_smt()) >= z3.IntVal(3))) &
-            mgr.smt(cast(z3.BoolRef, z3.StrToInt(mgr.num_const("$num").to_smt()) <= z3.IntVal(5))) &
-            sc.forall(
-                mgr.bv("$hline", "<csv-header>"),
-                mgr.const("$start", "<start>"),
-                sc.count(SIMPLE_CSV_GRAMMAR, mgr.bv("$hline"), "<csv-field>", mgr.num_const("$num"))) &
-            sc.forall(
-                mgr.bv("$line", "<csv-record>"),
-                mgr.const("$start", "<start>"),
-                sc.count(SIMPLE_CSV_GRAMMAR, mgr.bv("$line"), "<csv-field>", mgr.num_const("$num")))
-        )
+        property = """
+const start: <start>;
+
+vars {
+  colno: NUM;
+  hline: <csv-header>;
+  line: <csv-record>;
+}
+
+constraint {
+  forall hline in start:
+    num colno:
+      ((>= (str.to_int colno) 3) and 
+      ((<= (str.to_int colno) 5) and 
+       (count(hline, "<csv-field>", colno) and 
+       forall line in start:
+         count(line, "<csv-field>", colno))))
+}
+"""
 
         self.execute_generation_test(
-            formula,
+            property,
             grammar=SIMPLE_CSV_GRAMMAR,
+            semantic_predicates={COUNT_PREDICATE},
             max_number_free_instantiations=1,
-            max_number_smt_instantiations=2,
-            enforce_unique_trees_in_queue=False)
+            max_number_smt_instantiations=3,
+            enforce_unique_trees_in_queue=False,
+            num_solutions=20)
 
     def test_csv_rows_equal_length(self):
+        # TODO: This is too slow, check
         property = """
 const start: <start>;
 
@@ -253,7 +262,7 @@ constraint {
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR,
             custom_test_func=csv_lint,
-            num_solutions=30,
+            num_solutions=8,
             max_number_free_instantiations=2,
             max_number_smt_instantiations=2,
             enforce_unique_trees_in_queue=False,
@@ -308,11 +317,15 @@ constraint {
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
             # debug=True,
-            num_solutions=10,
+            num_solutions=3,
             precompute_reachability=False,
             custom_test_func=extract_tar,
-            # cost_vectors=((20, 0, .5, 0),),
-            # cost_phase_lengths=(100,),
+            cost_settings=CostSettings(
+                (CostWeightVector(1, 1, 1, 1, 1, 1),),
+                (200,),
+                k=1
+            ),
+            print_only=True
         )
 
     def test_simple_tar(self):

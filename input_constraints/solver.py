@@ -561,7 +561,7 @@ class ISLaSolver:
             for path, new_children in possible_expansion.items():
                 leaf_node = expanded_tree.get_subtree(path)
                 expanded_tree = expanded_tree.replace_path(
-                    path, DerivationTree(leaf_node.value, new_children, leaf_node.id), self.graph)
+                    path, DerivationTree(leaf_node.value, new_children, leaf_node.id))
 
                 assert expanded_tree is not state.tree
                 assert expanded_tree != state.tree
@@ -630,10 +630,9 @@ class ISLaSolver:
     def eliminate_existential_formula(self,
                                       existential_formula: isla.ExistsFormula,
                                       state: SolutionState) -> List[SolutionState]:
-        inserted_trees_and_bind_paths: List[Tuple[DerivationTree, Dict[isla.BoundVariable, Path]]] = []
         if existential_formula.bind_expression is not None:
             inserted_trees_and_bind_paths = existential_formula.bind_expression.to_tree_prefix(
-                existential_formula.bound_variable.n_type, self.grammar, self.graph)
+                existential_formula.bound_variable.n_type, self.grammar)
         else:
             inserted_trees_and_bind_paths = [(DerivationTree(existential_formula.bound_variable.n_type, None), {})]
 
@@ -1022,7 +1021,6 @@ class ISLaSolver:
             path_to_nonterminal,
             tree,
             self.grammar,
-            self.graph,
             self.reachable)
 
     @lru_cache(maxsize=None)

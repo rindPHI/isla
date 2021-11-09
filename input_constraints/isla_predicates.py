@@ -324,41 +324,44 @@ def just(ljust: bool,
 
 def mk_parser(grammar: Grammar):
     def Parser(start: str) -> Callable[[str], List[ParseTree]]:
-        specialized_grammar = copy.deepcopy(grammar)
-        specialized_grammar["<start>"] = [start]
-        delete_unreachable(specialized_grammar)
-        parser = EarleyParser(specialized_grammar)
+        def result(inp: str) -> List[ParseTree]:
+            specialized_grammar = copy.deepcopy(grammar)
+            specialized_grammar["<start>"] = [start]
+            delete_unreachable(specialized_grammar)
+            parser = EarleyParser(specialized_grammar)
+            return list(parser.parse(inp))
 
-        return lambda inp: list(parser.parse(inp))
+        return result
+        # return lambda inp: list(parser.parse(inp))
 
     return Parser
 
 
-CROP_PREDICATE = lambda grammar: SemanticPredicate(
+CROP_PREDICATE = SemanticPredicate(
     "crop", 2,
     lambda grammar, tree, width: crop(mk_parser(grammar), tree, width),
     binds_tree=False)
 
-LJUST_PREDICATE = lambda grammar: SemanticPredicate(
+LJUST_PREDICATE = SemanticPredicate(
     "ljust", 3,
     lambda grammar, tree, width, fillchar: just(True, False, mk_parser(grammar), tree, width, fillchar),
     binds_tree=False)
 
-LJUST_CROP_PREDICATE = lambda grammar: SemanticPredicate(
+LJUST_CROP_PREDICATE = SemanticPredicate(
     "ljust_crop", 3,
     lambda grammar, tree, width, fillchar: just(True, True, mk_parser(grammar), tree, width, fillchar),
     binds_tree=False)
 
-EXTEND_CROP_PREDICATE = lambda grammar: SemanticPredicate(
+EXTEND_CROP_PREDICATE = SemanticPredicate(
     "extend_crop", 2,
     lambda grammar, tree, width: just(True, True, mk_parser(grammar), tree, width),
     binds_tree=False)
 
-RJUST_PREDICATE = lambda grammar: SemanticPredicate(
+RJUST_PREDICATE = SemanticPredicate(
     "rjust", 3, lambda grammar, tree, width, fillchar: just(False, False, mk_parser(grammar), tree, width, fillchar),
     binds_tree=False)
 
-RJUST_CROP_PREDICATE = lambda grammar: SemanticPredicate(
+RJUST_CROP_PREDICATE = SemanticPredicate(
     "rjust_crop", 3,
     lambda grammar, tree, width, fillchar: just(False, True, mk_parser(grammar), tree, width, fillchar),
     binds_tree=False)
@@ -407,7 +410,7 @@ def octal_to_dec(
 
 OCTAL_TO_DEC_PREDICATE = lambda grammar, octal_start, decimal_start: SemanticPredicate(
     "octal_to_decimal", 2,
-    lambda grammar, octal, decimal: octal_to_dec(
+    lambda _, octal, decimal: octal_to_dec(
         mk_parser(grammar)(octal_start),
         mk_parser(grammar)(decimal_start),
         octal, decimal),

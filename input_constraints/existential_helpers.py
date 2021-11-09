@@ -75,7 +75,6 @@ def insert_tree(grammar: CanonicalGrammar,
         if not add_to_result(in_tree.replace_path(
                 match_path_embeddable,
                 DerivationTree(t.value, t.children, orig_node.id),
-                graph,
                 retain_id=True)):
             return result
 
@@ -137,7 +136,7 @@ def insert_tree(grammar: CanonicalGrammar,
                                 if leaf_nonterm == nonterm_to_insert:
                                     result += insert(trees_to_insert[:insert_tree_idx] +
                                                      trees_to_insert[insert_tree_idx + 1:],
-                                                     into_tree.replace_path(leaf_path, tree_to_insert, graph),
+                                                     into_tree.replace_path(leaf_path, tree_to_insert),
                                                      insert_paths + [leaf_path])
                                 elif (tree_to_insert.children is not None
                                       and tree_to_insert.num_children() == 1
@@ -145,7 +144,7 @@ def insert_tree(grammar: CanonicalGrammar,
                                     result += insert(
                                         trees_to_insert[:insert_tree_idx] +
                                         trees_to_insert[insert_tree_idx + 1:],
-                                        into_tree.replace_path(leaf_path, tree_to_insert.children[0], graph),
+                                        into_tree.replace_path(leaf_path, tree_to_insert.children[0]),
                                         insert_paths + [leaf_path])
                                 else:
                                     leaf_nonterm_node = graph.get_node(leaf_nonterm)
@@ -161,12 +160,12 @@ def insert_tree(grammar: CanonicalGrammar,
                                                     continue
 
                                                 instantiated_connecting_tree = connecting_tree.replace_path(
-                                                    insert_leaf_path, tree_to_insert, graph)
+                                                    insert_leaf_path, tree_to_insert)
                                                 result += insert(
                                                     trees_to_insert[:insert_tree_idx] +
                                                     trees_to_insert[insert_tree_idx + 1:],
                                                     into_tree.replace_path(
-                                                        leaf_path, instantiated_connecting_tree, graph),
+                                                        leaf_path, instantiated_connecting_tree),
                                                     insert_paths + [leaf_path + insert_leaf_path])
 
                         return result
@@ -177,7 +176,7 @@ def insert_tree(grammar: CanonicalGrammar,
                         assert instantiated_tree.value == orig_node.value
                         instantiated_tree.id = orig_node.id
 
-                        new_tree = in_tree.replace_path(current_path, instantiated_tree, graph)
+                        new_tree = in_tree.replace_path(current_path, instantiated_tree)
                         if not add_to_result(new_tree):
                             return result
 
@@ -244,10 +243,10 @@ def wrap_in_tree_starting_in(start_nonterminal: str,
 
     result = DerivationTree.from_parse_tree(result_pt)
 
-    # Ensure ID is corect
+    # Ensure ID is correct
     for path, t in path_iterator(result_pt):
         if t is parse_tree:
-            result = result.replace_path(path, tree, graph)
+            result = result.replace_path(path, tree)
             break
 
     return result
@@ -278,7 +277,7 @@ def path_to_tree(
                                      else DerivationTree(nonterm, None)
                                      for idx, nonterm in enumerate(matching_expansion)]
 
-                    new_candidate = candidate.replace_path(leaf_path, DerivationTree(leaf_node, next_children), graph)
+                    new_candidate = candidate.replace_path(leaf_path, DerivationTree(leaf_node, next_children))
                     if len(path) == 1:
                         result.append(new_candidate)
                     else:

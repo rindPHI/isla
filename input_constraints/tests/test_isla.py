@@ -290,7 +290,7 @@ class TestISLa(unittest.TestCase):
         assgn = BoundVariable("$assgn", "<assgn>")
 
         bind_expr: BindExpression = lhs + " := " + rhs
-        tree, bindings = bind_expr.to_tree_prefix(assgn.n_type, LANG_GRAMMAR, graph)[0]
+        tree, bindings = bind_expr.to_tree_prefix(assgn.n_type, LANG_GRAMMAR)[0]
         self.assertEqual("<var> := <rhs>", str(tree))
         self.assertEqual((0,), bindings[lhs])
         self.assertEqual((2,), bindings[rhs])
@@ -301,7 +301,7 @@ class TestISLa(unittest.TestCase):
         semicolon = BoundVariable("$semi", " ; ")
 
         bind_expr: BindExpression = lhs + " := " + rhs + semicolon + lhs_2 + " := " + rhs_2
-        tree, bindings = bind_expr.to_tree_prefix(prog.n_type, LANG_GRAMMAR, graph)[0]
+        tree, bindings = bind_expr.to_tree_prefix(prog.n_type, LANG_GRAMMAR)[0]
         self.assertEqual("<var> := <rhs> ; <var> := <rhs>", str(tree))
 
         self.assertEqual((1,), bindings[semicolon])
@@ -419,7 +419,7 @@ class TestISLa(unittest.TestCase):
         bind_expression = mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>"
         self.assertEqual(
             ('<file_name>', [('<characters>', None), ('<maybe_nuls>', None)]),
-            bind_expression.to_tree_prefix("<file_name>", tar.TAR_GRAMMAR, graph)[0][0].to_parse_tree())
+            bind_expression.to_tree_prefix("<file_name>", tar.TAR_GRAMMAR)[0][0].to_parse_tree())
 
     def test_matches_xml_property(self):
         inp = "<b>k</b>"
@@ -677,7 +677,7 @@ constraint {
             self.assertEqual(graph.k_paths_in_tree(tree.to_parse_tree(), k), tree.k_paths(graph, k))
 
         rtree = tree.replace_path(
-            (0,), DerivationTree("<statement>", [DerivationTree("<block>", None)]), graph
+            (0,), DerivationTree("<statement>", [DerivationTree("<block>", None)])
         )
 
         for k in range(1, 6):
@@ -694,7 +694,7 @@ constraint {
         rtree = tree.replace_path(
             (0,), DerivationTree.from_parse_tree(("<statement>", [
                 ('if', []), ('<paren_expr>', None), (' ', []), ('<statement>', None),
-                (' else ', []), ('<statement>', None)])), graph
+                (' else ', []), ('<statement>', None)]))
         )
 
         for k in range(1, 6):
@@ -714,7 +714,6 @@ constraint {
         tree_1 = tree.replace_path(
             (),
             DerivationTree("<start>", [DerivationTree("<statement>", None)]),
-            graph
         )
         for k in range(1, 6):
             self.assertEqual(
@@ -725,7 +724,6 @@ constraint {
             (0,),
             DerivationTree.from_parse_tree(
                 ('<statement>', [('if', []), ('<paren_expr>', None), (' ', []), ('<statement>', None)])),
-            graph
         )
 
         for k in range(1, 6):

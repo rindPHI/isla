@@ -91,7 +91,6 @@ def tar_checksum(
     header_wo_checksum = header.replace_path(
         header.find_node(checksum_tree),
         isla.DerivationTree.from_parse_tree(space_checksum),
-        graph
     )
 
     header_bytes: List[int] = list(str(header_wo_checksum).encode("ascii"))
