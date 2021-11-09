@@ -1,3 +1,4 @@
+import copy
 import string
 import string
 import xml.etree.ElementTree as ET
@@ -7,6 +8,7 @@ from typing import Optional, List
 from fuzzingbook.Grammars import srange
 
 from input_constraints.isla import parse_isla, DerivationTree
+from input_constraints.isla_predicates import IN_TREE_PREDICATE
 
 XML_GRAMMAR = {
     "<start>": ["<xml-tree>"],
@@ -25,21 +27,27 @@ XML_GRAMMAR = {
     "<xml-attribute>": ["<id>=\"<text>\"", "<xml-attribute> <xml-attribute>"],
 
     "<id>": [
-        "<id_start_char>",
-        "<id_start_char><id_chars>",
-        # "<id_with_prefix>"
+        "<id-start-char>",
+        "<id-start-char><id-chars>",
     ],
-    # "<id_with_prefix>": [
-    #     "<id_start_char>:<id_chars>",
-    #     "<id_start_char><id_chars>:<id_chars>"],
-    "<id_start_char>": srange("_" + string.ascii_letters),
-    "<id_chars>": ["<id_char>", "<id_char><id_chars>"],
-    "<id_char>": ["<id_start_char>"] + srange("-." + string.digits),
-    "<text>": ["<text_char><text>", "<text_char>"],
-    "<text_char>": [
+    "<id-start-char>": srange("_" + string.ascii_letters),
+    "<id-chars>": ["<id-char>", "<id-char><id-chars>"],
+    "<id-char>": ["<id-start-char>"] + srange("-." + string.digits),
+    "<text>": ["<text-char><text>", "<text-char>"],
+    "<text-char>": [
         escape(c, {'"': "&quot;"})
         for c in srange(string.ascii_letters + string.digits + "\"'. \t/?-,=:+")],
 }
+
+XML_GRAMMAR_WITH_NAMESPACE_PREFIXES = copy.deepcopy(XML_GRAMMAR)
+XML_GRAMMAR_WITH_NAMESPACE_PREFIXES["<id>"].append("<id-with-prefix>")
+XML_GRAMMAR_WITH_NAMESPACE_PREFIXES.update({
+    "<id-no-prefix>": [
+        "<id-start-char>",
+        "<id-start-char><id-chars>",
+    ],
+    "<id-with-prefix>": ["<id-no-prefix>:<id-no-prefix>"]
+})
 
 
 def validate_xml(inp: DerivationTree, out: Optional[List[str]] = None) -> bool:
@@ -52,7 +60,7 @@ def validate_xml(inp: DerivationTree, out: Optional[List[str]] = None) -> bool:
         return False
 
 
-xml_constraint = """
+xml_wellformedness_constraint = """
 const start: <start>;
 
 vars {
@@ -66,4 +74,44 @@ constraint {
 }
 """
 
-XML_CONSTRAINT = parse_isla(xml_constraint)
+XML_WELLFORMEDNESS_CONSTRAINT = parse_isla(xml_wellformedness_constraint)
+
+xml_namespace_constraint = """
+const start: <start>;
+
+vars {
+    prefix_id: <id-with-prefix>;
+    prefix_use, prefix_def, xmlns: <id-no-prefix>;
+    outer_tag: <xml-tree>;
+    attribute, cont_attribute, def_attribute: <xml-attribute>;
+    contained_tree: <inner-xml-tree>;
+    open_tag: <xml-open-tag>;
+    open_close_tag: <xml-openclose-tag>;
+}
+
+constraint {
+    (forall attribute in start:
+        forall prefix_id="{prefix_use}:<id-no-prefix>" in attribute:
+            ((= prefix_use "xmlns") or
+                exists outer_tag="<<id> {cont_attribute}>{contained_tree}</<id>>" in start:
+                    (inside(attribute, contained_tree) and 
+                     exists def_attribute="{xmlns}:{prefix_def}=\\\"<text>\\\"" in cont_attribute:
+                         ((= prefix_use prefix_def) and 
+                          (= xmlns "xmlns")))) and
+    (forall open_tag="<{prefix_use}:<id-no-prefix>[ <xml-attribute>]>" in start:
+        exists outer_tag="<<id> {cont_attribute}>{contained_tree}</<id>>" in start:
+            (inside(open_tag, contained_tree) and 
+             exists def_attribute="{xmlns}:{prefix_def}=\\\"<text>\\\"" in cont_attribute:
+                 ((= prefix_use prefix_def) and 
+                  (= xmlns "xmlns"))) and 
+     forall open_close_tag="<{prefix_use}:<id-no-prefix>[ <xml-attribute>]/>" in start:
+        exists outer_tag="<<id> {cont_attribute}>{contained_tree}</<id>>" in start:
+            (inside(open_close_tag, contained_tree) and 
+             exists def_attribute="{xmlns}:{prefix_def}=\\\"<text>\\\"" in cont_attribute:
+                 ((= prefix_use prefix_def) and 
+                  (= xmlns "xmlns")))
+     ))
+}
+"""
+
+XML_NAMESPACE_CONSTRAINT = parse_isla(xml_namespace_constraint, structural_predicates={IN_TREE_PREDICATE})

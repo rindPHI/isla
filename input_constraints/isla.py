@@ -735,6 +735,14 @@ class BindExpression:
         # Not isinstance(var, BoundVariable) since we want to exclude dummy variables
         return OrderedSet([var for var in self.bound_elements if type(var) is BoundVariable])
 
+    def all_bound_variables(self) -> OrderedSet[BoundVariable]:
+        # Includes dummy variables
+        return OrderedSet([
+            var
+            for alternative in self.flatten_bound_elements()
+            for var in alternative
+            if isinstance(var, BoundVariable)])
+
     def to_tree_prefix(self, in_nonterminal: str, grammar: Grammar) -> \
             List[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
         if in_nonterminal in self.prefixes:
@@ -1791,6 +1799,7 @@ class FilterVisitor(FormulaVisitor):
 
 
 def well_formed(formula: Formula,
+                grammar: Grammar,
                 bound_vars: Optional[OrderedSet[BoundVariable]] = None,
                 in_expr_vars: Optional[OrderedSet[Variable]] = None,
                 bound_by_smt: Optional[OrderedSet[Variable]] = None) -> bool:
@@ -1801,6 +1810,10 @@ def well_formed(formula: Formula,
     if bound_by_smt is None:
         bound_by_smt = OrderedSet([])
 
+    if any(is_nonterminal(var.n_type) and var.n_type not in grammar
+           for var in formula.free_variables()):
+        return False
+
     if isinstance(formula, IntroduceNumericConstantFormula):
         if formula.bound_variables().intersection(bound_vars):
             return False
@@ -1809,6 +1822,7 @@ def well_formed(formula: Formula,
 
         return well_formed(
             formula.inner_formula,
+            grammar,
             bound_vars | formula.bound_variables(),
             in_expr_vars,
             bound_by_smt
@@ -1823,8 +1837,19 @@ def well_formed(formula: Formula,
         if any(free_var not in bound_vars for free_var in formula.free_variables() if type(free_var) is BoundVariable):
             return False
 
+        if any(is_nonterminal(var.n_type) and var.n_type not in grammar
+               for var in formula.bound_variables()):
+            return False
+
+        if formula.bind_expression is not None:
+            var: BoundVariable
+            if any(is_nonterminal(var.n_type) and var.n_type not in grammar
+                   for var in formula.bind_expression.all_bound_variables()):
+                return False
+
         return well_formed(
             formula.inner_formula,
+            grammar,
             bound_vars | formula.bound_variables(),
             in_expr_vars | OrderedSet([formula.in_variable]),
             bound_by_smt
@@ -1841,16 +1866,16 @@ def well_formed(formula: Formula,
             smt_formulas = [f for f in formula.args if type(f) is SMTFormula]
             other_formulas = [f for f in formula.args if type(f) is not SMTFormula]
 
-            if any(not well_formed(f, bound_vars, in_expr_vars, bound_by_smt) for f in smt_formulas):
+            if any(not well_formed(f, grammar, bound_vars, in_expr_vars, bound_by_smt) for f in smt_formulas):
                 return False
 
             for smt_formula in smt_formulas:
                 bound_vars |= [var for var in smt_formula.free_variables() if type(var) is BoundVariable]
                 bound_by_smt |= smt_formula.free_variables()
 
-            return all(well_formed(f, bound_vars, in_expr_vars, bound_by_smt) for f in other_formulas)
+            return all(well_formed(f, grammar, bound_vars, in_expr_vars, bound_by_smt) for f in other_formulas)
         else:
-            return all(well_formed(subformula, bound_vars, in_expr_vars, bound_by_smt)
+            return all(well_formed(subformula, grammar, bound_vars, in_expr_vars, bound_by_smt)
                        for subformula in formula.args)
     elif isinstance(formula, StructuralPredicateFormula) or isinstance(formula, SemanticPredicateFormula):
         return all(free_var in bound_vars
@@ -2252,7 +2277,7 @@ def evaluate(
         assert reference_tree is not None
         formula = formula.substitute_expressions({next(iter(top_level_constants)): reference_tree})
 
-    assert well_formed(formula)
+    assert well_formed(formula, grammar)
 
     v = FilterVisitor(lambda f: isinstance(f, IntroduceNumericConstantFormula))
     formula.accept(v)
@@ -2734,7 +2759,12 @@ def parse_isla(
             assert leaf.value in ["<var>", "<optional>", "<esc_chars>"]
 
             if leaf.value == "<esc_chars>":
-                result_elements.append(str(leaf))
+                esc_chars = str(leaf)
+                # Replace escaped symbols
+                esc_chars = esc_chars.replace("{{", "{")
+                esc_chars = esc_chars.replace("}}", "}")
+                esc_chars = esc_chars.replace('\\"', '"')
+                result_elements.append(esc_chars)
             elif leaf.value == "<optional>":
                 result_elements.append([str(leaf.children[1])])
             else:

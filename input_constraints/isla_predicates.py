@@ -54,7 +54,8 @@ SAME_POSITION_PREDICATE = StructuralPredicate("same_position", 2, is_same_positi
 
 
 def in_tree(_: Optional[DerivationTree], path_1: Path, path_2: Path) -> bool:
-    return path_1 == path_2[:len(path_1)]
+    # path_1 is inside path_2
+    return path_1[:len(path_2)] == path_2
 
 
 IN_TREE_PREDICATE = StructuralPredicate("inside", 2, in_tree)

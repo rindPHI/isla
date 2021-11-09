@@ -10,10 +10,12 @@ import input_constraints.isla_shortcuts as sc
 from input_constraints.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
     DerivationTree, convert_to_dnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
     matches_for_quantified_formula, QuantifiedFormula, DummyVariable, eliminate_quantifiers
-from input_constraints.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
+from input_constraints.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, IN_TREE_PREDICATE
 from input_constraints.isla_predicates import count, COUNT_PREDICATE
 from input_constraints.tests.subject_languages import rest, scriptsizec
 from input_constraints.tests.subject_languages import tinyc, tar
+from input_constraints.tests.subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, validate_xml, \
+    XML_NAMESPACE_CONSTRAINT, xml_namespace_constraint
 from input_constraints.tests.test_data import *
 from input_constraints.tests.test_helpers import parse
 
@@ -50,7 +52,7 @@ class TestISLa(unittest.TestCase):
             )
         )
 
-        self.assertTrue(well_formed(formula))
+        self.assertTrue(well_formed(formula, LANG_GRAMMAR))
 
         bad_formula: Formula = sc.forall_bind(
             lhs_1 + " := " + rhs_1,
@@ -65,7 +67,7 @@ class TestISLa(unittest.TestCase):
             )
         )
 
-        self.assertFalse(well_formed(bad_formula))
+        self.assertFalse(well_formed(bad_formula, LANG_GRAMMAR))
 
         bad_formula_2: Formula = sc.forall(
             assgn_1,
@@ -73,7 +75,7 @@ class TestISLa(unittest.TestCase):
             sc.smt_for(z3.BoolVal(True))
         )
 
-        self.assertFalse(well_formed(bad_formula_2))
+        self.assertFalse(well_formed(bad_formula_2, LANG_GRAMMAR))
         self.assertFalse(bad_formula_2.free_variables())
 
         bad_formula_3: Formula = sc.forall(
@@ -86,15 +88,15 @@ class TestISLa(unittest.TestCase):
             )
         )
 
-        self.assertFalse(well_formed(bad_formula_3))
+        self.assertFalse(well_formed(bad_formula_3, LANG_GRAMMAR))
 
-        self.assertTrue(well_formed(-formula))
-        self.assertFalse(well_formed(-bad_formula))
-        self.assertFalse(well_formed(-bad_formula_2))
-        self.assertFalse(well_formed(-bad_formula_3))
+        self.assertTrue(well_formed(-formula, LANG_GRAMMAR))
+        self.assertFalse(well_formed(-bad_formula, LANG_GRAMMAR))
+        self.assertFalse(well_formed(-bad_formula_2, LANG_GRAMMAR))
+        self.assertFalse(well_formed(-bad_formula_3, LANG_GRAMMAR))
 
-        self.assertFalse(well_formed(formula & bad_formula))
-        self.assertFalse(well_formed(formula | bad_formula))
+        self.assertFalse(well_formed(formula & bad_formula, LANG_GRAMMAR))
+        self.assertFalse(well_formed(formula | bad_formula, LANG_GRAMMAR))
 
         bad_formula_4: Formula = sc.forall(
             assgn_1,
@@ -102,7 +104,7 @@ class TestISLa(unittest.TestCase):
             sc.SMTFormula(cast(z3.BoolRef, prog.to_smt() == z3.StringVal("")), prog)
         )
 
-        self.assertFalse(well_formed(bad_formula_4))
+        self.assertFalse(well_formed(bad_formula_4, LANG_GRAMMAR))
 
         bad_formula_5: Formula = sc.forall(
             assgn_1,
@@ -115,7 +117,7 @@ class TestISLa(unittest.TestCase):
             )
         )
 
-        self.assertFalse(well_formed(bad_formula_5))
+        self.assertFalse(well_formed(bad_formula_5, LANG_GRAMMAR))
 
         bad_formula_6: Formula = sc.forall(
             assgn_1,
@@ -123,7 +125,7 @@ class TestISLa(unittest.TestCase):
             sc.SMTFormula(cast(z3.BoolRef, prog.to_smt() == z3.StringVal("x := x")), prog)
         )
 
-        self.assertFalse(well_formed(bad_formula_6))
+        self.assertFalse(well_formed(bad_formula_6, LANG_GRAMMAR))
 
         bad_formula_7: Formula = sc.forall(
             assgn_1,
@@ -135,7 +137,7 @@ class TestISLa(unittest.TestCase):
             )
         )
 
-        self.assertFalse(well_formed(bad_formula_7))
+        self.assertFalse(well_formed(bad_formula_7, LANG_GRAMMAR))
 
     def test_evaluate(self):
         lhs_1 = BoundVariable("$lhs_1", "<var>")
@@ -390,31 +392,7 @@ class TestISLa(unittest.TestCase):
         result = count(LANG_GRAMMAR, tree, "<start>", DerivationTree("2", None))
         self.assertEqual(SemPredEvalResult(False), result)
 
-    def test_csv_prop(self):
-        mgr = VariableManager(CSV_GRAMMAR)
-        formula = lambda tree: mgr.create(
-            sc.forall(
-                mgr.bv("$header", "<csv-header>"),
-                tree,
-                sc.count(CSV_GRAMMAR, mgr.bv("$header"), "<raw-string>", mgr.num_const("$num")) &
-                sc.forall(
-                    mgr.bv("$line", "<csv-record>"),
-                    tree,
-                    sc.count(CSV_GRAMMAR, mgr.bv("$line"), "<raw-string>", mgr.num_const("$num"))
-                )
-            )
-        )
-
-        csv_doc = "a;b;c\nd;e;f\n"
-        tree = DerivationTree.from_parse_tree(parse(csv_doc, CSV_GRAMMAR))
-        self.assertTrue(evaluate(formula(tree), tree, CSV_GRAMMAR))
-
-        csv_doc = "a;b;c\nd;e;f\ng;h;i;j\n"
-        tree = DerivationTree.from_parse_tree(parse(csv_doc, CSV_GRAMMAR))
-        self.assertFalse(evaluate(formula(tree), tree, CSV_GRAMMAR))
-
     def test_to_tree_prefix_tar_file_name(self):
-        graph = gg.GrammarGraph.from_grammar(tar.TAR_GRAMMAR)
         mgr = VariableManager(tar.TAR_GRAMMAR)
         bind_expression = mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>"
         self.assertEqual(
@@ -458,6 +436,51 @@ class TestISLa(unittest.TestCase):
         self.assertTrue(evaluate(formula.substitute_expressions({start: correct_tree}), correct_tree, XML_GRAMMAR))
         self.assertFalse(evaluate(formula.substitute_expressions({start: wrong_tree}), correct_tree, XML_GRAMMAR))
 
+    def test_xml_with_prefixes(self):
+        inp = '<a xmlns:ns="salami"><ns:asdf>asdf</ns:asdf></a>'
+        tree = isla.DerivationTree.from_parse_tree(
+            list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
+        assert validate_xml(tree)
+
+        self.assertTrue(evaluate(
+            xml_namespace_constraint,
+            grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
+            reference_tree=tree,
+            structural_predicates={IN_TREE_PREDICATE}))
+
+        inp = '<a xmlns:ns="salami" xmlns:ns1="toast"><ns:asdf ns1:asdf="asdf">asdf</ns:asdf></a>'
+        tree = isla.DerivationTree.from_parse_tree(
+            list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
+        assert validate_xml(tree)
+
+        self.assertTrue(evaluate(
+            xml_namespace_constraint,
+            grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
+            reference_tree=tree,
+            structural_predicates={IN_TREE_PREDICATE}))
+
+        inp = '<a xmlns:ons="salami"><ns:asdf>asdf</ns:asdf></a>'
+        tree = isla.DerivationTree.from_parse_tree(
+            list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
+        assert not validate_xml(tree)
+
+        self.assertFalse(evaluate(
+            xml_namespace_constraint,
+            grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
+            reference_tree=tree,
+            structural_predicates={IN_TREE_PREDICATE}))
+
+        inp = '<xmlns:S47 s1="mr"/>'
+        tree = isla.DerivationTree.from_parse_tree(
+            list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
+        assert not validate_xml(tree)
+
+        self.assertFalse(evaluate(
+            xml_namespace_constraint,
+            grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
+            reference_tree=tree,
+            structural_predicates={IN_TREE_PREDICATE}))
+
     def test_csv_property(self):
         property = """
 const start: <start>;
@@ -485,7 +508,7 @@ XYZ;\" asdf \";ABC
         self.assertTrue(evaluate(
             property,
             reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(valid_test_input))[0]),
-            semantic_predicates={COUNT_PREDICATE(CSV_GRAMMAR)},
+            semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR
         ))
 
@@ -496,7 +519,7 @@ XYZ;\" asdf \"
         self.assertFalse(evaluate(
             property,
             reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(invalid_test_input))[0]),
-            semantic_predicates={COUNT_PREDICATE(CSV_GRAMMAR)},
+            semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR
         ))
 
