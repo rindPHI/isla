@@ -13,6 +13,7 @@ from grammar_graph import gg
 import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.helpers import delete_unreachable, roundup
+from input_constraints.isla import parse_isla
 from input_constraints.isla_predicates import just, OCTAL_TO_DEC_PREDICATE
 from input_constraints.type_defs import ParseTree, Grammar
 
@@ -82,7 +83,6 @@ def tar_checksum(
         return isla.SemPredEvalResult(None)
 
     checksum_parser = TarParser(start_symbol="<checksum>")
-    graph = gg.GrammarGraph.from_grammar(grammar)
 
     space_checksum = ('<checksum>', [('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])]),
                                      ('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])]),
@@ -160,8 +160,36 @@ def octal_to_decimal_tar(
         OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"), octal, decimal)
 
 
+size_constr = parse_isla("""
+const start: <start>;
+
+vars {
+  entry: <entry>;
+  content: <content>;
+  content_chars: <maybe_characters>;
+  characters: <characters>;
+  file_size: <file_size>;
+  octal_digits: <octal_digits>;
+  dec_digits: NUM;
+}
+
+constraint {
+  forall entry in start:
+    forall content="{content_chars}<maybe_nuls>" in entry:
+      forall characters in content_chars:
+        forall file_size="{octal_digits}<SPACE>" in entry:
+          num dec_digits:
+            ((>= (str.to_int dec_digits) 10) and 
+            ((<= (str.to_int dec_digits) 100) and 
+            (octal_to_decimal(octal_digits, dec_digits) and 
+             ljust_crop_tar(characters, dec_digits, " "))))
+}
+""", semantic_predicates={
+    OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"),
+    LJUST_CROP_TAR_PREDICATE})
+
 mgr = isla.VariableManager(TAR_GRAMMAR)
-start = mgr.const("$start", "<start>")
+start = mgr.const("start", "<start>")
 TAR_CONSTRAINTS = mgr.create(
     sc.forall(
         mgr.bv("$file_name", "<file_name>"),
@@ -242,25 +270,26 @@ TAR_CONSTRAINTS = mgr.create(
         start,
         ljust_crop_tar(mgr.bv("$content"), 512, "\x00")
     ) &
-    sc.forall(
-        mgr.bv("$entry", "<entry>"),
-        start,
-        sc.forall_bind(
-            mgr.bv("$content_chars", "<maybe_characters>") + "<maybe_nuls>",
-            mgr.bv("$content", "<content>"),
-            mgr.bv("$entry"),
-            sc.forall(
-                mgr.bv("$characters", "<characters>"),
-                mgr.bv("$content_chars"),
-                sc.forall_bind(
-                    mgr.bv("$digits", "<octal_digits>") + "<SPACE>",
-                    mgr.bv("$file_size", "<file_size>"),
-                    mgr.bv("$entry"),
-                    octal_to_decimal_tar(mgr.bv("$digits"), mgr.num_const("$dec_digits")) &
-                    ljust_crop_tar(mgr.bv("$characters"), mgr.num_const("$dec_digits"), " "))) &
-            ljust_crop_tar(mgr.bv("$content"), 512, "\x00")
-        )
-    ) &
+    # sc.forall(
+    #     mgr.bv("$entry", "<entry>"),
+    #     start,
+    #     sc.forall_bind(
+    #         mgr.bv("$content_chars", "<maybe_characters>") + "<maybe_nuls>",
+    #         mgr.bv("$content", "<content>"),
+    #         mgr.bv("$entry"),
+    #         sc.forall(
+    #             mgr.bv("$characters", "<characters>"),
+    #             mgr.bv("$content_chars"),
+    #             sc.forall_bind(
+    #                 mgr.bv("$digits", "<octal_digits>") + "<SPACE>",
+    #                 mgr.bv("$file_size", "<file_size>"),
+    #                 mgr.bv("$entry"),
+    #                 octal_to_decimal_tar(mgr.bv("$digits"), mgr.num_const("$dec_digits")) &
+    #                 ljust_crop_tar(mgr.bv("$characters"), mgr.num_const("$dec_digits"), " "))) &
+    #         ljust_crop_tar(mgr.bv("$content"), 512, "\x00")
+    #     )
+    # ) &
+    size_constr &
     sc.forall(
         mgr.bv("$final", "<final_entry>"),
         start,

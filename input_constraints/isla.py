@@ -313,28 +313,19 @@ class DerivationTree:
 
     def find_node(self, node_or_id: Union['DerivationTree', int]) -> Optional[Path]:
         """Finds a node by its (assumed unique) ID. Returns the path relative to this node."""
-        assert self.has_unique_ids()
-        result = None
-
         if isinstance(node_or_id, DerivationTree):
             node_or_id = node_or_id.id
 
-        def action_wrapper(signal_abort: bool = False):
-            def action(path, tree) -> Union[None, bool]:
-                nonlocal result
-                if tree.id == node_or_id:
-                    result = path
+        stack: List[Tuple[Path, DerivationTree]] = [((), self)]
+        while stack:
+            path, tree = stack.pop()
+            if tree.id == node_or_id:
+                return path
 
-                    if signal_abort:
-                        return True
+            if tree.children:
+                stack.extend([(path + (idx,), child) for idx, child in enumerate(tree.children)])
 
-                if signal_abort:
-                    return False
-
-            return action
-
-        self.traverse(action_wrapper(), action_wrapper(signal_abort=True))
-        return result
+        return None
 
     def traverse(
             self,
@@ -486,32 +477,24 @@ class DerivationTree:
         assert self.has_unique_ids()
 
         # Looking up IDs performs much better for big trees, since we do not necessarily
-        # have to compute hashes for all nodes (made necessary by tar case study)
+        # have to compute hashes for all nodes (made necessary by tar case study).
+        # We remove "nested" replacements since removing elements in replacements is not intended.
+
         id_subst_map = {
-            tree.id if isinstance(tree, DerivationTree) else tree: repl
-            for tree, repl in subst_map.items()
-            if isinstance(tree, DerivationTree)
+            tree.id: repl for tree, repl in subst_map.items()
+            if (isinstance(tree, DerivationTree) and
+                not any(repl.find_node(tree.id)
+                        for otree, repl in subst_map.items()
+                        if isinstance(otree, DerivationTree)))
         }
 
-        stack: List[DerivationTree] = []
+        result = self
+        for tree_id in id_subst_map:
+            path = result.find_node(tree_id)
+            if path is not None:
+                result = result.replace_path(path, id_subst_map[tree_id])
 
-        def action(_, node: DerivationTree) -> None:
-            if node.id in id_subst_map:
-                for _ in range(len(node.children or [])):
-                    stack.pop()
-                stack.append(id_subst_map[node.id])
-                return
-
-            if not node.children:
-                stack.append(node)
-                return
-
-            children = [stack.pop() for _ in range(len(node.children))]
-            new_node = DerivationTree(node.value, children, id=node.id)
-            stack.append(new_node)
-
-        self.traverse(action, kind=DerivationTree.TRAVERSE_POSTORDER, reverse=True)
-        return stack.pop()
+        return result
 
     def is_prefix(self, other: 'DerivationTree') -> bool:
         if len(self) > len(other):

@@ -58,6 +58,15 @@ def validate_xml(inp: DerivationTree, out: Optional[List[str]] = None) -> bool:
 
 
 if __name__ == '__main__':
+    # Demonstrate that grammar fuzzer produces "wrong" inputs
+    fuzzer = GrammarCoverageFuzzer(XML_GRAMMAR)
+    for _ in range(30):
+        inp = DerivationTree.from_parse_tree(fuzzer.expand_tree(("<start>", None)))
+        out = []
+        if not validate_xml(inp, out):
+            assert out
+            print(f"Invalid input produced by fuzzer ({out[0]}): {inp}", file=sys.stderr)
+
     constraint = """
 const start: <start>;
 
@@ -84,15 +93,6 @@ constraint {
 
     print(evaluate(constraint, reference_tree=c_tree, grammar=XML_GRAMMAR))
     print(evaluate(constraint, reference_tree=w_tree, grammar=XML_GRAMMAR))
-
-    # Demonstrate that grammar fuzzer produces "wrong" inputs
-    fuzzer = GrammarCoverageFuzzer(XML_GRAMMAR)
-    for _ in range(30):
-        inp = DerivationTree.from_parse_tree(fuzzer.expand_tree(("<start>", None)))
-        out = []
-        if not validate_xml(inp, out):
-            assert out
-            print(f"Invalid input produced by fuzzer ({out[0]}): {inp}", file=sys.stderr)
 
     # Try out solver
 

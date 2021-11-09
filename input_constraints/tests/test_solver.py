@@ -310,6 +310,7 @@ constraint {
         # TODO: On CI, get error message
         # "AssertionError: tar: \r: Cannot create symlink to ‘’: No such file or directory",
         # so obviously link name is empty. That shouldn't happen... Check!
+
         self.execute_generation_test(
             tar.TAR_CONSTRAINTS,
             grammar=tar.TAR_GRAMMAR,
@@ -326,7 +327,6 @@ constraint {
                 (200,),
                 k=1
             ),
-            # print_only=True
         )
 
     def test_simple_tar(self):

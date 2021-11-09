@@ -377,10 +377,15 @@ def octal_to_dec(
     decimal_parser = lambda inp: DerivationTree.from_parse_tree(_decimal_parser(inp)[0][1][0])
     octal_parser = lambda inp: DerivationTree.from_parse_tree(_octal_parser(inp)[0][1][0])
 
-    if isinstance(octal, DerivationTree):
-        if not octal.is_complete():
-            return SemPredEvalResult(None)
+    # TODO: If we are passed a complete tree for the decimal, we should convert it to octal!
 
+    if (isinstance(octal, DerivationTree) and
+            isinstance(decimal, DerivationTree) and
+            not octal.is_complete() and
+            not decimal.is_complete()):
+        return SemPredEvalResult(None)
+
+    if isinstance(octal, DerivationTree) and octal.is_complete():
         # Conversion to decimal
         octal_str = str(octal)
 
@@ -393,19 +398,44 @@ def octal_to_dec(
 
         return SemPredEvalResult({decimal: decimal_parser(str(decimal_number))})
 
-    assert isinstance(octal, isla.Constant)
-    assert isinstance(decimal, DerivationTree)
+    if isinstance(decimal, DerivationTree) and decimal.is_complete():
+        # Conversion to decimal
+        decimal_number = int(str(decimal))
 
-    if not decimal.is_complete():
-        return SemPredEvalResult(None)
+        octal_str = ""
+        while decimal_number > 0:
+            octal_str += str(decimal_number % 8)
+            decimal_number = decimal_number // 8
 
-    decimal_number = int(str(decimal))
-    octal_str = str(oct(decimal_number))[2:]
+        if isinstance(octal, DerivationTree) and octal_str == str(decimal):
+            return SemPredEvalResult(True)
 
-    if isinstance(octal, DerivationTree) and octal_str == str(octal):
-        return SemPredEvalResult(True)
+        return SemPredEvalResult({octal: octal_parser(octal_str)})
 
-    return SemPredEvalResult({octal: octal_parser(octal_str)})
+    if isinstance(octal, isla.Constant) and isinstance(decimal, DerivationTree):
+        if not decimal.is_complete():
+            return SemPredEvalResult(None)
+
+        decimal_number = int(str(decimal))
+        octal_str = str(oct(decimal_number))[2:]
+
+        if isinstance(octal, DerivationTree) and octal_str == str(octal):
+            return SemPredEvalResult(True)
+
+        return SemPredEvalResult({octal: octal_parser(octal_str)})
+
+    if isinstance(decimal, isla.Constant) and isinstance(octal, DerivationTree):
+        if not octal.is_complete():
+            return SemPredEvalResult(None)
+
+        decimal_str = str(int(str(octal), 8))
+
+        if isinstance(decimal, DerivationTree) and decimal_str == str(decimal):
+            return SemPredEvalResult(True)
+
+        return SemPredEvalResult({decimal: octal_parser(decimal_str)})
+
+    assert False
 
 
 OCTAL_TO_DEC_PREDICATE = lambda grammar, octal_start, decimal_start: SemanticPredicate(
