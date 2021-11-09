@@ -179,7 +179,8 @@ constraint {
             formula,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=3,
-            num_solutions=50)
+            num_solutions=50
+        )
 
     def test_declared_before_used_concrete_syntax(self):
         formula = """
@@ -325,7 +326,7 @@ constraint {
                 (200,),
                 k=1
             ),
-            print_only=True
+            # print_only=True
         )
 
     def test_simple_tar(self):

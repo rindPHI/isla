@@ -32,8 +32,7 @@ def insert_tree(grammar: CanonicalGrammar,
     result: List[DerivationTree] = []
     result_hashes: Set[int] = set()
 
-    def add_to_result(
-            new_tree: Union[DerivationTree, List[DerivationTree]]) -> bool:
+    def add_to_result(new_tree: Union[DerivationTree, List[DerivationTree]]) -> bool:
         if type(new_tree) is list:
             for t in new_tree:
                 if not add_to_result(t):
@@ -108,7 +107,7 @@ def insert_tree(grammar: CanonicalGrammar,
         current_graph_node: NonterminalNode = graph.get_node(curr_node)
         if graph.reachable(current_graph_node, current_graph_node):
             for self_embedding_path in paths_between(graph, curr_node, curr_node):
-                for self_embedding_tree in path_to_tree(grammar, graph, self_embedding_path):
+                for self_embedding_tree in path_to_tree(grammar, self_embedding_path):
                     # For each the curr_tree and the tree to insert, have to find one leaf s.t. either
                     # (1) we can replace the leaf with that tree, or
                     # (2) we can add that tree somewhere below that leaf.
@@ -116,6 +115,8 @@ def insert_tree(grammar: CanonicalGrammar,
                     def insert(trees_to_insert: List[DerivationTree],
                                into_tree: DerivationTree,
                                insert_paths: Optional[List[Path]] = None) -> List[DerivationTree]:
+                        assert all(t.id not in [t.id for _, t in into_tree.paths()] for t in trees_to_insert)
+
                         if not trees_to_insert:
                             assert insert_paths is not None
                             return [into_tree]
@@ -153,7 +154,7 @@ def insert_tree(grammar: CanonicalGrammar,
                                         continue
 
                                     for connecting_path in paths_between(graph, leaf_nonterm, nonterm_to_insert):
-                                        for connecting_tree in path_to_tree(grammar, graph, connecting_path):
+                                        for connecting_tree in path_to_tree(grammar, connecting_path):
                                             for insert_leaf_path, (insert_leaf_nonterm, _) in \
                                                     connecting_tree.open_leaves():
                                                 if insert_leaf_nonterm != nonterm_to_insert:
@@ -172,11 +173,16 @@ def insert_tree(grammar: CanonicalGrammar,
 
                     results = insert([curr_tree, tree], self_embedding_tree)
                     for instantiated_tree in results:
+                        assert instantiated_tree.has_unique_ids()
+
                         orig_node = in_tree.get_subtree(current_path)
                         assert instantiated_tree.value == orig_node.value
-                        instantiated_tree.id = orig_node.id
+                        # instantiated_tree.id = orig_node.id
+                        assert instantiated_tree.has_unique_ids()
 
                         new_tree = in_tree.replace_path(current_path, instantiated_tree)
+                        new_tree = DerivationTree(new_tree.value, new_tree.children)
+                        assert new_tree.has_unique_ids()
                         if not add_to_result(new_tree):
                             return result
 
@@ -253,7 +259,7 @@ def wrap_in_tree_starting_in(start_nonterminal: str,
 
 
 def path_to_tree(
-        grammar: CanonicalGrammar, graph: GrammarGraph, path: Union[Tuple[str], List[str]]) -> List[DerivationTree]:
+        grammar: CanonicalGrammar, path: Union[Tuple[str], List[str]]) -> List[DerivationTree]:
     assert len(path) > 1
     result: List[DerivationTree] = []
     candidates: List[DerivationTree] = [DerivationTree(path[0], None)]

@@ -141,6 +141,13 @@ class DerivationTree:
         self.__structural_hash = structural_hash
         self.__k_paths: Dict[int, Set[Tuple[gg.Node, ...]]] = k_paths or {}
 
+    def has_unique_ids(self) -> bool:
+        return all(
+            not any(
+                subt_1 is not subt_2 and subt_1.id == subt_2.id
+                for _, subt_2 in self.paths())
+            for _, subt_1 in self.paths())
+
     def k_coverage(self, graph: gg.GrammarGraph, k: int) -> float:
         return len(self.k_paths(graph, k)) / len(graph.k_paths(k))
 
@@ -306,15 +313,28 @@ class DerivationTree:
 
     def find_node(self, node_or_id: Union['DerivationTree', int]) -> Optional[Path]:
         """Finds a node by its (assumed unique) ID. Returns the path relative to this node."""
+        assert self.has_unique_ids()
+        result = None
 
         if isinstance(node_or_id, DerivationTree):
             node_or_id = node_or_id.id
 
-        for path, node in self.paths():
-            if node.id == node_or_id:
-                return path
+        def action_wrapper(signal_abort: bool = False):
+            def action(path, tree) -> Union[None, bool]:
+                nonlocal result
+                if tree.id == node_or_id:
+                    result = path
 
-        return None
+                    if signal_abort:
+                        return True
+
+                if signal_abort:
+                    return False
+
+            return action
+
+        self.traverse(action_wrapper(), action_wrapper(signal_abort=True))
+        return result
 
     def traverse(
             self,
@@ -463,12 +483,14 @@ class DerivationTree:
     def substitute(self, subst_map: Dict[Union[Variable, 'DerivationTree'], 'DerivationTree']) -> 'DerivationTree':
         # We perform an iterative reverse post-order depth-first traversal and use a stack
         # to store intermediate results from lower levels.
+        assert self.has_unique_ids()
 
         # Looking up IDs performs much better for big trees, since we do not necessarily
         # have to compute hashes for all nodes (made necessary by tar case study)
         id_subst_map = {
-            var_or_tree.id if isinstance(var_or_tree, DerivationTree) else var_or_tree: repl
-            for var_or_tree, repl in subst_map.items()
+            tree.id if isinstance(tree, DerivationTree) else tree: repl
+            for tree, repl in subst_map.items()
+            if isinstance(tree, DerivationTree)
         }
 
         stack: List[DerivationTree] = []
@@ -489,8 +511,6 @@ class DerivationTree:
             stack.append(new_node)
 
         self.traverse(action, kind=DerivationTree.TRAVERSE_POSTORDER, reverse=True)
-
-        assert len(stack) == 1
         return stack.pop()
 
     def is_prefix(self, other: 'DerivationTree') -> bool:

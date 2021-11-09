@@ -5,6 +5,8 @@ from fuzzingbook.GrammarFuzzer import tree_to_string
 from fuzzingbook.Grammars import convert_ebnf_grammar, srange
 from fuzzingbook.Parser import EarleyParser
 from xml.sax.saxutils import escape
+
+from input_constraints import isla
 from input_constraints.type_defs import ParseTree, Path
 
 LANG_GRAMMAR = {
@@ -103,6 +105,14 @@ def eval_lang(inp: str) -> Dict[str, int]:
     dfs(tree, evalAssignments)
 
     return valueMap
+
+
+def validate_lang(inp: isla.DerivationTree) -> bool:
+    try:
+        eval_lang(str(inp))
+        return True
+    except Exception:
+        return False
 
 
 def dfs(tree: ParseTree, action: Callable[[ParseTree], None] = print):

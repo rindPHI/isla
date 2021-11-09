@@ -573,8 +573,7 @@ class ISLaSolver:
                 for idx in range(len(path) + 1)
             })
 
-            result.append(
-                SolutionState(updated_constraint, expanded_tree))
+            result.append(SolutionState(updated_constraint, expanded_tree))
 
         return result
 
@@ -664,17 +663,17 @@ class ISLaSolver:
 
             instantiated_formula = existential_formula.inner_formula.substitute_expressions(variable_substitutions)
 
-            result.extend([
-                SolutionState(
-                    (instantiated_formula
-                     & self.formula.substitute_expressions(
-                                {self.top_constant: state.tree.substitute(tree_substitution)})
-                     & isla.replace_formula(
-                                state.constraint, existential_formula, sc.true()
-                            ).substitute_expressions(tree_substitution)),
-                    state.tree.substitute(tree_substitution)
-                )
-                for tree_substitution in tree_substitutions])
+            for tree_substitution in tree_substitutions:
+                new_formula = (
+                        instantiated_formula &
+                        self.formula.substitute_expressions(
+                            {self.top_constant: state.tree.substitute(tree_substitution)}) &
+                        isla.replace_formula(
+                            state.constraint,
+                            existential_formula,
+                            sc.true()).substitute_expressions(tree_substitution))
+
+                result.append(SolutionState(new_formula, state.tree.substitute(tree_substitution)))
 
         return result
 

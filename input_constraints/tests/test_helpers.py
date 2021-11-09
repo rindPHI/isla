@@ -44,22 +44,21 @@ class TestHelpers(unittest.TestCase):
         self.assertFalse(is_prefix((1,), (2,)))
 
     def test_path_to_tree(self):
-        graph = gg.GrammarGraph.from_grammar(LANG_GRAMMAR)
         self.assertEqual([('<stmt>', [('<assgn>', None)]),
                           ('<stmt>', [('<assgn>', None), (' ; ', []), ('<stmt>', None)])],
                          [tree.to_parse_tree()
-                          for tree in path_to_tree(canonical(LANG_GRAMMAR), graph, ["<stmt>", "<assgn>"])])
+                          for tree in path_to_tree(canonical(LANG_GRAMMAR), ["<stmt>", "<assgn>"])])
 
         self.assertEqual([('<stmt>', [('<assgn>', None), (' ; ', []), ('<stmt>', None)])],
                          [tree.to_parse_tree()
-                          for tree in path_to_tree(canonical(LANG_GRAMMAR), graph, ["<stmt>", "<stmt>"])])
+                          for tree in path_to_tree(canonical(LANG_GRAMMAR), ["<stmt>", "<stmt>"])])
 
         self.assertEqual([('<stmt>', [('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', [('<digit>', None)])])]),
                           ('<stmt>', [('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', [('<digit>', None)])]),
                                       (' ; ', []), ('<stmt>', None)])],
                          [tree.to_parse_tree()
                           for tree in path_to_tree(
-                             canonical(LANG_GRAMMAR), graph, ["<stmt>", "<assgn>", "<rhs>", "<digit>"])])
+                             canonical(LANG_GRAMMAR), ["<stmt>", "<assgn>", "<rhs>", "<digit>"])])
 
     def test_find_all_paths(self):
         graph = GrammarGraph.from_grammar(LANG_GRAMMAR)
