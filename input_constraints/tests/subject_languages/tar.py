@@ -8,7 +8,6 @@ from typing import Union, List, Optional, cast, Callable
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string
 from fuzzingbook.Grammars import srange
-from grammar_graph import gg
 
 import input_constraints.isla_shortcuts as sc
 from input_constraints import isla

@@ -319,7 +319,7 @@ constraint {
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
             # debug=True,
-            num_solutions=3,
+            num_solutions=10,
             precompute_reachability=False,
             custom_test_func=extract_tar,
             cost_settings=CostSettings(

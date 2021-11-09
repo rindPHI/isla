@@ -404,7 +404,7 @@ def octal_to_dec(
 
         octal_str = ""
         while decimal_number > 0:
-            octal_str += str(decimal_number % 8)
+            octal_str = str(decimal_number % 8) + octal_str
             decimal_number = decimal_number // 8
 
         if isinstance(octal, DerivationTree) and octal_str == str(decimal):
