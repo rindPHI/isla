@@ -827,7 +827,7 @@ class BindExpression:
     def match(self, tree: DerivationTree) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
         result: Dict[BoundVariable, Tuple[Path, DerivationTree]] = {}
 
-        for bound_variables in reversed(self.flatten_bound_elements()):
+        for bound_variables in reversed( self.flatten_bound_elements()):
             subtrees = list(tree.paths())
             curr_elem = bound_variables.pop(0)
 

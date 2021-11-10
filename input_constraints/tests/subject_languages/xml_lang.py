@@ -40,8 +40,11 @@ XML_GRAMMAR = {
 }
 
 XML_GRAMMAR_WITH_NAMESPACE_PREFIXES = copy.deepcopy(XML_GRAMMAR)
-XML_GRAMMAR_WITH_NAMESPACE_PREFIXES["<id>"].append("<id-with-prefix>")
 XML_GRAMMAR_WITH_NAMESPACE_PREFIXES.update({
+    "<id>": [
+        "<id-no-prefix>",
+        "<id-with-prefix>"
+    ],
     "<id-no-prefix>": [
         "<id-start-char>",
         "<id-start-char><id-chars>",
