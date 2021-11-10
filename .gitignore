@@ -4,3 +4,5 @@ prof/
 isla.egg-info/
 .tox/
 dist/
+input_constraints/playground.py
+input_constraints/testcvc5.py
