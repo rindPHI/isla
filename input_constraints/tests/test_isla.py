@@ -532,6 +532,32 @@ class TestISLa(unittest.TestCase):
                 IN_TREE_PREDICATE,
                 SAME_POSITION_PREDICATE}))
 
+        inp = '<x xmlns:ns="..."><a ns:b="..." ns:c="..."/></x>'
+        tree = isla.DerivationTree.from_parse_tree(
+            list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
+        assert validate_xml(tree)
+
+        self.assertTrue(evaluate(
+            xml_no_attr_redef_constraint,
+            grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
+            reference_tree=tree,
+            structural_predicates={
+                IN_TREE_PREDICATE,
+                SAME_POSITION_PREDICATE}))
+
+        inp = '<x xmlns:ns="..."><a ns:b="..." ns:b="..."/></x>'
+        tree = isla.DerivationTree.from_parse_tree(
+            list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
+        assert not validate_xml(tree)
+
+        self.assertFalse(evaluate(
+            xml_no_attr_redef_constraint,
+            grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
+            reference_tree=tree,
+            structural_predicates={
+                IN_TREE_PREDICATE,
+                SAME_POSITION_PREDICATE}))
+
     def test_csv_property(self):
         property = """
 const start: <start>;
