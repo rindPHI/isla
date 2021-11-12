@@ -893,20 +893,17 @@ class BindExpression:
         # to greedily in the first place; e.g., an XML <attribute> might contain other XML
         # <attribute>s that we should rather match. Thus, we might have to backtrack.
         if not matches_excluded:
-            excluded_matches: Tuple[Tuple[Path, BoundVariable], ...]
-            for excluded_matches in itertools.chain.from_iterable(
+            for matches_excluded in itertools.chain.from_iterable(
                     itertools.combinations({p: v for v, (p, t) in result.items()}.items(), k)
-                    for k in range(len(result) + 1)):
-                if not excluded_matches:
-                    continue
+                    for k in range(1, len(result) + 1)):
                 curr_elem: BoundVariable
                 backtrack_result = BindExpression.match_single_optionals_combination(
                     list(orig_subtrees),
                     list(orig_bound_variables),
-                    excluded_matches
+                    matches_excluded
                 )
 
-                if backtrack_result is not None and set(backtrack_result.keys()) == set(orig_bound_variables):
+                if backtrack_result is not None:
                     return backtrack_result
 
         return None
