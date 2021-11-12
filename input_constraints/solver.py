@@ -577,15 +577,14 @@ class ISLaSolver:
 
         return result
 
-    def match_universal_formulas(self,
-                                 universal_formulas: List[isla.ForallFormula],
-                                 state: SolutionState) -> List[SolutionState]:
+    def match_universal_formulas(
+            self, universal_formulas: List[isla.ForallFormula], state: SolutionState) -> List[SolutionState]:
         number_matches = 0
         context_formula = state.constraint
 
         for universal_formula in universal_formulas:
             matches: List[Dict[isla.Variable, Tuple[Path, DerivationTree]]] = \
-                [match for match in isla.matches_for_quantified_formula(universal_formula)
+                [match for match in isla.matches_for_quantified_formula(universal_formula, self.grammar)
                  if not universal_formula.is_already_matched(match[universal_formula.bound_variable][1])]
 
             universal_formula_with_matches = universal_formula.add_already_matched({
@@ -609,13 +608,12 @@ class ISLaSolver:
         else:
             return []
 
-    def match_existential_formula(self,
-                                  existential_formula: isla.ExistsFormula,
-                                  state: SolutionState) -> List[SolutionState]:
+    def match_existential_formula(
+            self, existential_formula: isla.ExistsFormula, state: SolutionState) -> List[SolutionState]:
         result: List[SolutionState] = []
 
         matches: List[Dict[isla.Variable, Tuple[Path, DerivationTree]]] = \
-            isla.matches_for_quantified_formula(existential_formula)
+            isla.matches_for_quantified_formula(existential_formula, self.grammar)
 
         for match in matches:
             inst_formula = existential_formula.inner_formula.substitute_expressions({
@@ -990,7 +988,7 @@ class ISLaSolver:
         for universal_formula in [conjunct for conjunct in get_conjuncts(state.constraint)
                                   if isinstance(conjunct, isla.ForallFormula)]:
             if (universal_formula.in_variable.is_complete()
-                    and not isla.matches_for_quantified_formula(universal_formula)):
+                    and not isla.matches_for_quantified_formula(universal_formula, self.grammar)):
                 result = SolutionState(
                     isla.replace_formula(result.constraint, universal_formula, sc.true()),
                     result.tree)
@@ -1005,7 +1003,7 @@ class ISLaSolver:
 
             if not (any(self.quantified_formula_might_match(universal_formula, leaf_path, universal_formula.in_variable)
                         for leaf_path, leaf_node in universal_formula.in_variable.open_leaves())
-                    or [match for match in isla.matches_for_quantified_formula(universal_formula)
+                    or [match for match in isla.matches_for_quantified_formula(universal_formula, self.grammar)
                         if not universal_formula.is_already_matched(match[universal_formula.bound_variable][1])]):
                 result = SolutionState(
                     isla.replace_formula(result.constraint, universal_formula, sc.true()),

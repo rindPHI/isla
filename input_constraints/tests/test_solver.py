@@ -9,7 +9,6 @@ from xml.sax.saxutils import escape
 import pytest
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
-from fuzzingbook.Parser import EarleyParser
 
 from input_constraints import isla
 from input_constraints import isla_shortcuts as sc
@@ -22,7 +21,7 @@ from input_constraints.tests.subject_languages import rest, tar, simple_tar, scr
 from input_constraints.tests.subject_languages.csv import csv_lint
 from input_constraints.tests.subject_languages.tar import extract_tar
 from input_constraints.tests.subject_languages.xml_lang import validate_xml, XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, \
-    xml_namespace_constraint, XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT
+    XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT
 from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR, XML_GRAMMAR
 
 
@@ -162,23 +161,28 @@ constraint {
 
     def test_xml_with_prefixes(self):
         # TODO: Optimize cost function to create interesting namespace usages
+        # TODO: Creates multiple solutions of type <z>...</z>, though <text>
+        #       nonterminals are not bound by any quantifiers and should thus
+        #       only be instantiated once!
         self.execute_generation_test(
             XML_NAMESPACE_CONSTRAINT & XML_WELLFORMEDNESS_CONSTRAINT,
             grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
             max_number_free_instantiations=1,
             num_solutions=50,
-            custom_test_func=validate_xml,
+            # custom_test_func=validate_xml,
             cost_settings=CostSettings(
                 weight_vectors=(
                     CostWeightVector(
-                        tree_closing_cost=10,
-                        vacuous_penalty=5,
-                        constraint_cost=10,
-                        derivation_depth_penalty=3,
-                        low_k_coverage_penalty=23,
-                        low_global_k_path_coverage_penalty=20)
-                    ,),
-                cost_phase_lengths=(200,))
+                        tree_closing_cost=20,
+                        vacuous_penalty=13,
+                        constraint_cost=5,
+                        derivation_depth_penalty=10,
+                        low_k_coverage_penalty=21,
+                        low_global_k_path_coverage_penalty=50),
+                ),
+                cost_phase_lengths=(200,),
+                k=3
+            )
         )
 
     def test_declared_before_used(self):
@@ -331,7 +335,7 @@ constraint {
             print_only=True
         )
 
-    @pytest.mark.skip(reason="Have to disable assertions to run this test, disabling in CI pipeline.")
+    # @pytest.mark.skip(reason="Have to disable assertions to run this test, disabling in CI pipeline.")
     def test_tar(self):
         self.execute_generation_test(
             tar.TAR_CONSTRAINTS,

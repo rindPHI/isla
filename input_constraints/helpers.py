@@ -2,12 +2,12 @@ import itertools
 import logging
 import random
 import math
-from typing import Optional, Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence
+from typing import Optional, Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast
 
 import z3
 from fuzzingbook.Grammars import unreachable_nonterminals, is_nonterminal
 
-from input_constraints.type_defs import Path, Grammar, ParseTree
+from input_constraints.type_defs import Path, Grammar, ParseTree, ImmutableGrammar
 
 S = TypeVar('S')
 T = TypeVar('T')
@@ -233,3 +233,13 @@ def weighted_geometric_mean(seq: Sequence[float], weights: Sequence[float]) -> f
 
     return (math.prod([(n + 1) ** w for n, w in zip(seq, weights) if w > 0]) **
             (1 / sum([w for w in weights if w > 0]))) - 1
+
+
+def grammar_to_immutable(grammar: Grammar) -> ImmutableGrammar:
+    return cast(
+        Tuple[Tuple[str, Tuple[str, ...]]],
+        tuple({k: tuple(v) for k, v in grammar.items()}.items()))
+
+
+def immutable_to_grammar(immutable: ImmutableGrammar) -> Grammar:
+    return {k: list(v) for k, v in dict(immutable).items()}

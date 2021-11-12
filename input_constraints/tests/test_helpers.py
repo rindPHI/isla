@@ -3,7 +3,6 @@ import unittest
 from typing import Optional
 
 from fuzzingbook.Parser import EarleyParser, canonical
-from grammar_graph import gg
 from grammar_graph.gg import GrammarGraph
 
 from input_constraints.existential_helpers import path_to_tree, paths_between

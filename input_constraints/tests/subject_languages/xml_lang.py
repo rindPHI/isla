@@ -1,6 +1,5 @@
 import copy
 import string
-import string
 import xml.etree.ElementTree as ET
 from html import escape
 from typing import Optional, List
@@ -84,12 +83,10 @@ const start: <start>;
 
 vars {
     prefix_id: <id-with-prefix>;
-    prefix_use, prefix_def, xmlns: <id-no-prefix>;
-    outer_tag: <xml-tree>;
+    prefix_use, prefix_def: <id-no-prefix>;
+    xml_tree, outer_tag: <xml-tree>;
     attribute, cont_attribute, def_attribute: <xml-attribute>;
     contained_tree: <inner-xml-tree>;
-    open_tag: <xml-open-tag>;
-    open_close_tag: <xml-openclose-tag>;
 }
 
 constraint {
@@ -98,22 +95,13 @@ constraint {
             ((= prefix_use "xmlns") or
                 exists outer_tag="<<id> {cont_attribute}>{contained_tree}</<id>>" in start:
                     (inside(attribute, contained_tree) and 
-                     exists def_attribute="{xmlns}:{prefix_def}=\\\"<text>\\\"" in cont_attribute:
-                         ((= prefix_use prefix_def) and 
-                          (= xmlns "xmlns")))) and
-    (forall open_tag="<{prefix_use}:<id-no-prefix>[ <xml-attribute>]>" in start:
+                     exists def_attribute="xmlns:{prefix_def}=\\\"<text>\\\"" in cont_attribute:
+                         (= prefix_use prefix_def))) and
+    forall xml_tree="<{prefix_use}:<id-no-prefix>[ <xml-attribute>][/]>[<inner-xml-tree><xml-close-tag>]" in start:
         exists outer_tag="<<id> {cont_attribute}>{contained_tree}</<id>>" in start:
-            (inside(open_tag, contained_tree) and 
-             exists def_attribute="{xmlns}:{prefix_def}=\\\"<text>\\\"" in cont_attribute:
-                 ((= prefix_use prefix_def) and 
-                  (= xmlns "xmlns"))) and 
-     forall open_close_tag="<{prefix_use}:<id-no-prefix>[ <xml-attribute>]/>" in start:
-        exists outer_tag="<<id> {cont_attribute}>{contained_tree}</<id>>" in start:
-            (inside(open_close_tag, contained_tree) and 
-             exists def_attribute="{xmlns}:{prefix_def}=\\\"<text>\\\"" in cont_attribute:
-                 ((= prefix_use prefix_def) and 
-                  (= xmlns "xmlns")))
-     ))
+            (inside(xml_tree, contained_tree) and 
+             exists def_attribute="xmlns:{prefix_def}=\\\"<text>\\\"" in cont_attribute:
+                 (= prefix_use prefix_def)))
 }
 """
 

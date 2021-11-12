@@ -1,9 +1,10 @@
 import logging
+import random
 import string
 import sys
 import xml.etree.ElementTree as ET
 from html import escape
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.Grammars import srange
@@ -12,6 +13,7 @@ from fuzzingbook.Parser import EarleyParser
 from input_constraints.evaluator import auto_tune_weight_vector
 from input_constraints.isla import parse_isla, evaluate, DerivationTree
 from input_constraints.solver import ISLaSolver, CostSettings
+from input_constraints.tests.subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 
 XML_GRAMMAR = {
     "<start>": ["<xml-tree>"],
@@ -59,13 +61,19 @@ def validate_xml(inp: DerivationTree, out: Optional[List[str]] = None) -> bool:
 
 if __name__ == '__main__':
     # Demonstrate that grammar fuzzer produces "wrong" inputs
-    fuzzer = GrammarCoverageFuzzer(XML_GRAMMAR)
-    for _ in range(30):
+    fuzzer = GrammarCoverageFuzzer(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
+    errors: Dict[str, int] = {}
+    for _ in range(100):
         inp = DerivationTree.from_parse_tree(fuzzer.expand_tree(("<start>", None)))
         out = []
         if not validate_xml(inp, out):
             assert out
+            error = out[0][:out[0].index(":")]
+            errors.setdefault(error, 0)
+            errors[error] += 1
             print(f"Invalid input produced by fuzzer ({out[0]}): {inp}", file=sys.stderr)
+
+    print("Encountered errors: " + ", ".join({f"{e} ({n})" for e, n in errors.items()}))
 
     constraint = """
 const start: <start>;

@@ -1,9 +1,7 @@
-import copy
 import random
 import unittest
 from typing import List
 
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.GrammarFuzzer import GrammarFuzzer
 
 from input_constraints.helpers import parent_or_child

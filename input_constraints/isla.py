@@ -3,20 +3,21 @@ import itertools
 import logging
 import pickle
 import re
-from functools import reduce
+from functools import reduce, lru_cache
 from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable, Sequence
 
 import z3
+from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
-from fuzzingbook.Grammars import is_nonterminal, RE_NONTERMINAL
+from fuzzingbook.Grammars import is_nonterminal, RE_NONTERMINAL, nonterminals
 from fuzzingbook.Parser import EarleyParser, PEGParser
 from grammar_graph import gg
 from orderedset import OrderedSet
 
 from input_constraints.concrete_syntax import ISLA_GRAMMAR
 from input_constraints.helpers import get_symbols, z3_subst, is_valid, \
-    replace_line_breaks, delete_unreachable, pop, z3_solve, powerset
-from input_constraints.type_defs import ParseTree, Path, Grammar
+    replace_line_breaks, delete_unreachable, pop, z3_solve, powerset, grammar_to_immutable, immutable_to_grammar
+from input_constraints.type_defs import ParseTree, Path, Grammar, ImmutableGrammar
 
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
 Assignment = Tuple['Constant', 'Formula', 'DerivationTree']
@@ -719,6 +720,7 @@ class BindExpression:
             ])
 
         self.prefixes: Dict[str, List[Tuple[DerivationTree, Dict[BoundVariable, Path]]]] = {}
+        self.__flattened_elements: Dict[str, Tuple[Tuple[BoundVariable, ...], ...]] = {}
 
     def __add__(self, other: Union[str, 'BoundVariable']) -> 'BindExpression':
         assert type(other) == str or type(other) == BoundVariable
@@ -735,11 +737,11 @@ class BindExpression:
         # Not isinstance(var, BoundVariable) since we want to exclude dummy variables
         return OrderedSet([var for var in self.bound_elements if type(var) is BoundVariable])
 
-    def all_bound_variables(self) -> OrderedSet[BoundVariable]:
+    def all_bound_variables(self, grammar: Grammar) -> OrderedSet[BoundVariable]:
         # Includes dummy variables
         return OrderedSet([
             var
-            for alternative in self.flatten_bound_elements()
+            for alternative in self.flatten_bound_elements(grammar, in_nonterminal=None)
             for var in alternative
             if isinstance(var, BoundVariable)])
 
@@ -753,7 +755,7 @@ class BindExpression:
 
         result: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]] = []
 
-        for bound_elements in self.flatten_bound_elements():
+        for bound_elements in self.flatten_bound_elements(grammar, in_nonterminal):
             placeholder_map: Dict[Union[str, BoundVariable], str] = {}
 
             for bound_element in bound_elements:
@@ -801,42 +803,79 @@ class BindExpression:
         self.prefixes[in_nonterminal] = result
         return result
 
-    def flatten_bound_elements(self):
+    def flatten_bound_elements(
+            self, grammar: Grammar, in_nonterminal: Optional[str] = None) -> Tuple[Tuple[BoundVariable, ...], ...]:
         """Returns all possible bound elements lists where each contained optional either has
         been chosen or removed. If this BindExpression has no optionals, the returned list is
         a singleton."""
-        bound_elements_combinations: List[List[BoundVariable]] = []
+        if in_nonterminal and in_nonterminal in self.__flattened_elements:
+            return self.__flattened_elements[in_nonterminal]
+
+        bound_elements_combinations: Tuple[Tuple[BoundVariable, ...], ...] = ()
 
         # Consider all possible on/off combinations for optional elements
         optionals = [elem for elem in self.bound_elements if isinstance(elem, list)]
         for combination in powerset(optionals):
             # Inline all chosen, remove all not chosen optionals
-            bound_elements = []
+            raw_bound_elements: List[BoundVariable, ...] = []
             for bound_element in self.bound_elements:
                 if not isinstance(bound_element, list):
-                    bound_elements.append(bound_element)
+                    raw_bound_elements.append(bound_element)
                     continue
 
                 if bound_element in combination:
-                    bound_elements.extend(bound_element)
+                    raw_bound_elements.extend(bound_element)
 
-            bound_elements_combinations.append(bound_elements)
+            bound_elements: List[BoundVariable] = []
+            for bound_element in raw_bound_elements:
+                # We have to merge consecutive dummy variables representing terminal symbols
+                # ...and to split result elements containing two variables representing nonterminal symbols
+                if (isinstance(bound_element, DummyVariable) and
+                        not is_nonterminal(bound_element.n_type) and
+                        bound_elements and
+                        isinstance(bound_elements[-1], DummyVariable) and
+                        not is_nonterminal(bound_elements[-1].n_type)):
+                    bound_elements[-1] = DummyVariable(bound_elements[-1].n_type + bound_element.n_type)
+                    continue
 
+                bound_elements.append(bound_element)
+
+            if is_valid_combination(tuple(bound_elements), grammar_to_immutable(grammar), in_nonterminal):
+                bound_elements_combinations += (tuple(bound_elements),)
+
+        if in_nonterminal:
+            self.__flattened_elements[in_nonterminal] = bound_elements_combinations
         return bound_elements_combinations
 
-    def match(self, tree: DerivationTree) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
+    def match(self, tree: DerivationTree, grammar: Grammar) -> \
+            Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
         result: Dict[BoundVariable, Tuple[Path, DerivationTree]] = {}
 
-        for bound_variables in reversed( self.flatten_bound_elements()):
+        for bound_variables in reversed(self.flatten_bound_elements(grammar, tree.value)):
             subtrees = list(tree.paths())
-            curr_elem = bound_variables.pop(0)
+            bound_variables_list = list(bound_variables)
+            curr_elem = bound_variables_list.pop(0)
 
             while subtrees and curr_elem:
                 path, subtree = pop(subtrees)
 
-                if subtree.value == curr_elem.n_type:
+                subtree_str = str(subtree)
+                if (isinstance(curr_elem, DummyVariable) and
+                        not is_nonterminal(curr_elem.n_type) and
+                        len(subtree_str) < len(curr_elem.n_type) and
+                        curr_elem.n_type.startswith(subtree_str)):
+                    # Divide terminal dummy variables if they only can be unified with *different*
+                    # subtrees; e.g., we have a dummy variable with n_type "xmlns:" for an XML grammar,
+                    # and have to unify an ID prefix with "xmlns", leaving the ":" for the next subtree.
+                    bound_variables_list.insert(0, DummyVariable(curr_elem.n_type[len(subtree_str):]))
+                    curr_elem = DummyVariable(subtree_str)
+
+                if (subtree.value == curr_elem.n_type or
+                        isinstance(curr_elem, DummyVariable) and
+                        not is_nonterminal(curr_elem.n_type) and
+                        subtree_str == curr_elem.n_type):
                     result[curr_elem] = (path, subtree)
-                    curr_elem = pop(bound_variables, default=None)
+                    curr_elem = pop(bound_variables_list, default=None)
 
                     subtrees = [(p, s) for p, s in subtrees
                                 if not p[:len(path)] == path]
@@ -1802,7 +1841,7 @@ def well_formed(formula: Formula,
                 grammar: Grammar,
                 bound_vars: Optional[OrderedSet[BoundVariable]] = None,
                 in_expr_vars: Optional[OrderedSet[Variable]] = None,
-                bound_by_smt: Optional[OrderedSet[Variable]] = None) -> bool:
+                bound_by_smt: Optional[OrderedSet[Variable]] = None) -> Tuple[bool, str]:
     if bound_vars is None:
         bound_vars = OrderedSet([])
     if in_expr_vars is None:
@@ -1810,15 +1849,23 @@ def well_formed(formula: Formula,
     if bound_by_smt is None:
         bound_by_smt = OrderedSet([])
 
-    if any(is_nonterminal(var.n_type) and var.n_type not in grammar
-           for var in formula.free_variables()):
-        return False
+    unknown_typed_variables = [
+        var for var in formula.free_variables()
+        if is_nonterminal(var.n_type) and var.n_type not in grammar]
+    if unknown_typed_variables:
+        return False, "Unkown types of variables " + ", ".join(map(repr, unknown_typed_variables))
 
     if isinstance(formula, IntroduceNumericConstantFormula):
         if formula.bound_variables().intersection(bound_vars):
-            return False
-        if any(free_var not in bound_vars for free_var in formula.free_variables() if type(free_var) is BoundVariable):
-            return False
+            return False, f"Variables {', '.join(map(str, formula.bound_variables().intersection(bound_vars)))} " \
+                          f"already bound in outer scope"
+
+        unbound_variables = [
+            free_var for free_var in formula.free_variables()
+            if type(free_var) is BoundVariable
+            if free_var not in bound_vars]
+        if unbound_variables:
+            return False, f"Unbound variables " + ", ".join(map(repr, unknown_typed_variables)) + f"in {formula}"
 
         return well_formed(
             formula.inner_formula,
@@ -1829,23 +1876,33 @@ def well_formed(formula: Formula,
         )
     elif isinstance(formula, QuantifiedFormula):
         if formula.in_variable in bound_by_smt:
-            return False
+            return False, f"Variable {formula.in_variable} in {formula} bound be outer SMT formula"
         if formula.bound_variables().intersection(bound_vars):
-            return False
+            return False, f"Variables {', '.join(map(str, formula.bound_variables().intersection(bound_vars)))} " \
+                          f"already bound in outer scope"
         if type(formula.in_variable) is BoundVariable and formula.in_variable not in bound_vars:
-            return False
-        if any(free_var not in bound_vars for free_var in formula.free_variables() if type(free_var) is BoundVariable):
-            return False
+            return False, f"Unbound variable {formula.in_variable} in {formula}"
+        unbound_variables = [
+            free_var for free_var in formula.free_variables()
+            if type(free_var) is BoundVariable
+            if free_var not in bound_vars]
+        if unbound_variables:
+            return False, f"Unbound variables " + ", ".join(map(repr, unknown_typed_variables)) + f"in {formula}"
 
-        if any(is_nonterminal(var.n_type) and var.n_type not in grammar
-               for var in formula.bound_variables()):
-            return False
+        unknown_typed_variables = [
+            var for var in formula.bound_variables()
+            if is_nonterminal(var.n_type) and var.n_type not in grammar]
+        if unknown_typed_variables:
+            return False, "Unkown types of variables " + ", ".join(map(repr, unknown_typed_variables)) + \
+                   f" in {formula}"
 
         if formula.bind_expression is not None:
-            var: BoundVariable
-            if any(is_nonterminal(var.n_type) and var.n_type not in grammar
-                   for var in formula.bind_expression.all_bound_variables()):
-                return False
+            unknown_typed_variables = [
+                var for var in formula.bind_expression.all_bound_variables(grammar)
+                if is_nonterminal(var.n_type) and var.n_type not in grammar]
+            if unknown_typed_variables:
+                return False, "Unkown types of variables " + ", ".join(map(repr, unknown_typed_variables)) + \
+                       f" in match expression {formula.bind_expression}"
 
         return well_formed(
             formula.inner_formula,
@@ -1856,33 +1913,53 @@ def well_formed(formula: Formula,
         )
     elif isinstance(formula, SMTFormula):
         if any(free_var in in_expr_vars for free_var in formula.free_variables()):
-            return False
+            return False, f"Formula {formula} binding variables of 'in' expressions in an outer quantifier."
 
-        return not any(free_var not in bound_vars
-                       for free_var in formula.free_variables()
-                       if type(free_var) is BoundVariable)
+        if any(free_var not in bound_vars
+               for free_var in formula.free_variables()
+               if type(free_var) is BoundVariable):
+            return False, "(TODO)"
+
+        return True, ""
     elif isinstance(formula, PropositionalCombinator):
         if isinstance(formula, ConjunctiveFormula):
             smt_formulas = [f for f in formula.args if type(f) is SMTFormula]
             other_formulas = [f for f in formula.args if type(f) is not SMTFormula]
 
-            if any(not well_formed(f, grammar, bound_vars, in_expr_vars, bound_by_smt) for f in smt_formulas):
-                return False
+            for smt_formula in smt_formulas:
+                res, msg = well_formed(smt_formula, grammar, bound_vars, in_expr_vars, bound_by_smt)
+                if not res:
+                    return False, msg
 
             for smt_formula in smt_formulas:
                 bound_vars |= [var for var in smt_formula.free_variables() if type(var) is BoundVariable]
                 bound_by_smt |= smt_formula.free_variables()
 
-            return all(well_formed(f, grammar, bound_vars, in_expr_vars, bound_by_smt) for f in other_formulas)
+            for f in other_formulas:
+                res, msg = well_formed(f, grammar, bound_vars, in_expr_vars, bound_by_smt)
+                if not res:
+                    return False, msg
+
+            return True, ""
         else:
-            return all(well_formed(subformula, grammar, bound_vars, in_expr_vars, bound_by_smt)
-                       for subformula in formula.args)
+            for subformula in formula.args:
+                res, msg = well_formed(subformula, grammar, bound_vars, in_expr_vars, bound_by_smt)
+                if not res:
+                    return False, msg
+
+            return True, ""
     elif isinstance(formula, StructuralPredicateFormula) or isinstance(formula, SemanticPredicateFormula):
-        return all(free_var in bound_vars
-                   for free_var in formula.free_variables()
-                   if type(free_var) is BoundVariable)
+        unbound_variables = [
+            free_var for free_var in formula.free_variables()
+            if type(free_var) is BoundVariable
+            if free_var not in bound_vars]
+        if unbound_variables:
+            return False, f"Unbound variables " + ", ".join(map(repr, unknown_typed_variables)) + f"in {formula}"
+        return True, ""
     else:
         raise NotImplementedError(f"Unsupported formula type {type(formula).__name__}")
+
+    assert False
 
 
 class ThreeValuedTruth:
@@ -2011,7 +2088,7 @@ def eliminate_quantifiers(
             assert isinstance(universal_formula.in_variable, DerivationTree)
             matches = [
                 {var: tree for var, (_, tree) in match.items()}
-                for match in matches_for_quantified_formula(universal_formula, universal_formula.in_variable)]
+                for match in matches_for_quantified_formula(universal_formula, grammar, universal_formula.in_variable)]
             instantiations = [
                 universal_formula.inner_formula.substitute_expressions(match)
                 for match in matches]
@@ -2060,7 +2137,8 @@ def eliminate_quantifiers(
             assert isinstance(existential_formula.in_variable, DerivationTree)
             matches = [
                 {var: tree for var, (_, tree) in match.items()}
-                for match in matches_for_quantified_formula(existential_formula, existential_formula.in_variable)]
+                for match in matches_for_quantified_formula(
+                    existential_formula, grammar, existential_formula.in_variable)]
             instantiations = [
                 existential_formula.inner_formula.substitute_expressions(match)
                 for match in matches]
@@ -2211,7 +2289,7 @@ def evaluate_legacy(
             assert formula.in_variable in assignments
             in_inst: DerivationTree = assignments[formula.in_variable][1]
 
-        new_assignments = matches_for_quantified_formula(formula, in_inst, assignments)
+        new_assignments = matches_for_quantified_formula(formula, grammar, in_inst, assignments)
 
         if isinstance(formula, ForallFormula):
             return ThreeValuedTruth.all(
@@ -2277,7 +2355,8 @@ def evaluate(
         assert reference_tree is not None
         formula = formula.substitute_expressions({next(iter(top_level_constants)): reference_tree})
 
-    assert well_formed(formula, grammar)
+    res, msg = well_formed(formula, grammar)
+    assert res, msg
 
     v = FilterVisitor(lambda f: isinstance(f, IntroduceNumericConstantFormula))
     formula.accept(v)
@@ -2285,7 +2364,7 @@ def evaluate(
         # The legacy evaluation performs better, but only works w/o IntroduceNumericConstantFormulas.
         return evaluate_legacy(formula, grammar, {}, reference_tree)
 
-    qfr_free: List[Formula] = eliminate_quantifiers(formula)
+    qfr_free: List[Formula] = eliminate_quantifiers(formula, grammar=grammar)
     qfr_free_dnf: List[Formula] = [convert_to_dnf(convert_to_nnf(f)) for f in qfr_free]
     clauses: List[List[Formula]] = [split_conjunction(_f) for f in qfr_free_dnf for _f in split_disjunction(f)]
 
@@ -2294,6 +2373,7 @@ def evaluate(
 
 def matches_for_quantified_formula(
         formula: QuantifiedFormula,
+        grammar: Grammar,
         in_tree: Optional[DerivationTree] = None,
         initial_assignments: Optional[Dict[Variable, Tuple[Path, DerivationTree]]] = None) -> \
         List[Dict[Variable, Tuple[Path, DerivationTree]]]:
@@ -2312,7 +2392,7 @@ def matches_for_quantified_formula(
         node, children = tree
         if node == qfd_var.n_type:
             if bind_expr is not None:
-                maybe_match: Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]] = bind_expr.match(tree)
+                maybe_match: Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]] = bind_expr.match(tree, grammar)
                 if maybe_match is not None:
                     new_assignment = copy.copy(initial_assignments)
                     new_assignment[qfd_var] = path, tree
@@ -2806,3 +2886,38 @@ def instantiate_top_constant(formula: Formula, tree: DerivationTree) -> Formula:
         c for c in VariablesCollector.collect(formula)
         if isinstance(c, Constant) and not c.is_numeric())
     return formula.substitute_expressions({top_constant: tree})
+
+
+@lru_cache(maxsize=None)
+def is_valid_combination(
+        combination: Sequence[BoundVariable],
+        immutable_grammar: ImmutableGrammar,
+        in_nonterminal: Optional[str]) -> bool:
+    grammar = immutable_to_grammar(immutable_grammar)
+    fuzzer = GrammarFuzzer(grammar, min_nonterminals=1, max_nonterminals=6)
+    in_nonterminals = [in_nonterminal] if in_nonterminal else grammar.keys()
+
+    for nonterminal in in_nonterminals:
+        if nonterminal == "<start>":
+            specialized_grammar = grammar
+        else:
+            specialized_grammar = copy.deepcopy(grammar)
+            specialized_grammar["<start>"] = [nonterminal]
+            delete_unreachable(specialized_grammar)
+
+        parser = EarleyParser(specialized_grammar)
+
+        for _ in range(3):
+            inp = "".join([
+                tree_to_string(fuzzer.expand_tree((v.n_type, None)))
+                if is_nonterminal(v.n_type)
+                else v.n_type
+                for v in combination])
+            try:
+                next(iter(parser.parse(inp)))
+            except SyntaxError:
+                break
+        else:
+            return True
+
+    return False

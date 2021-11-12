@@ -15,7 +15,7 @@ from input_constraints.isla_predicates import count, COUNT_PREDICATE
 from input_constraints.tests.subject_languages import rest, scriptsizec
 from input_constraints.tests.subject_languages import tinyc, tar
 from input_constraints.tests.subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, validate_xml, \
-    XML_NAMESPACE_CONSTRAINT, xml_namespace_constraint
+    xml_namespace_constraint
 from input_constraints.tests.test_data import *
 from input_constraints.tests.test_helpers import parse
 
@@ -26,7 +26,7 @@ def path_to_string(p) -> str:
 
 class TestISLa(unittest.TestCase):
     def test_wellformed(self):
-        prog = Constant("$prog", "<prog>")
+        prog = Constant("$prog", "<start>")
         lhs_1 = BoundVariable("$lhs_1", "<var>")
         lhs_2 = BoundVariable("$lhs_2", "<var>")
         rhs_1 = BoundVariable("$rhs_1", "<rhs>")
@@ -52,7 +52,7 @@ class TestISLa(unittest.TestCase):
             )
         )
 
-        self.assertTrue(well_formed(formula, LANG_GRAMMAR))
+        self.assertTrue(well_formed(formula, LANG_GRAMMAR)[0])
 
         bad_formula: Formula = sc.forall_bind(
             lhs_1 + " := " + rhs_1,
@@ -67,7 +67,7 @@ class TestISLa(unittest.TestCase):
             )
         )
 
-        self.assertFalse(well_formed(bad_formula, LANG_GRAMMAR))
+        self.assertFalse(well_formed(bad_formula, LANG_GRAMMAR)[0])
 
         bad_formula_2: Formula = sc.forall(
             assgn_1,
@@ -75,7 +75,7 @@ class TestISLa(unittest.TestCase):
             sc.smt_for(z3.BoolVal(True))
         )
 
-        self.assertFalse(well_formed(bad_formula_2, LANG_GRAMMAR))
+        self.assertFalse(well_formed(bad_formula_2, LANG_GRAMMAR)[0])
         self.assertFalse(bad_formula_2.free_variables())
 
         bad_formula_3: Formula = sc.forall(
@@ -88,15 +88,15 @@ class TestISLa(unittest.TestCase):
             )
         )
 
-        self.assertFalse(well_formed(bad_formula_3, LANG_GRAMMAR))
+        self.assertFalse(well_formed(bad_formula_3, LANG_GRAMMAR)[0])
 
-        self.assertTrue(well_formed(-formula, LANG_GRAMMAR))
-        self.assertFalse(well_formed(-bad_formula, LANG_GRAMMAR))
-        self.assertFalse(well_formed(-bad_formula_2, LANG_GRAMMAR))
-        self.assertFalse(well_formed(-bad_formula_3, LANG_GRAMMAR))
+        self.assertTrue(well_formed(-formula, LANG_GRAMMAR)[0])
+        self.assertFalse(well_formed(-bad_formula, LANG_GRAMMAR)[0])
+        self.assertFalse(well_formed(-bad_formula_2, LANG_GRAMMAR)[0])
+        self.assertFalse(well_formed(-bad_formula_3, LANG_GRAMMAR)[0])
 
-        self.assertFalse(well_formed(formula & bad_formula, LANG_GRAMMAR))
-        self.assertFalse(well_formed(formula | bad_formula, LANG_GRAMMAR))
+        self.assertFalse(well_formed(formula & bad_formula, LANG_GRAMMAR)[0])
+        self.assertFalse(well_formed(formula | bad_formula, LANG_GRAMMAR)[0])
 
         bad_formula_4: Formula = sc.forall(
             assgn_1,
@@ -104,7 +104,7 @@ class TestISLa(unittest.TestCase):
             sc.SMTFormula(cast(z3.BoolRef, prog.to_smt() == z3.StringVal("")), prog)
         )
 
-        self.assertFalse(well_formed(bad_formula_4, LANG_GRAMMAR))
+        self.assertFalse(well_formed(bad_formula_4, LANG_GRAMMAR)[0])
 
         bad_formula_5: Formula = sc.forall(
             assgn_1,
@@ -117,7 +117,7 @@ class TestISLa(unittest.TestCase):
             )
         )
 
-        self.assertFalse(well_formed(bad_formula_5, LANG_GRAMMAR))
+        self.assertFalse(well_formed(bad_formula_5, LANG_GRAMMAR)[0])
 
         bad_formula_6: Formula = sc.forall(
             assgn_1,
@@ -125,7 +125,7 @@ class TestISLa(unittest.TestCase):
             sc.SMTFormula(cast(z3.BoolRef, prog.to_smt() == z3.StringVal("x := x")), prog)
         )
 
-        self.assertFalse(well_formed(bad_formula_6, LANG_GRAMMAR))
+        self.assertFalse(well_formed(bad_formula_6, LANG_GRAMMAR)[0])
 
         bad_formula_7: Formula = sc.forall(
             assgn_1,
@@ -137,7 +137,7 @@ class TestISLa(unittest.TestCase):
             )
         )
 
-        self.assertFalse(well_formed(bad_formula_7, LANG_GRAMMAR))
+        self.assertFalse(well_formed(bad_formula_7, LANG_GRAMMAR)[0])
 
     def test_evaluate(self):
         lhs_1 = BoundVariable("$lhs_1", "<var>")
@@ -211,7 +211,7 @@ class TestISLa(unittest.TestCase):
         bind_expr = lhs + " := " + rhs
         tree = DerivationTree.from_parse_tree(next(parser.parse("x := y")))
 
-        match = bind_expr.match(tree)
+        match = bind_expr.match(tree, LANG_GRAMMAR)
         self.assertEqual(('<var>', [('x', [])]), match[lhs][1].to_parse_tree())
         self.assertEqual(('<var>', [('y', [])]), match[rhs][1].to_parse_tree())
 
@@ -222,14 +222,14 @@ class TestISLa(unittest.TestCase):
         bind_expr = assgn_1 + " ; " + assgn_2 + " ; " + stmt
         tree = DerivationTree.from_parse_tree(next(parser.parse("x := y ; x := x ; y := z ; z := z")))
 
-        match = bind_expr.match(tree)
+        match = bind_expr.match(tree, LANG_GRAMMAR)
         self.assertEqual(str(match[assgn_1][1]), "x := y")
         self.assertEqual(str(match[assgn_2][1]), "x := x")
         self.assertEqual(str(match[stmt][1]), "y := z ; z := z")
 
         # The stmt variable matches the whole remaining program; assgn2 can no longer be matched
         bind_expr = assgn_1 + " ; " + stmt + " ; " + assgn_2
-        match = bind_expr.match(tree)
+        match = bind_expr.match(tree, LANG_GRAMMAR)
         self.assertFalse(match)
 
     def test_match_tinyc_assignment(self):
@@ -237,7 +237,7 @@ class TestISLa(unittest.TestCase):
         bind_expr = mgr.bv("$id_2", "<id>") + " = <expr>;"
         tree = DerivationTree.from_parse_tree(
             ('<statement>', [('<id>', [('c', [])]), (' = ', []), ('<expr>', None), (';', [])]))
-        match = bind_expr.match(tree)
+        match = bind_expr.match(tree, tinyc.TINYC_GRAMMAR)
         self.assertTrue(match)
 
     def test_use_constraint_as_filter(self):
@@ -286,7 +286,6 @@ class TestISLa(unittest.TestCase):
         self.assertGreater(success_rate, .25)
 
     def test_bind_expression_to_tree(self):
-        graph = gg.GrammarGraph.from_grammar(LANG_GRAMMAR)
         lhs = BoundVariable("$lhs", "<var>")
         rhs = BoundVariable("$rhs", "<rhs>")
         assgn = BoundVariable("$assgn", "<assgn>")
@@ -414,7 +413,7 @@ class TestISLa(unittest.TestCase):
             mgr.smt(mgr.bv("$oid").to_smt() == mgr.bv("$cid").to_smt())
         )))
 
-        matches = matches_for_quantified_formula(formula, tree, {start: tree})
+        matches = matches_for_quantified_formula(formula, XML_GRAMMAR, tree, {start: tree})
         self.assertEqual(1, len(matches))
 
     def test_xml_property(self):
@@ -496,9 +495,9 @@ constraint {
     num colno:
       ((>= (str.to_int colno) 3) and 
       ((<= (str.to_int colno) 5) and 
-       (count(hline, "<raw-string>", colno) and 
+       (count(hline, "<raw-field>", colno) and 
        forall line in start:
-         count(line, "<raw-string>", colno))))
+         count(line, "<raw-field>", colno))))
 }
 """
         valid_test_input = """a;b;c
@@ -525,9 +524,7 @@ XYZ;\" asdf \"
 
     def test_rest_property_1(self):
         tree = DerivationTree.from_parse_tree(list(EarleyParser(rest.REST_GRAMMAR).parse("0\n-\n\n"))[0])
-        formula = rest.LENGTH_UNDERLINE
-        self.assertTrue(evaluate(
-            formula.substitute_expressions({Constant("start", "<start>"): tree}), tree, rest.REST_GRAMMAR))
+        self.assertTrue(evaluate(rest.LENGTH_UNDERLINE, tree, rest.REST_GRAMMAR))
 
     def test_rest_property_2(self):
         formula = rest.LENGTH_UNDERLINE
