@@ -23,7 +23,9 @@ cache:
     - venv/
 
 before_script:
-  - apt update && apt install -y clang python3-dev
+  - apt update && apt install -y clang python3-dev curl
+  - curl -L https://github.com/Clever/csvlint/releases/download/v0.3.0/csvlint-v0.3.0-linux-amd64.tar.gz > csvlint.tar.gz && mv csvlint-v0.3.0-linux-amd64/csvlint /bin/ 
+  - csvlint --help  # Print out csvlint help for debugging
   - python -V  # Print out python version for debugging
   - pip install --upgrade pip
   - pip install virtualenv
