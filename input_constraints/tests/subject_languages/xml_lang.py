@@ -7,7 +7,7 @@ from typing import Optional, List
 from fuzzingbook.Grammars import srange
 
 from input_constraints.isla import parse_isla, DerivationTree
-from input_constraints.isla_predicates import IN_TREE_PREDICATE
+from input_constraints.isla_predicates import IN_TREE_PREDICATE, SAME_POSITION_PREDICATE
 
 XML_GRAMMAR = {
     "<start>": ["<xml-tree>"],
@@ -106,3 +106,26 @@ constraint {
 """
 
 XML_NAMESPACE_CONSTRAINT = parse_isla(xml_namespace_constraint, structural_predicates={IN_TREE_PREDICATE})
+
+xml_no_attr_redef_constraint = """
+const start: <start>;
+
+vars {
+  attr_outer, attr_inner_1, attr_inner_2: <xml-attribute>;
+  id_1, id_2: <id>;
+}
+
+constraint {
+  forall attr_outer="<xml-attribute> <xml-attribute>" in start:
+    forall attr_inner_1="{id_1}=\\\"<text>\\\"" in attr_outer:
+      forall attr_inner_2="{id_2}=\\\"<text>\\\"" in attr_outer: 
+        (same_position(attr_inner_1, attr_inner_2) or
+         not (= id_1 id_2))
+}
+"""
+
+XML_NO_ATTR_REDEF_CONSTRAINT = parse_isla(
+    xml_no_attr_redef_constraint,
+    structural_predicates={
+        IN_TREE_PREDICATE,
+        SAME_POSITION_PREDICATE})

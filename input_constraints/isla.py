@@ -776,29 +776,19 @@ class BindExpression:
             parser = EarleyParser(subgrammar)
             tree = DerivationTree.from_parse_tree(list(parser.parse(inp))[0][1][0])
 
-            positions: Dict[BoundVariable, Path] = {}
-            curr_path = tuple()
-            while bound_elements:
-                curr_subtree = tree.get_subtree(curr_path)
-                curr_bound_elem = bound_elements[0]
-
-                if isinstance(curr_bound_elem, str):
-                    if str(curr_subtree) == curr_bound_elem:
-                        bound_elements = bound_elements[1:]
-
-                if isinstance(curr_bound_elem, Variable) and curr_bound_elem.n_type == curr_subtree.value:
-                    positions[bound_elements[0]] = curr_path
+            match_result = self.match_single_optionals_combination(tree.paths(), list(bound_elements))
+            if match_result:
+                positions: Dict[BoundVariable, Path] = {}
+                for bound_element in bound_elements:
                     tree = tree.replace_path(
-                        curr_path,
-                        DerivationTree(curr_subtree.value, None if is_nonterminal(curr_bound_elem.n_type) else ()),
-                    )
-                    bound_elements = bound_elements[1:]
+                        match_result[bound_element][0],
+                        DerivationTree(
+                            match_result[bound_element][1].value,
+                            None if is_nonterminal(bound_element.n_type) else ()))
 
-                curr_path = tree.next_path(curr_path)
-                if curr_path is None:
-                    break
+                    positions[bound_element] = match_result[bound_element][0]
 
-            result.append((tree, positions))
+                result.append((tree, positions))
 
         self.prefixes[in_nonterminal] = result
         return result
@@ -849,39 +839,75 @@ class BindExpression:
 
     def match(self, tree: DerivationTree, grammar: Grammar) -> \
             Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
+        for combination in reversed(self.flatten_bound_elements(grammar, tree.value)):
+            maybe_result = BindExpression.match_single_optionals_combination(
+                list(tree.paths()), list(combination))
+            if maybe_result is not None:
+                return maybe_result
+
+        return None
+
+    @staticmethod
+    def match_single_optionals_combination(
+            subtrees: List[Tuple[Path, DerivationTree]],
+            bound_variables: List[BoundVariable],
+            matches_excluded: Tuple[Tuple[Path, BoundVariable], ...] = ()
+    ) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
+        if not bound_variables:
+            return None
+
         result: Dict[BoundVariable, Tuple[Path, DerivationTree]] = {}
+        orig_subtrees = list(subtrees)
+        orig_bound_variables = list(bound_variables)
 
-        for bound_variables in reversed(self.flatten_bound_elements(grammar, tree.value)):
-            subtrees = list(tree.paths())
-            bound_variables_list = list(bound_variables)
-            curr_elem = bound_variables_list.pop(0)
+        curr_elem = bound_variables.pop(0)
 
-            while subtrees and curr_elem:
-                path, subtree = pop(subtrees)
+        while subtrees and curr_elem:
+            path, subtree = pop(subtrees)
 
-                subtree_str = str(subtree)
-                if (isinstance(curr_elem, DummyVariable) and
-                        not is_nonterminal(curr_elem.n_type) and
-                        len(subtree_str) < len(curr_elem.n_type) and
-                        curr_elem.n_type.startswith(subtree_str)):
-                    # Divide terminal dummy variables if they only can be unified with *different*
-                    # subtrees; e.g., we have a dummy variable with n_type "xmlns:" for an XML grammar,
-                    # and have to unify an ID prefix with "xmlns", leaving the ":" for the next subtree.
-                    bound_variables_list.insert(0, DummyVariable(curr_elem.n_type[len(subtree_str):]))
-                    curr_elem = DummyVariable(subtree_str)
+            subtree_str = str(subtree)
+            if (isinstance(curr_elem, DummyVariable) and
+                    not is_nonterminal(curr_elem.n_type) and
+                    len(subtree_str) < len(curr_elem.n_type) and
+                    curr_elem.n_type.startswith(subtree_str)):
+                # Divide terminal dummy variables if they only can be unified with *different*
+                # subtrees; e.g., we have a dummy variable with n_type "xmlns:" for an XML grammar,
+                # and have to unify an ID prefix with "xmlns", leaving the ":" for the next subtree.
+                bound_variables.insert(0, DummyVariable(curr_elem.n_type[len(subtree_str):]))
+                curr_elem = DummyVariable(subtree_str)
 
-                if (subtree.value == curr_elem.n_type or
-                        isinstance(curr_elem, DummyVariable) and
-                        not is_nonterminal(curr_elem.n_type) and
-                        subtree_str == curr_elem.n_type):
-                    result[curr_elem] = (path, subtree)
-                    curr_elem = pop(bound_variables_list, default=None)
+            if ((path, curr_elem) not in matches_excluded and
+                    (subtree.value == curr_elem.n_type or
+                     isinstance(curr_elem, DummyVariable) and
+                     not is_nonterminal(curr_elem.n_type) and
+                     subtree_str == curr_elem.n_type)):
+                result[curr_elem] = (path, subtree)
+                curr_elem = pop(bound_variables, default=None)
+                subtrees = [(p, s) for p, s in subtrees
+                            if not p[:len(path)] == path]
 
-                    subtrees = [(p, s) for p, s in subtrees
-                                if not p[:len(path)] == path]
+        if not subtrees and not curr_elem:
+            return result
 
-            if not subtrees and not curr_elem:
-                return result
+        # In the case of nested structures with recursive nonterminals, we might have matched
+        # to greedily in the first place; e.g., an XML <attribute> might contain other XML
+        # <attribute>s that we should rather match. Thus, we might have to backtrack.
+        if not matches_excluded:
+            excluded_matches: Tuple[Tuple[Path, BoundVariable], ...]
+            for excluded_matches in itertools.chain.from_iterable(
+                    itertools.combinations({p: v for v, (p, t) in result.items()}.items(), k)
+                    for k in range(len(result) + 1)):
+                if not excluded_matches:
+                    continue
+                curr_elem: BoundVariable
+                backtrack_result = BindExpression.match_single_optionals_combination(
+                    list(orig_subtrees),
+                    list(orig_bound_variables),
+                    excluded_matches
+                )
+
+                if backtrack_result is not None and set(backtrack_result.keys()) == set(orig_bound_variables):
+                    return backtrack_result
 
         return None
 
