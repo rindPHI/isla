@@ -159,7 +159,7 @@ constraint {
                 cost_phase_lengths=(200,))
         )
 
-    @pytest.mark.skip(reason="This has to be fixed: Far too slow / no interesting attribute inputs depending on cost function")
+    # @pytest.mark.skip(reason="This has to be fixed: Far too slow / no interesting attribute inputs depending on cost function")
     def test_xml_with_prefixes(self):
         # TODO: Optimize cost function to create interesting namespace usages
         # TODO: Creates multiple solutions of type <z>...</z>, though <text>

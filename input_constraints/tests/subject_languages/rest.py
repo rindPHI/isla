@@ -45,6 +45,11 @@ constraint {
 }
 """, semantic_predicates={LJUST_CROP_PREDICATE, EXTEND_CROP_PREDICATE})
 
+# TODO: Further rst properties:
+#   - Bullet lists: Continuing text must be aligned after the bullet and whitespace
+#   - Footnotes: For auto-numbered footnote references without autonumber labels ("[#]_"), the references and footnotes
+#                must be in the same relative order. Similarly for auto-symbol footnotes ("[*]_").
+
 # Below encoding results in timeouts for more complex input scaffolds, uses only SMT formulas,
 # but depends on an auxiliary numeric constant for better efficiency & more diversity.
 #

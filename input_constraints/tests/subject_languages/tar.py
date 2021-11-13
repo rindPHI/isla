@@ -671,5 +671,6 @@ def extract_tar(tree: isla.DerivationTree) -> Union[bool, str]:
         process = subprocess.Popen(cmd, stderr=PIPE)
         (stdout, stderr) = process.communicate(timeout=2)
         exit_code = process.wait()
+        # TODO: Also look for messages like "Damaged tar archive" (redefined file name)
 
         return True if exit_code == 0 else stderr.decode("utf-8")

@@ -776,7 +776,7 @@ class BindExpression:
             parser = EarleyParser(subgrammar)
             tree = DerivationTree.from_parse_tree(list(parser.parse(inp))[0][1][0])
 
-            match_result = self.match_single_optionals_combination(tree.paths(), list(bound_elements))
+            match_result = self.match_with_backtracking(tree.paths(), list(bound_elements))
             if match_result:
                 positions: Dict[BoundVariable, Path] = {}
                 for bound_element in bound_elements:
@@ -840,7 +840,7 @@ class BindExpression:
     def match(self, tree: DerivationTree, grammar: Grammar) -> \
             Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
         for combination in reversed(self.flatten_bound_elements(grammar, tree.value)):
-            maybe_result = BindExpression.match_single_optionals_combination(
+            maybe_result = BindExpression.match_with_backtracking(
                 list(tree.paths()), list(combination))
             if maybe_result is not None:
                 return maybe_result
@@ -848,18 +848,45 @@ class BindExpression:
         return None
 
     @staticmethod
-    def match_single_optionals_combination(
+    def match_with_backtracking(
             subtrees: List[Tuple[Path, DerivationTree]],
             bound_variables: List[BoundVariable],
-            matches_excluded: Tuple[Tuple[Path, BoundVariable], ...] = ()
+            excluded_matches: Tuple[Tuple[Path, BoundVariable], ...] = ()
     ) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
         if not bound_variables:
             return None
 
         result: Dict[BoundVariable, Tuple[Path, DerivationTree]] = {}
-        orig_subtrees = list(subtrees)
-        orig_bound_variables = list(bound_variables)
 
+        if BindExpression.match_without_backtracking(
+                list(subtrees), list(bound_variables), result, excluded_matches):
+            return result
+
+        # In the case of nested structures with recursive nonterminals, we might have matched
+        # to greedily in the first place; e.g., an XML <attribute> might contain other XML
+        # <attribute>s that we should rather match. Thus, we might have to backtrack.
+        if not excluded_matches:
+            for excluded_matches in itertools.chain.from_iterable(
+                    itertools.combinations({p: v for v, (p, t) in result.items()}.items(), k)
+                    for k in range(1, len(result) + 1)):
+                curr_elem: BoundVariable
+                backtrack_result = BindExpression.match_with_backtracking(
+                    subtrees,
+                    bound_variables,
+                    excluded_matches
+                )
+
+                if backtrack_result is not None:
+                    return backtrack_result
+
+        return None
+
+    @staticmethod
+    def match_without_backtracking(
+            subtrees: List[Tuple[Path, DerivationTree]],
+            bound_variables: List[BoundVariable],
+            result: Dict[BoundVariable, Tuple[Path, DerivationTree]],
+            excluded_matches: Tuple[Tuple[Path, BoundVariable], ...] = ()) -> bool:
         curr_elem = bound_variables.pop(0)
 
         while subtrees and curr_elem:
@@ -876,7 +903,7 @@ class BindExpression:
                 bound_variables.insert(0, DummyVariable(curr_elem.n_type[len(subtree_str):]))
                 curr_elem = DummyVariable(subtree_str)
 
-            if ((path, curr_elem) not in matches_excluded and
+            if ((path, curr_elem) not in excluded_matches and
                     (subtree.value == curr_elem.n_type or
                      isinstance(curr_elem, DummyVariable) and
                      not is_nonterminal(curr_elem.n_type) and
@@ -886,27 +913,7 @@ class BindExpression:
                 subtrees = [(p, s) for p, s in subtrees
                             if not p[:len(path)] == path]
 
-        if not subtrees and not curr_elem:
-            return result
-
-        # In the case of nested structures with recursive nonterminals, we might have matched
-        # to greedily in the first place; e.g., an XML <attribute> might contain other XML
-        # <attribute>s that we should rather match. Thus, we might have to backtrack.
-        if not matches_excluded:
-            for matches_excluded in itertools.chain.from_iterable(
-                    itertools.combinations({p: v for v, (p, t) in result.items()}.items(), k)
-                    for k in range(1, len(result) + 1)):
-                curr_elem: BoundVariable
-                backtrack_result = BindExpression.match_single_optionals_combination(
-                    list(orig_subtrees),
-                    list(orig_bound_variables),
-                    matches_excluded
-                )
-
-                if backtrack_result is not None:
-                    return backtrack_result
-
-        return None
+        return not subtrees and not curr_elem
 
     def __repr__(self):
         return f'BindExpression({", ".join(map(repr, self.bound_elements))})'

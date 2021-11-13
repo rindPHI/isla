@@ -1066,7 +1066,7 @@ def compute_cost(
     # Quantifiers are expensive (universal formulas have to be matched, tree insertion for existential
     # formulas is even more costly). TODO: Penalize nested quantifiers more.
     constraint_cost = len([sub for sub in get_conjuncts(state.constraint)
-                           if isinstance(sub, isla.QuantifiedFormula)])
+                           if isinstance(sub, isla.ExistsFormula)])
 
     # How far are we from matching a yet unmatched universal quantifier?
     # vacuous_penalty = compute_match_dist(state, grammar, node_distance)
