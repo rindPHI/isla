@@ -1,4 +1,8 @@
+import os
 import string
+import subprocess
+import tempfile
+from typing import Union
 
 from fuzzingbook.Grammars import srange
 
@@ -12,9 +16,14 @@ REST_GRAMMAR = {
     "<body-element>": [
         "<section-title>\n",
     ],
-    "<section-title>": ["<nobr-string>\n<underline>"],
+    "<section-title>": ["<title-text>\n<underline>"],
+    "<title-text>": ["<title-first-char>", "<title-first-char><nobr-string>"],
     "<nobr-string>": ["<nobr-char>", "<nobr-char><nobr-string>"],
-    "<nobr-char>": list(set(srange(string.printable)) - {"\n", "\r"}),
+    # Exclude tab in <nobr-char> since otherwise, title can get too long (counts more than one character)
+    # Remove _, { to exclude back references and inline substitutions
+    # Remove ` to exclude inline interpreted text
+    "<nobr-char>": list(set(srange(string.printable)) - set(srange("\n\r\t_{}`"))),
+    "<title-first-char>": list(set(srange(string.printable)) - set(srange(string.whitespace + "\b\f\v-*+_{}`|=-"))),
     "<underline>": ["<eqs>", "<dashes>"],
     "<eqs>": ["=", "=<eqs>"],
     "<dashes>": ["-", "-<dashes>"],
@@ -30,7 +39,7 @@ vars {
   title_length: NUM;
   underline_length: NUM;
   title: <section-title>;
-  titletxt: <nobr-string>;
+  titletxt: <title-text>;
   underline: <underline>;
 }
 
@@ -45,10 +54,22 @@ constraint {
 }
 """, semantic_predicates={LJUST_CROP_PREDICATE, EXTEND_CROP_PREDICATE})
 
+
 # TODO: Further rst properties:
 #   - Bullet lists: Continuing text must be aligned after the bullet and whitespace
 #   - Footnotes: For auto-numbered footnote references without autonumber labels ("[#]_"), the references and footnotes
 #                must be in the same relative order. Similarly for auto-symbol footnotes ("[*]_").
+
+def render_rst(tree: isla.DerivationTree) -> Union[bool, str]:
+    with tempfile.NamedTemporaryFile(suffix=".rst") as tmp:
+        tmp.write(str(tree).encode())
+        tmp.flush()
+        cmd = ["rst2html.py", tmp.name]
+        process = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=open(os.devnull, "w"))
+        (stdout, stderr) = process.communicate()
+        exit_code = process.wait()
+
+        return True if exit_code == 0 and not stderr else stderr.decode("utf-8")
 
 # Below encoding results in timeouts for more complex input scaffolds, uses only SMT formulas,
 # but depends on an auxiliary numeric constant for better efficiency & more diversity.

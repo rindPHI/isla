@@ -317,7 +317,9 @@ def just(ljust: bool,
 
     assert crop or len(unparsed_output) == width
 
-    unparsed_output = unparsed_output[len(unparsed_output) - width:]
+    if crop:
+        unparsed_output = unparsed_output[:width] if ljust else unparsed_output[len(unparsed_output) - width:]
+
     result = DerivationTree.from_parse_tree(parser(unparsed_output)[0]).get_subtree((0,))
 
     return SemPredEvalResult({tree: result})

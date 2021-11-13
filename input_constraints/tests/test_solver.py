@@ -304,6 +304,7 @@ constraint {
     def test_rest_titles(self):
         self.execute_generation_test(
             rest.LENGTH_UNDERLINE,
+            custom_test_func=rest.render_rst,
             grammar=rest.REST_GRAMMAR,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=4,
