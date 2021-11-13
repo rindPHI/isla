@@ -77,20 +77,19 @@ TAR_GRAMMAR = {
 
 
 def tar_checksum(
-        grammar: Grammar, header: isla.DerivationTree, checksum_tree: isla.DerivationTree) -> isla.SemPredEvalResult:
+        _: Grammar,
+        header: isla.DerivationTree,
+        checksum_tree: isla.DerivationTree) -> isla.SemPredEvalResult:
     if not header.is_complete():
         return isla.SemPredEvalResult(None)
 
     checksum_parser = TarParser(start_symbol="<checksum>")
 
-    space_checksum = ('<checksum>', [('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])]),
-                                     ('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])]),
-                                     ('<SPACE>', [(' ', [])]), ('<SPACE>', [(' ', [])])])
+    space_checksum = ("<checksum>", [("<SPACE>", [(" ", [])]) for _ in range(8)])
 
     header_wo_checksum = header.replace_path(
         header.find_node(checksum_tree),
-        isla.DerivationTree.from_parse_tree(space_checksum),
-    )
+        isla.DerivationTree.from_parse_tree(space_checksum))
 
     header_bytes: List[int] = list(str(header_wo_checksum).encode("ascii"))
 
