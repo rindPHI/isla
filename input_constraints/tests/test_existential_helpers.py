@@ -1,4 +1,3 @@
-import copy
 import unittest
 
 from fuzzingbook.Grammars import JSON_GRAMMAR
@@ -6,12 +5,11 @@ from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph.gg import GrammarGraph
 
 from input_constraints.existential_helpers import insert_tree, wrap_in_tree_starting_in
-from input_constraints.helpers import delete_unreachable
 from input_constraints.isla import DerivationTree
 from input_constraints.tests.subject_languages import tinyc
+from input_constraints.tests.subject_languages.xml_lang import XML_GRAMMAR, XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 from input_constraints.tests.test_data import LANG_GRAMMAR
 from input_constraints.tests.test_helpers import parse
-from input_constraints.tests.subject_languages.xml_lang import XML_GRAMMAR
 
 
 class TestExistentialHelpers(unittest.TestCase):
@@ -68,23 +66,7 @@ class TestExistentialHelpers(unittest.TestCase):
             ['<var> := <var> ; <assgn>',
              '<var> := <var> ; <assgn> ; <stmt>',
              '<assgn> ; <var> := <var>',
-             '<assgn> ; <assgn> ; <var> := <var>',
              ],
-            list(map(str, results))
-        )
-
-    def test_insert_assignment_2(self):
-        tree = ('<start>', [('<stmt>', [('<assgn>', [("<var>", None), (' := ', []), ('<rhs>', [("<var>", None)])])])])
-
-        results = insert_tree(canonical(LANG_GRAMMAR),
-                              DerivationTree("<assgn>", None),
-                              DerivationTree.from_parse_tree(tree))
-
-        self.assertEqual(
-            ['<var> := <var> ; <assgn>',
-             '<var> := <var> ; <assgn> ; <stmt>',
-             '<assgn> ; <var> := <var>',
-             '<assgn> ; <assgn> ; <var> := <var>'],
             list(map(str, results))
         )
 
@@ -95,7 +77,7 @@ class TestExistentialHelpers(unittest.TestCase):
             "<term>", tree, tinyc.TINYC_GRAMMAR, GrammarGraph.from_grammar(tinyc.TINYC_GRAMMAR))
         self.assertTrue(result.find_node(tree))
 
-    def test_insert_xml(self):
+    def test_insert_xml_1(self):
         tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse("<b>asdf</b>"))[0])
         to_insert = DerivationTree("<xml-open-tag>", [
             DerivationTree("<", []),
@@ -108,6 +90,37 @@ class TestExistentialHelpers(unittest.TestCase):
         result = insert_tree(canonical(XML_GRAMMAR), to_insert, tree)
         str_results = [str(t) for t in result]
         self.assertIn("<a><b>asdf</b><xml-close-tag>", str_results)
+
+    def test_insert_xml_2(self):
+        tree = DerivationTree('<start>', (
+            DerivationTree('<xml-tree>', (
+                DerivationTree('<xml-openclose-tag>', (
+                    DerivationTree('<', ()),
+                    DerivationTree('<id>', (
+                        DerivationTree('<id-with-prefix>', (
+                            DerivationTree('<id-no-prefix>', None),
+                            DerivationTree(':', ()),
+                            DerivationTree('<id-no-prefix>', None))),)),
+                    DerivationTree('/>', ()))),)),))
+
+        to_insert = DerivationTree('<xml-tree>', (
+            DerivationTree('<xml-open-tag>', (
+                DerivationTree('<', ()),
+                DerivationTree('<id>', None),
+                DerivationTree(' ', ()),
+                DerivationTree('<xml-attribute>', None),
+                DerivationTree('>', ()))),
+            DerivationTree('<inner-xml-tree>', None),
+            DerivationTree('<xml-close-tag>', (
+                DerivationTree('</', ()),
+                DerivationTree('<id>', None),
+                DerivationTree('>', ())))))
+
+        result = insert_tree(canonical(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES), to_insert, tree)
+        self.assertTrue(result)
+
+        str_results = [str(t) for t in result]
+        print("\n".join(str_results))
 
 
     # Test deactivated: Should assert that no prefix trees are generated. The implemented

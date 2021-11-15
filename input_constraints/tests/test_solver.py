@@ -21,7 +21,7 @@ from input_constraints.tests.subject_languages import rest, tar, simple_tar, scr
 from input_constraints.tests.subject_languages.csv import csv_lint, CSV_GRAMMAR
 from input_constraints.tests.subject_languages.tar import extract_tar
 from input_constraints.tests.subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, \
-    XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, XML_GRAMMAR
+    XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, XML_GRAMMAR, validate_xml
 from input_constraints.tests.test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR
 
 
@@ -170,7 +170,7 @@ constraint {
             grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
             max_number_free_instantiations=1,
             num_solutions=20,
-            # custom_test_func=validate_xml,
+            custom_test_func=validate_xml,
             cost_settings=CostSettings(
                 weight_vectors=(
                     CostWeightVector(
