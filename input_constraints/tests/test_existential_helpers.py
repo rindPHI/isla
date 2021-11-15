@@ -36,12 +36,12 @@ class TestExistentialHelpers(unittest.TestCase):
         tree = DerivationTree.from_parse_tree(parse(inp, JSON_GRAMMAR))
         to_insert = DerivationTree.from_parse_tree(parse(' "key" : { "key" : null } ', JSON_GRAMMAR, "<member>"))
 
-        results = insert_tree(canonical(JSON_GRAMMAR), to_insert, tree, max_num_solutions=None)
+        results = insert_tree(canonical(JSON_GRAMMAR), to_insert, tree, max_num_solutions=10)
 
         self.assertIn(
-            ' { "T" : { "I" : true , '
-            '"key" : { "key" : null } , '
-            '"" : [ false , "salami" ] , "" : true , "" : null , "" : false } } ',
+            '[{ "key" : { "key" : null } ,: '
+            '{ "T" : { "I" : true , "" : [ false , "salami" ] , "" : true , "" : null , "" : false } } '
+            '}]',
             [result.to_string() for result in results])
 
     def test_insert_json_2(self):
@@ -49,9 +49,12 @@ class TestExistentialHelpers(unittest.TestCase):
         tree = DerivationTree.from_parse_tree(parse(inp, JSON_GRAMMAR))
         to_insert = DerivationTree.from_parse_tree(parse(' "cheese" ', JSON_GRAMMAR, "<element>"))
 
-        results = insert_tree(canonical(JSON_GRAMMAR), to_insert, tree, max_num_solutions=None)
+        results = insert_tree(canonical(JSON_GRAMMAR), to_insert, tree, max_num_solutions=10)
+
         self.assertIn(
-            ' { "T" : { "I" : true , "" : [ false , "cheese" , "salami" ] , "" : true , "" : null , "" : false } } ',
+            '['
+            ' { "T" : { "I" : true , "" : [ false , "salami" ] , "" : true , "" : null , "" : false } } , '
+            '"cheese" ]',
             [result.to_string() for result in results])
 
     def test_insert_assignment(self):
@@ -66,7 +69,7 @@ class TestExistentialHelpers(unittest.TestCase):
             ['<var> := <var> ; <assgn>',
              '<var> := <var> ; <assgn> ; <stmt>',
              '<assgn> ; <var> := <var>',
-             ],
+             '<assgn> ; <assgn> ; <var> := <var>'],
             list(map(str, results))
         )
 
@@ -120,8 +123,7 @@ class TestExistentialHelpers(unittest.TestCase):
         self.assertTrue(result)
 
         str_results = [str(t) for t in result]
-        print("\n".join(str_results))
-
+        self.assertIn("<<id> <xml-attribute>><<id-no-prefix>:<id-no-prefix>/></<id>>", str_results)
 
     # Test deactivated: Should assert that no prefix trees are generated. The implemented
     # check in insert_tree, however, was too expensive for the JSON examples. Stalling for now.

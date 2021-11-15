@@ -114,14 +114,13 @@ class DerivationTree:
     TRAVERSE_PREORDER = 0
     TRAVERSE_POSTORDER = 1
 
-    def __init__(self, value: Union[str, Variable],
+    def __init__(self, value: str,
                  children: Optional[Sequence['DerivationTree']] = None,
                  id: Optional[int] = None,
                  k_paths: Optional[Dict[int, Set[Tuple[gg.Node, ...]]]] = None,
                  hash: Optional[int] = None,
                  structural_hash: Optional[int] = None):
-        assert isinstance(value, str) or isinstance(value, Variable)
-        assert not isinstance(value, Variable) or not children
+        assert isinstance(value, str)
         assert children is None or all(isinstance(child, DerivationTree) for child in children)
 
         self.value = value
@@ -2465,15 +2464,28 @@ def quantified_formula_might_match(
         return False
 
     # Is there an extension of some tree `node` is a subtree of, such that the
-    # bind expression tree is a prefix tree of that extension?
+    # bind expression tree is a prefix tree of that extension, and extending
+    # the nonterminal might approach a match?
+    # Note that the prefix tree must not *already* be a match.
 
     maybe_prefix_tree: DerivationTree
-    for maybe_prefix_tree, _ in qfd_formula.bind_expression.to_tree_prefix(
+    for maybe_prefix_tree, var_map in qfd_formula.bind_expression.to_tree_prefix(
             qfd_formula.bound_variable.n_type, grammar):
         for idx in reversed(range(len(path_to_nonterminal))):
             subtree = tree.get_subtree(path_to_nonterminal[:idx])
-            if maybe_prefix_tree.is_potential_prefix(subtree) and not qfd_formula.is_already_matched(subtree):
-                return True
+            if (maybe_prefix_tree.is_potential_prefix(subtree) and
+                    not qfd_formula.is_already_matched(subtree)):
+                # If the current nonterminal does not need to be further expanded to match
+                # the prefix tree, we need to return false; otherwise, we would needlessly
+                # expand nonterminals that could actually be freely instantiated.
+
+                path_to_node_in_prefix_tree = path_to_nonterminal[idx:]
+                while not maybe_prefix_tree.is_valid_path(path_to_node_in_prefix_tree):
+                    path_to_node_in_prefix_tree = path_to_node_in_prefix_tree[:-1]
+                node_in_prefix_tree = maybe_prefix_tree.get_subtree(path_to_node_in_prefix_tree)
+
+                if reachable(node.value, node_in_prefix_tree.value):
+                    return True
 
     return False
 

@@ -159,12 +159,9 @@ constraint {
                 cost_phase_lengths=(200,))
         )
 
-    @pytest.mark.skip(reason="This has to be fixed: Far too slow / no interesting attribute inputs depending on cost function")
+    # @pytest.mark.skip(reason="This has to be fixed: Far too slow / no interesting attribute inputs depending on cost function")
     def test_xml_with_prefixes(self):
-        # TODO: Optimize cost function to create interesting namespace usages
-        # TODO: Creates multiple solutions of type <z>...</z>, though <text>
-        #       nonterminals are not bound by any quantifiers and should thus
-        #       only be instantiated once!
+        # TODO: Check why in state 963406418259140941, <text> is expanded though it's unbound!
         self.execute_generation_test(
             XML_NAMESPACE_CONSTRAINT & XML_WELLFORMEDNESS_CONSTRAINT,
             grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
@@ -173,13 +170,11 @@ constraint {
             custom_test_func=validate_xml,
             cost_settings=CostSettings(
                 weight_vectors=(
-                    CostWeightVector(
-                        tree_closing_cost=50,
-                        vacuous_penalty=8,
-                        constraint_cost=5,
-                        derivation_depth_penalty=10,
-                        low_k_coverage_penalty=21,
-                        low_global_k_path_coverage_penalty=10),
+                    # CostWeightVector(tree_closing_cost = 16, vacuous_penalty = 13, constraint_cost = 3, derivation_depth_penalty = 0, low_k_coverage_penalty = 7, low_global_k_path_coverage_penalty = 10),
+                    # CostWeightVector( tree_closing_cost=16, vacuous_penalty=13, constraint_cost=0, derivation_depth_penalty=1, low_k_coverage_penalty=3, low_global_k_path_coverage_penalty=3),
+                    CostWeightVector(tree_closing_cost=1, vacuous_penalty=1, constraint_cost=0,
+                                     derivation_depth_penalty=1, low_k_coverage_penalty=0,
+                                     low_global_k_path_coverage_penalty=0),
                 ),
                 cost_phase_lengths=(200,),
                 k=3
