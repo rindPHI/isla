@@ -17,7 +17,6 @@ def insert_tree(grammar: CanonicalGrammar,
                 tree: DerivationTree,
                 in_tree: DerivationTree,
                 graph: Optional[GrammarGraph] = None,
-                current_path: Optional[Path] = None,
                 max_num_solutions: Optional[int] = 50) -> List[DerivationTree]:
     result: List[DerivationTree] = []
     result_hashes: Set[int] = set()
@@ -32,12 +31,13 @@ def insert_tree(grammar: CanonicalGrammar,
         # if (new_tree.structural_hash() not in result_hashes
         #         and not any(existing.is_prefix(new_tree) for existing in result)):
 
-        if new_tree.structural_hash() not in result_hashes:
+        if (new_tree.find_node(tree) is not None  # In rare cases things fail (see simple-tar case study)
+                and new_tree.structural_hash() not in result_hashes):
             result.append(new_tree)
             result_hashes.add(new_tree.structural_hash())
 
     graph = graph or GrammarGraph.from_grammar(non_canonical(grammar))
-    current_path = current_path or tuple()
+    current_path = ()
 
     while current_path is not None:
         # Note: This can produce max_num_solutions * (number of insertion strategies) many solutions,
@@ -198,65 +198,62 @@ def insert_trees(
 
     result: List[DerivationTree] = []
 
-    leaves = list(into_tree.open_leaves())
+    leaves_and_insert_trees = [
+        (leaf_path, leaf_nonterm, insert_tree_idx, tree_to_insert)
+        for insert_tree_idx, tree_to_insert in enumerate(trees_to_insert)
+        for leaf_path, (leaf_nonterm, _) in into_tree.open_leaves()
+        if not any(is_prefix(insert_path, leaf_path) for insert_path in insert_paths)]
 
-    for leaf_idx, (leaf_path, (leaf_nonterm, _)) in enumerate(leaves):
+    for leaf_path, leaf_nonterm, insert_tree_idx, tree_to_insert in leaves_and_insert_trees:
         if len(result) >= (max_num_solutions or sys.maxsize):
             break
 
-        if any(is_prefix(insert_path, leaf_path) for insert_path in insert_paths):
+        nonterm_to_insert = tree_to_insert.root_nonterminal()
+        if leaf_nonterm == nonterm_to_insert:
+            result += insert_trees(
+                trees_to_insert[:insert_tree_idx] +
+                trees_to_insert[insert_tree_idx + 1:],
+                into_tree.replace_path(leaf_path, tree_to_insert),
+                grammar, graph, max_num_solutions,
+                insert_paths + [leaf_path])
             continue
 
-        for insert_tree_idx, tree_to_insert in enumerate(trees_to_insert):
+        if (tree_to_insert.children is not None
+                and tree_to_insert.num_children() == 1
+                and tree_to_insert.children[0].value == leaf_nonterm):
+            result += insert_trees(
+                trees_to_insert[:insert_tree_idx] +
+                trees_to_insert[insert_tree_idx + 1:],
+                into_tree.replace_path(leaf_path, tree_to_insert.children[0]),
+                grammar, graph, max_num_solutions,
+                insert_paths + [leaf_path])
+            continue
+
+        leaf_nonterm_node = graph.get_node(leaf_nonterm)
+        to_insert_nonterm_node = graph.get_node(nonterm_to_insert)
+        if not graph.reachable(leaf_nonterm_node, to_insert_nonterm_node):
+            continue
+
+        connecting_trees_and_leaves = [
+            (connecting_tree, insert_leaf_path, insert_leaf_nonterm)
+            for connecting_path in paths_between(graph, leaf_nonterm, nonterm_to_insert)
+            for connecting_tree in path_to_tree(grammar, connecting_path)
+            for insert_leaf_path, (insert_leaf_nonterm, _) in connecting_tree.open_leaves()
+            if insert_leaf_nonterm == nonterm_to_insert
+        ]
+
+        for connecting_tree, insert_leaf_path, insert_leaf_nonterm in connecting_trees_and_leaves:
             if len(result) >= (max_num_solutions or sys.maxsize):
                 break
 
-            nonterm_to_insert = tree_to_insert.root_nonterminal()
-            if leaf_nonterm == nonterm_to_insert:
-                result += insert_trees(
-                    trees_to_insert[:insert_tree_idx] +
-                    trees_to_insert[insert_tree_idx + 1:],
-                    into_tree.replace_path(leaf_path, tree_to_insert),
-                    grammar, graph, max_num_solutions,
-                    insert_paths + [leaf_path])
-                continue
+            instantiated_connecting_tree = connecting_tree.replace_path(insert_leaf_path, tree_to_insert)
 
-            if (tree_to_insert.children is not None
-                    and tree_to_insert.num_children() == 1
-                    and tree_to_insert.children[0].value == leaf_nonterm):
-                result += insert_trees(
-                    trees_to_insert[:insert_tree_idx] +
-                    trees_to_insert[insert_tree_idx + 1:],
-                    into_tree.replace_path(leaf_path, tree_to_insert.children[0]),
-                    grammar, graph, max_num_solutions,
-                    insert_paths + [leaf_path])
-                continue
-
-            leaf_nonterm_node = graph.get_node(leaf_nonterm)
-            to_insert_nonterm_node = graph.get_node(nonterm_to_insert)
-            if not graph.reachable(leaf_nonterm_node, to_insert_nonterm_node):
-                continue
-
-            connecting_trees_and_leaves = [
-                (connecting_tree, insert_leaf_path, insert_leaf_nonterm)
-                for connecting_path in paths_between(graph, leaf_nonterm, nonterm_to_insert)
-                for connecting_tree in path_to_tree(grammar, connecting_path)
-                for insert_leaf_path, (insert_leaf_nonterm, _) in connecting_tree.open_leaves()
-                if insert_leaf_nonterm == nonterm_to_insert
-            ]
-
-            for connecting_tree, insert_leaf_path, insert_leaf_nonterm in connecting_trees_and_leaves:
-                if len(result) >= (max_num_solutions or sys.maxsize):
-                    break
-
-                instantiated_connecting_tree = connecting_tree.replace_path(insert_leaf_path, tree_to_insert)
-
-                result += insert_trees(
-                    trees_to_insert[:insert_tree_idx] +
-                    trees_to_insert[insert_tree_idx + 1:],
-                    into_tree.replace_path(leaf_path, instantiated_connecting_tree),
-                    grammar, graph, max_num_solutions,
-                    insert_paths + [leaf_path + insert_leaf_path])
+            result += insert_trees(
+                trees_to_insert[:insert_tree_idx] +
+                trees_to_insert[insert_tree_idx + 1:],
+                into_tree.replace_path(leaf_path, instantiated_connecting_tree),
+                grammar, graph, max_num_solutions,
+                insert_paths + [leaf_path + insert_leaf_path])
 
     return result
 
