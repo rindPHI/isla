@@ -2,9 +2,7 @@ import string
 from typing import Dict, Callable
 
 from fuzzingbook.GrammarFuzzer import tree_to_string
-from fuzzingbook.Grammars import convert_ebnf_grammar, srange
 from fuzzingbook.Parser import EarleyParser
-from xml.sax.saxutils import escape
 
 from input_constraints import isla
 from input_constraints.type_defs import ParseTree, Path
@@ -29,56 +27,6 @@ SIMPLE_CSV_GRAMMAR = {
     "<csv-record>": ["<csv-field-list>\n"],
     "<csv-field-list>": ["<csv-field>", "<csv-field>;<csv-field-list>"],
     "<csv-field>": list(string.ascii_lowercase),
-}
-
-CSV_EBNF_GRAMMAR = {
-    "<start>": ["<csv-file>"],
-    "<csv-file>": ["<csv-header><csv-record>*"],
-    "<csv-header>": ["<csv-record>"],
-    "<csv-record>": ["<csv-string-list>\n"],
-    "<csv-string-list>": ["<raw-field>", "<raw-field>;<csv-string-list>"],
-    "<raw-field>": ["<simple-field>", "<quoted-field>"],
-    "<simple-field>": ["<spaces>?<simple-character>*<spaces>?"],
-    "<simple-character>": [c for c in srange(string.printable) if c not in ["\n", ";", '"', " ", "\t", "\r", '"']],
-    "<quoted-field>": ['"<escaped-field>"'],
-    "<escaped-field>": ["<escaped-character>*"],
-    "<escaped-character>": [c for c in srange(string.printable) if c not in ['"']],
-    "<spaces>": [" ", " <spaces>"],
-}
-
-CSV_GRAMMAR = convert_ebnf_grammar(CSV_EBNF_GRAMMAR)
-
-XML_GRAMMAR = {
-    "<start>": ["<xml-tree>"],
-    "<xml-tree>": [
-        "<xml-open-tag><inner-xml-tree><xml-close-tag>",
-        "<xml-openclose-tag>",
-    ],
-    "<inner-xml-tree>": [
-        "<text>",
-        "<xml-tree>",
-        "<inner-xml-tree><inner-xml-tree>"
-    ],
-    "<xml-open-tag>": ["<<id>>", "<<id> <xml-attribute>>"],
-    "<xml-openclose-tag>": ["<<id>/>", "<<id> <xml-attribute>/>"],
-    "<xml-close-tag>": ["</<id>>"],
-    "<xml-attribute>": ["<id>=\"<text>\"", "<xml-attribute> <xml-attribute>"],
-
-    "<id>": [
-        "<id_start_char>",
-        "<id_start_char><id_chars>",
-        # "<id_with_prefix>"
-    ],
-    # "<id_with_prefix>": [
-    #     "<id_start_char>:<id_chars>",
-    #     "<id_start_char><id_chars>:<id_chars>"],
-    "<id_start_char>": srange("_" + string.ascii_letters),
-    "<id_chars>": ["<id_char>", "<id_char><id_chars>"],
-    "<id_char>": ["<id_start_char>"] + srange("-." + string.digits),
-    "<text>": ["<text_char><text>", "<text_char>"],
-    "<text_char>": [
-        escape(c, {'"': "&quot;"})
-        for c in srange(string.ascii_letters + string.digits + "\"'. \t/?-,=:+")],
 }
 
 

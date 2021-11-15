@@ -6,7 +6,8 @@ from fuzzingbook.Parser import EarleyParser
 
 import input_constraints.isla_shortcuts as sc
 from input_constraints import isla, evaluator
-from input_constraints.tests.test_data import XML_GRAMMAR, LANG_GRAMMAR
+from input_constraints.tests.subject_languages.xml_lang import XML_GRAMMAR
+from input_constraints.tests.test_data import LANG_GRAMMAR
 
 
 class TestEvaluator(unittest.TestCase):

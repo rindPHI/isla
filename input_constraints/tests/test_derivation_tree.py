@@ -6,7 +6,8 @@ from fuzzingbook.GrammarFuzzer import GrammarFuzzer
 
 from input_constraints.helpers import parent_or_child
 from input_constraints.isla import DerivationTree
-from input_constraints.tests.test_data import LANG_GRAMMAR, XML_GRAMMAR
+from input_constraints.tests.subject_languages.xml_lang import XML_GRAMMAR
+from input_constraints.tests.test_data import LANG_GRAMMAR
 from input_constraints.tests.test_helpers import parse
 
 

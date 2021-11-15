@@ -59,6 +59,7 @@ constraint {
 #   - Bullet lists: Continuing text must be aligned after the bullet and whitespace
 #   - Footnotes: For auto-numbered footnote references without autonumber labels ("[#]_"), the references and footnotes
 #                must be in the same relative order. Similarly for auto-symbol footnotes ("[*]_").
+#   - Itemized lists: List items should be sequentially numbered, but need not start at 1
 
 def render_rst(tree: isla.DerivationTree) -> Union[bool, str]:
     with tempfile.NamedTemporaryFile(suffix=".rst") as tmp:

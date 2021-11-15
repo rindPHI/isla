@@ -18,11 +18,11 @@ from input_constraints.isla import VariablesCollector, parse_isla
 from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
 from input_constraints.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector
 from input_constraints.tests.subject_languages import rest, tar, simple_tar, scriptsizec
-from input_constraints.tests.subject_languages.csv import csv_lint
+from input_constraints.tests.subject_languages.csv import csv_lint, CSV_GRAMMAR
 from input_constraints.tests.subject_languages.tar import extract_tar
-from input_constraints.tests.subject_languages.xml_lang import validate_xml, XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, \
-    XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT
-from input_constraints.tests.test_data import LANG_GRAMMAR, CSV_GRAMMAR, SIMPLE_CSV_GRAMMAR, XML_GRAMMAR
+from input_constraints.tests.subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, \
+    XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, XML_GRAMMAR
+from input_constraints.tests.test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR
 
 
 class TestSolver(unittest.TestCase):

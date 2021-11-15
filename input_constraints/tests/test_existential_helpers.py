@@ -1,14 +1,17 @@
+import copy
 import unittest
 
 from fuzzingbook.Grammars import JSON_GRAMMAR
-from fuzzingbook.Parser import canonical
+from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph.gg import GrammarGraph
 
 from input_constraints.existential_helpers import insert_tree, wrap_in_tree_starting_in
+from input_constraints.helpers import delete_unreachable
 from input_constraints.isla import DerivationTree
 from input_constraints.tests.subject_languages import tinyc
-from input_constraints.tests.test_data import *
+from input_constraints.tests.test_data import LANG_GRAMMAR
 from input_constraints.tests.test_helpers import parse
+from input_constraints.tests.subject_languages.xml_lang import XML_GRAMMAR
 
 
 class TestExistentialHelpers(unittest.TestCase):
@@ -91,6 +94,21 @@ class TestExistentialHelpers(unittest.TestCase):
         result = wrap_in_tree_starting_in(
             "<term>", tree, tinyc.TINYC_GRAMMAR, GrammarGraph.from_grammar(tinyc.TINYC_GRAMMAR))
         self.assertTrue(result.find_node(tree))
+
+    def test_insert_xml(self):
+        tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse("<b>asdf</b>"))[0])
+        to_insert = DerivationTree("<xml-open-tag>", [
+            DerivationTree("<", []),
+            DerivationTree("<id>", [
+                DerivationTree("<id-start-char>", [
+                    DerivationTree("a", [])])]),
+            DerivationTree(">", [])
+        ])
+
+        result = insert_tree(canonical(XML_GRAMMAR), to_insert, tree)
+        str_results = [str(t) for t in result]
+        self.assertIn("<a><b>asdf</b><xml-close-tag>", str_results)
+
 
     # Test deactivated: Should assert that no prefix trees are generated. The implemented
     # check in insert_tree, however, was too expensive for the JSON examples. Stalling for now.

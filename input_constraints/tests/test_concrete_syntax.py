@@ -6,7 +6,8 @@ import z3
 from input_constraints import isla
 from input_constraints.isla import DummyVariable, parse_isla
 from input_constraints.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
-from input_constraints.tests.test_data import LANG_GRAMMAR, XML_GRAMMAR
+from input_constraints.tests.subject_languages.xml_lang import XML_GRAMMAR
+from input_constraints.tests.test_data import LANG_GRAMMAR
 import input_constraints.isla_shortcuts as sc
 
 
