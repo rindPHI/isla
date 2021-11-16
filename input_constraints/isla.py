@@ -16,7 +16,8 @@ from orderedset import OrderedSet
 
 from input_constraints.concrete_syntax import ISLA_GRAMMAR
 from input_constraints.helpers import get_symbols, z3_subst, is_valid, \
-    replace_line_breaks, delete_unreachable, pop, z3_solve, powerset, grammar_to_immutable, immutable_to_grammar
+    replace_line_breaks, delete_unreachable, pop, z3_solve, powerset, grammar_to_immutable, immutable_to_grammar, \
+    is_prefix
 from input_constraints.type_defs import ParseTree, Path, Grammar, ImmutableGrammar
 
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
@@ -779,13 +780,18 @@ class BindExpression:
             if match_result:
                 positions: Dict[BoundVariable, Path] = {}
                 for bound_element in bound_elements:
+                    if bound_element not in match_result:
+                        assert isinstance(bound_element, DummyVariable) and not is_nonterminal(bound_element.n_type)
+                        continue
+
+                    elem_match_result = match_result[bound_element]
                     tree = tree.replace_path(
-                        match_result[bound_element][0],
+                        elem_match_result[0],
                         DerivationTree(
-                            match_result[bound_element][1].value,
+                            elem_match_result[1].value,
                             None if is_nonterminal(bound_element.n_type) else ()))
 
-                    positions[bound_element] = match_result[bound_element][0]
+                    positions[bound_element] = elem_match_result[0]
 
                 result.append((tree, positions))
 
@@ -886,6 +892,9 @@ class BindExpression:
             bound_variables: List[BoundVariable],
             result: Dict[BoundVariable, Tuple[Path, DerivationTree]],
             excluded_matches: Tuple[Tuple[Path, BoundVariable], ...] = ()) -> bool:
+        orig_bound_variables = list(bound_variables)
+        split_variables: Dict[BoundVariable, List[BoundVariable]] = {}
+
         curr_elem = bound_variables.pop(0)
 
         while subtrees and curr_elem:
@@ -899,8 +908,17 @@ class BindExpression:
                 # Divide terminal dummy variables if they only can be unified with *different*
                 # subtrees; e.g., we have a dummy variable with n_type "xmlns:" for an XML grammar,
                 # and have to unify an ID prefix with "xmlns", leaving the ":" for the next subtree.
-                bound_variables.insert(0, DummyVariable(curr_elem.n_type[len(subtree_str):]))
-                curr_elem = DummyVariable(subtree_str)
+                # NOTE: If we split here, this cannot be recovered, because we only need to split
+                # in the first place since the grammar does not allow for a graceful division of
+                # the considered terminal symbols. In the XML example, ":" is in a sibling tree; there
+                # is no common super tree to match *only* "xmlns:".
+                remainder_var = DummyVariable(curr_elem.n_type[len(subtree_str):])
+                next_var = DummyVariable(subtree_str)
+
+                split_variables[curr_elem] = [next_var, remainder_var]
+                bound_variables.insert(0, remainder_var)
+
+                curr_elem = next_var
 
             if ((path, curr_elem) not in excluded_matches and
                     (subtree.value == curr_elem.n_type or
@@ -911,6 +929,11 @@ class BindExpression:
                 curr_elem = pop(bound_variables, default=None)
                 subtrees = [(p, s) for p, s in subtrees
                             if not p[:len(path)] == path]
+
+        # We did only split dummy variables
+        assert subtrees or curr_elem or \
+               {v for v in orig_bound_variables if type(v) is BoundVariable} == \
+               {v for v in result.keys() if type(v) is BoundVariable}
 
         return not subtrees and not curr_elem
 

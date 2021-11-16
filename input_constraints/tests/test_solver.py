@@ -170,11 +170,15 @@ constraint {
             custom_test_func=validate_xml,
             cost_settings=CostSettings(
                 weight_vectors=(
-                    # CostWeightVector(tree_closing_cost = 16, vacuous_penalty = 13, constraint_cost = 3, derivation_depth_penalty = 0, low_k_coverage_penalty = 7, low_global_k_path_coverage_penalty = 10),
-                    # CostWeightVector( tree_closing_cost=16, vacuous_penalty=13, constraint_cost=0, derivation_depth_penalty=1, low_k_coverage_penalty=3, low_global_k_path_coverage_penalty=3),
-                    CostWeightVector(tree_closing_cost=1, vacuous_penalty=1, constraint_cost=0,
-                                     derivation_depth_penalty=1, low_k_coverage_penalty=0,
-                                     low_global_k_path_coverage_penalty=0),
+                    # CostWeightVector(tree_closing_cost=38, vacuous_penalty=34, constraint_cost=17,
+                    #                  derivation_depth_penalty=10, low_k_coverage_penalty=21,
+                    #                  low_global_k_path_coverage_penalty=12),
+                    # CostWeightVector(tree_closing_cost=36, vacuous_penalty=15, constraint_cost=3,
+                    #                  derivation_depth_penalty=7, low_k_coverage_penalty=9,
+                    #                  low_global_k_path_coverage_penalty=38),
+                    CostWeightVector(tree_closing_cost=36, vacuous_penalty=34, constraint_cost=0.5454545454545454,
+                                     derivation_depth_penalty=10, low_k_coverage_penalty=21,
+                                     low_global_k_path_coverage_penalty=12),
                 ),
                 cost_phase_lengths=(200,),
                 k=3
@@ -317,19 +321,26 @@ constraint {
             custom_test_func=scriptsizec.compile_scriptsizec_clang,
             cost_settings=CostSettings(
                 (
+                    # CostWeightVector(
+                    #     tree_closing_cost=11,
+                    #     vacuous_penalty=8,
+                    #     constraint_cost=27,
+                    #     derivation_depth_penalty=16,
+                    #     low_k_coverage_penalty=18,
+                    #     low_global_k_path_coverage_penalty=20),
                     CostWeightVector(
-                        tree_closing_cost=11,
-                        vacuous_penalty=8,
-                        constraint_cost=27,
-                        derivation_depth_penalty=16,
-                        low_k_coverage_penalty=18,
-                        low_global_k_path_coverage_penalty=20),
+                        tree_closing_cost=13,
+                        vacuous_penalty=2,
+                        constraint_cost=19,
+                        derivation_depth_penalty=22,
+                        low_k_coverage_penalty=9,
+                        low_global_k_path_coverage_penalty=14),
                 ),
                 cost_phase_lengths=(200,),
                 k=3
             ),
             num_solutions=50,
-            print_only=True
+            # print_only=True
         )
 
     @pytest.mark.skip(reason="Have to disable assertions to run this test, disabling in CI pipeline.")
