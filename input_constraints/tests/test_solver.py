@@ -16,7 +16,8 @@ from input_constraints.concrete_syntax import ISLA_GRAMMAR
 from input_constraints.helpers import delete_unreachable
 from input_constraints.isla import VariablesCollector, parse_isla
 from input_constraints.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
-from input_constraints.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector
+from input_constraints.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
+    get_quantifier_chains
 from input_constraints.tests.subject_languages import rest, tar, simple_tar, scriptsizec
 from input_constraints.tests.subject_languages.csv import csv_lint, CSV_GRAMMAR
 from input_constraints.tests.subject_languages.tar import extract_tar
@@ -158,6 +159,15 @@ constraint {
                     ,),
                 cost_phase_lengths=(200,))
         )
+
+    def test_get_quantifier_chains(self):
+        chains_1 = get_quantifier_chains(XML_WELLFORMEDNESS_CONSTRAINT)
+        self.assertEqual(1, len(chains_1))
+        chains_2 = get_quantifier_chains(XML_NAMESPACE_CONSTRAINT)
+        self.assertEqual(2, len(chains_2))
+        all_chains = get_quantifier_chains(XML_WELLFORMEDNESS_CONSTRAINT & XML_NAMESPACE_CONSTRAINT)
+        self.assertEqual(3, len(all_chains))
+        self.assertEqual(set(chains_1) | set(chains_2), set(all_chains))
 
     # @pytest.mark.skip(reason="This has to be fixed: Far too slow / no interesting attribute inputs depending on cost function")
     def test_xml_with_prefixes(self):

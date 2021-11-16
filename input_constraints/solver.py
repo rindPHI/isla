@@ -225,6 +225,11 @@ class ISLaSolver:
         assert len(top_constants) == 1
         self.top_constant = next(iter(top_constants))
 
+        quantifier_chains: List[Tuple[isla.ForallFormula, ...]] = [
+            tuple([f for f in c if isinstance(f, isla.ForallFormula)])
+            for c in get_quantifier_chains(formula)]
+        self.quantifier_chains = [c for c in quantifier_chains if c]
+
         self.max_number_free_instantiations: int = max_number_free_instantiations
         self.max_number_smt_instantiations: int = max_number_smt_instantiations
         # self.expand_after_existential_elimination = expand_after_existential_elimination
@@ -1122,12 +1127,7 @@ def compute_k_coverage_cost(graph: GrammarGraph, k: int, state: SolutionState) -
 def get_quantifier_chains(formula: isla.Formula) -> \
         List[Tuple[Union[isla.QuantifiedFormula, isla.IntroduceNumericConstantFormula], ...]]:
     univ_toplevel_formulas = isla.get_toplevel_quantified_formulas(formula)
-    children_chains = [get_quantifier_chains(f.inner_formula) for f in univ_toplevel_formulas]
-    children_chains = [c for c in children_chains if c]
-    if children_chains:
-        return [(f,) + c for f in univ_toplevel_formulas for c in get_quantifier_chains(f.inner_formula)]
-    else:
-        return [(f,) for f in univ_toplevel_formulas]
+    return [(f,) + c for f in univ_toplevel_formulas for c in (get_quantifier_chains(f.inner_formula) or [()])]
 
 
 def compute_vacuous_penalty(
@@ -1136,7 +1136,6 @@ def compute_vacuous_penalty(
         orig_formula: isla.Formula,
         tree: DerivationTree) -> float:
     # Returns a value between 0 (best) and 1 (worst).
-
     formula = isla.instantiate_top_constant(orig_formula, tree)
     toplevel_qfrs = isla.get_toplevel_quantified_formulas(formula)
 
@@ -1145,29 +1144,29 @@ def compute_vacuous_penalty(
         for c in get_quantifier_chains(formula)]
     quantifier_chains = [c for c in quantifier_chains if c]
 
-    vacuous_penalty = 0
-    if quantifier_chains:
-        vacuously_matched_quantifiers = set()
-        isla.eliminate_quantifiers(
-            formula,
-            vacuously_satisfied=vacuously_matched_quantifiers,
-            grammar=grammar,
-            graph=graph)
+    if not quantifier_chains:
+        return 0
 
-        vacuous_chains = {
-            c for c in quantifier_chains if
-            all(any(of.id == f.id
-                    for of in vacuously_matched_quantifiers)
-                for f in c)}
+    vacuously_matched_quantifiers = set()
+    isla.eliminate_quantifiers(
+        formula,
+        vacuously_satisfied=vacuously_matched_quantifiers,
+        grammar=grammar,
+        graph=graph)
 
-        # Only consider one chain per top-level quantifier
-        vacuous_chains = set([
-            chains[0] for chains in
-            set([tuple(d for d in vacuous_chains
-                       if d[0].id == c[0].id)
-                 for c in vacuous_chains])])
+    vacuous_chains = {
+        c for c in quantifier_chains if
+        all(any(of.id == f.id for of in vacuously_matched_quantifiers)
+            for f in c)}
 
-        vacuous_penalty = len(vacuous_chains) / len(toplevel_qfrs)
-        assert 0 <= vacuous_penalty <= 1
+    # Only consider one chain per top-level quantifier
+    vacuous_chains = set([
+        chains[0] for chains in
+        set([tuple(d for d in vacuous_chains
+                   if d[0].id == c[0].id)
+             for c in vacuous_chains])])
+
+    vacuous_penalty = len(vacuous_chains) / len(toplevel_qfrs)
+    assert 0 <= vacuous_penalty <= 1
 
     return vacuous_penalty
