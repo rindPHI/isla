@@ -78,34 +78,54 @@ constraint {
 
 XML_WELLFORMEDNESS_CONSTRAINT = parse_isla(xml_wellformedness_constraint)
 
-xml_namespace_constraint = """
+xml_attribute_namespace_constraint = """
+const start: <start>;
+
+vars {
+    prefix_id: <id-with-prefix>;
+    prefix_use, prefix_def: <id-no-prefix>;
+    outer_tag: <xml-tree>;
+    attribute, cont_attribute, def_attribute: <xml-attribute>;
+    contained_tree: <inner-xml-tree>;
+}
+
+constraint {
+    forall attribute in start:
+        forall prefix_id="{prefix_use}:<id-no-prefix>" in attribute:
+            ((= prefix_use "xmlns") or
+                exists outer_tag="<<id> {cont_attribute}>{contained_tree}</<id>>" in start:
+                    (inside(attribute, contained_tree) and 
+                     exists def_attribute="xmlns:{prefix_def}=\\\"<text>\\\"" in cont_attribute:
+                         (= prefix_use prefix_def)))
+}
+"""
+
+XML_ATTRIBUTE_NAMESPACE_CONSTRAINT = parse_isla(
+    xml_attribute_namespace_constraint, structural_predicates={IN_TREE_PREDICATE})
+
+xml_tag_namespace_constraint = """
 const start: <start>;
 
 vars {
     prefix_id: <id-with-prefix>;
     prefix_use, prefix_def: <id-no-prefix>;
     xml_tree, outer_tag: <xml-tree>;
-    attribute, cont_attribute, def_attribute: <xml-attribute>;
+    cont_attribute, def_attribute: <xml-attribute>;
     contained_tree: <inner-xml-tree>;
 }
 
 constraint {
-    (forall attribute in start:
-        forall prefix_id="{prefix_use}:<id-no-prefix>" in attribute:
-            ((= prefix_use "xmlns") or
-                exists outer_tag="<<id> {cont_attribute}>{contained_tree}</<id>>" in start:
-                    (inside(attribute, contained_tree) and 
-                     exists def_attribute="xmlns:{prefix_def}=\\\"<text>\\\"" in cont_attribute:
-                         (= prefix_use prefix_def))) and
     forall xml_tree="<{prefix_use}:<id-no-prefix>[ <xml-attribute>][/]>[<inner-xml-tree><xml-close-tag>]" in start:
         exists outer_tag="<<id> {cont_attribute}>{contained_tree}</<id>>" in start:
             (inside(xml_tree, contained_tree) and 
              exists def_attribute="xmlns:{prefix_def}=\\\"<text>\\\"" in cont_attribute:
-                 (= prefix_use prefix_def)))
+                 (= prefix_use prefix_def))
 }
 """
 
-XML_NAMESPACE_CONSTRAINT = parse_isla(xml_namespace_constraint, structural_predicates={IN_TREE_PREDICATE})
+XML_TAG_NAMESPACE_CONSTRAINT = parse_isla(xml_tag_namespace_constraint, structural_predicates={IN_TREE_PREDICATE})
+
+XML_NAMESPACE_CONSTRAINT = XML_TAG_NAMESPACE_CONSTRAINT & XML_ATTRIBUTE_NAMESPACE_CONSTRAINT
 
 xml_no_attr_redef_constraint = """
 const start: <start>;

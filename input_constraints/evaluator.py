@@ -428,9 +428,12 @@ def auto_tune_weight_vector(
     assert population_size % 2 == 0
     assert seed_population is None or len(seed_population) == population_size
 
+    if cpu_count < 1:
+        cpu_count = mp.cpu_count()
+
     time_estimate = 2.5 * (
-            timeout * population_size / mp.cpu_count() +
-            (generations - 1) * (population_size // 2) * timeout / mp.cpu_count())
+            timeout * population_size / cpu_count +
+            (generations - 1) * (population_size // 2) * timeout / cpu_count)
     logger.info(
         "Autotuning, estimated time > %ds, end: %s",
         time_estimate,

@@ -22,7 +22,7 @@ from input_constraints.tests.subject_languages import rest, tar, simple_tar, scr
 from input_constraints.tests.subject_languages.csv import csv_lint, CSV_GRAMMAR
 from input_constraints.tests.subject_languages.tar import extract_tar
 from input_constraints.tests.subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, \
-    XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, XML_GRAMMAR, validate_xml
+    XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, XML_GRAMMAR, validate_xml, XML_TAG_NAMESPACE_CONSTRAINT
 from input_constraints.tests.test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR
 
 
@@ -171,25 +171,29 @@ constraint {
 
     # @pytest.mark.skip(reason="This has to be fixed: Far too slow / no interesting attribute inputs depending on cost function")
     def test_xml_with_prefixes(self):
-        # TODO: Check why in state 963406418259140941, <text> is expanded though it's unbound!
+        # TODO: We get far too many structurally similar outputs!!!
+        # TODO: Global vacuity coverage
         self.execute_generation_test(
+            # XML_TAG_NAMESPACE_CONSTRAINT & XML_WELLFORMEDNESS_CONSTRAINT,
             XML_NAMESPACE_CONSTRAINT & XML_WELLFORMEDNESS_CONSTRAINT,
             grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
             max_number_free_instantiations=1,
-            num_solutions=20,
+            num_solutions=500,
             custom_test_func=validate_xml,
+            # print_only=True,
             cost_settings=CostSettings(
                 weight_vectors=(
-                    # CostWeightVector(tree_closing_cost=38, vacuous_penalty=34, constraint_cost=17,
-                    #                  derivation_depth_penalty=10, low_k_coverage_penalty=21,
-                    #                  low_global_k_path_coverage_penalty=12),
                     # CostWeightVector(tree_closing_cost=36, vacuous_penalty=15, constraint_cost=3,
                     #                  derivation_depth_penalty=7, low_k_coverage_penalty=9,
                     #                  low_global_k_path_coverage_penalty=38),
-                    CostWeightVector(tree_closing_cost=36, vacuous_penalty=34, constraint_cost=0.5454545454545454,
-                                     derivation_depth_penalty=10, low_k_coverage_penalty=21,
+                    CostWeightVector(tree_closing_cost=36, vacuous_penalty=34, constraint_cost=0,
+                                     derivation_depth_penalty=10, low_k_coverage_penalty=1,
                                      low_global_k_path_coverage_penalty=12),
-                ),
+                    # CostWeightVector(tree_closing_cost=20, vacuous_penalty=1, constraint_cost=10,  # <- many similar outputs
+                    #                  derivation_depth_penalty=2, low_k_coverage_penalty=10,
+                    #                  low_global_k_path_coverage_penalty=13),
+
+            ),
                 cost_phase_lengths=(200,),
                 k=3
             )

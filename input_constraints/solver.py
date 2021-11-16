@@ -228,7 +228,7 @@ class ISLaSolver:
         quantifier_chains: List[Tuple[isla.ForallFormula, ...]] = [
             tuple([f for f in c if isinstance(f, isla.ForallFormula)])
             for c in get_quantifier_chains(formula)]
-        self.quantifier_chains = [c for c in quantifier_chains if c]
+        self.quantifier_chains: List[Tuple[isla.ForallFormula, ...]] = [c for c in quantifier_chains if c]
 
         self.max_number_free_instantiations: int = max_number_free_instantiations
         self.max_number_smt_instantiations: int = max_number_smt_instantiations
@@ -933,7 +933,7 @@ class ISLaSolver:
 
         return compute_cost(
             state, symbol_costs, cost_weight_vector, k, self.covered_k_paths,
-            self.formula, grammar, graph, self.reachable)
+            self.formula, grammar, graph, self.quantifier_chains)
 
     def compute_symbol_costs(self) -> Dict[str, int]:
         self.logger.info("Computing symbol costs")
@@ -1073,7 +1073,7 @@ def compute_cost(
         orig_formula: isla.Formula,
         grammar: Grammar,
         graph: gg.GrammarGraph,
-        is_reachable: Callable[[str, str], bool]) -> float:
+        quantifier_chains: List[Tuple[isla.ForallFormula, ...]]) -> float:
     # How costly is it to finish the tree?
     nonterminals = [leaf.value for _, leaf in state.tree.open_leaves()]
     tree_closing_cost = sum([symbol_costs[nonterminal] for nonterminal in nonterminals])
@@ -1087,7 +1087,7 @@ def compute_cost(
     # vacuous_penalty = compute_match_dist(state, grammar, node_distance)
 
     # What is the proportion of vacuously satisfied universal quantifiers *chains* in (extensions of) this tree?
-    vacuous_penalty = compute_vacuous_penalty(grammar, graph, orig_formula, state.tree)
+    vacuous_penalty = compute_vacuous_penalty(grammar, graph, orig_formula, state.tree, quantifier_chains)
 
     # k-Path coverage: Fewer covered -> higher penalty
     k_cov_cost = compute_k_coverage_cost(graph, k, state)
@@ -1134,15 +1134,11 @@ def compute_vacuous_penalty(
         grammar: Grammar,
         graph: gg.GrammarGraph,
         orig_formula: isla.Formula,
-        tree: DerivationTree) -> float:
+        tree: DerivationTree,
+        quantifier_chains: List[Tuple[isla.ForallFormula, ...]]) -> float:
     # Returns a value between 0 (best) and 1 (worst).
     formula = isla.instantiate_top_constant(orig_formula, tree)
     toplevel_qfrs = isla.get_toplevel_quantified_formulas(formula)
-
-    quantifier_chains: List[Tuple[isla.ForallFormula, ...]] = [
-        tuple([f for f in c if isinstance(f, isla.ForallFormula)])
-        for c in get_quantifier_chains(formula)]
-    quantifier_chains = [c for c in quantifier_chains if c]
 
     if not quantifier_chains:
         return 0
