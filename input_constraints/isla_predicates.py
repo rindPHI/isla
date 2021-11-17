@@ -335,7 +335,6 @@ def mk_parser(grammar: Grammar):
             return list(parser.parse(inp))
 
         return result
-        # return lambda inp: list(parser.parse(inp))
 
     return Parser
 

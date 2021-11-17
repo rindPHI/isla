@@ -23,7 +23,7 @@ from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
     replace_line_breaks, z3_subst, z3_solve, weighted_geometric_mean, assertions_activated, split_str_with_nonterminals
 from input_constraints.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
-    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts
+    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, set_smt_auto_eval
 from input_constraints.type_defs import Grammar, Path
 
 
@@ -293,11 +293,11 @@ class ISLaSolver:
                 if int(time.time()) - start_time > self.timeout_seconds:
                     return
 
-            # if hash(self.queue[0][1]) == 5736458258824473151:
-            #     with open('/tmp/saved_debug_state', 'wb') as debug_state_file:
-            #         pickle.dump(self, debug_state_file)
-            #     print("Dumping state to /tmp/saved_debug_state")
-            #     exit()
+            if hash(self.queue[0][1]) == 9175279053435247617:
+                with open('/tmp/saved_debug_state', 'wb') as debug_state_file:
+                    pickle.dump(self, debug_state_file)
+                print("Dumping state to /tmp/saved_debug_state")
+                exit()
 
             cost: int
             state: SolutionState
@@ -1264,12 +1264,16 @@ def compute_vacuous_penalty(
     if not quantifier_chains:
         return 0
 
+    set_smt_auto_eval(formula, False)
+
     vacuously_matched_quantifiers = set()
     isla.eliminate_quantifiers(
         formula,
         vacuously_satisfied=vacuously_matched_quantifiers,
         grammar=grammar,
         graph=graph)
+
+    set_smt_auto_eval(formula, True)
 
     vacuous_chains = {
         c for c in quantifier_chains if

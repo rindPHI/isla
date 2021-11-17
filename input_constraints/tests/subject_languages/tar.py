@@ -67,7 +67,10 @@ TAR_GRAMMAR = {
 
     "<maybe_characters>": ["<characters>", ""],
     "<characters>": ["<character><characters>", "<character>"],
-    "<character>": srange(string.printable),
+
+    # TODO: Separate characters for file names + content
+    "<character>": srange(string.ascii_letters + string.digits + "._-"),
+    # "<character>": list(set(srange(string.printable)) - set(srange(string.whitespace + "\b\f\v"))),
 
     "<maybe_nuls>": ["<nuls>", ""],
     "<nuls>": ["<NUL><nuls>", "<NUL>"],

@@ -177,8 +177,6 @@ constraint {
             max_number_free_instantiations=1,
             num_solutions=50,
             custom_test_func=validate_xml,
-            # debug=True,
-            # print_only=True,
             cost_settings=CostSettings(
                 weight_vectors=(
                     CostWeightVector(tree_closing_cost=15, vacuous_penalty=15, constraint_cost=0,
@@ -319,21 +317,17 @@ constraint {
         self.execute_generation_test(
             scriptsizec.SCRIPTSIZE_C_DEF_USE_CONSTR & scriptsizec.SCRIPTSIZE_C_NO_REDEF_CONSTR,
             grammar=scriptsizec.SCRIPTSIZE_C_GRAMMAR,
-            max_number_free_instantiations=2,
+            max_number_free_instantiations=1,
             max_number_smt_instantiations=2,
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
             custom_test_func=scriptsizec.compile_scriptsizec_clang,
-            num_solutions=60,
+            num_solutions=20,
             cost_settings=CostSettings(
                 (
-                    CostWeightVector(tree_closing_cost=25, vacuous_penalty=4, constraint_cost=18,
-                                     derivation_depth_penalty=9, low_k_coverage_penalty=20,
-                                     low_global_k_path_coverage_penalty=13),
-
-                    # CostWeightVector(tree_closing_cost=15, vacuous_penalty=15, constraint_cost=0,
-                    #                  derivation_depth_penalty=0, low_k_coverage_penalty=5,
-                    #                  low_global_k_path_coverage_penalty=7),
+                    CostWeightVector(tree_closing_cost=18, vacuous_penalty=5, constraint_cost=14,
+                                     derivation_depth_penalty=7, low_k_coverage_penalty=12,
+                                     low_global_k_path_coverage_penalty=9),
                 ),
                 cost_phase_lengths=(200,),
                 k=3
@@ -341,7 +335,7 @@ constraint {
             # print_only=True
         )
 
-    @pytest.mark.skip(reason="Have to disable assertions to run this test, disabling in CI pipeline.")
+    # @pytest.mark.skip(reason="Have to disable assertions to run this test, disabling in CI pipeline.")
     def test_tar(self):
         self.execute_generation_test(
             tar.TAR_CONSTRAINTS,

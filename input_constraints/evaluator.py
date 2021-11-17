@@ -17,18 +17,11 @@ from grammar_graph import gg
 import input_constraints.isla_shortcuts as sc
 from input_constraints import isla, solver
 from input_constraints.helpers import weighted_geometric_mean
+from input_constraints.isla import set_smt_auto_eval
 from input_constraints.solver import ISLaSolver, CostWeightVector, CostSettings
 from input_constraints.type_defs import Grammar
 
 logger = logging.getLogger("evaluator")
-
-
-def set_smt_auto_eval(formula: isla.Formula, auto_eval: bool = False):
-    class AutoEvalVisitor(isla.FormulaVisitor):
-        def visit_smt_formula(self, formula: isla.SMTFormula):
-            formula.auto_eval = auto_eval
-
-    formula.accept(AutoEvalVisitor())
 
 
 def vacuously_satisfies(inp: isla.DerivationTree, formula: isla.Formula, grammar: Grammar) -> bool:

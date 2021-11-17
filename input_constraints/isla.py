@@ -1475,6 +1475,7 @@ class SMTFormula(Formula):
         # is set to True and all substituted expressions are closed trees, i.e., the formula
         # is ground. Deactivate only for special purposes, e.g., vacuity checking.
         self.auto_eval = auto_eval
+        # self.auto_eval = False
 
     def __getstate__(self) -> Dict[str, bytes]:
         result: Dict[str, bytes] = {f: pickle.dumps(v) for f, v in self.__dict__.items() if f != "formula"}
@@ -3001,3 +3002,11 @@ def is_valid_combination(
             return True
 
     return False
+
+
+def set_smt_auto_eval(formula: Formula, auto_eval: bool = False):
+    class AutoEvalVisitor(FormulaVisitor):
+        def visit_smt_formula(self, formula: SMTFormula):
+            formula.auto_eval = auto_eval
+
+    formula.accept(AutoEvalVisitor())
