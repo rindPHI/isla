@@ -128,9 +128,9 @@ class DerivationTree:
         self.children = None if children is None else tuple(children)
 
         if id:
-            self.id = id
+            self._id = id
         else:
-            self.id = DerivationTree.next_id
+            self._id = DerivationTree.next_id
             DerivationTree.next_id += 1
 
         if not children:
@@ -141,6 +141,14 @@ class DerivationTree:
         self.__hash = hash
         self.__structural_hash = structural_hash
         self.__k_paths: Dict[int, Set[Tuple[gg.Node, ...]]] = k_paths or {}
+
+    @property
+    def id(self) -> int:
+        return self._id
+
+    @id.setter
+    def id(self, value: int):
+        raise NotImplementedError()
 
     def has_unique_ids(self) -> bool:
         return all(
@@ -665,7 +673,7 @@ class DerivationTree:
         return True
 
     def __repr__(self):
-        return f"DerivationTree({repr(self.value)}, {repr(self.children)})"
+        return f"DerivationTree({repr(self.value)}, {repr(self.children)}, id={self.id})"
 
     def to_string(self, show_open_leaves: bool = False) -> str:
         result = []
@@ -2544,7 +2552,14 @@ def replace_formula(in_formula: Formula,
         return reduce(lambda a, b: a | b, [replace_formula(child, to_replace, replace_with)
                                            for child in in_formula.args])
     elif isinstance(in_formula, NegatedFormula):
-        return NegatedFormula(replace_formula(in_formula.args[0], to_replace, replace_with))
+        child_result = replace_formula(in_formula.args[0], to_replace, replace_with)
+
+        if child_result == SMTFormula(z3.BoolVal(False)):
+            return SMTFormula(z3.BoolVal(True))
+        elif child_result == SMTFormula(z3.BoolVal(True)):
+            return SMTFormula(z3.BoolVal(False))
+
+        return NegatedFormula(child_result)
     elif isinstance(in_formula, ForallFormula):
         return ForallFormula(
             in_formula.bound_variable,

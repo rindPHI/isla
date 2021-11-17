@@ -15,14 +15,14 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.ERROR)
     logging.getLogger("evaluator").setLevel(logging.DEBUG)
 
-    random.seed(7450921475674980)
+    random.seed(351684321654)
 
     tune_result = auto_tune_weight_vector(
         SCRIPTSIZE_C_GRAMMAR,
         SCRIPTSIZE_C_DEF_USE_CONSTR & SCRIPTSIZE_C_NO_REDEF_CONSTR,
         validator,
-        timeout=60,
-        population_size=20,
+        timeout=90,
+        population_size=50,
         generations=4,
         cpu_count=-1
     )

@@ -16,7 +16,6 @@ SCRIPTSIZE_C_GRAMMAR = {
     "<start>": ["<statement>"],
     "<statement>": [
         "<block>",
-        "<declaration>",
         "if<paren_expr> <statement> else <statement>",
         "if<paren_expr> <statement>",
         "while<paren_expr> <statement>",
@@ -25,7 +24,8 @@ SCRIPTSIZE_C_GRAMMAR = {
         ";"
     ],
     "<block>": ["{<statements>}"],
-    "<statements>": ["<statement><statements>", ""],
+    "<statements>": ["<block_statement><statements>", ""],
+    "<block_statement>": ["<statement>", "<declaration>"],
     "<declaration>": [
         "int <id> = <expr>;",
         "int <id>;"
@@ -101,7 +101,7 @@ constraint {
   forall declaration="int {def_id}[ = <expr>];" in start:
      forall other_declaration="int {other_def_id}[ = <expr>];" in start:
        (same_position(declaration, other_declaration) or
-        not (= def_id other_def_id))
+        (not same_position(declaration, other_declaration) and not (= def_id other_def_id)))
 }
 """
 

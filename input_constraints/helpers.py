@@ -2,10 +2,11 @@ import itertools
 import logging
 import random
 import math
+import re
 from typing import Optional, Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast
 
 import z3
-from fuzzingbook.Grammars import unreachable_nonterminals, is_nonterminal
+from fuzzingbook.Grammars import unreachable_nonterminals, is_nonterminal, RE_NONTERMINAL
 
 from input_constraints.type_defs import Path, Grammar, ParseTree, ImmutableGrammar
 
@@ -243,3 +244,20 @@ def grammar_to_immutable(grammar: Grammar) -> ImmutableGrammar:
 
 def immutable_to_grammar(immutable: ImmutableGrammar) -> Grammar:
     return {k: list(v) for k, v in dict(immutable).items()}
+
+
+def assertions_activated() -> bool:
+    result = False
+
+    def set_result_to_true() -> bool:
+        nonlocal result
+        result = True
+        return True
+
+    assert set_result_to_true()
+    return result
+
+
+def split_str_with_nonterminals(expression: str) -> List[str]:
+    return [token for token in re.split(
+        RE_NONTERMINAL, expression) if token]

@@ -21,7 +21,7 @@ from input_constraints.tests.subject_languages import rest, scriptsizec
 from input_constraints.tests.subject_languages import tinyc, tar
 from input_constraints.tests.subject_languages.csv import CSV_GRAMMAR
 from input_constraints.tests.subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, validate_xml, \
-    xml_namespace_constraint, xml_no_attr_redef_constraint, XML_GRAMMAR
+    xml_no_attr_redef_constraint, XML_GRAMMAR, XML_NAMESPACE_CONSTRAINT
 from input_constraints.tests.test_data import LANG_GRAMMAR, eval_lang
 from input_constraints.tests.test_helpers import parse
 
@@ -448,7 +448,7 @@ class TestISLa(unittest.TestCase):
         assert validate_xml(tree)
 
         self.assertTrue(evaluate(
-            xml_namespace_constraint,
+            XML_NAMESPACE_CONSTRAINT.substitute_expressions({Constant("start", "<start>"): tree}),
             grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
             reference_tree=tree,
             structural_predicates={IN_TREE_PREDICATE}))
@@ -459,7 +459,7 @@ class TestISLa(unittest.TestCase):
         assert validate_xml(tree)
 
         self.assertTrue(evaluate(
-            xml_namespace_constraint,
+            XML_NAMESPACE_CONSTRAINT.substitute_expressions({Constant("start", "<start>"): tree}),
             grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
             reference_tree=tree,
             structural_predicates={IN_TREE_PREDICATE}))
@@ -470,7 +470,7 @@ class TestISLa(unittest.TestCase):
         assert not validate_xml(tree)
 
         self.assertFalse(evaluate(
-            xml_namespace_constraint,
+            XML_NAMESPACE_CONSTRAINT.substitute_expressions({Constant("start", "<start>"): tree}),
             grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
             reference_tree=tree,
             structural_predicates={IN_TREE_PREDICATE}))
@@ -481,7 +481,7 @@ class TestISLa(unittest.TestCase):
         assert not validate_xml(tree)
 
         self.assertFalse(evaluate(
-            xml_namespace_constraint,
+            XML_NAMESPACE_CONSTRAINT.substitute_expressions({Constant("start", "<start>"): tree}),
             grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
             reference_tree=tree,
             structural_predicates={IN_TREE_PREDICATE}))

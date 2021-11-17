@@ -2,10 +2,11 @@ import copy
 import heapq
 import logging
 import math
+import pickle
 import sys
 import time
 from functools import reduce, lru_cache
-from typing import Generator, Dict, List, Set, Optional, Tuple, Union, cast, Callable
+from typing import Generator, Dict, List, Set, Optional, Tuple, Union, cast
 
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
@@ -20,7 +21,7 @@ import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
-    replace_line_breaks, z3_subst, z3_solve, weighted_geometric_mean
+    replace_line_breaks, z3_subst, z3_solve, weighted_geometric_mean, assertions_activated, split_str_with_nonterminals
 from input_constraints.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
     convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts
 from input_constraints.type_defs import Grammar, Path
@@ -292,6 +293,12 @@ class ISLaSolver:
                 if int(time.time()) - start_time > self.timeout_seconds:
                     return
 
+            # if hash(self.queue[0][1]) == 5736458258824473151:
+            #     with open('/tmp/saved_debug_state', 'wb') as debug_state_file:
+            #         pickle.dump(self, debug_state_file)
+            #     print("Dumping state to /tmp/saved_debug_state")
+            #     exit()
+
             cost: int
             state: SolutionState
             cost, state = heapq.heappop(self.queue)
@@ -388,8 +395,11 @@ class ISLaSolver:
 
     def instantiate_structural_predicates(self, state: SolutionState) -> SolutionState:
         predicate_formulas = [
-            conjunct for conjunct in get_conjuncts(state.constraint)
-            if isinstance(conjunct, isla.StructuralPredicateFormula)]
+            pred_formula for pred_formula in isla.FilterVisitor(
+                lambda f: isinstance(f, isla.StructuralPredicateFormula)).collect(state.constraint)
+            if (isinstance(pred_formula, isla.StructuralPredicateFormula)
+                and all(not isinstance(arg, isla.Variable) for arg in pred_formula.args))
+        ]
 
         formula = state.constraint
         for predicate_formula in predicate_formulas:
@@ -446,8 +456,11 @@ class ISLaSolver:
 
     def eliminate_all_ready_semantic_predicate_formulas(self, state: SolutionState) -> Optional[SolutionState]:
         semantic_predicate_formulas = [
-            conjunct for conjunct in split_conjunction(state.constraint)
-            if isinstance(conjunct, isla.SemanticPredicateFormula)]
+            pred_formula for pred_formula in isla.FilterVisitor(
+                lambda f: isinstance(f, isla.SemanticPredicateFormula)).collect(state.constraint)
+            if (isinstance(pred_formula, isla.SemanticPredicateFormula)
+                and all(not isinstance(arg, isla.Variable) for arg in pred_formula.args))
+        ]
 
         semantic_predicate_formulas = sorted(semantic_predicate_formulas, key=lambda f: f.order)
 
@@ -501,6 +514,8 @@ class ISLaSolver:
             return None
 
         new_states = self.match_existential_formula(existential_formulas[0], state)
+        # self.logger.debug("self.match_existential_formula(%s, %s)", repr(existential_formulas[0]), state)
+        # self.logger.debug("   ... = %s", ", ".join(map(str, new_states)))
 
         complete_states = [state for state in new_states
                            if state.complete()
@@ -643,28 +658,50 @@ class ISLaSolver:
         bind_expr_paths: Dict[isla.BoundVariable, Path]
         for inserted_tree, bind_expr_paths in inserted_trees_and_bind_paths:
             # TODO: Make maximum number of solutions configurable
+            self.logger.debug(
+                "insert_tree(self.canonical_grammar, %s, %s, self.graph, %s)",
+                repr(inserted_tree),
+                repr(existential_formula.in_variable),
+                30)
+
             insertion_results = insert_tree(
                 self.canonical_grammar,
                 inserted_tree,
-                state.tree,
+                existential_formula.in_variable,
                 graph=self.graph,
                 max_num_solutions=30
             )
 
             for insertion_result in insertion_results:
-                actual_inserted_tree = insertion_result.get_subtree(insertion_result.find_node(inserted_tree))
+                # actual_inserted_tree = insertion_result.get_subtree(insertion_result.find_node(inserted_tree))
+                resulting_tree = state.tree.replace_path(
+                    state.tree.find_node(existential_formula.in_variable),
+                    insertion_result)
 
-                tree_substitution = {
-                    original_tree: insertion_result.get_subtree(path)
-                    for path, original_tree in state.tree.paths()
-                    if insertion_result.is_valid_path(path)
+                tree_substitution: Dict[DerivationTree, DerivationTree] = {
+                    original_tree: resulting_tree.get_subtree(original_path)
+                    for original_path, original_tree in state.tree.paths()
+                    if (resulting_tree.is_valid_path(original_path) and
+                        original_tree.value == resulting_tree.get_subtree(original_path).value and
+                        not resulting_tree.get_subtree(original_path).structurally_equal(original_tree))
                 }
 
-                variable_substitutions = {existential_formula.bound_variable: actual_inserted_tree}
+                assert insertion_result.find_node(inserted_tree) is not None
+                variable_substitutions = {existential_formula.bound_variable: inserted_tree}
 
                 if bind_expr_paths:
+                    if assertions_activated():
+                        dangling_bind_expr_vars = [
+                            (var, path)
+                            for var, path in bind_expr_paths.items()
+                            if (var in existential_formula.bind_expression.bound_variables() and
+                                insertion_result.find_node(inserted_tree.get_subtree(path)) is None)]
+                        assert not dangling_bind_expr_vars, \
+                            f"Bound variables from match expression not found in tree: " \
+                            f"[{' ,'.join(map(repr, dangling_bind_expr_vars))}]"
+
                     variable_substitutions.update({
-                        var: actual_inserted_tree.get_subtree(path)
+                        var: inserted_tree.get_subtree(path)
                         for var, path in bind_expr_paths.items()
                         if var in existential_formula.bind_expression.bound_variables()
                     })
@@ -680,7 +717,39 @@ class ISLaSolver:
                             existential_formula,
                             sc.true()).substitute_expressions(tree_substitution))
 
-                result.append(SolutionState(new_formula, state.tree.substitute(tree_substitution)))
+                new_state = SolutionState(new_formula, state.tree.substitute(tree_substitution))
+
+                if assertions_activated() or self.debug:
+                    lost_tree_predicate_arguments: List[DerivationTree] = [
+                        arg
+                        for invstate in self.establish_invariant(new_state)
+                        for predicate_formula in get_conjuncts(invstate.constraint)
+                        if isinstance(predicate_formula, isla.StructuralPredicateFormula)
+                        for arg in predicate_formula.args
+                        if isinstance(arg, DerivationTree) and
+                           invstate.tree.find_node(arg) is None]
+
+                    if lost_tree_predicate_arguments:
+                        previous_posititions = [state.tree.find_node(t) for t in lost_tree_predicate_arguments]
+                        assert False, f"Dangling subtrees [{', '.join(map(repr, lost_tree_predicate_arguments))}], " \
+                                      f"previously at positions [{', '.join(map(str, previous_posititions))}] " \
+                                      f"in tree {repr(state.tree)} (hash: {hash(state)})."
+
+                    lost_semantic_formula_arguments = [
+                        arg
+                        for invstate in self.establish_invariant(new_state)
+                        for semantic_formula in get_conjuncts(new_state.constraint)
+                        if isinstance(semantic_formula, isla.SMTFormula)
+                        for arg in semantic_formula.substitutions.values()
+                        if invstate.tree.find_node(arg) is None]
+
+                    if lost_semantic_formula_arguments:
+                        previous_posititions = [state.tree.find_node(t) for t in lost_semantic_formula_arguments]
+                        assert False, f"Dangling subtrees [{', '.join(map(repr, lost_semantic_formula_arguments))}], " \
+                                      f"previously at positions [{', '.join(map(str, previous_posititions))}] " \
+                                      f"in tree {repr(state.tree)} (hash: {hash(state)})."
+
+                result.append(new_state)
 
         if not result:
             self.logger.warning(
@@ -706,8 +775,25 @@ class ISLaSolver:
         solutions: List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]] = \
             self.solve_quantifier_free_formula(semantic_formula)
 
-        results = []
+        solutions_with_subtrees: List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]] = []
         for solution in solutions:
+            # We also have to instantiate all subtrees of the substituted element.
+
+            solution_with_subtrees: Dict[Union[isla.Constant, DerivationTree], DerivationTree] = {}
+            for orig, subst in solution.items():
+                if isinstance(orig, isla.Constant):
+                    solution_with_subtrees[orig] = subst
+                    continue
+
+                assert isinstance(orig, DerivationTree)
+                for path, tree in orig.paths():
+                    assert subst.is_valid_path(path)
+                    solution_with_subtrees[tree] = subst.get_subtree(path)
+
+            solutions_with_subtrees.append(solution_with_subtrees)
+
+        results = []
+        for solution in solutions_with_subtrees:
             if solution:
                 new_state = SolutionState(
                     state.constraint.substitute_expressions(solution),
@@ -741,6 +827,7 @@ class ISLaSolver:
         old_smt_formulas = smt_formulas
         smt_formulas = []
 
+        new_substitutions: Dict[isla.Variable, DerivationTree] = {}
         for subformula in old_smt_formulas:
             subst_var: isla.Variable
             subst_tree: DerivationTree
@@ -783,8 +870,17 @@ class ISLaSolver:
             for constant in constants:
                 if constant.is_numeric():
                     regex = z3.Union(z3.Re("0"), z3.Concat(z3.Range("1", "9"), z3.Star(z3.Range("0", "9"))))
+                elif constant in new_substitutions:
+                    # We have a more concrete shape of the desired instantiation available
+                    regexes = [
+                        self.extract_regular_expression(t) if is_nonterminal(t)
+                        else z3.Re(t)
+                        for t in split_str_with_nonterminals(str(new_substitutions[constant]))]
+                    assert regexes
+                    regex = z3.Concat(*regexes) if len(regexes) > 1 else regexes[0]
                 else:
                     regex = self.extract_regular_expression(constant.n_type)
+
                 formulas.append(z3.InRe(z3.String(constant.name), regex))
 
             for prev_solution in internal_solutions:
@@ -855,16 +951,39 @@ class ISLaSolver:
             assert state.formula_satisfied(self.grammar).is_true()
             return True
 
-        assert all(state.tree.find_node(arg)
-                   for predicate_formula in get_conjuncts(state.constraint)
-                   if isinstance(predicate_formula, isla.StructuralPredicateFormula)
-                   for arg in predicate_formula.args
-                   if isinstance(arg, DerivationTree))
+        # Helps in debugging below assertion:
+        # [(predicate_formula, [
+        #     arg for arg in predicate_formula.args
+        #     if isinstance(arg, DerivationTree) and not state.tree.find_node(arg)])
+        #  for predicate_formula in get_conjuncts(state.constraint)
+        #  if isinstance(predicate_formula, isla.StructuralPredicateFormula)]
 
-        assert all(state.tree.find_node(arg)
-                   for semantic_formula in get_conjuncts(state.constraint)
-                   if isinstance(semantic_formula, isla.SMTFormula)
-                   for arg in semantic_formula.substitutions.values())
+        if assertions_activated() or self.debug:
+            dangling_predicate_argument_trees = [
+                (predicate_formula, arg)
+                for predicate_formula in isla.FilterVisitor(
+                    lambda f: isinstance(f, isla.StructuralPredicateFormula)).collect(state.constraint)
+                for arg in cast(isla.StructuralPredicateFormula, predicate_formula).args
+                if isinstance(arg, DerivationTree) and state.tree.find_node(arg) is None
+            ]
+
+            if dangling_predicate_argument_trees:
+                assert False, \
+                    "Dangling predicate arguments: [" + \
+                    ", ".join([str(f) + ", " + repr(a) for f, a in dangling_predicate_argument_trees]) + "]"
+
+            dangling_smt_formula_argument_trees = [
+                (smt_formula, arg)
+                for smt_formula in isla.FilterVisitor(
+                    lambda f: isinstance(f, isla.SMTFormula)).collect(state.constraint)
+                for arg in cast(isla.SMTFormula, smt_formula).substitutions.values()
+                if isinstance(arg, DerivationTree) and state.tree.find_node(arg) is None
+            ]
+
+            if dangling_smt_formula_argument_trees:
+                assert False, \
+                    "Dangling SMT formula arguments: [" + \
+                    ", ".join([str(f) + ", " + repr(a) for f, a in dangling_smt_formula_argument_trees]) + "]"
 
         if self.enforce_unique_trees_in_queue and state.tree.structural_hash() in self.tree_hashes_in_queue:
             # Some structures can arise as well from tree insertion (existential quantifier elimination)
@@ -1080,8 +1199,10 @@ def compute_cost(
 
     # Quantifiers are expensive (universal formulas have to be matched, tree insertion for existential
     # formulas is even more costly). TODO: Penalize nested quantifiers more.
-    constraint_cost = len([sub for sub in get_conjuncts(state.constraint)
-                           if isinstance(sub, isla.ExistsFormula)])
+    constraint_cost = sum(
+        [idx * (2 if isinstance(f, isla.ExistsFormula) else 1) + 1
+         for c in get_quantifier_chains(state.constraint)
+         for idx, f in enumerate(c)])
 
     # How far are we from matching a yet unmatched universal quantifier?
     # vacuous_penalty = compute_match_dist(state, grammar, node_distance)
