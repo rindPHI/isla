@@ -182,6 +182,7 @@ class ISLaSolver:
                  semantic_predicates: Optional[Set[isla.SemanticPredicate]] = None,
                  max_number_free_instantiations: int = 10,
                  max_number_smt_instantiations: int = 10,
+                 max_number_tree_insertion_results: int = 20,
                  expand_after_existential_elimination: bool = False,  # Currently not used, might be removed
                  enforce_unique_trees_in_queue: bool = True,
                  precompute_reachability: bool = False,
@@ -233,6 +234,7 @@ class ISLaSolver:
 
         self.max_number_free_instantiations: int = max_number_free_instantiations
         self.max_number_smt_instantiations: int = max_number_smt_instantiations
+        self.max_number_tree_insertion_results = max_number_tree_insertion_results
         # self.expand_after_existential_elimination = expand_after_existential_elimination
         self.enforce_unique_trees_in_queue = enforce_unique_trees_in_queue
 
@@ -657,12 +659,11 @@ class ISLaSolver:
         inserted_tree: DerivationTree
         bind_expr_paths: Dict[isla.BoundVariable, Path]
         for inserted_tree, bind_expr_paths in inserted_trees_and_bind_paths:
-            # TODO: Make maximum number of solutions configurable
             self.logger.debug(
                 "insert_tree(self.canonical_grammar, %s, %s, self.graph, %s)",
                 repr(inserted_tree),
                 repr(existential_formula.in_variable),
-                30)
+                self.max_number_tree_insertion_results)
 
             insertion_results = insert_tree(
                 self.canonical_grammar,
@@ -927,8 +928,11 @@ class ISLaSolver:
     def process_new_states(self, new_states: List[SolutionState]) -> List[DerivationTree]:
         result = [tree for new_state in new_states for tree in self.process_new_state(new_state)]
 
-        for tree in result:
+        # for tree in result:
+        #     self.covered_k_paths.update(tree.k_paths(self.graph, self.cost_settings.k))
+        for tree in [state.tree for state in new_states]:
             self.covered_k_paths.update(tree.k_paths(self.graph, self.cost_settings.k))
+
         if self.covered_k_paths == self.graph.k_paths(self.cost_settings.k):
             self.covered_k_paths = set()
 
@@ -1069,12 +1073,6 @@ class ISLaSolver:
                 if is_nonterminal(tree.value)
             ])
 
-        nonterminal_parents = [
-            nonterminal for nonterminal in self.canonical_grammar
-            if any(all(not is_nonterminal(symbol) for symbol in expansion)
-                   for expansion in self.canonical_grammar[nonterminal])
-        ]
-
         def all_paths(
                 from_node: gg.NonterminalNode,
                 to_node: gg.NonterminalNode, cycles_allowed: int = 1) -> List[List[gg.NonterminalNode]]:
@@ -1101,6 +1099,13 @@ class ISLaSolver:
 
             return [[n for n in p if not isinstance(n, gg.ChoiceNode)] for p in result]
 
+        nonterminal_parents = [
+            nonterminal for nonterminal in self.canonical_grammar
+            if any(
+                is_nonterminal(symbol)
+                for expansion in self.canonical_grammar[nonterminal]
+                for symbol in expansion)]
+
         # Sometimes this computation results in some nonterminals having lower cost values
         # than nonterminals that are reachable from those (but not vice versa), which is
         # undesired. We counteract this by assuring that on paths with at most one cycle
@@ -1113,7 +1118,7 @@ class ISLaSolver:
                     target: gg.Node = path[idx]
 
                     if result[source.symbol] <= result[target.symbol]:
-                        result[source.symbol] += result[target.symbol]
+                        result[source.symbol] = result[target.symbol] + 1
 
         return result
 

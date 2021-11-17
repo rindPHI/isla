@@ -269,7 +269,6 @@ constraint {
             num_solutions=20)
 
     def test_csv_rows_equal_length(self):
-        # TODO: This is too slow, check
         property = """
 const start: <start>;
 
@@ -320,17 +319,17 @@ constraint {
             max_number_free_instantiations=1,
             max_number_smt_instantiations=2,
             expand_after_existential_elimination=False,
-            enforce_unique_trees_in_queue=False,
+            enforce_unique_trees_in_queue=True,
             custom_test_func=scriptsizec.compile_scriptsizec_clang,
-            num_solutions=20,
+            num_solutions=50,
             cost_settings=CostSettings(
                 (
-                    CostWeightVector(tree_closing_cost=18, vacuous_penalty=5, constraint_cost=14,
+                    CostWeightVector(tree_closing_cost=5, vacuous_penalty=5, constraint_cost=2,
                                      derivation_depth_penalty=7, low_k_coverage_penalty=12,
                                      low_global_k_path_coverage_penalty=9),
                 ),
                 cost_phase_lengths=(200,),
-                k=3
+                k=4
             ),
             # print_only=True
         )
