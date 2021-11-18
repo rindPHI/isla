@@ -3,13 +3,11 @@ import string
 import subprocess
 import tempfile
 from subprocess import PIPE
-from typing import Union, List, Optional, cast, Callable
+from typing import Union, List, Optional, Callable
 
-import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string
 from fuzzingbook.Grammars import srange
 
-import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.helpers import delete_unreachable, roundup
 from input_constraints.isla import parse_isla
@@ -163,34 +161,6 @@ def octal_to_decimal_tar(
         OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"), octal, decimal)
 
 
-content_size_constr = parse_isla("""
-const start: <start>;
-
-vars {
-  entry: <entry>;
-  content: <content>;
-  content_chars: <maybe_characters>;
-  characters: <characters>;
-  file_size: <file_size>;
-  octal_digits: <octal_digits>;
-  dec_digits: NUM;
-}
-
-constraint {
-  forall entry in start:
-    forall content="{content_chars}<maybe_nuls>" in entry:
-      forall characters in content_chars:
-        forall file_size="{octal_digits}<SPACE>" in entry:
-          num dec_digits:
-            ((>= (str.to_int dec_digits) 10) and 
-            ((<= (str.to_int dec_digits) 100) and 
-            (octal_to_decimal(octal_digits, dec_digits) and 
-             ljust_crop_tar(characters, dec_digits, " "))))
-}
-""", semantic_predicates={
-    OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"),
-    LJUST_CROP_TAR_PREDICATE})
-
 file_size_constr = parse_isla("""
 const start: <start>;
 
@@ -239,117 +209,251 @@ constraint {
 }
 """, structural_predicates={SAME_POSITION_PREDICATE})
 
-mgr = isla.VariableManager(TAR_GRAMMAR)
-start = mgr.const("start", "<start>")
-TAR_CONSTRAINTS = mgr.create(
-    sc.forall(
-        mgr.bv("$file_name", "<file_name>"),
-        start,
-        mgr.smt(z3.Length(mgr.bv("$file_name").to_smt()) > z3.IntVal(0)) &
-        ljust_crop_tar(mgr.bv("$file_name"), 100, "\x00")
-    ) &
-    sc.forall(
-        mgr.bv("$file_mode", "<file_mode>"),
-        start,
-        rjust_crop_tar(mgr.bv("$file_mode"), 8, "0")
-    ) &
-    sc.forall(
-        mgr.bv("$uid", "<uid>"),
-        start,
-        rjust_crop_tar(mgr.bv("$uid"), 8, "0")
-    ) &
-    sc.forall(
-        mgr.bv("$gid", "<gid>"),
-        start,
-        rjust_crop_tar(mgr.bv("$gid"), 8, "0")
-    ) &
-    file_size_constr &
-    sc.forall(
-        mgr.bv("$mod_time", "<mod_time>"),
-        start,
-        rjust_crop_tar(mgr.bv("$mod_time"), 12, "0")
-    ) &
-    sc.forall(
-        mgr.bv("$header", "<header>"),
-        start,
-        sc.forall(
-            mgr.bv("$checksum", "<checksum>"),
-            mgr.bv("$header"),
-            tar_checksum(mgr.bv("$header"), mgr.bv("$checksum"))
-        )) &
-    sc.forall(
-        mgr.bv("$linked_file_name", "<linked_file_name>"),
-        start,
-        ljust_crop_tar(mgr.bv("$linked_file_name"), 100, "\x00")
-    ) &
-    sc.forall(
-        mgr.bv("$uname", "<uname>"),
-        start,
-        ljust_crop_tar(mgr.bv("$uname"), 32, "\x00")
-    ) &
-    sc.forall(
-        mgr.bv("$gname", "<gname>"),
-        start,
-        ljust_crop_tar(mgr.bv("$gname"), 32, "\x00")
-    ) &
-    sc.forall(
-        mgr.bv("$dev_maj_num", "<dev_maj_num>"),
-        start,
-        rjust_crop_tar(mgr.bv("$dev_maj_num"), 8, "0")
-    ) &
-    sc.forall(
-        mgr.bv("$dev_min_num", "<dev_min_num>"),
-        start,
-        rjust_crop_tar(mgr.bv("$dev_min_num"), 8, "0")
-    ) &
-    sc.forall(
-        mgr.bv("$prefix", "<file_name_prefix>"),
-        start,
-        ljust_crop_tar(mgr.bv("$prefix"), 155, "\x00")
-    ) &
-    sc.forall(
-        mgr.bv("$header_padding", "<header_padding>"),
-        start,
-        ljust_crop_tar(mgr.bv("$header_padding"), 12, "\x00")
-    ) &
-    sc.forall(
-        mgr.bv("$content", "<content>"),
-        start,
-        ljust_crop_tar(mgr.bv("$content"), 512, "\x00")
-    ) &
-    content_size_constr &
-    sc.forall(
-        mgr.bv("$final", "<final_entry>"),
-        start,
-        ljust_crop_tar(mgr.bv("$final"), 1024, "\x00")
-    ) &
-    link_constraint
-    # sc.forall(
-    #     mgr.bv("$entry", "<entry>"),
-    #     start,
-    #     sc.forall(
-    #         mgr.bv("$typeflag", "<typeflag>"),
-    #         mgr.bv("$entry"),
-    #         mgr.smt(cast(z3.BoolRef, mgr.bv("$typeflag").to_smt() == z3.StringVal("0")))
-    #         | (mgr.smt(mgr.bv("$typeflag").to_smt() == z3.StringVal("2")) &
-    #            sc.forall_bind(
-    #                mgr.bv("$linked_file_name_chars", "<characters>") + "<maybe_nuls>",
-    #                mgr.bv("$linked_file_name", "<linked_file_name>"),
-    #                mgr.bv("$entry"),
-    #                sc.exists(
-    #                    mgr.bv("$linked_entry", "<entry>"),
-    #                    start,
-    #                    (sc.before(mgr.bv("$entry"), mgr.bv("$linked_entry"))
-    #                     | sc.before(mgr.bv("$linked_entry"), mgr.bv("$entry"))) &
-    #                    sc.forall_bind(
-    #                        mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>",
-    #                        mgr.bv("$file_name", "<file_name>"),
-    #                        mgr.bv("$linked_entry"),
-    #                        mgr.smt(mgr.bv("$file_name_chars").to_smt() == mgr.bv("$linked_file_name_chars").to_smt()) &
-    #                        mgr.smt(z3.Length(mgr.bv("$file_name_chars").to_smt()) <= z3.IntVal(100))
-    #                    )
-    #                )))
-    #     ))
+file_name_length_constraint = parse_isla("""
+const start: <start>;
+
+vars {
+  file_name: <file_name>;
+}
+
+constraint {
+  forall file_name in start:
+    ((> (str.len file_name) 0) and
+     ljust_crop_tar(file_name, 100, "\x00"))
+}
+""", semantic_predicates={LJUST_CROP_TAR_PREDICATE})
+
+file_mode_length_constraint = parse_isla("""
+const start: <start>;
+
+vars {
+  file_mode: <file_mode>;
+}
+
+constraint {
+  forall file_mode in start:
+    rjust_crop_tar(file_mode, 8, "0")
+}
+""", semantic_predicates={RJUST_CROP_TAR_PREDICATE})
+
+uid_length_constraint = parse_isla("""
+const start: <start>;
+
+vars {
+  uid: <uid>;
+}
+
+constraint {
+  forall uid in start:
+    rjust_crop_tar(uid, 8, "0")
+}
+""", semantic_predicates={RJUST_CROP_TAR_PREDICATE})
+
+gid_length_constraint = parse_isla("""
+const start: <start>;
+
+vars {
+  gid: <gid>;
+}
+
+constraint {
+  forall gid in start:
+    rjust_crop_tar(gid, 8, "0")
+}
+""", semantic_predicates={RJUST_CROP_TAR_PREDICATE})
+
+mod_time_length_constraint = parse_isla("""
+const start: <start>;
+
+vars {
+  mod_time: <mod_time>;
+}
+
+constraint {
+  forall mod_time in start:
+    rjust_crop_tar(mod_time, 12, "0")
+}
+""", semantic_predicates={RJUST_CROP_TAR_PREDICATE})
+
+checksum_constraint = parse_isla("""
+const start: <start>;
+
+vars {
+  header: <header>;
+  checksum: <checksum>;
+}
+
+constraint {
+  forall header in start:
+    forall checksum in header:
+      tar_checksum(header, checksum)
+}
+""", semantic_predicates={TAR_CHECKSUM_PREDICATE})
+
+linked_file_name_length_constraint = parse_isla("""
+const start: <start>;
+
+vars {
+  linked_file_name: <linked_file_name>;
+}
+
+constraint {
+  forall linked_file_name in start:
+    ljust_crop_tar(linked_file_name, 100, "\x00")
+}
+""", semantic_predicates={LJUST_CROP_TAR_PREDICATE})
+
+uname_length_constraint = parse_isla("""
+const start: <start>;
+
+vars {
+  uname: <uname>;
+}
+
+constraint {
+  forall uname in start:
+    ljust_crop_tar(uname, 32, "\x00")
+}
+""", semantic_predicates={LJUST_CROP_TAR_PREDICATE})
+
+gname_length_constraint = parse_isla("""
+const start: <start>;
+
+vars {
+  gname: <gname>;
+}
+
+constraint {
+  forall gname in start:
+    ljust_crop_tar(gname, 32, "\x00")
+}
+""", semantic_predicates={LJUST_CROP_TAR_PREDICATE})
+
+dev_maj_num_length_constraint = parse_isla("""
+const start: <start>;
+
+vars {
+  dev_maj_num: <dev_maj_num>;
+}
+
+constraint {
+  forall dev_maj_num in start:
+    rjust_crop_tar(dev_maj_num, 8, "0")
+}
+""", semantic_predicates={RJUST_CROP_TAR_PREDICATE})
+
+dev_min_num_length_constraint = parse_isla("""
+const start: <start>;
+
+vars {
+  dev_min_num: <dev_min_num>;
+}
+
+constraint {
+  forall dev_min_num in start:
+    rjust_crop_tar(dev_min_num, 8, "0")
+}
+""", semantic_predicates={RJUST_CROP_TAR_PREDICATE})
+
+prefix_length_constraint = parse_isla("""
+const start: <start>;
+
+vars {
+  prefix: <file_name_prefix>;
+}
+
+constraint {
+  forall prefix in start:
+    ljust_crop_tar(prefix, 155, "\x00")
+}
+""", semantic_predicates={LJUST_CROP_TAR_PREDICATE})
+
+header_padding_length_constraint = parse_isla("""
+const start: <start>;
+
+vars {
+  padding: <header_padding>;
+}
+
+constraint {
+  forall padding in start:
+    ljust_crop_tar(padding, 12, "\x00")
+}
+""", semantic_predicates={LJUST_CROP_TAR_PREDICATE})
+
+content_length_constraint = parse_isla("""
+const start: <start>;
+
+vars {
+  content: <content>;
+}
+
+constraint {
+  forall content in start:
+    ljust_crop_tar(content, 512, "\x00")
+}
+""", semantic_predicates={LJUST_CROP_TAR_PREDICATE})
+
+content_size_constr = parse_isla("""
+const start: <start>;
+
+vars {
+  entry: <entry>;
+  content: <content>;
+  content_chars: <maybe_characters>;
+  characters: <characters>;
+  file_size: <file_size>;
+  octal_digits: <octal_digits>;
+  dec_digits: NUM;
+}
+
+constraint {
+  forall entry in start:
+    forall content="{content_chars}<maybe_nuls>" in entry:
+      forall characters in content_chars:
+        forall file_size="{octal_digits}<SPACE>" in entry:
+          num dec_digits:
+            ((>= (str.to_int dec_digits) 10) and 
+            ((<= (str.to_int dec_digits) 100) and 
+            (octal_to_decimal(octal_digits, dec_digits) and 
+             ljust_crop_tar(characters, dec_digits, " "))))
+}
+""", semantic_predicates={
+    OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"),
+    LJUST_CROP_TAR_PREDICATE})
+
+final_entry_length_constraint = parse_isla("""
+const start: <start>;
+
+vars {
+  final: <final_entry>;
+}
+
+constraint {
+  forall final in start:
+    ljust_crop_tar(final, 1024, "\x00")
+}
+""", semantic_predicates={LJUST_CROP_TAR_PREDICATE})
+
+TAR_CONSTRAINTS = (
+        file_name_length_constraint &
+        file_mode_length_constraint &
+        uid_length_constraint &
+        gid_length_constraint &
+        file_size_constr &
+        mod_time_length_constraint &
+        checksum_constraint &
+        linked_file_name_length_constraint &
+        uname_length_constraint &
+        gname_length_constraint &
+        dev_maj_num_length_constraint &
+        dev_min_num_length_constraint &
+        prefix_length_constraint &
+        header_padding_length_constraint &
+        content_length_constraint &
+        content_size_constr &
+        final_entry_length_constraint &
+        link_constraint
 )
 
 

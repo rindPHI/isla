@@ -65,7 +65,7 @@ ISLA_GRAMMAR = {
     "<id>": ["<letter><idchars>", "<letter>"],
     "<string>": ["\"<escaped_string>\""],
     "<escaped_string>": ["<escaped_string_char><escaped_string>", "<escaped_string_char>"],
-    "<escaped_string_char>": list(set(string.printable) - {'"'}) + ['\\"'],
+    "<escaped_string_char>": list(set(string.printable + "\x00") - {'"'}) + ['\\"'],
     "<number>": ["<digits>"],
     "<digits>": ["<digit><digits>", "<digit>"],
     "<digit>": srange(string.digits),
