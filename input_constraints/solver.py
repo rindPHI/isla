@@ -2,7 +2,6 @@ import copy
 import heapq
 import logging
 import math
-import pickle
 import sys
 import time
 from functools import reduce, lru_cache
@@ -16,6 +15,7 @@ from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph import gg
 from grammar_graph.gg import GrammarGraph
 from grammar_to_regex.cfg2regex import RegexConverter
+from orderedset import OrderedSet
 
 import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
@@ -928,8 +928,6 @@ class ISLaSolver:
     def process_new_states(self, new_states: List[SolutionState]) -> List[DerivationTree]:
         result = [tree for new_state in new_states for tree in self.process_new_state(new_state)]
 
-        # for tree in result:
-        #     self.covered_k_paths.update(tree.k_paths(self.graph, self.cost_settings.k))
         for tree in [state.tree for state in new_states]:
             self.covered_k_paths.update(tree.k_paths(self.graph, self.cost_settings.k))
 

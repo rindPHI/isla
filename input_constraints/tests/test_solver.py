@@ -319,7 +319,7 @@ constraint {
             max_number_free_instantiations=1,
             max_number_smt_instantiations=2,
             expand_after_existential_elimination=False,
-            enforce_unique_trees_in_queue=True,
+            enforce_unique_trees_in_queue=False,
             custom_test_func=scriptsizec.compile_scriptsizec_clang,
             num_solutions=50,
             cost_settings=CostSettings(
@@ -328,12 +328,20 @@ constraint {
                     #                  derivation_depth_penalty=7, low_k_coverage_penalty=12,
                     #                  low_global_k_path_coverage_penalty=9),
 
-                    CostWeightVector(tree_closing_cost=12, vacuous_penalty=30, constraint_cost=4,
-                                     derivation_depth_penalty=2, low_k_coverage_penalty=23,
+                    # CostWeightVector(tree_closing_cost=12, vacuous_penalty=30, constraint_cost=4,
+                    #                  derivation_depth_penalty=2, low_k_coverage_penalty=23,
+                    #                  low_global_k_path_coverage_penalty=20),
+
+                    CostWeightVector(tree_closing_cost=5, vacuous_penalty=30, constraint_cost=4,
+                                     derivation_depth_penalty=3, low_k_coverage_penalty=23,
                                      low_global_k_path_coverage_penalty=20),
+
+                    # CostWeightVector(tree_closing_cost=3, vacuous_penalty=30, constraint_cost=4,
+                    #                  derivation_depth_penalty=3, low_k_coverage_penalty=5,
+                    #                  low_global_k_path_coverage_penalty=25),
                 ),
                 cost_phase_lengths=(200,),
-                k=4
+                k=3
             ),
             # print_only=True
         )
