@@ -22,7 +22,8 @@ from input_constraints.tests.subject_languages import rest, tar, simple_tar, scr
 from input_constraints.tests.subject_languages.csv import csv_lint, CSV_GRAMMAR
 from input_constraints.tests.subject_languages.tar import extract_tar
 from input_constraints.tests.subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, \
-    XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, XML_GRAMMAR, validate_xml, XML_TAG_NAMESPACE_CONSTRAINT
+    XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, XML_GRAMMAR, validate_xml, XML_TAG_NAMESPACE_CONSTRAINT, \
+    XML_NO_ATTR_REDEF_CONSTRAINT
 from input_constraints.tests.test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR
 
 
@@ -171,14 +172,15 @@ constraint {
 
     def test_xml_with_prefixes(self):
         self.execute_generation_test(
-            XML_NAMESPACE_CONSTRAINT & XML_WELLFORMEDNESS_CONSTRAINT,
+            XML_NAMESPACE_CONSTRAINT & XML_WELLFORMEDNESS_CONSTRAINT & XML_NO_ATTR_REDEF_CONSTRAINT,
             grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
             max_number_free_instantiations=1,
-            num_solutions=20,
+            num_solutions=30,
+            enforce_unique_trees_in_queue=False,
             custom_test_func=validate_xml,
             cost_settings=CostSettings(
                 weight_vectors=(
-                    CostWeightVector(tree_closing_cost=15, vacuous_penalty=15, constraint_cost=0,
+                    CostWeightVector(tree_closing_cost=15, vacuous_penalty=0, constraint_cost=0,
                                      derivation_depth_penalty=0, low_k_coverage_penalty=5,
                                      low_global_k_path_coverage_penalty=7),
                 ),
@@ -318,16 +320,16 @@ constraint {
             max_number_free_instantiations=1,
             max_number_smt_instantiations=2,
             expand_after_existential_elimination=False,
-            enforce_unique_trees_in_queue=False,
+            enforce_unique_trees_in_queue=True,
             custom_test_func=scriptsizec.compile_scriptsizec_clang,
-            num_solutions=20,
+            num_solutions=50,
             cost_settings=CostSettings(
                 (
                     # CostWeightVector(tree_closing_cost=5, vacuous_penalty=30, constraint_cost=4,
                     #                  derivation_depth_penalty=3, low_k_coverage_penalty=23,
                     #                  low_global_k_path_coverage_penalty=20),
 
-                    CostWeightVector(tree_closing_cost=10, vacuous_penalty=9, constraint_cost=0,
+                    CostWeightVector(tree_closing_cost=10, vacuous_penalty=0, constraint_cost=0,
                                      derivation_depth_penalty=9, low_k_coverage_penalty=28,
                                      low_global_k_path_coverage_penalty=4),
 
@@ -409,6 +411,7 @@ constraint {
             custom_test_func: Optional[Callable[[isla.DerivationTree], Union[bool, str]]] = None,
             cost_settings=STD_COST_SETTINGS,
             print_only: bool = False,
+            timeout_seconds: Optional[int] = None
     ):
         logger = logging.getLogger(type(self).__name__)
 
@@ -428,6 +431,7 @@ constraint {
             precompute_reachability=precompute_reachability,
             debug=debug,
             cost_settings=cost_settings,
+            timeout_seconds=timeout_seconds
         )
 
         if debug:

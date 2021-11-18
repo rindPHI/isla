@@ -3,15 +3,19 @@ import datetime
 import logging
 import math
 import multiprocessing as mp
+import pathos.multiprocessing as pmp
+import os.path
 import random
 import subprocess
 import time
 from textwrap import wrap
-from typing import List, Generator, Dict, Callable, Set, Tuple, Optional
+from typing import List, Generator, Dict, Callable, Set, Tuple, Optional, Union
 
 import matplotlib
 import matplotlib.pyplot as plt
 import z3
+from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
+from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
 
 import input_constraints.isla_shortcuts as sc
@@ -35,7 +39,8 @@ def vacuously_satisfies(inp: isla.DerivationTree, formula: isla.Formula, grammar
         c for c in isla.VariablesCollector.collect(formula)
         if isinstance(c, isla.Constant))
 
-    qfr_free: List[isla.Formula] = isla.eliminate_quantifiers(formula.substitute_expressions({constant: inp}))
+    qfr_free: List[isla.Formula] = isla.eliminate_quantifiers(
+        formula.substitute_expressions({constant: inp}), grammar=grammar)
     qfr_free_dnf: List[isla.Formula] = [isla.convert_to_dnf(isla.convert_to_nnf(f)) for f in qfr_free]
     clauses: List[List[isla.Formula]] = [
         isla.split_conjunction(_f)
@@ -54,11 +59,24 @@ def vacuously_satisfies(inp: isla.DerivationTree, formula: isla.Formula, grammar
 
 
 def collect_data(
-        generator: Generator[isla.DerivationTree, None, None],
+        generator: Union[Generator[isla.DerivationTree, None, None], ISLaSolver, Grammar],
         timeout_seconds: int = 60) -> Dict[float, isla.DerivationTree]:
     start_time = time.time()
     result: Dict[float, isla.DerivationTree] = {}
     logger.info("Collecting data for %d seconds", timeout_seconds)
+
+    if isinstance(generator, ISLaSolver):
+        generator = generator.solve()
+    elif isinstance(generator, dict):
+        grammar = generator
+
+        def gen():
+            fuzzer = GrammarCoverageFuzzer(grammar)
+            while True:
+                yield isla.DerivationTree.from_parse_tree(
+                    list(EarleyParser(grammar).parse(fuzzer.fuzz()))[0])
+
+        generator = gen()
 
     while int(time.time()) - int(start_time) <= timeout_seconds:
         try:
@@ -90,6 +108,47 @@ class PerformanceEvaluationResult:
             self.final_product_value: float = self.single_product_value(max_time)
         else:
             self.final_product_value = -1
+
+    def save_to_csv_file(self, dir: str, base_file_name: str):
+        valid_input_file = os.path.join(dir, base_file_name + "_valid_inputs.csv")
+        with open(valid_input_file, 'w') as f:
+            f.write("\n".join(f"{t};{r}" for t, r in self.accumulated_valid_inputs.items()))
+            logger.info(f"Written valid input data to {valid_input_file}")
+
+        k_path_file = os.path.join(dir, base_file_name + "_k_paths.csv")
+        with open(k_path_file, 'w') as f:
+            f.write("\n".join(f"{t};{r}" for t, r in self.accumulated_k_path_coverage.items()))
+            logger.info(f"Written accumulated k-path data {k_path_file}")
+
+        non_vacuous_file = os.path.join(dir, base_file_name + "_non_vacuous_index.csv")
+        with open(non_vacuous_file, 'w') as f:
+            f.write("\n".join(f"{t};{r}" for t, r in self.accumulated_valid_inputs.items()))
+            logger.info(f"Written non-vacuous index data to {k_path_file}")
+
+    @staticmethod
+    def load_from_csv_file(dir: str, base_file_name: str) -> 'PerformanceEvaluationResult':
+        valid_input_file = os.path.join(dir, base_file_name + "_valid_inputs.csv")
+        with open(valid_input_file, 'r') as f:
+            accumulated_valid_inputs = dict([
+                (float(line.split(";")[0]), int(line.split(";")[1]))
+                for line in f.read().split("\n")])
+
+        k_path_file = os.path.join(dir, base_file_name + "_k_paths.csv")
+        with open(k_path_file, 'r') as f:
+            accumulated_k_path_coverage = dict([
+                (float(line.split(";")[0]), int(line.split(";")[1]))
+                for line in f.read().split("\n")])
+
+        non_vacuous_file = os.path.join(dir, base_file_name + "_non_vacuous_index.csv")
+        with open(non_vacuous_file, 'r') as f:
+            accumulated_non_vacuous_index = dict([
+                (float(line.split(";")[0]), float(line.split(";")[1]))
+                for line in f.read().split("\n")])
+
+        return PerformanceEvaluationResult(
+            accumulated_valid_inputs,
+            accumulated_k_path_coverage,
+            accumulated_non_vacuous_index)
 
     def mean_data(self) -> Dict[float, float]:
         return {
@@ -163,7 +222,7 @@ class PerformanceEvaluationResult:
 
 def evaluate_data(
         data: Dict[float, isla.DerivationTree],
-        formula: isla.Formula,
+        formula: Optional[isla.Formula],
         graph: gg.GrammarGraph,
         validator: Callable[[isla.DerivationTree], bool],
         k: int = 3) -> PerformanceEvaluationResult:
@@ -171,9 +230,10 @@ def evaluate_data(
     accumulated_k_path_coverage: Dict[float, int] = {}
     accumulated_non_vacuous_index: Dict[float, float] = {}
 
-    quantifier_chains: List[Tuple[isla.ForallFormula, ...]] = [
-        tuple([f for f in c if isinstance(f, isla.ForallFormula)])
-        for c in solver.get_quantifier_chains(formula)]
+    quantifier_chains: List[Tuple[isla.ForallFormula, ...]] = (
+        [] if formula is None
+        else [tuple([f for f in c if isinstance(f, isla.ForallFormula)])
+              for c in solver.get_quantifier_chains(formula)])
 
     valid_inputs: int = 0
     covered_kpaths: Set[Tuple[gg.Node, ...]] = set()
@@ -236,9 +296,15 @@ def evaluate_data(
     return result
 
 
-def evaluate_generator(
-        producer: Generator[isla.DerivationTree, None, None],
-        formula: isla.Formula,
+def grammar_coverage_generator(grammar: Grammar) -> Generator[isla.DerivationTree, None, None]:
+    fuzzer = GrammarCoverageFuzzer(grammar)
+    while True:
+        yield fuzzer.fuzz()
+
+
+def evaluate_producer(
+        producer: Union[Generator[isla.DerivationTree, None, None], ISLaSolver, Grammar],
+        formula: Optional[isla.Formula],
         graph: gg.GrammarGraph,
         validator: Callable[[isla.DerivationTree], bool],
         outfile_pdf: Optional[str] = None,
@@ -248,6 +314,7 @@ def evaluate_generator(
     logger.info("Collecting performance data")
     data = collect_data(producer, timeout_seconds=timeout_seconds)
     logger.info("Evaluating Data")
+
     evaluation_result = evaluate_data(data, formula, graph, validator, k)
 
     if outfile_pdf:
@@ -255,6 +322,28 @@ def evaluate_generator(
         evaluation_result.plot(outfile_pdf, title=diagram_title)
 
     return evaluation_result
+
+
+def evaluate_generators(
+        producers: List[Union[Grammar, ISLaSolver]],
+        formula: Optional[isla.Formula],
+        graph: gg.GrammarGraph,
+        validator: Callable[[isla.DerivationTree], bool],
+        timeout_seconds: int = 60,
+        k=3,
+        cpu_count: int = -1) -> List[PerformanceEvaluationResult]:
+    if cpu_count < 0:
+        cpu_count = mp.cpu_count()
+
+    if cpu_count < 2:
+        return [
+            evaluate_producer(producer, formula, graph, validator, timeout_seconds=timeout_seconds, k=k)
+            for producer in producers]
+
+    with mp.Pool(processes=cpu_count) as pool:
+        return pool.starmap(evaluate_producer, [
+            (producer, formula, graph, validator, None, timeout_seconds, "", k)
+            for producer in producers])
 
 
 def evaluate_isla_generator(
@@ -275,7 +364,7 @@ def evaluate_isla_generator(
         cost_settings=CostSettings((v,), (200,))
     ).solve()
 
-    return evaluate_generator(
+    return evaluate_producer(
         outfile_pdf=outfile_name,
         diagram_title="\n".join(wrap(str(v), 60)),
         producer=isla_producer,
@@ -471,7 +560,8 @@ def auto_tune_weight_vector(
         offspring: List[CostWeightVector] = []
         idx = 0
         while len(offspring) < population_size // 2:
-            # TODO: Random crossover, not of consecutive parents?
+            # first_parent, second_parent = random.sample(current_population, k=2)
+
             first_parent = current_population[idx % len(current_population)]
             second_parent = current_population[(idx + 1) % len(current_population)]
 

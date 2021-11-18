@@ -228,7 +228,7 @@ class TestISLa(unittest.TestCase):
         bind_expr = assgn_1 + " ; " + assgn_2 + " ; " + stmt
         tree = DerivationTree.from_parse_tree(next(parser.parse("x := y ; x := x ; y := z ; z := z"))[1][0])
 
-        match = bind_expr.match(tree, LANG_GRAMMAR)
+        match = dict(bind_expr.match(tree, LANG_GRAMMAR))
         self.assertEqual("x := y", str(match[assgn_1][1]))
         self.assertEqual("x := x", str(match[assgn_2][1]))
         self.assertEqual("y := z ; z := z", str(match[stmt][1]))

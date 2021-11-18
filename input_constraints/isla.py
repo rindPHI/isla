@@ -7,9 +7,8 @@ from functools import reduce, lru_cache
 from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable, Sequence
 
 import z3
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
-from fuzzingbook.Grammars import is_nonterminal, RE_NONTERMINAL, nonterminals
+from fuzzingbook.Grammars import is_nonterminal, RE_NONTERMINAL
 from fuzzingbook.Parser import EarleyParser, PEGParser
 from grammar_graph import gg
 from orderedset import OrderedSet
@@ -17,7 +16,7 @@ from orderedset import OrderedSet
 from input_constraints.concrete_syntax import ISLA_GRAMMAR
 from input_constraints.helpers import get_symbols, z3_subst, is_valid, \
     replace_line_breaks, delete_unreachable, pop, z3_solve, powerset, grammar_to_immutable, immutable_to_grammar, \
-    is_prefix
+    nested_list_to_tuple
 from input_constraints.type_defs import ParseTree, Path, Grammar, ImmutableGrammar
 
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
@@ -749,7 +748,10 @@ class BindExpression:
         # Includes dummy variables
         return OrderedSet([
             var
-            for alternative in self.flatten_bound_elements(grammar, in_nonterminal=None)
+            for alternative in flatten_bound_elements(
+                nested_list_to_tuple(self.bound_elements),
+                grammar_to_immutable(grammar),
+                in_nonterminal=None)
             for var in alternative
             if isinstance(var, BoundVariable)])
 
@@ -759,30 +761,13 @@ class BindExpression:
             cached = self.prefixes[in_nonterminal]
             return [(opt[0].new_ids(), opt[1]) for opt in cached]
 
-        fuzzer = GrammarFuzzer(grammar)
-
         result: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]] = []
 
-        for bound_elements in self.flatten_bound_elements(grammar, in_nonterminal):
-            placeholder_map: Dict[Union[str, BoundVariable], str] = {}
-
-            for bound_element in bound_elements:
-                if isinstance(bound_element, str):
-                    placeholder_map[bound_element] = bound_element
-                elif not is_nonterminal(bound_element.n_type):
-                    placeholder_map[bound_element] = bound_element.n_type
-                else:
-                    ph_candidate = fuzzer.expand_tree((bound_element.n_type, None))
-                    placeholder_map[bound_element] = tree_to_string(ph_candidate)
-
-            inp = "".join(list(map(lambda elem: placeholder_map[elem], bound_elements)))
-
-            subgrammar = copy.deepcopy(grammar)
-            subgrammar["<start>"] = [in_nonterminal]
-            delete_unreachable(subgrammar)
-
-            parser = EarleyParser(subgrammar)
-            tree = DerivationTree.from_parse_tree(list(parser.parse(inp))[0][1][0])
+        for bound_elements in flatten_bound_elements(
+                nested_list_to_tuple(self.bound_elements),
+                grammar_to_immutable(grammar),
+                in_nonterminal=in_nonterminal):
+            tree = bound_elements_to_tree(bound_elements, grammar_to_immutable(grammar), in_nonterminal)
 
             match_result = self.match_with_backtracking(tree.paths(), list(bound_elements))
             if match_result:
@@ -806,57 +791,16 @@ class BindExpression:
         self.prefixes[in_nonterminal] = result
         return result
 
-    def flatten_bound_elements(
-            self, grammar: Grammar, in_nonterminal: Optional[str] = None) -> Tuple[Tuple[BoundVariable, ...], ...]:
-        """Returns all possible bound elements lists where each contained optional either has
-        been chosen or removed. If this BindExpression has no optionals, the returned list is
-        a singleton."""
-        if in_nonterminal and in_nonterminal in self.__flattened_elements:
-            return self.__flattened_elements[in_nonterminal]
-
-        bound_elements_combinations: Tuple[Tuple[BoundVariable, ...], ...] = ()
-
-        # Consider all possible on/off combinations for optional elements
-        optionals = [elem for elem in self.bound_elements if isinstance(elem, list)]
-        for combination in powerset(optionals):
-            # Inline all chosen, remove all not chosen optionals
-            raw_bound_elements: List[BoundVariable, ...] = []
-            for bound_element in self.bound_elements:
-                if not isinstance(bound_element, list):
-                    raw_bound_elements.append(bound_element)
-                    continue
-
-                if bound_element in combination:
-                    raw_bound_elements.extend(bound_element)
-
-            bound_elements: List[BoundVariable] = []
-            for bound_element in raw_bound_elements:
-                # We have to merge consecutive dummy variables representing terminal symbols
-                # ...and to split result elements containing two variables representing nonterminal symbols
-                if (isinstance(bound_element, DummyVariable) and
-                        not is_nonterminal(bound_element.n_type) and
-                        bound_elements and
-                        isinstance(bound_elements[-1], DummyVariable) and
-                        not is_nonterminal(bound_elements[-1].n_type)):
-                    bound_elements[-1] = DummyVariable(bound_elements[-1].n_type + bound_element.n_type)
-                    continue
-
-                bound_elements.append(bound_element)
-
-            if is_valid_combination(tuple(bound_elements), grammar_to_immutable(grammar), in_nonterminal):
-                bound_elements_combinations += (tuple(bound_elements),)
-
-        if in_nonterminal:
-            self.__flattened_elements[in_nonterminal] = bound_elements_combinations
-        return bound_elements_combinations
-
     def match(self, tree: DerivationTree, grammar: Grammar) -> \
             Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
-        for combination in reversed(self.flatten_bound_elements(grammar, tree.value)):
-            maybe_result = BindExpression.match_with_backtracking(
-                list(tree.paths()), list(combination))
+        for combination in reversed(flatten_bound_elements(
+                nested_list_to_tuple(self.bound_elements),
+                grammar_to_immutable(grammar),
+                in_nonterminal=tree.value)):
+
+            maybe_result = self.match_with_backtracking(list(tree.paths()), list(combination))
             if maybe_result is not None:
-                return maybe_result
+                return dict(maybe_result)
 
         return None
 
@@ -1513,7 +1457,8 @@ class SMTFormula(Formula):
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
         tree_subst_map = {k: v for k, v in subst_map.items()
                           if isinstance(k, DerivationTree)
-                          and k in self.substitutions.values()}
+                          and (k in self.substitutions.values()
+                               or any(t.find_node(k) for t in self.substitutions.values()))}
         var_subst_map: Dict[Variable: DerivationTree] = {
             k: v for k, v in subst_map.items() if k in self.free_variables_}
 
@@ -2457,8 +2402,11 @@ def matches_for_quantified_formula(
         node, children = tree
         if node == qfd_var.n_type:
             if bind_expr is not None:
-                maybe_match: Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]] = bind_expr.match(tree, grammar)
+                maybe_match: Optional[Tuple[Tuple[BoundVariable, Tuple[Path, DerivationTree]]], ...]
+                maybe_match = bind_expr.match(tree, grammar)
+
                 if maybe_match is not None:
+                    maybe_match = dict(maybe_match)
                     new_assignment = copy.copy(initial_assignments)
                     new_assignment[qfd_var] = path, tree
                     new_assignment.update({v: (path + p[0], p[1]) for v, p in maybe_match.items()})
@@ -2971,6 +2919,77 @@ def instantiate_top_constant(formula: Formula, tree: DerivationTree) -> Formula:
         c for c in VariablesCollector.collect(formula)
         if isinstance(c, Constant) and not c.is_numeric())
     return formula.substitute_expressions({top_constant: tree})
+
+
+@lru_cache(maxsize=None)
+def bound_elements_to_tree(
+        bound_elements: Tuple[BoundVariable, ...],
+        immutable_grammar: ImmutableGrammar,
+        in_nonterminal: str) -> DerivationTree:
+    grammar = immutable_to_grammar(immutable_grammar)
+    fuzzer = GrammarFuzzer(grammar)
+
+    placeholder_map: Dict[Union[str, BoundVariable], str] = {}
+    for bound_element in bound_elements:
+        if isinstance(bound_element, str):
+            placeholder_map[bound_element] = bound_element
+        elif not is_nonterminal(bound_element.n_type):
+            placeholder_map[bound_element] = bound_element.n_type
+        else:
+            ph_candidate = fuzzer.expand_tree((bound_element.n_type, None))
+            placeholder_map[bound_element] = tree_to_string(ph_candidate)
+
+    inp = "".join(list(map(lambda elem: placeholder_map[elem], bound_elements)))
+
+    subgrammar = copy.deepcopy(grammar)
+    subgrammar["<start>"] = [in_nonterminal]
+    delete_unreachable(subgrammar)
+    parser = EarleyParser(subgrammar)
+
+    return DerivationTree.from_parse_tree(list(parser.parse(inp))[0][1][0])
+
+
+@lru_cache(maxsize=None)
+def flatten_bound_elements(
+        orig_bound_elements: Tuple[Union[BoundVariable, Tuple[BoundVariable, ...]], ...],
+        grammar: ImmutableGrammar,
+        in_nonterminal: Optional[str] = None) -> Tuple[Tuple[BoundVariable, ...], ...]:
+    """Returns all possible bound elements lists where each contained optional either has
+    been chosen or removed. If this BindExpression has no optionals, the returned list is
+    a singleton."""
+    bound_elements_combinations: Tuple[Tuple[BoundVariable, ...], ...] = ()
+
+    # Consider all possible on/off combinations for optional elements
+    optionals = [elem for elem in orig_bound_elements if isinstance(elem, tuple)]
+    for combination in powerset(optionals):
+        # Inline all chosen, remove all not chosen optionals
+        raw_bound_elements: List[BoundVariable, ...] = []
+        for bound_element in orig_bound_elements:
+            if not isinstance(bound_element, tuple):
+                raw_bound_elements.append(bound_element)
+                continue
+
+            if bound_element in combination:
+                raw_bound_elements.extend(bound_element)
+
+        bound_elements: List[BoundVariable] = []
+        for bound_element in raw_bound_elements:
+            # We have to merge consecutive dummy variables representing terminal symbols
+            # ...and to split result elements containing two variables representing nonterminal symbols
+            if (isinstance(bound_element, DummyVariable) and
+                    not is_nonterminal(bound_element.n_type) and
+                    bound_elements and
+                    isinstance(bound_elements[-1], DummyVariable) and
+                    not is_nonterminal(bound_elements[-1].n_type)):
+                bound_elements[-1] = DummyVariable(bound_elements[-1].n_type + bound_element.n_type)
+                continue
+
+            bound_elements.append(bound_element)
+
+        if is_valid_combination(tuple(bound_elements), grammar, in_nonterminal):
+            bound_elements_combinations += (tuple(bound_elements),)
+
+    return bound_elements_combinations
 
 
 @lru_cache(maxsize=None)

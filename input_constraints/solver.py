@@ -163,11 +163,11 @@ STD_COST_SETTINGS = CostSettings(
     (
         CostWeightVector(
             tree_closing_cost=11,
-            vacuous_penalty=8,
-            constraint_cost=27,
-            derivation_depth_penalty=16,
-            low_k_coverage_penalty=18,
-            low_global_k_path_coverage_penalty=20),
+            vacuous_penalty=0,
+            constraint_cost=3,
+            derivation_depth_penalty=5,
+            low_k_coverage_penalty=20,
+            low_global_k_path_coverage_penalty=10),
     ),
     (200,),
     k=3
@@ -296,10 +296,12 @@ class ISLaSolver:
                     return
 
             # import dill as pickle
-            # if hash(self.queue[0][1]) == 5818092513527558027:
-            #     with open('/tmp/saved_debug_state', 'wb') as debug_state_file:
+            # state_hash = 5505111971862715789
+            # out_file = "/tmp/saved_debug_state"
+            # if hash(self.queue[0][1]) == state_hash:
+            #     with open(out_file, 'wb') as debug_state_file:
             #         pickle.dump(self, debug_state_file)
-            #     print("Dumping state to /tmp/saved_debug_state")
+            #     print(f"Dumping state to {out_file}")
             #     exit()
 
             cost: int
@@ -810,8 +812,10 @@ class ISLaSolver:
                     continue
 
                 assert isinstance(orig, DerivationTree)
-                for path, tree in orig.paths():
-                    assert subst.is_valid_path(path)
+                for path, tree in [(p, t) for p, t in orig.paths() if t not in solution_with_subtrees]:
+                    assert subst.is_valid_path(path), \
+                        f"SMT Solution {subst} does not have " \
+                        f"orig path {path} from tree {orig} (state {hash(state)})"
                     solution_with_subtrees[tree] = subst.get_subtree(path)
 
             solutions_with_subtrees.append(solution_with_subtrees)
@@ -836,12 +840,28 @@ class ISLaSolver:
         solutions: List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]] = []
         internal_solutions: List[Dict[isla.Constant, z3.StringVal]] = []
 
-        # smt_formula = qfr_free_formula_to_z3_formula(formula)
-
         assert all(isinstance(conjunct, isla.SMTFormula) for conjunct in get_conjuncts(formula))
 
         smt_formulas = [conjunct for conjunct in get_conjuncts(formula)
                         if isinstance(conjunct, isla.SMTFormula)]
+
+        # If any SMT formula refers to subtrees in the instantiations of other SMT formulas,
+        # we have to instantiate those first.
+        def get_conflicts(smt_formulas):
+            return [
+                f for fidx, f in enumerate(smt_formulas)
+                if any(
+                    ot != t and ot.find_node(t) is not None
+                    for t in f.substitutions.values()
+                    for ofidx, of in enumerate(smt_formulas)
+                    if fidx != ofidx
+                    for ot in of.substitutions.values())]
+
+        conflicts = get_conflicts(smt_formulas)
+
+        if conflicts:
+            smt_formulas = conflicts
+            assert not get_conflicts(smt_formulas)
 
         # NODE: We need to cluster SMT formulas by tree substitutions! If there are two formulas
         # with a variable $var which is instantiated to different trees, we need two separate
@@ -851,7 +871,6 @@ class ISLaSolver:
         old_smt_formulas = smt_formulas
         smt_formulas = []
 
-        new_substitutions: Dict[isla.Variable, DerivationTree] = {}
         for subformula in old_smt_formulas:
             subst_var: isla.Variable
             subst_tree: DerivationTree
@@ -861,12 +880,13 @@ class ISLaSolver:
             new_instantiated_variables = subformula.instantiated_variables
 
             for subst_var, subst_tree in subformula.substitutions.items():
-                new_name = f"{subst_var.name}_{subst_tree.value}_{subst_tree.id}"
+                # new_name = f"{subst_var.name}_{subst_tree.value}_{subst_tree.id}"
+                new_name = f"{subst_tree.value}_{subst_tree.id}"
                 new_var = isla.BoundVariable(new_name, subst_var.n_type)
 
                 new_smt_formula = cast(z3.BoolRef, z3_subst(new_smt_formula, {subst_var.to_smt(): new_var.to_smt()}))
-                new_substitutions = {new_var if k is subst_var else k: v for k, v in new_substitutions.items()}
-                new_instantiated_variables = {new_var if v is subst_var else v for v in new_instantiated_variables}
+                new_substitutions = {new_var if k == subst_var else k: v for k, v in new_substitutions.items()}
+                new_instantiated_variables = {new_var if v == subst_var else v for v in new_instantiated_variables}
 
             smt_formulas.append(
                 isla.SMTFormula(
@@ -894,12 +914,12 @@ class ISLaSolver:
             for constant in constants:
                 if constant.is_numeric():
                     regex = z3.Union(z3.Re("0"), z3.Concat(z3.Range("1", "9"), z3.Star(z3.Range("0", "9"))))
-                elif constant in new_substitutions:
+                elif constant in tree_substitutions:
                     # We have a more concrete shape of the desired instantiation available
                     regexes = [
                         self.extract_regular_expression(t) if is_nonterminal(t)
                         else z3.Re(t)
-                        for t in split_str_with_nonterminals(str(new_substitutions[constant]))]
+                        for t in split_str_with_nonterminals(str(tree_substitutions[constant]))]
                     assert regexes
                     regex = z3.Concat(*regexes) if len(regexes) > 1 else regexes[0]
                 else:
@@ -913,7 +933,6 @@ class ISLaSolver:
                     for constant, string_val in prev_solution.items()]))
 
             for smt_formula in smt_formulas:
-                # TODO: Do we have to apply substitutions???
                 formulas.append(smt_formula.formula)
 
             solver_result, maybe_model = z3_solve(formulas)
@@ -961,6 +980,7 @@ class ISLaSolver:
         return result
 
     def process_new_state(self, new_state: SolutionState) -> List[DerivationTree]:
+        new_state = self.instantiate_structural_predicates(new_state)
         new_states = self.establish_invariant(new_state)
         new_states = [self.remove_nonmatching_universal_quantifiers(new_state) for new_state in new_states]
         new_states = [self.remove_infeasible_universal_quantifiers(new_state) for new_state in new_states]
@@ -1234,7 +1254,9 @@ def compute_cost(
     # vacuous_penalty = compute_match_dist(state, grammar, node_distance)
 
     # What is the proportion of vacuously satisfied universal quantifiers *chains* in (extensions of) this tree?
-    vacuous_penalty = compute_vacuous_penalty(grammar, graph, orig_formula, state.tree, quantifier_chains)
+    vacuous_penalty = (
+        0 if not cost_weight_vector.vacuous_penalty else
+        compute_vacuous_penalty(grammar, graph, orig_formula, state.tree, quantifier_chains))
 
     # k-Path coverage: Fewer covered -> higher penalty
     k_cov_cost = compute_k_coverage_cost(graph, k, state)

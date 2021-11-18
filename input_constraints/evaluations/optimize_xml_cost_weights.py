@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 from input_constraints import isla
 from input_constraints.evaluator import auto_tune_weight_vector
 from input_constraints.tests.subject_languages.xml_lang import XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, \
-    XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
+    XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, XML_NO_ATTR_REDEF_CONSTRAINT
 
 
 def validate_xml(inp: isla.DerivationTree) -> bool:
@@ -24,7 +24,7 @@ if __name__ == '__main__':
 
     tune_result = auto_tune_weight_vector(
         XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
-        XML_WELLFORMEDNESS_CONSTRAINT & XML_NAMESPACE_CONSTRAINT,
+        XML_WELLFORMEDNESS_CONSTRAINT & XML_NAMESPACE_CONSTRAINT & XML_NO_ATTR_REDEF_CONSTRAINT,
         validator=validate_xml,
         timeout=120,  # How long should a single configuration be evaluated
         population_size=40,  # How many configurations should be produced at the beginning

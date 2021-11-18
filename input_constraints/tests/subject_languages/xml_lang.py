@@ -136,11 +136,11 @@ vars {
 }
 
 constraint {
-  forall attr_outer="<xml-attribute> <xml-attribute>" in start:
+  forall attr_outer in start:
     forall attr_inner_1="{id_1}=\\\"<text>\\\"" in attr_outer:
       forall attr_inner_2="{id_2}=\\\"<text>\\\"" in attr_outer: 
         (same_position(attr_inner_1, attr_inner_2) or
-         not (= id_1 id_2))
+         (not same_position(attr_inner_1, attr_inner_2) and not (= id_1 id_2)))
 }
 """
 

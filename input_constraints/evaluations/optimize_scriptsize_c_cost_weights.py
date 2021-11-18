@@ -22,8 +22,8 @@ if __name__ == '__main__':
         SCRIPTSIZE_C_DEF_USE_CONSTR & SCRIPTSIZE_C_NO_REDEF_CONSTR,
         validator,
         timeout=120,
-        population_size=60,
-        generations=8,
+        population_size=110,
+        generations=5,
         cpu_count=32
     )
 
