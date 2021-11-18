@@ -13,7 +13,7 @@ import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.helpers import delete_unreachable, roundup
 from input_constraints.isla import parse_isla
-from input_constraints.isla_predicates import just, OCTAL_TO_DEC_PREDICATE
+from input_constraints.isla_predicates import just, OCTAL_TO_DEC_PREDICATE, SAME_POSITION_PREDICATE
 from input_constraints.type_defs import ParseTree, Grammar
 
 TAR_GRAMMAR = {
@@ -39,7 +39,8 @@ TAR_GRAMMAR = {
         "<file_name_prefix>"
         "<header_padding>"
     ],
-    "<file_name>": ["<characters><maybe_nuls>"],
+    "<file_name>": ["<file_name_str><maybe_nuls>"],
+    "<file_name_str>": ["<file_name_first_char><file_name_chars>", "<file_name_first_char>"],
     "<file_mode>": ["<octal_digits><SPACE><NUL>"],
     "<uid>": ["<octal_digits><SPACE><NUL>"],
     "<gid>": ["<octal_digits><SPACE><NUL>"],
@@ -50,7 +51,7 @@ TAR_GRAMMAR = {
         "0",  # normal file
         "2"  # symbolic link
     ],
-    "<linked_file_name>": ["<maybe_characters><maybe_nuls>"],
+    "<linked_file_name>": ["<file_name_str><maybe_nuls>", "<nuls>"],
     "<uname>": ["<characters><maybe_nuls>"],
     "<gname>": ["<characters><maybe_nuls>"],
     "<dev_maj_num>": ["<octal_digits><SPACE><NUL>"],
@@ -67,10 +68,11 @@ TAR_GRAMMAR = {
 
     "<maybe_characters>": ["<characters>", ""],
     "<characters>": ["<character><characters>", "<character>"],
+    "<character>": srange(string.printable),
 
-    # TODO: Separate characters for file names + content
-    "<character>": srange(string.ascii_letters + string.digits + "._-"),
-    # "<character>": list(set(srange(string.printable)) - set(srange(string.whitespace + "\b\f\v"))),
+    "<file_name_first_char>": srange(string.ascii_letters + string.digits + "_"),
+    "<file_name_chars>": ["<file_name_char><file_name_chars>", "<file_name_char>"],
+    "<file_name_char>": list(set(srange(string.printable)) - set(srange(string.whitespace + "\b\f\v"))),
 
     "<maybe_nuls>": ["<nuls>", ""],
     "<nuls>": ["<NUL><nuls>", "<NUL>"],
@@ -161,7 +163,7 @@ def octal_to_decimal_tar(
         OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"), octal, decimal)
 
 
-size_constr = parse_isla("""
+content_size_constr = parse_isla("""
 const start: <start>;
 
 vars {
@@ -189,6 +191,54 @@ constraint {
     OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"),
     LJUST_CROP_TAR_PREDICATE})
 
+file_size_constr = parse_isla("""
+const start: <start>;
+
+vars {
+  file_size: <file_size>;
+  octal_digits: <octal_digits>;
+  decimal: NUM;
+}
+
+constraint {
+  forall file_size="{octal_digits}<SPACE>" in start:
+    num decimal:
+      ((>= (str.to_int decimal) 10) and
+      ((<= (str.to_int decimal) 100) and 
+      (octal_to_decimal(octal_digits, decimal) and 
+       rjust_crop_tar(file_size, 12, "0"))))
+}
+""", semantic_predicates={
+    OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"),
+    RJUST_CROP_TAR_PREDICATE})
+
+link_constraint = parse_isla("""
+const start: <start>;
+
+vars {
+  entry, linked_entry: <entry>;
+  typeflag: <typeflag>;
+  linked_file_name_field: <linked_file_name>;
+  linked_file_name, file_name: <file_name>;
+  linked_file_name_str, file_name_str: <file_name_str>;
+}
+
+constraint {
+  forall entry in start:
+    forall typeflag in entry:
+      ((= typeflag "0") or 
+        ((= typeflag "2") and 
+        (forall linked_file_name_field="<nuls>" in entry:
+           false 
+         and 
+         forall linked_file_name_field="{linked_file_name_str}<maybe_nuls>" in entry:
+           exists linked_entry in start:
+             (not same_position(entry, linked_entry) and 
+              forall file_name="{file_name_str}<maybe_nuls>" in linked_entry:
+                (= linked_file_name_str file_name_str)))))
+}
+""", structural_predicates={SAME_POSITION_PREDICATE})
+
 mgr = isla.VariableManager(TAR_GRAMMAR)
 start = mgr.const("start", "<start>")
 TAR_CONSTRAINTS = mgr.create(
@@ -213,11 +263,7 @@ TAR_CONSTRAINTS = mgr.create(
         start,
         rjust_crop_tar(mgr.bv("$gid"), 8, "0")
     ) &
-    sc.forall(
-        mgr.bv("$file_size", "<file_size>"),
-        start,
-        rjust_crop_tar(mgr.bv("$file_size"), 12, "0")
-    ) &
+    file_size_constr &
     sc.forall(
         mgr.bv("$mod_time", "<mod_time>"),
         start,
@@ -271,57 +317,39 @@ TAR_CONSTRAINTS = mgr.create(
         start,
         ljust_crop_tar(mgr.bv("$content"), 512, "\x00")
     ) &
-    # sc.forall(
-    #     mgr.bv("$entry", "<entry>"),
-    #     start,
-    #     sc.forall_bind(
-    #         mgr.bv("$content_chars", "<maybe_characters>") + "<maybe_nuls>",
-    #         mgr.bv("$content", "<content>"),
-    #         mgr.bv("$entry"),
-    #         sc.forall(
-    #             mgr.bv("$characters", "<characters>"),
-    #             mgr.bv("$content_chars"),
-    #             sc.forall_bind(
-    #                 mgr.bv("$digits", "<octal_digits>") + "<SPACE>",
-    #                 mgr.bv("$file_size", "<file_size>"),
-    #                 mgr.bv("$entry"),
-    #                 octal_to_decimal_tar(mgr.bv("$digits"), mgr.num_const("$dec_digits")) &
-    #                 ljust_crop_tar(mgr.bv("$characters"), mgr.num_const("$dec_digits"), " "))) &
-    #         ljust_crop_tar(mgr.bv("$content"), 512, "\x00")
-    #     )
-    # ) &
-    size_constr &
+    content_size_constr &
     sc.forall(
         mgr.bv("$final", "<final_entry>"),
         start,
         ljust_crop_tar(mgr.bv("$final"), 1024, "\x00")
     ) &
-    sc.forall(
-        mgr.bv("$entry", "<entry>"),
-        start,
-        sc.forall(
-            mgr.bv("$typeflag", "<typeflag>"),
-            mgr.bv("$entry"),
-            mgr.smt(cast(z3.BoolRef, mgr.bv("$typeflag").to_smt() == z3.StringVal("0")))
-            | (mgr.smt(mgr.bv("$typeflag").to_smt() == z3.StringVal("2")) &
-               sc.forall_bind(
-                   mgr.bv("$linked_file_name_chars", "<characters>") + "<maybe_nuls>",
-                   mgr.bv("$linked_file_name", "<linked_file_name>"),
-                   mgr.bv("$entry"),
-                   sc.exists(
-                       mgr.bv("$linked_entry", "<entry>"),
-                       start,
-                       (sc.before(mgr.bv("$entry"), mgr.bv("$linked_entry"))
-                        | sc.before(mgr.bv("$linked_entry"), mgr.bv("$entry"))) &
-                       sc.forall_bind(
-                           mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>",
-                           mgr.bv("$file_name", "<file_name>"),
-                           mgr.bv("$linked_entry"),
-                           mgr.smt(mgr.bv("$file_name_chars").to_smt() == mgr.bv("$linked_file_name_chars").to_smt()) &
-                           mgr.smt(z3.Length(mgr.bv("$file_name_chars").to_smt()) <= z3.IntVal(100))
-                       )
-                   )))
-        ))
+    link_constraint
+    # sc.forall(
+    #     mgr.bv("$entry", "<entry>"),
+    #     start,
+    #     sc.forall(
+    #         mgr.bv("$typeflag", "<typeflag>"),
+    #         mgr.bv("$entry"),
+    #         mgr.smt(cast(z3.BoolRef, mgr.bv("$typeflag").to_smt() == z3.StringVal("0")))
+    #         | (mgr.smt(mgr.bv("$typeflag").to_smt() == z3.StringVal("2")) &
+    #            sc.forall_bind(
+    #                mgr.bv("$linked_file_name_chars", "<characters>") + "<maybe_nuls>",
+    #                mgr.bv("$linked_file_name", "<linked_file_name>"),
+    #                mgr.bv("$entry"),
+    #                sc.exists(
+    #                    mgr.bv("$linked_entry", "<entry>"),
+    #                    start,
+    #                    (sc.before(mgr.bv("$entry"), mgr.bv("$linked_entry"))
+    #                     | sc.before(mgr.bv("$linked_entry"), mgr.bv("$entry"))) &
+    #                    sc.forall_bind(
+    #                        mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>",
+    #                        mgr.bv("$file_name", "<file_name>"),
+    #                        mgr.bv("$linked_entry"),
+    #                        mgr.smt(mgr.bv("$file_name_chars").to_smt() == mgr.bv("$linked_file_name_chars").to_smt()) &
+    #                        mgr.smt(z3.Length(mgr.bv("$file_name_chars").to_smt()) <= z3.IntVal(100))
+    #                    )
+    #                )))
+    #     ))
 )
 
 
@@ -428,9 +456,11 @@ class TarParser:
 
     def parse_content(self, content_size: Optional[int] = None) -> ParseTree:
         return self.parse_padded_characters(
-            "<content>",
-            self.read(roundup(content_size, 512) if content_size is not None else len(self.inp)),
-            characters_optional=True
+            self.read(roundup(content_size, 512)
+                      if content_size is not None
+                      else len(self.inp)),
+            parent_nonterminal="<content>",
+            characters_optional_nonterminal="<maybe_characters>"
         )
 
     def parse_header(self) -> ParseTree:
@@ -490,21 +520,47 @@ class TarParser:
         return dev_maj_num
 
     def parse_gname(self):
-        gname = self.parse_padded_characters("<gname>", self.read(32))
-        return gname
+        return self.parse_padded_characters(self.read(32), parent_nonterminal="<gname>")
 
     def parse_uname(self):
-        uname = self.parse_padded_characters("<uname>", self.read(32))
-        return uname
+        return self.parse_padded_characters(self.read(32), parent_nonterminal="<uname>")
 
     def parse_file_name(self):
-        file_name = self.parse_padded_characters("<file_name>", self.read(100))
-        return file_name
+        inp = self.read(100)
+
+        if "\00" in inp:
+            nuls_offset = inp.index("\x00")
+            file_name_str = self.parse_file_name_str(inp[:nuls_offset])
+            nuls = ("<maybe_nuls>", [self.parse_nuls(inp[nuls_offset:])])
+            children = [file_name_str, nuls]
+        else:
+            file_name_str = self.parse_file_name_str(inp)
+            children = [file_name_str, ("<maybe_nuls>", [])]
+
+        return "<file_name>", children
+
+    def parse_file_name_str(self, inp: str):
+        if "\x00" in inp:
+            raise SyntaxError("No NUL characters allowed in <file_name_str>")
+
+        file_name_first_char = inp[0]
+
+        file_name_chars = self.parse_characters(
+            inp[1:],
+            characters_nonterminal="<file_name_chars>",
+            character_nonterminal="<file_name_char>",
+        )
+
+        return "<file_name_str>", [
+            ("<file_name_first_char>", [(file_name_first_char, [])]),
+            file_name_chars
+        ]
 
     def parse_linked_file_name(self):
-        linked_file_name = self.parse_padded_characters(
-            "<linked_file_name>", self.read(100), characters_optional=True)
-        return linked_file_name
+        if self.peek() == "\x00":
+            return "<linked_file_name>", [self.parse_nuls(self.read(100))]
+
+        return "<linked_file_name>", self.parse_file_name()[1]
 
     def parse_typeflag(self):
         typeflag = ("<typeflag>", [(self.read(1), [])])
@@ -571,23 +627,35 @@ class TarParser:
         return file_mode
 
     def parse_padded_characters(
-            self, parent_nonterminal: str, inp: str,
-            characters_optional=False,
-            padding_optional=True) -> ParseTree:
+            self,
+            inp: str,
+            parent_nonterminal: Optional[str] = None,
+            padding_optional=True,
+            characters_optional_nonterminal: Optional[str] = None,
+            characters_nonterminal: str = "<characters>",
+            character_nonterminal: str = "<character>") -> Union[ParseTree, List[ParseTree]]:
         if "\x00" in inp and inp[0] != "\x00":
             nuls_offset = inp.index("\x00")
-            return parent_nonterminal, [self.parse_characters(inp[:nuls_offset]), self.parse_nuls(inp[nuls_offset:])]
-
-        if "\x00" in inp and inp[0] == "\x00":
-            if characters_optional:
-                return parent_nonterminal, [("<maybe_characters>", []), self.parse_nuls(inp)]
+            children = [
+                self.parse_characters(
+                    inp=inp[:nuls_offset],
+                    characters_nonterminal=characters_nonterminal,
+                    character_nonterminal=character_nonterminal),
+                self.parse_nuls(inp[nuls_offset:])]
+        elif "\x00" in inp and inp[0] == "\x00":
+            if characters_optional_nonterminal:
+                children = [(characters_optional_nonterminal, []), self.parse_nuls(inp)]
             else:
                 raise SyntaxError(f"invalid syntax at {self.pos - len(inp)}: {inp} (characters expected)")
-
-        if padding_optional:
-            return parent_nonterminal, [self.parse_characters(inp), ("<maybe_nuls>", [])]
+        elif padding_optional:
+            children = [self.parse_characters(inp=inp), ("<maybe_nuls>", [])]
         else:
             raise SyntaxError(f"invalid syntax at {self.pos - len(inp)}: {inp} (padding expected)")
+
+        if parent_nonterminal:
+            return parent_nonterminal, children
+        else:
+            return children
 
     def parse_octal_digits(self, inp: str) -> ParseTree:
         children = []
@@ -604,21 +672,25 @@ class TarParser:
 
         return result
 
-    def parse_characters(self, inp: Optional[str] = None) -> ParseTree:
+    def parse_characters(
+            self,
+            inp: Optional[str] = None,
+            characters_nonterminal: str = "<characters>",
+            character_nonterminal: str = "<character>") -> ParseTree:
         if inp is None:
             inp = self.inp
 
         children = []
-        result = ("<characters>", children)
+        result = (characters_nonterminal, children)
         for idx, char in enumerate(inp):
             if char == "\x00":
                 raise SyntaxError(f"invalid syntax at {self.pos - len(inp) + idx}: {inp[idx:]} "
                                   f"(NUL encountered, character expected)")
             new_children = []
-            children.append(("<character>", [(char, [])]))
+            children.append((character_nonterminal, [(char, [])]))
 
             if idx < len(inp) - 1:
-                children.append(("<characters>", new_children))
+                children.append((characters_nonterminal, new_children))
                 children = new_children
 
         return result

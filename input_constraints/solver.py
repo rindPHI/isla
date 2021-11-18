@@ -295,11 +295,11 @@ class ISLaSolver:
                 if int(time.time()) - start_time > self.timeout_seconds:
                     return
 
-            if hash(self.queue[0][1]) == 9175279053435247617:
-                with open('/tmp/saved_debug_state', 'wb') as debug_state_file:
-                    pickle.dump(self, debug_state_file)
-                print("Dumping state to /tmp/saved_debug_state")
-                exit()
+            # if hash(self.queue[0][1]) == 6754285556546430396:
+            #     with open('/tmp/saved_debug_state', 'wb') as debug_state_file:
+            #         pickle.dump(self, debug_state_file)
+            #     print("Dumping state to /tmp/saved_debug_state")
+            #     exit()
 
             cost: int
             state: SolutionState

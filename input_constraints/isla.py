@@ -1731,10 +1731,14 @@ class ForallFormula(QuantifiedFormula):
 
         new_inner_formula = self.inner_formula.substitute_expressions(subst_map)
 
-        if (self.bound_variable not in new_inner_formula.free_variables()
-                and (self.bind_expression is None or
-                     not any(bv in new_inner_formula.free_variables()
-                             for bv in self.bind_expression.bound_variables()))):
+        if self.bound_variable not in new_inner_formula.free_variables() and self.bind_expression is None:
+            # NOTE: We cannot remove the quantifier if there is a bind expression, not even if
+            #       the variables in the bind expression do not occur in the inner formula,
+            #       since there might be multiple expansion alternatives of the bound variable
+            #       nonterminal and it makes a difference whether a particular expansion has been
+            #       chosen. Consider, e.g., an inner formula "false". Then, this formula evaluates
+            #       to false IF, AND ONLY IF, the defined expansion alternative is chosen, and
+            #       NOT always.
             return new_inner_formula
 
         return ForallFormula(

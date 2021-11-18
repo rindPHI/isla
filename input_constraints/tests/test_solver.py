@@ -324,9 +324,13 @@ constraint {
             num_solutions=50,
             cost_settings=CostSettings(
                 (
-                    CostWeightVector(tree_closing_cost=5, vacuous_penalty=5, constraint_cost=2,
-                                     derivation_depth_penalty=7, low_k_coverage_penalty=12,
-                                     low_global_k_path_coverage_penalty=9),
+                    # CostWeightVector(tree_closing_cost=5, vacuous_penalty=5, constraint_cost=2,
+                    #                  derivation_depth_penalty=7, low_k_coverage_penalty=12,
+                    #                  low_global_k_path_coverage_penalty=9),
+
+                    CostWeightVector(tree_closing_cost=12, vacuous_penalty=30, constraint_cost=4,
+                                     derivation_depth_penalty=2, low_k_coverage_penalty=23,
+                                     low_global_k_path_coverage_penalty=20),
                 ),
                 cost_phase_lengths=(200,),
                 k=4
@@ -334,7 +338,7 @@ constraint {
             # print_only=True
         )
 
-    # @pytest.mark.skip(reason="Have to disable assertions to run this test, disabling in CI pipeline.")
+    @pytest.mark.skip(reason="Have to disable assertions to run this test, disabling in CI pipeline.")
     def test_tar(self):
         self.execute_generation_test(
             tar.TAR_CONSTRAINTS,
