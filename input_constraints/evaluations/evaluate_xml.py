@@ -1,9 +1,9 @@
-import logging
+from grammar_graph.gg import GrammarGraph
 
 from grammar_graph.gg import GrammarGraph
 
-import input_constraints.tests.subject_languages.xml_lang as xml_lang
-from input_constraints.evaluator import evaluate_generators
+from input_constraints.tests.subject_languages import xml_lang
+from input_constraints.evaluator import evaluate_generators, plot_proportion_valid_inputs_graph
 from input_constraints.solver import ISLaSolver, CostSettings, CostWeightVector
 
 timeout = 5
@@ -66,12 +66,7 @@ g_wf_ns_redef = ISLaSolver(
 )
 
 
-def evaluate_validity():
-    out_dir = "../../eval_results/xml"
-    base_name = "input_validity_xml_"
-
-    jobnames = ["g_rand", "g_wf", "g_ns", "g_redef", "g_wf_nw", "g_wf_ns_redef"]
-    generators = [xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, g_wf, g_ns, g_redef, g_wf_ns, g_wf_ns_redef]
+def evaluate_validity(out_dir: str, base_name: str, generators, jobnames):
     results = evaluate_generators(
         generators,
         None,
@@ -79,7 +74,7 @@ def evaluate_validity():
         xml_lang.validate_xml,
         timeout,
         k=3,
-        cpu_count=1,
+        cpu_count=len(generators),
         jobnames=jobnames
     )
 
@@ -88,4 +83,11 @@ def evaluate_validity():
 
 
 if __name__ == '__main__':
-    evaluate_validity()
+    generators = [xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, g_wf, g_ns, g_redef, g_wf_ns, g_wf_ns_redef]
+    jobnames = ["Grammar Fuzzer", "Balance", "Def-Use", "No-Redef", "Balance + Def-Use", "Balance + Def-Use + No-Redef"]
+
+    out_dir = "../../eval_results/xml"
+    base_name = "input_validity_xml_"
+
+    evaluate_validity(out_dir, base_name, generators, jobnames)
+    plot_proportion_valid_inputs_graph(out_dir, base_name, jobnames, f"{out_dir}/input_validity_xml.pdf")

@@ -1,8 +1,6 @@
-import logging
-
 from grammar_graph.gg import GrammarGraph
 
-from input_constraints.evaluator import grammar_coverage_generator, evaluate_generators
+from input_constraints.evaluator import evaluate_generators, plot_proportion_valid_inputs_graph
 from input_constraints.solver import ISLaSolver, CostSettings, CostWeightVector
 from input_constraints.tests.subject_languages import scriptsizec
 
@@ -46,13 +44,7 @@ g_defuse_redef = ISLaSolver(
 )
 
 
-def evaluate_validity():
-    out_dir = "../../eval_results/scriptsizec"
-    base_name = "input_validity_scriptsizec_"
-
-    generators = [scriptsizec.SCRIPTSIZE_C_GRAMMAR, g_defuse, g_redef, g_defuse_redef]
-    jobnames = ["g_rand", "g_defuse", "g_redef", "g_defuse_redef"]
-
+def evaluate_validity(out_dir: str, base_name: str, generators, jobnames):
     results = evaluate_generators(
         generators,
         None,
@@ -69,4 +61,11 @@ def evaluate_validity():
 
 
 if __name__ == '__main__':
-    evaluate_validity()
+    generators = [scriptsizec.SCRIPTSIZE_C_GRAMMAR, g_defuse, g_redef, g_defuse_redef]
+    jobnames = ["Grammar Fuzzer", "Def-Use", "No-Redef", "Def-Use + No-Redef"]
+
+    out_dir = "../../eval_results/scriptsizec"
+    base_name = "input_validity_scriptsizec_"
+
+    # evaluate_validity(out_dir, base_name, generators, jobnames)
+    plot_proportion_valid_inputs_graph(out_dir, base_name, jobnames, f"{out_dir}/input_validity_scriptsizec.pdf")
