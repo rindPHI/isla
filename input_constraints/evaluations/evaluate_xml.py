@@ -2,11 +2,11 @@ import logging
 
 from grammar_graph.gg import GrammarGraph
 
-from input_constraints.evaluator import grammar_coverage_generator, evaluate_generators
-from input_constraints.solver import ISLaSolver, CostSettings, CostWeightVector
 import input_constraints.tests.subject_languages.xml_lang as xml_lang
+from input_constraints.evaluator import evaluate_generators
+from input_constraints.solver import ISLaSolver, CostSettings, CostWeightVector
 
-timeout = 5 * 60
+timeout = 5
 
 cost_vector = CostWeightVector(
     tree_closing_cost=15,
@@ -67,11 +67,10 @@ g_wf_ns_redef = ISLaSolver(
 
 
 def evaluate_validity():
-    logging.basicConfig(level=logging.INFO)
-
     out_dir = "../../eval_results/xml"
     base_name = "input_validity_xml_"
 
+    jobnames = ["g_rand", "g_wf", "g_ns", "g_redef", "g_wf_nw", "g_wf_ns_redef"]
     generators = [xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, g_wf, g_ns, g_redef, g_wf_ns, g_wf_ns_redef]
     results = evaluate_generators(
         generators,
@@ -80,15 +79,12 @@ def evaluate_validity():
         xml_lang.validate_xml,
         timeout,
         k=3,
-        cpu_count=1
+        cpu_count=1,
+        jobnames=jobnames
     )
 
-    results[0].save_to_csv_file(out_dir, base_name + "g_rand")
-    results[1].save_to_csv_file(out_dir, base_name + "g_wf")
-    results[2].save_to_csv_file(out_dir, base_name + "g_ns")
-    results[3].save_to_csv_file(out_dir, base_name + "g_redef")
-    results[4].save_to_csv_file(out_dir, base_name + "g_wf_nw")
-    results[5].save_to_csv_file(out_dir, base_name + "g_wf_ns_redef")
+    for result, jobname in zip(results, jobnames):
+        result.save_to_csv_file(out_dir, base_name + jobname)
 
 
 if __name__ == '__main__':

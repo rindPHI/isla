@@ -47,17 +47,12 @@ g_defuse_redef = ISLaSolver(
 
 
 def evaluate_validity():
-    # logging.basicConfig(level=logging.INFO)
+    out_dir = "../../eval_results/scriptsizec"
+    base_name = "input_validity_scriptsizec_"
 
-    out_dir = "../../eval_results/xml"
-    base_name = "input_validity_xml_"
+    generators = [scriptsizec.SCRIPTSIZE_C_GRAMMAR, g_defuse, g_redef, g_defuse_redef]
+    jobnames = ["g_rand", "g_defuse", "g_redef", "g_defuse_redef"]
 
-    # There is a problem with g_redef...
-    # generators = [scriptsizec.SCRIPTSIZE_C_GRAMMAR, g_defuse, g_redef, g_defuse_redef]
-    # jobnames = ["g_rand", "g_defuse", "g_redef", "g_defuse_redef"]
-
-    generators = [scriptsizec.SCRIPTSIZE_C_GRAMMAR, g_defuse, g_defuse_redef]
-    jobnames = ["g_rand", "g_defuse", "g_defuse_redef"]
     results = evaluate_generators(
         generators,
         None,
@@ -66,7 +61,6 @@ def evaluate_validity():
         timeout,
         k=3,
         cpu_count=len(generators),
-        # cpu_count=1,
         jobnames=jobnames
     )
 
