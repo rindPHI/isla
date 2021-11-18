@@ -296,7 +296,7 @@ class ISLaSolver:
                     return
 
             # import dill as pickle
-            # state_hash = 5505111971862715789
+            # state_hash = 2065907971406871963
             # out_file = "/tmp/saved_debug_state"
             # if hash(self.queue[0][1]) == state_hash:
             #     with open(out_file, 'wb') as debug_state_file:
@@ -381,10 +381,14 @@ class ISLaSolver:
                 f"Constraint is not true and contains semantic predicate formulas which bind open leaves in the tree: " \
                 f"{state.constraint}, leaves: {', '.join(list(map(str, [leaf for _, leaf in state.tree.open_leaves()])))}"
 
-            fuzzer = GrammarCoverageFuzzer(self.grammar, max_nonterminals=None)
+            fuzzer = GrammarCoverageFuzzer(self.grammar)
             if state.constraint == sc.true():
                 for _ in range(self.max_number_free_instantiations):
-                    yield DerivationTree.from_parse_tree(fuzzer.expand_tree(state.tree.to_parse_tree()))
+                    result = state.tree
+                    for path, leaf in state.tree.open_leaves():
+                        leaf_inst = DerivationTree.from_parse_tree(fuzzer.expand_tree((leaf.value, None)))
+                        result = result.replace_path(path, leaf_inst)
+                    yield result
             else:
                 for _ in range(self.max_number_free_instantiations):
                     substitutions: Dict[DerivationTree, DerivationTree] = {

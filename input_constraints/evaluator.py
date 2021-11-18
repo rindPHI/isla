@@ -3,6 +3,8 @@ import datetime
 import logging
 import math
 import multiprocessing as mp
+import sys
+
 import pathos.multiprocessing as pmp
 import os.path
 import random
@@ -63,7 +65,7 @@ def collect_data(
         timeout_seconds: int = 60) -> Dict[float, isla.DerivationTree]:
     start_time = time.time()
     result: Dict[float, isla.DerivationTree] = {}
-    logger.info("Collecting data for %d seconds", timeout_seconds)
+    print(f"Collecting data for {timeout_seconds} seconds")
 
     if isinstance(generator, ISLaSolver):
         generator = generator.solve()
@@ -89,7 +91,7 @@ def collect_data(
         assert curr_relative_time not in result
         result[curr_relative_time] = inp
 
-    logger.info("Collected %d inputs in %d seconds", len(result), timeout_seconds)
+    print(f"Collected {len(result)} inputs in {timeout_seconds} seconds")
     return result
 
 
@@ -113,17 +115,17 @@ class PerformanceEvaluationResult:
         valid_input_file = os.path.join(dir, base_file_name + "_valid_inputs.csv")
         with open(valid_input_file, 'w') as f:
             f.write("\n".join(f"{t};{r}" for t, r in self.accumulated_valid_inputs.items()))
-            logger.info(f"Written valid input data to {valid_input_file}")
+            print(f"Written valid input data to {valid_input_file}")
 
         k_path_file = os.path.join(dir, base_file_name + "_k_paths.csv")
         with open(k_path_file, 'w') as f:
             f.write("\n".join(f"{t};{r}" for t, r in self.accumulated_k_path_coverage.items()))
-            logger.info(f"Written accumulated k-path data {k_path_file}")
+            print(f"Written accumulated k-path data {k_path_file}")
 
         non_vacuous_file = os.path.join(dir, base_file_name + "_non_vacuous_index.csv")
         with open(non_vacuous_file, 'w') as f:
             f.write("\n".join(f"{t};{r}" for t, r in self.accumulated_valid_inputs.items()))
-            logger.info(f"Written non-vacuous index data to {k_path_file}")
+            print(f"Written non-vacuous index data to {k_path_file}")
 
     @staticmethod
     def load_from_csv_file(dir: str, base_file_name: str) -> 'PerformanceEvaluationResult':
@@ -205,7 +207,7 @@ class PerformanceEvaluationResult:
         fig.tight_layout()
         plt.plot()
 
-        logger.info("Saving performance analysis plot to %s", outfile_pdf)
+        print("Saving performance analysis plot to %s", outfile_pdf)
         matplotlib.pyplot.savefig(outfile_pdf)
 
     def __repr__(self):
@@ -225,7 +227,8 @@ def evaluate_data(
         formula: Optional[isla.Formula],
         graph: gg.GrammarGraph,
         validator: Callable[[isla.DerivationTree], bool],
-        k: int = 3) -> PerformanceEvaluationResult:
+        k: int = 3,
+        jobname: str = "Unnamed") -> PerformanceEvaluationResult:
     accumulated_valid_inputs: Dict[float, int] = {}
     accumulated_k_path_coverage: Dict[float, int] = {}
     accumulated_non_vacuous_index: Dict[float, float] = {}
@@ -285,13 +288,10 @@ def evaluate_data(
         accumulated_k_path_coverage,
         accumulated_non_vacuous_index)
 
-    logger.info(
-        "Final evaluation values: %d valid inputs, %d %% coverage, %f non-vacuous index, final mean: %f",
-        valid_inputs,
-        int(len(covered_kpaths) * 100 / len(graph.k_paths(k))),
-        (list(accumulated_non_vacuous_index.values()) or [0])[-1],
-        (list(result.mean_data().values()) or [0])[-1]
-    )
+    print(f"Final evaluation values: {valid_inputs} valid inputs, "
+          f"{int(len(covered_kpaths) * 100 / len(graph.k_paths(k)))}% coverage, "
+          f"{(list(accumulated_non_vacuous_index.values()) or [0])[-1]} non-vacuous index, "
+          f"final mean: {(list(result.mean_data().values()) or [0])[-1]}, job: {jobname}")
 
     return result
 
@@ -310,15 +310,16 @@ def evaluate_producer(
         outfile_pdf: Optional[str] = None,
         timeout_seconds: int = 60,
         diagram_title: str = "Performance Data",
-        k=3) -> PerformanceEvaluationResult:
-    logger.info("Collecting performance data")
+        k=3,
+        jobname: str = "Unnamed") -> PerformanceEvaluationResult:
+    print(f"Collecting performance data, job: {jobname}")
     data = collect_data(producer, timeout_seconds=timeout_seconds)
-    logger.info("Evaluating Data")
+    print(f"Evaluating Data, job: {jobname}")
 
-    evaluation_result = evaluate_data(data, formula, graph, validator, k)
+    evaluation_result = evaluate_data(data, formula, graph, validator, k, jobname=jobname)
 
     if outfile_pdf:
-        logger.info(f"Plotting result to {outfile_pdf}")
+        print(f"Plotting result to {outfile_pdf}, job: {jobname}")
         evaluation_result.plot(outfile_pdf, title=diagram_title)
 
     return evaluation_result
@@ -331,19 +332,32 @@ def evaluate_generators(
         validator: Callable[[isla.DerivationTree], bool],
         timeout_seconds: int = 60,
         k=3,
-        cpu_count: int = -1) -> List[PerformanceEvaluationResult]:
+        cpu_count: int = -1,
+        jobnames: Optional[List[str]] = None) -> List[PerformanceEvaluationResult]:
+    assert jobnames is None or len(jobnames) == len(producers)
+    if jobnames is None:
+        jobnames = ["Unnamed" for _ in range(len(producers))]
+
     if cpu_count < 0:
         cpu_count = mp.cpu_count()
 
     if cpu_count < 2:
         return [
-            evaluate_producer(producer, formula, graph, validator, timeout_seconds=timeout_seconds, k=k)
-            for producer in producers]
+            evaluate_producer(
+                producer,
+                formula,
+                graph,
+                validator,
+                timeout_seconds=timeout_seconds,
+                k=k,
+                jobname=jobname
+            )
+            for jobname, producer in zip(jobnames, producers)]
 
     with mp.Pool(processes=cpu_count) as pool:
         return pool.starmap(evaluate_producer, [
-            (producer, formula, graph, validator, None, timeout_seconds, "", k)
-            for producer in producers])
+            (producer, formula, graph, validator, None, timeout_seconds, "", k, jobname)
+            for jobname, producer in zip(jobnames, producers)])
 
 
 def evaluate_isla_generator(
@@ -354,7 +368,7 @@ def evaluate_isla_generator(
         timeout: int,
         outfile_name: Optional[str] = None,
         k=3) -> PerformanceEvaluationResult:
-    logger.info("Evaluating weight vector %s", v)
+    print("Evaluating weight vector %s", v)
     isla_producer = ISLaSolver(
         grammar,
         formula,
@@ -395,7 +409,7 @@ def evaluate_random_cost_vectors(
             derivation_depth_penalty=randno(),
             low_k_coverage_penalty=randno()
         )
-        logger.info("Round %d, cost vector %s", i + 1, str(v))
+        print(f"Round {i + i}, cost vector {v}")
         outfile_name = f"/tmp/xml_perf_eval_{str((i + 1)).rjust(len(str(rounds)), '0')}.pdf"
 
         evaluate_isla_generator(grammar, formula, v, validator, timeout, outfile_name, k)
@@ -407,9 +421,9 @@ def evaluate_random_cost_vectors(
         stderr=subprocess.PIPE)
 
     if process.returncode != 0:
-        logger.error("Combining output PDFs did not work, error message: %s", process.stderr)
+        print(f"Combining output PDFs did not work, error message: {process.stderr}", file=sys.stderr)
     else:
-        logger.info("Saved combined output file at %s", final_out_file_name)
+        print("Saved combined output file at " + final_out_file_name)
 
 
 def mutate_cost_weight(w: float, max_add: int = 5, max_factor: int = 3) -> float:
@@ -452,7 +466,7 @@ def evaluate_mutated_cost_vectors(
         new_args.update({elem: mutate_cost_weight(args[elem]) for elem in mutated_elements})
         v = CostWeightVector(**new_args)
 
-        logger.info("Round %d, cost vector %s", i + 1, str(v))
+        print(f"Round {i + 1}, cost vector {v}")
         outfile_name = f"/tmp/xml_perf_eval_{str((i + 1)).rjust(len(str(rounds)), '0')}.pdf"
 
         evaluate_isla_generator(grammar, formula, v, validator, timeout, outfile_name, k)
@@ -464,9 +478,9 @@ def evaluate_mutated_cost_vectors(
         stderr=subprocess.PIPE)
 
     if process.returncode != 0:
-        logger.error("Combining output PDFs did not work, error message: %s", process.stderr)
+        print(f"Combining output PDFs did not work, error message: {process.stderr}", file=sys.stderr)
     else:
-        logger.info("Saved combined output file at %s", final_out_file_name)
+        print("Saved combined output file at " + final_out_file_name)
 
 
 def evaluate_cost_vectors_isla(
@@ -516,11 +530,8 @@ def auto_tune_weight_vector(
     time_estimate = 2.5 * (
             timeout * population_size / cpu_count +
             (generations - 1) * (population_size // 2) * timeout / cpu_count)
-    logger.info(
-        "Autotuning, estimated time > %ds, end: %s",
-        time_estimate,
-        (datetime.datetime.now() + datetime.timedelta(seconds=time_estimate)).strftime("%d/%m/%Y %H:%M:%S")
-    )
+    endtime = (datetime.datetime.now() + datetime.timedelta(seconds=time_estimate)).strftime("%d/%m/%Y %H:%M:%S")
+    print(f"Autotuning, estimated time > {time_estimate}s, end: {endtime}", )
 
     # Create initial population
     if not seed_population:
@@ -548,9 +559,9 @@ def auto_tune_weight_vector(
         seed_population),
         key=lambda t: t[0].final_product_value)
 
-    logger.info(
-        "Initial population:\n%s\n",
-        "\n".join([f'{str(v)}, {str(r)}' for r, v in current_population]))
+    print(
+        "Initial population:\n" +
+        "\n".join([f'{str(v)}, {str(r)}' for r, v in current_population]) + "\n")
 
     for generation in range(generations - 1):
         # Remove the five least fittest elements
@@ -576,7 +587,7 @@ def auto_tune_weight_vector(
                 for feature in all_features
             })
 
-            logger.debug("Crossover of\n%s\nand\n%s:\n%s", first_parent[1], second_parent[1], child)
+            logger.debug(f"Crossover of\n{first_parent[1]}\nand\n{second_parent[1]}:\n{child}")
 
             # Mutate one child feature
             mutated_feature = random.choice(all_features)
@@ -592,13 +603,12 @@ def auto_tune_weight_vector(
         current_population.extend(list(zip(eval_results, seed_population)))
         current_population = sorted(current_population, key=lambda t: t[0].final_product_value)
 
-        logger.info(
-            "Generation %d:\n%s\n",
-            generation + 1,
-            "\n".join([f'{str(v)}, {str(r)}' for r, v in current_population]))
+        print(
+            f"Generation {generation + 1}:\n" +
+            "\n".join([f'{str(v)}, {str(r)}' for r, v in current_population]) + "\n")
 
         idx += 1
 
     result = current_population[-1]
-    logger.info("Auto-tuning finished. Result: %s, %s", result[1], result[0])
+    print(f"Auto-tuning finished. Result: {result[1]}, {result[0]}")
     return result

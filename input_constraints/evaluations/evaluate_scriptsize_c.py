@@ -10,7 +10,7 @@ timeout = 5
 
 cost_vector = CostWeightVector(
     tree_closing_cost=10,
-    vacuous_penalty=9,
+    vacuous_penalty=0,
     constraint_cost=0,
     derivation_depth_penalty=9,
     low_k_coverage_penalty=28,
@@ -47,12 +47,17 @@ g_defuse_redef = ISLaSolver(
 
 
 def evaluate_validity():
-    logging.basicConfig(level=logging.DEBUG)
+    # logging.basicConfig(level=logging.INFO)
 
     out_dir = "../../eval_results/xml"
     base_name = "input_validity_xml_"
 
-    generators = [scriptsizec.SCRIPTSIZE_C_GRAMMAR, g_defuse, g_redef, g_defuse_redef]
+    # There is a problem with g_redef...
+    # generators = [scriptsizec.SCRIPTSIZE_C_GRAMMAR, g_defuse, g_redef, g_defuse_redef]
+    # jobnames = ["g_rand", "g_defuse", "g_redef", "g_defuse_redef"]
+
+    generators = [scriptsizec.SCRIPTSIZE_C_GRAMMAR, g_defuse, g_defuse_redef]
+    jobnames = ["g_rand", "g_defuse", "g_defuse_redef"]
     results = evaluate_generators(
         generators,
         None,
@@ -60,14 +65,13 @@ def evaluate_validity():
         scriptsizec.compile_scriptsizec_clang,
         timeout,
         k=3,
-        # cpu_count=len(generators)
-        cpu_count=1
+        cpu_count=len(generators),
+        # cpu_count=1,
+        jobnames=jobnames
     )
 
-    results[0].save_to_csv_file(out_dir, base_name + "g_rand")
-    results[1].save_to_csv_file(out_dir, base_name + "g_defuse")
-    results[2].save_to_csv_file(out_dir, base_name + "g_redef")
-    results[3].save_to_csv_file(out_dir, base_name + "g_defuse_redef")
+    for result, jobname in zip(results, jobnames):
+        result.save_to_csv_file(out_dir, base_name + jobname)
 
 
 if __name__ == '__main__':

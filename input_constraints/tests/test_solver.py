@@ -324,16 +324,29 @@ constraint {
             custom_test_func=scriptsizec.compile_scriptsizec_clang,
             num_solutions=50,
             cost_settings=CostSettings(
-                (
-                    # CostWeightVector(tree_closing_cost=5, vacuous_penalty=30, constraint_cost=4,
-                    #                  derivation_depth_penalty=3, low_k_coverage_penalty=23,
-                    #                  low_global_k_path_coverage_penalty=20),
+                (CostWeightVector(tree_closing_cost=10, vacuous_penalty=0, constraint_cost=0,
+                                  derivation_depth_penalty=9, low_k_coverage_penalty=28,
+                                  low_global_k_path_coverage_penalty=4),),
+                cost_phase_lengths=(200,),
+                k=4
+            ),
+            # print_only=True
+        )
 
-                    CostWeightVector(tree_closing_cost=10, vacuous_penalty=0, constraint_cost=0,
-                                     derivation_depth_penalty=9, low_k_coverage_penalty=28,
-                                     low_global_k_path_coverage_penalty=4),
-
-                ),
+    def test_scriptsize_c_redef(self):
+        self.execute_generation_test(
+            scriptsizec.SCRIPTSIZE_C_NO_REDEF_CONSTR,
+            grammar=scriptsizec.SCRIPTSIZE_C_GRAMMAR,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=2,
+            expand_after_existential_elimination=False,
+            enforce_unique_trees_in_queue=True,
+            # custom_test_func=scriptsizec.compile_scriptsizec_clang,
+            num_solutions=50,
+            cost_settings=CostSettings(
+                (CostWeightVector(tree_closing_cost=10, vacuous_penalty=0, constraint_cost=0,
+                                  derivation_depth_penalty=9, low_k_coverage_penalty=28,
+                                  low_global_k_path_coverage_penalty=4),),
                 cost_phase_lengths=(200,),
                 k=4
             ),
