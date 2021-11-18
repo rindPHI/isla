@@ -453,8 +453,7 @@ TAR_CONSTRAINTS = (
         content_length_constraint &
         content_size_constr &
         final_entry_length_constraint &
-        link_constraint
-)
+        link_constraint)
 
 
 class TarParser:
@@ -607,7 +606,7 @@ class TarParser:
         dev_min_num_padded = self.read(8)
         if dev_min_num_padded[-2:] != " \x00":
             raise SyntaxError(f"invalid syntax at pos. {self.pos - 2}: {dev_min_num_padded[-2:]} (' \x00' expected)")
-        dev_min_num = ("<dev_maj_num>", [
+        dev_min_num = ("<dev_min_num>", [
             self.parse_octal_digits(dev_min_num_padded[:-2]),
             ("<SPACE>", [(" ", [])]),
             ("<NUL>", [("\x00", [])])])
@@ -851,4 +850,8 @@ def extract_tar(tree: isla.DerivationTree) -> Union[bool, str]:
         exit_code = process.wait()
         # TODO: Also look for messages like "Damaged tar archive" (redefined file name)
 
-        return True if exit_code == 0 else stderr.decode("utf-8")
+        err_msg = stderr.decode("utf-8")
+        if err_msg:
+            print(err_msg)
+
+        return True if exit_code == 0 else err_msg

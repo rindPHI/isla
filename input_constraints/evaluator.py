@@ -113,7 +113,7 @@ class PerformanceEvaluationResult:
             (.0 if not accumulated_invalid_inputs else list(accumulated_invalid_inputs.keys())[-1]),
         ])
 
-        if accumulated_valid_inputs:
+        if accumulated_valid_inputs and accumulated_k_path_coverage and accumulated_non_vacuous_index:
             self.final_product_value: float = self.single_product_value(max(accumulated_valid_inputs.keys()))
         else:
             self.final_product_value = -1
@@ -189,6 +189,11 @@ class PerformanceEvaluationResult:
         return result
 
     def mean_data(self) -> Dict[float, float]:
+        if not (self.accumulated_valid_inputs
+                and self.accumulated_k_path_coverage
+                and self.accumulated_non_vacuous_index):
+            return {}
+
         return {
             seconds: self.single_product_value(seconds)
             for seconds in self.accumulated_valid_inputs}
@@ -272,14 +277,16 @@ def evaluate_data(
         graph: gg.GrammarGraph,
         validator: Callable[[isla.DerivationTree], bool],
         k: int = 3,
-        jobname: str = "Unnamed") -> PerformanceEvaluationResult:
+        jobname: str = "Unnamed",
+        compute_kpath_coverage: bool = True,
+        compute_vacuity: bool = True) -> PerformanceEvaluationResult:
     accumulated_valid_inputs: Dict[float, int] = {}
     accumulated_invalid_inputs: Dict[float, int] = {}
     accumulated_k_path_coverage: Dict[float, int] = {}
     accumulated_non_vacuous_index: Dict[float, float] = {}
 
     quantifier_chains: List[Tuple[isla.ForallFormula, ...]] = (
-        [] if formula is None
+        [] if (not compute_vacuity or formula is None)
         else [tuple([f for f in c if isinstance(f, isla.ForallFormula)])
               for c in solver.get_quantifier_chains(formula)])
 
@@ -313,14 +320,13 @@ def evaluate_data(
                 assert c in chains_satisfied
                 chains_satisfied[c] += 1
 
-        # if not vacuously_satisfies(inp, formula):
-        #     non_vacuous_inputs += 1
-
-        covered_kpaths.update(graph.k_paths_in_tree(inp.to_parse_tree(), k))
         accumulated_valid_inputs[seconds] = valid_inputs
-        accumulated_k_path_coverage[seconds] = int(len(covered_kpaths) * 100 / len(graph.k_paths(k)))
 
-        if quantifier_chains:
+        if compute_kpath_coverage:
+            covered_kpaths.update(graph.k_paths_in_tree(inp.to_parse_tree(), k))
+            accumulated_k_path_coverage[seconds] = int(len(covered_kpaths) * 100 / len(graph.k_paths(k)))
+
+        if quantifier_chains and compute_vacuity:
             # Values in chains_satisfied range between 0 and `valid_inputs`, and thus the mean, too.
             chains_satisfied_mean = (
                     math.prod([v + 1 for v in chains_satisfied.values()]) ** (1 / len(chains_satisfied)) - 1)
@@ -362,12 +368,18 @@ def evaluate_producer(
         timeout_seconds: int = 60,
         diagram_title: str = "Performance Data",
         k=3,
-        jobname: str = "Unnamed") -> PerformanceEvaluationResult:
+        jobname: str = "Unnamed",
+        compute_kpath_coverage: bool = True,
+        compute_vacuity: bool = True) -> PerformanceEvaluationResult:
     print(f"Collecting performance data, job: {jobname}")
     data = collect_data(producer, timeout_seconds=timeout_seconds)
     print(f"Evaluating Data, job: {jobname}")
 
-    evaluation_result = evaluate_data(data, formula, graph, validator, k, jobname=jobname)
+    evaluation_result = evaluate_data(
+        data, formula, graph, validator, k,
+        jobname=jobname,
+        compute_kpath_coverage=compute_kpath_coverage,
+        compute_vacuity=compute_vacuity)
 
     if outfile_pdf:
         print(f"Plotting result to {outfile_pdf}, job: {jobname}")
@@ -384,7 +396,9 @@ def evaluate_generators(
         timeout_seconds: int = 60,
         k=3,
         cpu_count: int = -1,
-        jobnames: Optional[List[str]] = None) -> List[PerformanceEvaluationResult]:
+        jobnames: Optional[List[str]] = None,
+        compute_kpath_coverage: bool = True,
+        compute_vacuity: bool = True) -> List[PerformanceEvaluationResult]:
     assert jobnames is None or len(jobnames) == len(producers)
     if jobnames is None:
         jobnames = ["Unnamed" for _ in range(len(producers))]
@@ -401,13 +415,16 @@ def evaluate_generators(
                 validator,
                 timeout_seconds=timeout_seconds,
                 k=k,
-                jobname=jobname
+                jobname=jobname,
+                compute_kpath_coverage=compute_kpath_coverage,
+                compute_vacuity=compute_vacuity
             )
             for jobname, producer in zip(jobnames, producers)]
 
     with mp.Pool(processes=cpu_count) as pool:
         return pool.starmap(evaluate_producer, [
-            (producer, formula, graph, validator, None, timeout_seconds, "", k, jobname)
+            (producer, formula, graph, validator, None, timeout_seconds, "", k,
+             jobname, compute_kpath_coverage, compute_vacuity)
             for jobname, producer in zip(jobnames, producers)])
 
 
