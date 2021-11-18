@@ -89,5 +89,5 @@ if __name__ == '__main__':
     out_dir = "../../eval_results/xml"
     base_name = "input_validity_xml_"
 
-    evaluate_validity(out_dir, base_name, generators, jobnames)
+    # evaluate_validity(out_dir, base_name, generators, jobnames)
     plot_proportion_valid_inputs_graph(out_dir, base_name, jobnames, f"{out_dir}/input_validity_xml.pdf")

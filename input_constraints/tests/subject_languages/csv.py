@@ -37,7 +37,14 @@ def csv_lint(tree: isla.DerivationTree) -> Union[bool, str]:
         (stdout, stderr) = process.communicate()
         exit_code = process.wait()
 
-        return True if exit_code == 0 else stderr.decode("utf-8")
+        err_msg = stderr.decode("utf-8")
+
+        has_error = exit_code != 0 or (bool(err_msg) and not "valid" in err_msg)
+
+        if has_error:
+            print(err_msg)
+
+        return True if not has_error else err_msg
 
 
 csv_colno_property = """

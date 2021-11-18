@@ -691,7 +691,7 @@ def plot_proportion_valid_inputs_graph(
         data = result.valid_inputs_proportion_data()
         ax.plot(
             [.0] + list(data.keys()) + [highest_seconds],
-            [.0] + list(data.values()) + [list(data.values())[-1]],
+            [list(data.values())[0]] + list(data.values()) + [list(data.values())[-1]],
             label=jobname)
 
         if show_final_values:
