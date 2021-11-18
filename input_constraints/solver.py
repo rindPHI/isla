@@ -15,13 +15,13 @@ from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph import gg
 from grammar_graph.gg import GrammarGraph
 from grammar_to_regex.cfg2regex import RegexConverter
-from orderedset import OrderedSet
 
 import input_constraints.isla_shortcuts as sc
 from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
-    replace_line_breaks, z3_subst, z3_solve, weighted_geometric_mean, assertions_activated, split_str_with_nonterminals
+    replace_line_breaks, z3_subst, z3_solve, weighted_geometric_mean, assertions_activated, split_str_with_nonterminals, \
+    z3_or
 from input_constraints.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
     convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, set_smt_auto_eval
 from input_constraints.type_defs import Grammar, Path
@@ -182,7 +182,7 @@ class ISLaSolver:
                  semantic_predicates: Optional[Set[isla.SemanticPredicate]] = None,
                  max_number_free_instantiations: int = 10,
                  max_number_smt_instantiations: int = 10,
-                 max_number_tree_insertion_results: int = 20,
+                 max_number_tree_insertion_results: int = 5,
                  expand_after_existential_elimination: bool = False,  # Currently not used, might be removed
                  enforce_unique_trees_in_queue: bool = True,
                  precompute_reachability: bool = False,
@@ -295,7 +295,8 @@ class ISLaSolver:
                 if int(time.time()) - start_time > self.timeout_seconds:
                     return
 
-            # if hash(self.queue[0][1]) == 6754285556546430396:
+            # import dill as pickle
+            # if hash(self.queue[0][1]) == 5818092513527558027:
             #     with open('/tmp/saved_debug_state', 'wb') as debug_state_file:
             #         pickle.dump(self, debug_state_file)
             #     print("Dumping state to /tmp/saved_debug_state")
@@ -355,7 +356,7 @@ class ISLaSolver:
                 continue
 
             # Eliminate first existential formula
-            result_states = self.eliminate_first_existential_formula(state)
+            result_states = self.eliminate_first_match_all_existential_formulas(state)
             if result_states is not None:
                 yield from self.process_new_states(result_states)
                 continue
@@ -507,7 +508,7 @@ class ISLaSolver:
 
         return result if changed else None
 
-    def eliminate_first_existential_formula(self, state: SolutionState) -> Optional[List[SolutionState]]:
+    def eliminate_first_match_all_existential_formulas(self, state: SolutionState) -> Optional[List[SolutionState]]:
         existential_formulas = [
             conjunct for conjunct in split_conjunction(state.constraint)
             if isinstance(conjunct, isla.ExistsFormula)]
@@ -515,9 +516,28 @@ class ISLaSolver:
         if not existential_formulas:
             return None
 
-        new_states = self.match_existential_formula(existential_formulas[0], state)
-        # self.logger.debug("self.match_existential_formula(%s, %s)", repr(existential_formulas[0]), state)
-        # self.logger.debug("   ... = %s", ", ".join(map(str, new_states)))
+        # We can actually match *all* existential formulas; only with tree insertion, we perform one step at a time.
+        new_states = [state]
+        for existential_formula in existential_formulas:
+            next_round_states = []
+            while new_states:
+                s = new_states.pop()
+                match_result = self.match_existential_formula(existential_formula, s)
+                if match_result:
+                    next_round_states.extend(match_result)
+                else:
+                    next_round_states.append(s)
+            new_states = next_round_states
+
+        if new_states == [state]:
+            new_states = []
+
+        if new_states:
+            self.logger.debug(
+                "Matched existential formulas [%s], result: [%s]",
+                ", ".join(map(str, existential_formulas)),
+                ", ".join([f"{s} (hash={hash(s)})" for s in new_states])
+            )
 
         complete_states = [state for state in new_states
                            if state.complete()
@@ -670,8 +690,11 @@ class ISLaSolver:
                 inserted_tree,
                 existential_formula.in_variable,
                 graph=self.graph,
-                max_num_solutions=30
+                max_num_solutions=self.max_number_tree_insertion_results * 2
             )
+
+            insertion_results = sorted(insertion_results, key=lambda t: compute_tree_closing_cost(t, self.symbol_costs))
+            insertion_results = insertion_results[:self.max_number_tree_insertion_results]
 
             for insertion_result in insertion_results:
                 # actual_inserted_tree = insertion_result.get_subtree(insertion_result.find_node(inserted_tree))
@@ -885,8 +908,9 @@ class ISLaSolver:
                 formulas.append(z3.InRe(z3.String(constant.name), regex))
 
             for prev_solution in internal_solutions:
-                for constant, string_val in prev_solution.items():
-                    formulas.append(z3.Not(constant.to_smt() == string_val))
+                formulas.append(z3_or([
+                    z3.Not(constant.to_smt() == string_val)
+                    for constant, string_val in prev_solution.items()]))
 
             for smt_formula in smt_formulas:
                 # TODO: Do we have to apply substitutions???
@@ -1197,8 +1221,7 @@ def compute_cost(
         graph: gg.GrammarGraph,
         quantifier_chains: List[Tuple[isla.ForallFormula, ...]]) -> float:
     # How costly is it to finish the tree?
-    nonterminals = [leaf.value for _, leaf in state.tree.open_leaves()]
-    tree_closing_cost = sum([symbol_costs[nonterminal] for nonterminal in nonterminals])
+    tree_closing_cost = compute_tree_closing_cost(state.tree, symbol_costs)
 
     # Quantifiers are expensive (universal formulas have to be matched, tree insertion for existential
     # formulas is even more costly). TODO: Penalize nested quantifiers more.
@@ -1231,6 +1254,11 @@ def compute_cost(
         f"{state.tree})", result, costs, cost_weight_vector)
 
     return result
+
+
+def compute_tree_closing_cost(tree: DerivationTree, symbol_costs: Dict[str, int]) -> float:
+    nonterminals = [leaf.value for _, leaf in tree.open_leaves()]
+    return sum([symbol_costs[nonterminal] for nonterminal in nonterminals])
 
 
 def compute_global_k_coverage_cost(

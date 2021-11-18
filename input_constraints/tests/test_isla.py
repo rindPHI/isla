@@ -399,9 +399,9 @@ class TestISLa(unittest.TestCase):
 
     def test_to_tree_prefix_tar_file_name(self):
         mgr = VariableManager(tar.TAR_GRAMMAR)
-        bind_expression = mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>"
+        bind_expression = mgr.bv("$file_name_str", "<file_name_str>") + "<maybe_nuls>"
         self.assertEqual(
-            ('<file_name>', [('<characters>', None), ('<maybe_nuls>', None)]),
+            ('<file_name>', [('<file_name_str>', None), ('<maybe_nuls>', None)]),
             bind_expression.to_tree_prefix("<file_name>", tar.TAR_GRAMMAR)[0][0].to_parse_tree())
 
     def test_matches_xml_property(self):

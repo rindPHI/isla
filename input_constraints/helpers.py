@@ -177,6 +177,14 @@ def z3_and(formulas: List[z3.BoolRef]) -> z3.BoolRef:
     return z3.And(*formulas)
 
 
+def z3_or(formulas: List[z3.BoolRef]) -> z3.BoolRef:
+    if not formulas:
+        return z3.BoolRef(False)
+    if len(formulas) == 1:
+        return formulas[0]
+    return z3.Or(*formulas)
+
+
 def tree_to_string(tree: ParseTree) -> str:
     result = []
     stack = [tree]

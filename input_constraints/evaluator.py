@@ -471,6 +471,7 @@ def auto_tune_weight_vector(
         offspring: List[CostWeightVector] = []
         idx = 0
         while len(offspring) < population_size // 2:
+            # TODO: Random crossover, not of consecutive parents?
             first_parent = current_population[idx % len(current_population)]
             second_parent = current_population[(idx + 1) % len(current_population)]
 

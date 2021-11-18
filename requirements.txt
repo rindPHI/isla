@@ -84,3 +84,4 @@ Pillow==8.4.0
 pytest-xdist==2.4.0
 ./libs/grammar2regex-0.0.1.tar.gz
 ./libs/grammargraph-0.0.1.tar.gz
+dill==0.3.4
