@@ -7,6 +7,9 @@ from input_constraints.evaluator import evaluate_generators, plot_proportion_val
 from input_constraints.solver import ISLaSolver, CostSettings, CostWeightVector
 
 timeout = 60 * 60
+max_number_free_instantiations = 10
+max_number_smt_instantiations = 2
+eval_k = 4
 
 cost_vector = CostWeightVector(
     tree_closing_cost=15,
@@ -16,42 +19,41 @@ cost_vector = CostWeightVector(
     low_k_coverage_penalty=5,
     low_global_k_path_coverage_penalty=7)
 
-k = 4
 
 g_wf = ISLaSolver(
     xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
     xml_lang.XML_WELLFORMEDNESS_CONSTRAINT,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 g_ns = ISLaSolver(
     xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
     xml_lang.XML_NAMESPACE_CONSTRAINT,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 g_redef = ISLaSolver(
     xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
     xml_lang.XML_NO_ATTR_REDEF_CONSTRAINT,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 g_wf_ns = ISLaSolver(
     xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
     xml_lang.XML_WELLFORMEDNESS_CONSTRAINT & xml_lang.XML_NAMESPACE_CONSTRAINT,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 g_wf_ns_redef = ISLaSolver(
@@ -59,10 +61,10 @@ g_wf_ns_redef = ISLaSolver(
     xml_lang.XML_WELLFORMEDNESS_CONSTRAINT &
     xml_lang.XML_NAMESPACE_CONSTRAINT &
     xml_lang.XML_NO_ATTR_REDEF_CONSTRAINT,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 
@@ -94,6 +96,6 @@ if __name__ == '__main__':
     out_dir = "../../eval_results/xml"
     base_name = "input_validity_xml_"
 
-    # evaluate_validity(out_dir, base_name, generators, jobnames)
+    evaluate_validity(out_dir, base_name, generators, jobnames)
     # plot_proportion_valid_inputs_graph(out_dir, base_name, jobnames, f"{out_dir}/input_validity_xml.pdf")
-    print_statistics(out_dir, base_name, jobnames)
+    # print_statistics(out_dir, base_name, jobnames)
