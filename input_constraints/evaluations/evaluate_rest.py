@@ -4,7 +4,7 @@ from input_constraints.tests.subject_languages import rest
 from input_constraints.evaluator import evaluate_generators, plot_proportion_valid_inputs_graph
 from input_constraints.solver import ISLaSolver, CostSettings, CostWeightVector, STD_COST_SETTINGS
 
-timeout = 5 * 60
+timeout = 60 * 60
 
 cost_vector = STD_COST_SETTINGS.weight_vectors[0]
 
@@ -46,6 +46,33 @@ g_list_numbers_consecutive = ISLaSolver(
     cost_settings=CostSettings((cost_vector,), (1000,), k=k)
 )
 
+g_link_defuse_len = ISLaSolver(
+    rest.REST_GRAMMAR,
+    rest.DEF_LINK_TARGETS & rest.LENGTH_UNDERLINE,
+    max_number_free_instantiations=1,
+    max_number_smt_instantiations=1,
+    timeout_seconds=timeout,
+    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+)
+
+g_link_defuse_len_numbering = ISLaSolver(
+    rest.REST_GRAMMAR,
+    rest.DEF_LINK_TARGETS & rest.LENGTH_UNDERLINE & rest.LIST_NUMBERING_CONSECUTIVE,
+    max_number_free_instantiations=1,
+    max_number_smt_instantiations=1,
+    timeout_seconds=timeout,
+    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+)
+
+g_link_defuse_len_numbering_no_redef = ISLaSolver(
+    rest.REST_GRAMMAR,
+    rest.DEF_LINK_TARGETS & rest.LENGTH_UNDERLINE & rest.LIST_NUMBERING_CONSECUTIVE & rest.NO_LINK_TARGET_REDEF,
+    max_number_free_instantiations=1,
+    max_number_smt_instantiations=1,
+    timeout_seconds=timeout,
+    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+)
+
 
 def evaluate_validity(out_dir: str, base_name: str, generators, jobnames):
     results = evaluate_generators(
@@ -69,14 +96,21 @@ if __name__ == '__main__':
         g_title_len,
         g_link_defuse,
         g_no_link_redef,
-        g_list_numbers_consecutive]
+        g_list_numbers_consecutive,
+        g_link_defuse_len,
+        g_link_defuse_len_numbering,
+        g_link_defuse_len_numbering_no_redef]
 
     jobnames = [
         "Grammar Fuzzer",
         "Len",
         "Def-Use",
         "No-Redef",
-        "List Numering"]
+        "List Numbering",
+        "Def-Use + Len",
+        "Def-Use + Len + List Numbering",
+        "Def-Use + Len + List Numbering + No-Redef",
+    ]
 
     out_dir = "../../eval_results/rest"
     base_name = "input_validity_rest_"

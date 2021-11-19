@@ -277,13 +277,40 @@ def split_str_with_nonterminals(expression: str) -> List[str]:
 
 
 def cluster_by_common_elements(l: Sequence[T], f: Callable[[T], Set[S]]) -> List[List[T]]:
+    """
+    Clusters elements of l by shared elements. Elements of interest are obtained using f.
+    For instance, to cluster a list of lists based on common list elements:
+
+    >>> cluster_by_common_elements([[1,2], [2,3], [3,4], [5,6]], lambda l: {e for e in l})
+
+    Gives [[[2, 3], [3, 4], [1, 2]], [[5, 6]]].
+
+    >>> cluster_by_common_elements([1,2,3,4,5,6,7], lambda e: {e, e+3})
+
+    Outputs [[2, 5], [3, 6], [4, 7, 1]].
+
+    :param l: The list to cluster.
+    :param f: The function to determine commonality.
+    :return: The clusters w.r.t. f.
+    """
     clusters = [[e2 for e2 in l if not f(e1).isdisjoint(f(e2))] for e1 in l]
 
     result = []
     for c in clusters:
-        clusters_with_common_elements = [c1 for c1 in result if c1 is not c and any(e in c1 for e in c)]
+        # Merge clusters with common elements...
+        clusters_with_common_elements = [c1 for c1 in result if any(not f(e).isdisjoint(f(e1)) for e in c for e1 in c1)]
         for c1 in clusters_with_common_elements:
             result.remove(c1)
-        result.append(c + [e for c1 in clusters_with_common_elements for e in c1])
+
+        merged_cluster = c + [e for c1 in clusters_with_common_elements for e in c1]
+
+        # ...and remove duplicate elements from the merged cluster.
+        no_dupl_cluster = []
+        for cluster in merged_cluster:
+            if cluster in no_dupl_cluster:
+                continue
+            no_dupl_cluster.append(cluster)
+
+        result.append(no_dupl_cluster)
 
     return result
