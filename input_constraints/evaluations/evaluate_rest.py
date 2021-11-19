@@ -7,72 +7,74 @@ from input_constraints.evaluator import evaluate_generators, plot_proportion_val
 from input_constraints.solver import ISLaSolver, CostSettings, CostWeightVector, STD_COST_SETTINGS
 
 timeout = 60 * 60
+max_number_free_instantiations = 10
+max_number_smt_instantiations = 2
+eval_k = 3
 
 cost_vector = STD_COST_SETTINGS.weight_vectors[0]
 
-k = 3
 
 g_title_len = ISLaSolver(
     rest.REST_GRAMMAR,
     rest.LENGTH_UNDERLINE,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 g_link_defuse = ISLaSolver(
     rest.REST_GRAMMAR,
     rest.DEF_LINK_TARGETS,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 g_no_link_redef = ISLaSolver(
     rest.REST_GRAMMAR,
     rest.NO_LINK_TARGET_REDEF,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 g_list_numbers_consecutive = ISLaSolver(
     rest.REST_GRAMMAR,
     rest.LIST_NUMBERING_CONSECUTIVE,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 g_link_defuse_len = ISLaSolver(
     rest.REST_GRAMMAR,
     rest.DEF_LINK_TARGETS & rest.LENGTH_UNDERLINE,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 g_link_defuse_len_numbering = ISLaSolver(
     rest.REST_GRAMMAR,
     rest.DEF_LINK_TARGETS & rest.LENGTH_UNDERLINE & rest.LIST_NUMBERING_CONSECUTIVE,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 g_link_defuse_len_numbering_no_redef = ISLaSolver(
     rest.REST_GRAMMAR,
     rest.DEF_LINK_TARGETS & rest.LENGTH_UNDERLINE & rest.LIST_NUMBERING_CONSECUTIVE & rest.NO_LINK_TARGET_REDEF,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 
@@ -125,6 +127,6 @@ if __name__ == '__main__':
     out_dir = "../../eval_results/rest"
     base_name = "input_validity_rest_"
 
-    # evaluate_validity(out_dir, base_name, generators, jobnames)
+    evaluate_validity(out_dir, base_name, generators, jobnames)
     # plot_proportion_valid_inputs_graph(out_dir, base_name, jobnames, f"{out_dir}/input_validity_rest.pdf")
-    print_statistics(out_dir, base_name, jobnames)
+    # print_statistics(out_dir, base_name, jobnames)

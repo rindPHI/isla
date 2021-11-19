@@ -1,3 +1,5 @@
+import sys
+
 from grammar_graph.gg import GrammarGraph
 
 from input_constraints.evaluator import evaluate_generators, plot_proportion_valid_inputs_graph, print_statistics
@@ -5,6 +7,9 @@ from input_constraints.solver import ISLaSolver, CostSettings, CostWeightVector
 from input_constraints.tests.subject_languages import scriptsizec
 
 timeout = 60 * 60
+max_number_free_instantiations = 10
+max_number_smt_instantiations = 2
+eval_k = 4
 
 cost_vector = CostWeightVector(
     tree_closing_cost=10,
@@ -14,33 +19,31 @@ cost_vector = CostWeightVector(
     low_k_coverage_penalty=28,
     low_global_k_path_coverage_penalty=4)
 
-k = 4
-
 g_defuse = ISLaSolver(
     scriptsizec.SCRIPTSIZE_C_GRAMMAR,
     scriptsizec.SCRIPTSIZE_C_DEF_USE_CONSTR,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 g_redef = ISLaSolver(
     scriptsizec.SCRIPTSIZE_C_GRAMMAR,
     scriptsizec.SCRIPTSIZE_C_NO_REDEF_CONSTR,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 g_defuse_redef = ISLaSolver(
     scriptsizec.SCRIPTSIZE_C_GRAMMAR,
     scriptsizec.SCRIPTSIZE_C_DEF_USE_CONSTR & scriptsizec.SCRIPTSIZE_C_NO_REDEF_CONSTR,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 
@@ -63,6 +66,11 @@ def evaluate_validity(out_dir: str, base_name: str, generators, jobnames):
 if __name__ == '__main__':
     generators = [scriptsizec.SCRIPTSIZE_C_GRAMMAR, g_defuse, g_redef, g_defuse_redef]
     jobnames = ["Grammar Fuzzer", "Def-Use", "No-Redef", "Def-Use + No-Redef"]
+
+    if len(sys.argv) > 1 and sys.argv[1] in jobnames:
+        idx = jobnames.index(sys.argv[1])
+        generators = [generators[idx]]
+        jobnames = [jobnames[idx]]
 
     out_dir = "../../eval_results/scriptsizec"
     base_name = "input_validity_scriptsizec_"
