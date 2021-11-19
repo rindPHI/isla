@@ -8,10 +8,11 @@ from input_constraints.solver import ISLaSolver, CostSettings, STD_COST_SETTINGS
 from input_constraints.tests.subject_languages import tar
 
 timeout = 60 * 60
+max_number_free_instantiations = 10
+max_number_smt_instantiations = 2
+eval_k = 3
 
 cost_vector = STD_COST_SETTINGS.weight_vectors[0]
-
-k = 3
 
 length_constraints = (
     # tar.link_constraint &
@@ -79,28 +80,28 @@ length_constraints_and_checksum_and_link = (
 g_len = ISLaSolver(
     tar.TAR_GRAMMAR,
     length_constraints,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 g_len_cs = ISLaSolver(
     tar.TAR_GRAMMAR,
     length_constraints_and_checksum,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 g_len_cs_lin = ISLaSolver(
     tar.TAR_GRAMMAR,
     length_constraints_and_checksum_and_link,
-    max_number_free_instantiations=1,
-    max_number_smt_instantiations=1,
+    max_number_free_instantiations=max_number_free_instantiations,
+    max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
 

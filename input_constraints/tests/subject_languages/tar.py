@@ -919,7 +919,7 @@ def extract_tar(tree: isla.DerivationTree) -> Union[bool, str]:
 
         has_error = exit_code != 0 or err_msg
 
-        if err_msg:
-            print(f"Problem with tar file: '{err_msg}'")
+        # if err_msg:
+        #     print(f"Problem with tar file: '{err_msg}'")
 
         return True if not has_error else err_msg

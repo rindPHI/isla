@@ -296,7 +296,13 @@ def evaluate_data(
     chains_satisfied: Dict[Tuple[isla.ForallFormula, ...], int] = {c: 0 for c in quantifier_chains}
 
     for seconds, inp in data.items():
-        if validator(inp) is True:
+        try:
+            validation_result = validator(inp)
+        except Exception as err:
+            validation_result = False
+            print(f"Exception {err} raise when validating input {inp}, tree: {repr(inp)}")
+
+        if validation_result is True:
             valid_inputs += 1
         else:
             invalid_inputs += 1
