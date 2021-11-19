@@ -3,7 +3,7 @@ import sys
 
 from grammar_graph.gg import GrammarGraph
 
-from input_constraints.evaluator import evaluate_generators, plot_proportion_valid_inputs_graph
+from input_constraints.evaluator import evaluate_generators, plot_proportion_valid_inputs_graph, print_statistics
 from input_constraints.solver import ISLaSolver, CostSettings, STD_COST_SETTINGS
 from input_constraints.tests.subject_languages import tar
 
@@ -135,5 +135,6 @@ if __name__ == '__main__':
     out_dir = "../../eval_results/tar"
     base_name = "input_validity_tar_"
 
-    evaluate_validity(out_dir, base_name, generators, jobnames)
-    plot_proportion_valid_inputs_graph(out_dir, base_name, jobnames, f"{out_dir}/input_validity_tar.pdf")
+    # evaluate_validity(out_dir, base_name, generators, jobnames)
+    # plot_proportion_valid_inputs_graph(out_dir, base_name, jobnames, f"{out_dir}/input_validity_tar.pdf")
+    print_statistics(out_dir, base_name, jobnames)

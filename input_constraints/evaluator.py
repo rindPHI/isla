@@ -696,7 +696,8 @@ def print_statistics(out_dir: str, base_name: str, jobnames: List[str]):
         invalid_inputs = list(result.accumulated_invalid_inputs.values() or [0])[-1]
         max_kpath_cov = list(result.accumulated_k_path_coverage.values() or [0])[-1]
 
-        print("Seconds / valid input: " + "{:.1f}".format(result.max_time / valid_inputs))
+        print("Seconds / valid input: " + ("N/A" if not valid_inputs
+                                           else "{:.1f}".format(result.max_time / valid_inputs)))
         print("Precision:             " + "{:.1f}".format(100 * valid_inputs / (valid_inputs + invalid_inputs)) + " %")
         print("k-path Coverage:       " + str(max_kpath_cov) + " %")
 
