@@ -1,5 +1,6 @@
 import copy
 import heapq
+import itertools
 import logging
 import math
 import sys
@@ -21,7 +22,7 @@ from input_constraints import isla
 from input_constraints.existential_helpers import insert_tree
 from input_constraints.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
     replace_line_breaks, z3_subst, z3_solve, weighted_geometric_mean, assertions_activated, split_str_with_nonterminals, \
-    z3_or
+    z3_or, cluster_by_common_elements
 from input_constraints.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
     convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, set_smt_auto_eval
 from input_constraints.type_defs import Grammar, Path
@@ -296,7 +297,7 @@ class ISLaSolver:
                     return
 
             # import dill as pickle
-            # state_hash = -5182620101718752657
+            # state_hash = -6081099422178527529
             # out_file = "/tmp/saved_debug_state"
             # if hash(self.queue[0][1]) == state_hash:
             #     with open(out_file, 'wb') as debug_state_file:
@@ -802,8 +803,49 @@ class ISLaSolver:
         :return: A list of instantiated SolutionStates.
         """
 
-        solutions: List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]] = \
-            self.solve_quantifier_free_formula(semantic_formula)
+        assert all(isinstance(conjunct, isla.SMTFormula) for conjunct in get_conjuncts(semantic_formula))
+
+        # NODE: We need to cluster SMT formulas by tree substitutions. If there are two formulas
+        # with a variable $var which is instantiated to different trees, we need two separate
+        # solutions. If, however, $var is instantiated with the *same* tree, we need one solution
+        # to both formulas together.
+
+        smt_formulas = self.rename_instantiated_variables_in_smt_formulas(
+            [smt_formula for smt_formula in get_conjuncts(semantic_formula) if
+             isinstance(smt_formula, isla.SMTFormula)])
+
+        # Now, we also cluster formulas by common variables (and instantiated subtrees: One formula
+        # might yield an instantiation of a subtree of the instantiation of another formula. They
+        # need to appear in the same cluster). The solver can better handle smaller constraints,
+        # and those which do not have variables in common can be handled independently.
+
+        formula_clusters: List[List[isla.SMTFormula]] = cluster_by_common_elements(
+            smt_formulas,
+            lambda smt_formula: (
+                    smt_formula.free_variables() |
+                    smt_formula.instantiated_variables |
+                    set([subtree for tree in smt_formula.substitutions.values() for _, subtree in tree.paths()])
+            )
+        )
+
+        assert all(any(smt_formula in cluster for cluster in formula_clusters) for smt_formula in smt_formulas)
+
+        all_solutions: List[List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]]] = [
+            self.solve_quantifier_free_formula(cluster) for cluster in formula_clusters
+        ]
+
+        # These solutions are all independent, such that we can combine each solution with all others.
+        solutions: List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]] = []
+
+        if len(all_solutions) == 1:
+            solutions = all_solutions[0]
+        else:
+            for solutions_1, solutions_2 in itertools.product(all_solutions, all_solutions):
+                if solutions_1 is solutions_2:
+                    continue
+
+                for solution_1, solution_2 in zip(solutions_1, solutions_2):
+                    solutions.append(solution_1 | solution_2)
 
         solutions_with_subtrees: List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]] = []
         for solution in solutions:
@@ -839,16 +881,8 @@ class ISLaSolver:
 
         return results
 
-    def solve_quantifier_free_formula(
-            self, formula: isla.Formula) -> List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]]:
-        solutions: List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]] = []
-        internal_solutions: List[Dict[isla.Constant, z3.StringVal]] = []
-
-        assert all(isinstance(conjunct, isla.SMTFormula) for conjunct in get_conjuncts(formula))
-
-        smt_formulas = [conjunct for conjunct in get_conjuncts(formula)
-                        if isinstance(conjunct, isla.SMTFormula)]
-
+    def solve_quantifier_free_formula(self, smt_formulas: List[isla.SMTFormula]) \
+            -> List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]]:
         # If any SMT formula refers to subtrees in the instantiations of other SMT formulas,
         # we have to instantiate those first.
         def get_conflicts(smt_formulas):
@@ -867,38 +901,6 @@ class ISLaSolver:
             smt_formulas = conflicts
             assert not get_conflicts(smt_formulas)
 
-        # NODE: We need to cluster SMT formulas by tree substitutions! If there are two formulas
-        # with a variable $var which is instantiated to different trees, we need two separate
-        # solutions. If, however, $var is instantiated with the *same* tree, we need one solution
-        # to both formulas together.
-
-        old_smt_formulas = smt_formulas
-        smt_formulas = []
-
-        for subformula in old_smt_formulas:
-            subst_var: isla.Variable
-            subst_tree: DerivationTree
-
-            new_smt_formula: z3.BoolRef = subformula.formula
-            new_substitutions = subformula.substitutions
-            new_instantiated_variables = subformula.instantiated_variables
-
-            for subst_var, subst_tree in subformula.substitutions.items():
-                # new_name = f"{subst_var.name}_{subst_tree.value}_{subst_tree.id}"
-                new_name = f"{subst_tree.value}_{subst_tree.id}"
-                new_var = isla.BoundVariable(new_name, subst_var.n_type)
-
-                new_smt_formula = cast(z3.BoolRef, z3_subst(new_smt_formula, {subst_var.to_smt(): new_var.to_smt()}))
-                new_substitutions = {new_var if k == subst_var else k: v for k, v in new_substitutions.items()}
-                new_instantiated_variables = {new_var if v == subst_var else v for v in new_instantiated_variables}
-
-            smt_formulas.append(
-                isla.SMTFormula(
-                    new_smt_formula,
-                    *subformula.free_variables_,
-                    instantiated_variables=new_instantiated_variables,
-                    substitutions=new_substitutions))
-
         tree_substitutions = reduce(
             lambda d1, d2: d1 | d2,
             [smt_formula.substitutions for smt_formula in smt_formulas],
@@ -911,6 +913,9 @@ class ISLaSolver:
              for smt_formula in smt_formulas],
             set()
         )
+
+        solutions: List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]] = []
+        internal_solutions: List[Dict[isla.Constant, z3.StringVal]] = []
 
         for _ in range(self.max_number_smt_instantiations):
             formulas: List[z3.BoolRef] = []
@@ -971,6 +976,34 @@ class ISLaSolver:
                 internal_solutions.append(new_internal_solution)
 
         return solutions
+
+    def rename_instantiated_variables_in_smt_formulas(self, smt_formulas):
+        old_smt_formulas = smt_formulas
+        smt_formulas = []
+        for subformula in old_smt_formulas:
+            subst_var: isla.Variable
+            subst_tree: DerivationTree
+
+            new_smt_formula: z3.BoolRef = subformula.formula
+            new_substitutions = subformula.substitutions
+            new_instantiated_variables = subformula.instantiated_variables
+
+            for subst_var, subst_tree in subformula.substitutions.items():
+                new_name = f"{subst_tree.value}_{subst_tree.id}"
+                new_var = isla.BoundVariable(new_name, subst_var.n_type)
+
+                new_smt_formula = cast(z3.BoolRef, z3_subst(new_smt_formula, {subst_var.to_smt(): new_var.to_smt()}))
+                new_substitutions = {new_var if k == subst_var else k: v for k, v in new_substitutions.items()}
+                new_instantiated_variables = {new_var if v == subst_var else v for v in new_instantiated_variables}
+
+            smt_formulas.append(
+                isla.SMTFormula(
+                    new_smt_formula,
+                    *subformula.free_variables_,
+                    instantiated_variables=new_instantiated_variables,
+                    substitutions=new_substitutions))
+
+        return smt_formulas
 
     def process_new_states(self, new_states: List[SolutionState]) -> List[DerivationTree]:
         result = [tree for new_state in new_states for tree in self.process_new_state(new_state)]
