@@ -406,7 +406,7 @@ class TestISLa(unittest.TestCase):
 
     def test_to_tree_prefix_rest_ref(self):
         mexpr = BindExpression(
-            BoundVariable("def_id", "<id>"),
+            BoundVariable("label", "<label>"),
             DummyVariable("\n\n"),
             DummyVariable("<paragraph>"))
         tree_prefix = mexpr.to_tree_prefix('<labeled_paragraph>', rest.REST_GRAMMAR)
