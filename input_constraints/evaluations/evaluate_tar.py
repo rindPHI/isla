@@ -1,4 +1,5 @@
 import logging
+import sys
 
 from grammar_graph.gg import GrammarGraph
 
@@ -13,7 +14,7 @@ cost_vector = STD_COST_SETTINGS.weight_vectors[0]
 k = 3
 
 length_constraints = (
-        # tar.link_constraint &
+    # tar.link_constraint &
         tar.file_name_length_constraint &
         tar.file_mode_length_constraint &
         tar.uid_length_constraint &
@@ -123,10 +124,13 @@ def evaluate_validity(out_dir: str, base_name: str, generators, jobnames):
 
 if __name__ == '__main__':
     # logging.basicConfig(level=logging.DEBUG)
-    # generators = [tar.TAR_GRAMMAR, g_full]
-    # jobnames = ["Grammar Fuzzer", "Full Constraint"]
     generators = [g_len, g_len_cs, g_len_cs_lin]
     jobnames = ["Length", "Length + Checksum", "Length + Checksum + Def-Use"]
+
+    if len(sys.argv) > 1 and sys.argv[1] in jobnames:
+        idx = jobnames.index(sys.argv[1])
+        generators = [generators[idx]]
+        jobnames = [jobnames[idx]]
 
     out_dir = "../../eval_results/tar"
     base_name = "input_validity_tar_"

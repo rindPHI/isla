@@ -1,3 +1,5 @@
+import sys
+
 from grammar_graph.gg import GrammarGraph
 
 from input_constraints.tests.subject_languages import xml_lang
@@ -14,7 +16,7 @@ cost_vector = CostWeightVector(
     low_k_coverage_penalty=5,
     low_global_k_path_coverage_penalty=7)
 
-k = 3
+k = 4
 
 g_wf = ISLaSolver(
     xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
@@ -84,9 +86,14 @@ if __name__ == '__main__':
     generators = [xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, g_wf, g_ns, g_redef, g_wf_ns, g_wf_ns_redef]
     jobnames = ["Grammar Fuzzer", "Balance", "Def-Use", "No-Redef", "Balance + Def-Use", "Balance + Def-Use + No-Redef"]
 
+    if len(sys.argv) > 1 and sys.argv[1] in jobnames:
+        idx = jobnames.index(sys.argv[1])
+        generators = [generators[idx]]
+        jobnames = [jobnames[idx]]
+
     out_dir = "../../eval_results/xml"
     base_name = "input_validity_xml_"
 
-    # evaluate_validity(out_dir, base_name, generators, jobnames)
+    evaluate_validity(out_dir, base_name, generators, jobnames)
     # plot_proportion_valid_inputs_graph(out_dir, base_name, jobnames, f"{out_dir}/input_validity_xml.pdf")
-    print_statistics(out_dir, base_name, jobnames)
+    # print_statistics(out_dir, base_name, jobnames)

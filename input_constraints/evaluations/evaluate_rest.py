@@ -1,3 +1,5 @@
+import sys
+
 from grammar_graph.gg import GrammarGraph
 
 from input_constraints.tests.subject_languages import rest
@@ -114,6 +116,11 @@ if __name__ == '__main__':
         # "Len",
         # "No-Redef",
     ]
+
+    if len(sys.argv) > 1 and sys.argv[1] in jobnames:
+        idx = jobnames.index(sys.argv[1])
+        generators = [generators[idx]]
+        jobnames = [jobnames[idx]]
 
     out_dir = "../../eval_results/rest"
     base_name = "input_validity_rest_"
