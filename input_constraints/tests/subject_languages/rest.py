@@ -186,11 +186,11 @@ def render_rst(tree: isla.DerivationTree) -> Union[bool, str]:
 
         has_error = exit_code != 0 or err_msg
 
-        if has_error:
-            with tempfile.NamedTemporaryFile(suffix=".rst", delete=False) as perm_tmp:
-                perm_tmp.write(str(tree).encode())
-                perm_tmp.flush()
-                print(f"Written wrong input to file {perm_tmp.name}")
+        # if has_error:
+        #     with tempfile.NamedTemporaryFile(suffix=".rst", delete=False) as perm_tmp:
+        #         perm_tmp.write(str(tree).encode())
+        #         perm_tmp.flush()
+        #         print(f"Written wrong input to file {perm_tmp.name}")
 
         return True if not has_error else err_msg
 

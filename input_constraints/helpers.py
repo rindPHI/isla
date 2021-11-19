@@ -3,7 +3,8 @@ import logging
 import random
 import math
 import re
-from typing import Optional, Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast
+from collections import defaultdict
+from typing import Optional, Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast, Callable
 
 import z3
 from fuzzingbook.Grammars import unreachable_nonterminals, is_nonterminal, RE_NONTERMINAL
@@ -273,3 +274,16 @@ def assertions_activated() -> bool:
 def split_str_with_nonterminals(expression: str) -> List[str]:
     return [token for token in re.split(
         RE_NONTERMINAL, expression) if token]
+
+
+def cluster_by_common_elements(l: Sequence[T], f: Callable[[T], Set[S]]) -> List[List[T]]:
+    clusters = [[e2 for e2 in l if not f(e1).isdisjoint(f(e2))] for e1 in l]
+
+    result = []
+    for c in clusters:
+        clusters_with_common_elements = [c1 for c1 in result if c1 is not c and any(e in c1 for e in c)]
+        for c1 in clusters_with_common_elements:
+            result.remove(c1)
+        result.append(c + [e for c1 in clusters_with_common_elements for e in c1])
+
+    return result
