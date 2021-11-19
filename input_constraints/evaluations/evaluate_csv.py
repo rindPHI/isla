@@ -1,7 +1,7 @@
 from grammar_graph.gg import GrammarGraph
 
 from input_constraints.tests.subject_languages import csv
-from input_constraints.evaluator import evaluate_generators, plot_proportion_valid_inputs_graph
+from input_constraints.evaluator import evaluate_generators, plot_proportion_valid_inputs_graph, print_statistics
 from input_constraints.solver import ISLaSolver, CostSettings, CostWeightVector, STD_COST_SETTINGS
 
 timeout = 60 * 60
@@ -43,5 +43,6 @@ if __name__ == '__main__':
     out_dir = "../../eval_results/csv"
     base_name = "input_validity_csv_"
 
-    evaluate_validity(out_dir, base_name, generators, jobnames)
-    plot_proportion_valid_inputs_graph(out_dir, base_name, jobnames, f"{out_dir}/input_validity_csv.pdf")
+    # evaluate_validity(out_dir, base_name, generators, jobnames)
+    # plot_proportion_valid_inputs_graph(out_dir, base_name, jobnames, f"{out_dir}/input_validity_csv.pdf")
+    print_statistics(out_dir, base_name, jobnames)

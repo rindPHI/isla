@@ -64,8 +64,6 @@ REST_GRAMMAR = {
     "<dashes>": ["-", "-<dashes>"],
 }
 
-start = isla.Constant("$start", "<start>")
-
 # The below encoding is the most efficient one, but heavily uses semantic predicates
 LENGTH_UNDERLINE = parse_isla("""
 const start: <start>;

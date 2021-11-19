@@ -93,23 +93,26 @@ def evaluate_validity(out_dir: str, base_name: str, generators, jobnames):
 if __name__ == '__main__':
     generators = [
         rest.REST_GRAMMAR,
-        g_title_len,
         g_link_defuse,
-        g_no_link_redef,
-        g_list_numbers_consecutive,
         g_link_defuse_len,
         g_link_defuse_len_numbering,
-        g_link_defuse_len_numbering_no_redef]
+        g_link_defuse_len_numbering_no_redef
+
+        # g_title_len,
+        # g_no_link_redef,
+        # g_list_numbers_consecutive,
+    ]
 
     jobnames = [
         "Grammar Fuzzer",
-        "Len",
         "Def-Use",
-        "No-Redef",
-        "List Numbering",
         "Def-Use + Len",
         "Def-Use + Len + List Numbering",
         "Def-Use + Len + List Numbering + No-Redef",
+
+        # "List Numbering",
+        # "Len",
+        # "No-Redef",
     ]
 
     out_dir = "../../eval_results/rest"

@@ -687,12 +687,20 @@ def load_results(out_dir: str, base_name: str, jobnames: List[str]) -> List[Perf
         out_dir, base_name + jobname) for jobname in jobnames]
 
 
-def print_final_valid_input_numbers(out_dir: str, base_name: str, jobnames: List[str]):
+def print_statistics(out_dir: str, base_name: str, jobnames: List[str]):
     results = load_results(out_dir, base_name, jobnames)
-    for jobname, results in zip(jobnames, results):
-        valid_input_data = results.accumulated_valid_inputs
-        print(f"Valid inputs for job {jobname} after {list(valid_input_data.keys())[-1]} "
-              f"seconds: {list(valid_input_data.values())[-1]}")
+    for jobname, result in zip(jobnames, results):
+        print(jobname + "\n" + "".join(["=" for _ in range(len(jobname))]) + "\n")
+
+        valid_inputs = list(result.accumulated_valid_inputs.values() or [0])[-1]
+        invalid_inputs = list(result.accumulated_invalid_inputs.values() or [0])[-1]
+        max_kpath_cov = list(result.accumulated_k_path_coverage.values() or [0])[-1]
+
+        print("Seconds / valid input: " + "{:.1f}".format(result.max_time / valid_inputs))
+        print("Precision:             " + "{:.1f}".format(100 * valid_inputs / (valid_inputs + invalid_inputs)) + " %")
+        print("k-path Coverage:       " + str(max_kpath_cov) + " %")
+
+        print("\n")
 
 
 def plot_proportion_valid_inputs_graph(

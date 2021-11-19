@@ -1,6 +1,6 @@
 from grammar_graph.gg import GrammarGraph
 
-from input_constraints.evaluator import evaluate_generators, plot_proportion_valid_inputs_graph
+from input_constraints.evaluator import evaluate_generators, plot_proportion_valid_inputs_graph, print_statistics
 from input_constraints.solver import ISLaSolver, CostSettings, CostWeightVector
 from input_constraints.tests.subject_languages import scriptsizec
 
@@ -67,5 +67,6 @@ if __name__ == '__main__':
     out_dir = "../../eval_results/scriptsizec"
     base_name = "input_validity_scriptsizec_"
 
-    evaluate_validity(out_dir, base_name, generators, jobnames)
-    plot_proportion_valid_inputs_graph(out_dir, base_name, jobnames, f"{out_dir}/input_validity_scriptsizec.pdf")
+    # evaluate_validity(out_dir, base_name, generators, jobnames)
+    # plot_proportion_valid_inputs_graph(out_dir, base_name, jobnames, f"{out_dir}/input_validity_scriptsizec.pdf")
+    print_statistics(out_dir, base_name, jobnames)
