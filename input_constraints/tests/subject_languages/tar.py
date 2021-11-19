@@ -1,4 +1,5 @@
 import copy
+import os
 import string
 import subprocess
 import tempfile
@@ -50,8 +51,15 @@ TAR_GRAMMAR = {
         "2"  # symbolic link
     ],
     "<linked_file_name>": ["<file_name_str><maybe_nuls>", "<nuls>"],
-    "<uname>": ["<characters><maybe_nuls>"],
-    "<gname>": ["<characters><maybe_nuls>"],
+    # From the useradd manual:
+    # Regular expression terms for usernames: [a-z_][a-z0-9_-]*[$]?
+    "<uname>": ["<uname_str><maybe_nuls>"],
+    "<gname>": ["<uname_str><maybe_nuls>"],
+    "<uname_str>": ["<uname_first_char><uname_chars><maybe_dollar>", "<uname_first_char><maybe_dollar>"],
+    "<uname_first_char>": srange(string.ascii_lowercase + "_"),
+    "<uname_char>": srange(string.ascii_lowercase + string.digits + "_-"),
+    "<uname_chars>": ["<uname_char><uname_chars>", "<uname_char>"],
+    "<maybe_dollar>": ["$", ""],
     "<dev_maj_num>": ["<octal_digits><SPACE><NUL>"],
     "<dev_min_num>": ["<octal_digits><SPACE><NUL>"],
     "<file_name_prefix>": ["<nuls>"],  # TODO: Find out how this field is used!
@@ -181,33 +189,6 @@ constraint {
 """, semantic_predicates={
     OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"),
     RJUST_CROP_TAR_PREDICATE})
-
-link_constraint = parse_isla("""
-const start: <start>;
-
-vars {
-  entry, linked_entry: <entry>;
-  typeflag: <typeflag>;
-  linked_file_name_field: <linked_file_name>;
-  linked_file_name, file_name: <file_name>;
-  linked_file_name_str, file_name_str: <file_name_str>;
-}
-
-constraint {
-  forall entry in start:
-    forall typeflag in entry:
-      ((= typeflag "0") or 
-        ((= typeflag "2") and 
-        (forall linked_file_name_field="<nuls>" in entry:
-           false 
-         and 
-         forall linked_file_name_field="{linked_file_name_str}<maybe_nuls>" in entry:
-           exists linked_entry in start:
-             (not same_position(entry, linked_entry) and 
-              forall file_name="{file_name_str}<maybe_nuls>" in linked_entry:
-                (= linked_file_name_str file_name_str)))))
-}
-""", structural_predicates={SAME_POSITION_PREDICATE})
 
 file_name_length_constraint = parse_isla("""
 const start: <start>;
@@ -435,14 +416,43 @@ constraint {
 }
 """, semantic_predicates={LJUST_CROP_TAR_PREDICATE})
 
+link_constraint = parse_isla("""
+const start: <start>;
+
+vars {
+  entry, linked_entry: <entry>;
+  typeflag: <typeflag>;
+  linked_file_name_field: <linked_file_name>;
+  linked_file_name, file_name, entry_file_name: <file_name>;
+  linked_file_name_str, file_name_str, entry_file_name_str: <file_name_str>;
+}
+
+constraint {
+  forall entry in start:
+    forall typeflag in entry:
+      ((= typeflag "0") or 
+        ((= typeflag "2") and 
+        (forall linked_file_name_field="<nuls>" in entry:
+           false 
+         and 
+         forall linked_file_name_field="{linked_file_name_str}<maybe_nuls>" in entry:
+           exists linked_entry in start:
+             (not same_position(entry, linked_entry) and 
+              forall file_name="{file_name_str}<maybe_nuls>" in linked_entry:
+                ((= linked_file_name_str file_name_str) and
+                 forall entry_file_name="{entry_file_name_str}<maybe_nuls>" in entry:
+                   not (= file_name_str entry_file_name_str))))))
+}
+""", structural_predicates={SAME_POSITION_PREDICATE})
+
 TAR_CONSTRAINTS = (
+        link_constraint &
         file_name_length_constraint &
         file_mode_length_constraint &
         uid_length_constraint &
         gid_length_constraint &
         file_size_constr &
         mod_time_length_constraint &
-        checksum_constraint &
         linked_file_name_length_constraint &
         uname_length_constraint &
         gname_length_constraint &
@@ -451,9 +461,10 @@ TAR_CONSTRAINTS = (
         prefix_length_constraint &
         header_padding_length_constraint &
         content_length_constraint &
+        checksum_constraint &
         content_size_constr &
-        final_entry_length_constraint &
-        link_constraint)
+        final_entry_length_constraint
+)
 
 
 class TarParser:
@@ -623,10 +634,52 @@ class TarParser:
         return dev_maj_num
 
     def parse_gname(self):
-        return self.parse_padded_characters(self.read(32), parent_nonterminal="<gname>")
+        inp = self.read(32)
+
+        if "\00" in inp:
+            nuls_offset = inp.index("\x00")
+            uname_str = self.parse_uname_str(inp[:nuls_offset])
+            nuls = ("<maybe_nuls>", [self.parse_nuls(inp[nuls_offset:])])
+            children = [uname_str, nuls]
+        else:
+            uname_str = self.parse_uname_str(inp)
+            children = [uname_str, ("<maybe_nuls>", [])]
+
+        return "<gname>", children
 
     def parse_uname(self):
-        return self.parse_padded_characters(self.read(32), parent_nonterminal="<uname>")
+        inp = self.read(32)
+
+        if "\00" in inp:
+            nuls_offset = inp.index("\x00")
+            uname_str = self.parse_uname_str(inp[:nuls_offset])
+            nuls = ("<maybe_nuls>", [self.parse_nuls(inp[nuls_offset:])])
+            children = [uname_str, nuls]
+        else:
+            uname_str = self.parse_uname_str(inp)
+            children = [uname_str, ("<maybe_nuls>", [])]
+
+        return "<uname>", children
+
+    def parse_uname_str(self, inp: str):
+        if "\x00" in inp:
+            raise SyntaxError("No NUL characters allowed in <uname_str>")
+
+        uname_first_char = inp[0]
+
+        dollar_index = len(inp) if "$" not in inp else inp.index("$")
+
+        uname_chars = self.parse_characters(
+            inp[1:dollar_index],
+            characters_nonterminal="<uname_chars>",
+            character_nonterminal="<uname_char>",
+        )
+
+        return "<uname_str>", [
+            ("<uname_first_char>", [(uname_first_char, [])]),
+            uname_chars,
+            ("<maybe_dollar>", [("$", [])] if dollar_index < len(inp) else [])
+        ]
 
     def parse_file_name(self):
         inp = self.read(100)
@@ -844,14 +897,29 @@ def extract_tar(tree: isla.DerivationTree) -> Union[bool, str]:
     with tempfile.NamedTemporaryFile(suffix=".tar") as outfile:
         outfile.write(str(tree).encode())
         outfile.flush()
-        cmd = ["tar", "-C", "/tmp", "-xf", outfile.name]
-        process = subprocess.Popen(cmd, stderr=PIPE)
+        cmd = ["tar", "tf", outfile.name]
+        process = subprocess.Popen(cmd, stdout=PIPE, stderr=PIPE)
         (stdout, stderr) = process.communicate(timeout=2)
         exit_code = process.wait()
-        # TODO: Also look for messages like "Damaged tar archive" (redefined file name)
 
-        err_msg = stderr.decode("utf-8")
+        output_msg = stdout.decode("utf-8").strip()
+        err_msg = stderr.decode("utf-8").strip()
+
+        # Two sources of a problem:
+        # 1) Damaged archive (truncated, invalid fields), and
+        # 2) Broken links (i.e., symlinkgs referring to not existing files).
+        # In the case of 2, tar might not output an error message, but
+        # we consider this an error!
+
+        num_entries = len(tree.filter(lambda t: t.value == "<entry>"))
+        entries_in_tar_file = len([line for line in output_msg.split(os.linesep) if line])
+
+        if (entries_in_tar_file != num_entries) and not err_msg:
+            err_msg = f"Expected {num_entries} entries in tar file, but found {entries_in_tar_file}"
+
+        has_error = exit_code != 0 or err_msg
+
         if err_msg:
-            print(err_msg)
+            print(f"Problem with tar file: '{err_msg}'")
 
-        return True if exit_code == 0 else err_msg
+        return True if not has_error else err_msg

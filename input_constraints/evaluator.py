@@ -421,7 +421,7 @@ def evaluate_generators(
             )
             for jobname, producer in zip(jobnames, producers)]
 
-    with mp.Pool(processes=cpu_count) as pool:
+    with pmp.Pool(processes=cpu_count) as pool:
         return pool.starmap(evaluate_producer, [
             (producer, formula, graph, validator, None, timeout_seconds, "", k,
              jobname, compute_kpath_coverage, compute_vacuity)

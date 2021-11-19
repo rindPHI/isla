@@ -6,15 +6,96 @@ from input_constraints.evaluator import evaluate_generators, plot_proportion_val
 from input_constraints.solver import ISLaSolver, CostSettings, STD_COST_SETTINGS
 from input_constraints.tests.subject_languages import tar
 
-timeout = 90
+timeout = 60 * 60
 
 cost_vector = STD_COST_SETTINGS.weight_vectors[0]
 
 k = 3
 
-g_full = ISLaSolver(
+length_constraints = (
+        # tar.link_constraint &
+        tar.file_name_length_constraint &
+        tar.file_mode_length_constraint &
+        tar.uid_length_constraint &
+        tar.gid_length_constraint &
+        tar.file_size_constr &
+        tar.mod_time_length_constraint &
+        tar.linked_file_name_length_constraint &
+        tar.uname_length_constraint &
+        tar.gname_length_constraint &
+        tar.dev_maj_num_length_constraint &
+        tar.dev_min_num_length_constraint &
+        tar.prefix_length_constraint &
+        tar.header_padding_length_constraint &
+        tar.content_length_constraint &
+        # tar.checksum_constraint &
+        tar.content_size_constr &
+        tar.final_entry_length_constraint
+)
+
+length_constraints_and_checksum = (
+    # tar.link_constraint &
+        tar.file_name_length_constraint &
+        tar.file_mode_length_constraint &
+        tar.uid_length_constraint &
+        tar.gid_length_constraint &
+        tar.file_size_constr &
+        tar.mod_time_length_constraint &
+        tar.linked_file_name_length_constraint &
+        tar.uname_length_constraint &
+        tar.gname_length_constraint &
+        tar.dev_maj_num_length_constraint &
+        tar.dev_min_num_length_constraint &
+        tar.prefix_length_constraint &
+        tar.header_padding_length_constraint &
+        tar.content_length_constraint &
+        tar.checksum_constraint &
+        tar.content_size_constr &
+        tar.final_entry_length_constraint
+)
+
+length_constraints_and_checksum_and_link = (
+        tar.link_constraint &
+        tar.file_name_length_constraint &
+        tar.file_mode_length_constraint &
+        tar.uid_length_constraint &
+        tar.gid_length_constraint &
+        tar.file_size_constr &
+        tar.mod_time_length_constraint &
+        tar.linked_file_name_length_constraint &
+        tar.uname_length_constraint &
+        tar.gname_length_constraint &
+        tar.dev_maj_num_length_constraint &
+        tar.dev_min_num_length_constraint &
+        tar.prefix_length_constraint &
+        tar.header_padding_length_constraint &
+        tar.content_length_constraint &
+        tar.checksum_constraint &
+        tar.content_size_constr &
+        tar.final_entry_length_constraint
+)
+
+g_len = ISLaSolver(
     tar.TAR_GRAMMAR,
-    tar.TAR_CONSTRAINTS,
+    length_constraints,
+    max_number_free_instantiations=1,
+    max_number_smt_instantiations=1,
+    timeout_seconds=timeout,
+    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+)
+
+g_len_cs = ISLaSolver(
+    tar.TAR_GRAMMAR,
+    length_constraints_and_checksum,
+    max_number_free_instantiations=1,
+    max_number_smt_instantiations=1,
+    timeout_seconds=timeout,
+    cost_settings=CostSettings((cost_vector,), (1000,), k=k)
+)
+
+g_len_cs_lin = ISLaSolver(
+    tar.TAR_GRAMMAR,
+    length_constraints_and_checksum_and_link,
     max_number_free_instantiations=1,
     max_number_smt_instantiations=1,
     timeout_seconds=timeout,
@@ -44,8 +125,8 @@ if __name__ == '__main__':
     # logging.basicConfig(level=logging.DEBUG)
     # generators = [tar.TAR_GRAMMAR, g_full]
     # jobnames = ["Grammar Fuzzer", "Full Constraint"]
-    generators = [g_full]
-    jobnames = ["Full Constraint"]
+    generators = [g_len, g_len_cs, g_len_cs_lin]
+    jobnames = ["Length", "Length + Checksum", "Length + Checksum + Def-Use"]
 
     out_dir = "../../eval_results/tar"
     base_name = "input_validity_tar_"

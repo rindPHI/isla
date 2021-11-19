@@ -379,8 +379,6 @@ def octal_to_dec(
     decimal_parser = lambda inp: DerivationTree.from_parse_tree(_decimal_parser(inp)[0][1][0])
     octal_parser = lambda inp: DerivationTree.from_parse_tree(_octal_parser(inp)[0][1][0])
 
-    # TODO: If we are passed a complete tree for the decimal, we should convert it to octal!
-
     if (isinstance(octal, DerivationTree) and
             isinstance(decimal, DerivationTree) and
             not octal.is_complete() and
