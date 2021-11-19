@@ -6,6 +6,7 @@ from typing import cast, Optional, Dict, List, Callable, Union, Set
 from xml.dom import minidom
 from xml.sax.saxutils import escape
 
+import pytest
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
