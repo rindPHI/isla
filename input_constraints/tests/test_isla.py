@@ -404,6 +404,14 @@ class TestISLa(unittest.TestCase):
             ('<file_name>', [('<file_name_str>', None), ('<maybe_nuls>', None)]),
             bind_expression.to_tree_prefix("<file_name>", tar.TAR_GRAMMAR)[0][0].to_parse_tree())
 
+    def test_to_tree_prefix_rest_ref(self):
+        mexpr = BindExpression(
+            BoundVariable("def_id", "<id>"),
+            DummyVariable("\n\n"),
+            DummyVariable("<paragraph>"))
+        tree_prefix = mexpr.to_tree_prefix('<labeled_paragraph>', rest.REST_GRAMMAR)
+        self.assertTrue(tree_prefix)
+
     def test_matches_xml_property(self):
         inp = "<b>k</b>"
         tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse(inp))[0])

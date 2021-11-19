@@ -301,11 +301,9 @@ constraint {
             enforce_unique_trees_in_queue=False,
         )
 
-    # Note: Disabling this for now since the z3 solver times out now that we solve
-    # all SMT formulas en block (but doing so is the only sound way).
-    def test_rest_titles(self):
+    def test_rest(self):
         self.execute_generation_test(
-            rest.LENGTH_UNDERLINE,
+            rest.LENGTH_UNDERLINE & rest.DEF_LINK_TARGETS,
             custom_test_func=rest.render_rst,
             grammar=rest.REST_GRAMMAR,
             max_number_free_instantiations=1,

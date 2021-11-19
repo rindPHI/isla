@@ -3,6 +3,7 @@ import string
 import subprocess
 import tempfile
 from typing import Union
+import xml.etree.ElementTree as ET
 
 from fuzzingbook.Grammars import srange
 
@@ -10,19 +11,37 @@ from input_constraints import isla
 from input_constraints.isla import parse_isla
 from input_constraints.isla_predicates import LJUST_CROP_PREDICATE, EXTEND_CROP_PREDICATE
 
+# NOTE: The following special characters are removed from general text.
+# Remove _, {, | to exclude back references and inline substitutions
+# Remove ` to exclude inline interpreted text
 REST_GRAMMAR = {
     "<start>": ["<body-elements>"],
     "<body-elements>": ["", "<body-element>\n<body-elements>"],
     "<body-element>": [
         "<section-title>\n",
+        "<labeled_paragraph>",
+        "<paragraph>"
     ],
     "<section-title>": ["<title-text>\n<underline>"],
     "<title-text>": ["<title-first-char>", "<title-first-char><nobr-string>"],
+    "<paragraph>": ["<first_paragraph_element><paragraph_elements>\n"],
+    "<labeled_paragraph>": ["<label>\n\n<paragraph>"],
+    "<label>": [".. _<id>:"],
+    "<paragraph_elements>": ["<paragraph_element><paragraph_elements>", "<paragraph_element>"],
+    "<first_paragraph_element>": ["<paragraph_chars_nospace>", "<internal_reference_nospace>"],
+    "<paragraph_element>": ["<paragraph_chars>", "<internal_reference>"],
+    "<internal_reference>": ["<sep><id>_<sep>"],
+    "<internal_reference_nospace>": ["<id>_<sep>"],
+    "<paragraph_chars>": ["<paragraph_char><paragraph_chars>", "<paragraph_char>"],
+    "<paragraph_chars_nospace>": ["<paragraph_char_nospace><paragraph_chars_nospace>", "<paragraph_char_nospace>"],
+    "<paragraph_char>": list(set(srange(string.printable)) - set(srange("_{}`|"))),
+    "<paragraph_char_nospace>": list(set(srange(string.printable)) - set(srange("_{}`|" + string.whitespace))),
+
+    "<sep>": srange(string.whitespace) + srange(".,;-"),
+    "<id>": srange(string.ascii_lowercase),
     "<nobr-string>": ["<nobr-char>", "<nobr-char><nobr-string>"],
     # Exclude tab in <nobr-char> since otherwise, title can get too long (counts more than one character)
-    # Remove _, { to exclude back references and inline substitutions
-    # Remove ` to exclude inline interpreted text
-    "<nobr-char>": list(set(srange(string.printable)) - set(srange("\n\r\t_{}`"))),
+    "<nobr-char>": list(set(srange(string.printable)) - set(srange("\n\r\t_{}`|"))),
     "<title-first-char>": list(set(srange(string.printable)) - set(srange(string.whitespace + "\b\f\v-*+_{}`|=-"))),
     "<underline>": ["<eqs>", "<dashes>"],
     "<eqs>": ["=", "=<eqs>"],
@@ -54,6 +73,26 @@ constraint {
 }
 """, semantic_predicates={LJUST_CROP_PREDICATE, EXTEND_CROP_PREDICATE})
 
+DEF_LINK_TARGETS = parse_isla("""
+const start: <start>;
+
+vars {
+  ref: <internal_reference>;
+  fref: <internal_reference_nospace>;
+  use_id, def_id: <id>;
+  labeled_par: <labeled_paragraph>;
+}
+
+constraint {
+  (forall ref="<sep>{use_id}_<sep>" in start:
+     exists labeled_par=".. _{def_id}:\n\n<paragraph>" in start:
+       (= use_id def_id) and
+   forall fref="{use_id}_<sep>" in start:
+     exists labeled_par=".. _{def_id}:\n\n<paragraph>" in start:
+       (= use_id def_id))
+}
+""")
+
 
 # TODO: Further rst properties:
 #   - Bullet lists: Continuing text must be aligned after the bullet and whitespace
@@ -66,11 +105,27 @@ def render_rst(tree: isla.DerivationTree) -> Union[bool, str]:
         tmp.write(str(tree).encode())
         tmp.flush()
         cmd = ["rst2html.py", tmp.name]
-        process = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=open(os.devnull, "w"))
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         (stdout, stderr) = process.communicate()
         exit_code = process.wait()
 
-        return True if exit_code == 0 and not stderr else stderr.decode("utf-8")
+        output = stdout.decode("utf-8")
+        err_msg = stderr.decode("utf-8")
+
+        if not err_msg:
+            # Compare headings count
+            assert output
+
+            section_titles_in_tree = tree.filter(lambda n: n.value == "<section-title>")
+
+            doc = ET.fromstring(output)
+            headings_in_output = doc.findall(".//{*}h1") + doc.findall(".//{*}h2")
+
+            if len(section_titles_in_tree) != len(headings_in_output):
+                err_msg = f"Incorrect heading underlines: {len(section_titles_in_tree)} titles " \
+                          f"were rendered to {len(headings_in_output)} HTML headings."
+
+        return True if exit_code == 0 and not err_msg else err_msg
 
 # Below encoding results in timeouts for more complex input scaffolds, uses only SMT formulas,
 # but depends on an auxiliary numeric constant for better efficiency & more diversity.
