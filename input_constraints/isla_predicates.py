@@ -61,6 +61,28 @@ def in_tree(_: Optional[DerivationTree], path_1: Path, path_2: Path) -> bool:
 IN_TREE_PREDICATE = StructuralPredicate("inside", 2, in_tree)
 
 
+def consecutive(tree: DerivationTree, path_1: Path, path_2: Path) -> bool:
+    # This predicate holds for two consecutive leaves, i.e.,
+    # which are not interrupted by any other tree leaves.
+    assert tree is not None
+
+    if path_1 == path_2 or not is_before(None, path_1, path_2):
+        return False
+
+    longest_common_prefix: Path = max(
+        [path_1[:idx] for idx in range(max([len(path_1), len(path_2)])) if path_1[:idx] == path_2[:idx]],
+        key=len
+    )
+
+    return not any(
+        path != path_1 and path != path_2 and
+        is_before(None, path_1, path) and is_before(None, path, path_2)
+        for path, _ in tree.get_subtree(longest_common_prefix).leaves())
+
+
+CONSECUTIVE_PREDICATE = StructuralPredicate("consecutive", 2, consecutive)
+
+
 def level_check(
         context_tree: DerivationTree,
         pred: str,

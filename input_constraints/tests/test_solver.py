@@ -6,7 +6,6 @@ from typing import cast, Optional, Dict, List, Callable, Union, Set
 from xml.dom import minidom
 from xml.sax.saxutils import escape
 
-import pytest
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
@@ -22,8 +21,7 @@ from input_constraints.tests.subject_languages import rest, tar, simple_tar, scr
 from input_constraints.tests.subject_languages.csv import csv_lint, CSV_GRAMMAR
 from input_constraints.tests.subject_languages.tar import extract_tar
 from input_constraints.tests.subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, \
-    XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, XML_GRAMMAR, validate_xml, XML_TAG_NAMESPACE_CONSTRAINT, \
-    XML_NO_ATTR_REDEF_CONSTRAINT
+    XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, XML_GRAMMAR, validate_xml, XML_NO_ATTR_REDEF_CONSTRAINT
 from input_constraints.tests.test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR
 
 
@@ -303,11 +301,13 @@ constraint {
 
     def test_rest(self):
         self.execute_generation_test(
-            rest.LENGTH_UNDERLINE & rest.DEF_LINK_TARGETS,
+            rest.LENGTH_UNDERLINE & rest.DEF_LINK_TARGETS &
+            rest.NO_LINK_TARGET_REDEF & rest.LIST_NUMBERING_CONSECUTIVE,
             custom_test_func=rest.render_rst,
             grammar=rest.REST_GRAMMAR,
             max_number_free_instantiations=1,
-            max_number_smt_instantiations=4,
+            max_number_smt_instantiations=1,
+            num_solutions=50,
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False)
 
@@ -475,7 +475,7 @@ constraint {
                     if custom_test_func:
                         test_result = custom_test_func(assignment)
                         if test_result is not True:
-                            logger.info(f"Solution WRONG: %s", assignment)
+                            logger.info(f"Solution WRONG: '%s'", assignment)
                             self.fail("" if not isinstance(test_result, str) else test_result)
 
                 if print_solutions:

@@ -1875,7 +1875,7 @@ def well_formed(formula: Formula,
             if type(free_var) is BoundVariable
             if free_var not in bound_vars]
         if unbound_variables:
-            return False, f"Unbound variables " + ", ".join(map(repr, unknown_typed_variables)) + f"in {formula}"
+            return False, f"Unbound variables " + ", ".join(map(repr, unbound_variables)) + f" in {formula}"
 
         return well_formed(
             formula.inner_formula,
@@ -1897,7 +1897,7 @@ def well_formed(formula: Formula,
             if type(free_var) is BoundVariable
             if free_var not in bound_vars]
         if unbound_variables:
-            return False, f"Unbound variables " + ", ".join(map(repr, unknown_typed_variables)) + f"in {formula}"
+            return False, f"Unbound variables " + ", ".join(map(repr, unbound_variables)) + f" in {formula}"
 
         unknown_typed_variables = [
             var for var in formula.bound_variables()
@@ -1964,12 +1964,10 @@ def well_formed(formula: Formula,
             if type(free_var) is BoundVariable
             if free_var not in bound_vars]
         if unbound_variables:
-            return False, f"Unbound variables " + ", ".join(map(repr, unknown_typed_variables)) + f"in {formula}"
+            return False, f"Unbound variables " + ", ".join(map(repr, unbound_variables)) + f" in {formula}"
         return True, ""
     else:
         raise NotImplementedError(f"Unsupported formula type {type(formula).__name__}")
-
-    assert False
 
 
 class ThreeValuedTruth:
