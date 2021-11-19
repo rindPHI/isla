@@ -1,12 +1,10 @@
 from grammar_graph.gg import GrammarGraph
 
-from grammar_graph.gg import GrammarGraph
-
 from input_constraints.tests.subject_languages import xml_lang
 from input_constraints.evaluator import evaluate_generators, plot_proportion_valid_inputs_graph
 from input_constraints.solver import ISLaSolver, CostSettings, CostWeightVector
 
-timeout = 5
+timeout = 60 * 60
 
 cost_vector = CostWeightVector(
     tree_closing_cost=15,
@@ -89,5 +87,5 @@ if __name__ == '__main__':
     out_dir = "../../eval_results/xml"
     base_name = "input_validity_xml_"
 
-    # evaluate_validity(out_dir, base_name, generators, jobnames)
+    evaluate_validity(out_dir, base_name, generators, jobnames)
     plot_proportion_valid_inputs_graph(out_dir, base_name, jobnames, f"{out_dir}/input_validity_xml.pdf")

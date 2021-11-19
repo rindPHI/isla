@@ -4,7 +4,7 @@ from input_constraints.evaluator import evaluate_generators, plot_proportion_val
 from input_constraints.solver import ISLaSolver, CostSettings, CostWeightVector
 from input_constraints.tests.subject_languages import scriptsizec
 
-timeout = 5
+timeout = 60 * 60
 
 cost_vector = CostWeightVector(
     tree_closing_cost=10,
@@ -67,5 +67,5 @@ if __name__ == '__main__':
     out_dir = "../../eval_results/scriptsizec"
     base_name = "input_validity_scriptsizec_"
 
-    # evaluate_validity(out_dir, base_name, generators, jobnames)
+    evaluate_validity(out_dir, base_name, generators, jobnames)
     plot_proportion_valid_inputs_graph(out_dir, base_name, jobnames, f"{out_dir}/input_validity_scriptsizec.pdf")
