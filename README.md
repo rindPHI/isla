@@ -125,20 +125,37 @@ though, the stream of solutions will be infinite (given that the grammar contain
 
 ## Build and Install
 
-To install ISLa globally, run
+ISLa depends on Python 3.9 and the Python header files (from package python3.9-dev in Ubuntu Linux). Furthermore, 
+python3.9-venv is required to run ISLa in a virtual environment.
+
+On Ubuntu Linux, the dependencies can be installed using
 
 ```shell
-pip install -r requirements.txt
-python setup.py install
+sudo apt-get update
+sudo apt-get upgrade
+sudo apt-get install python3.9 python3.9-dev python3.9-venv
 ```
 
-For development, we recommend to use ISLa inside a virtual environment (virtualenv):
+For development and testing, we recommend to use ISLa inside a virtual environment (virtualenv).
 
 ```shell
+cd inputconstraints
+python3.9 -m venv venv
+source venv/bin/activate    (<- falls du eine andere Shell verwendest, gibt es auch activate.fish etc.)
+pip install --upgrade pip
+pip install -r requirements.txt
+
 virtualenv -p python3 venv
 source venv/bin/activate
 pip install -r requirements.txt
 
 # Run tests
 tox
+```
+
+To install ISLa globally, run
+
+```shell
+pip install -r requirements.txt
+python setup.py install
 ```
