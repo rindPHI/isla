@@ -1,4 +1,3 @@
-import logging
 import sys
 
 from grammar_graph.gg import GrammarGraph
@@ -7,7 +6,7 @@ from input_constraints.evaluator import evaluate_generators, plot_proportion_val
 from input_constraints.solver import ISLaSolver, CostSettings, STD_COST_SETTINGS
 from input_constraints.tests.subject_languages import tar
 
-timeout = 60 * 60
+timeout = 15 * 60
 max_number_free_instantiations = 10
 max_number_smt_instantiations = 2
 eval_k = 3
@@ -125,8 +124,8 @@ def evaluate_validity(out_dir: str, base_name: str, generators, jobnames):
 
 if __name__ == '__main__':
     # logging.basicConfig(level=logging.DEBUG)
-    generators = [g_len, g_len_cs, g_len_cs_lin]
-    jobnames = ["Length", "Length + Checksum", "Length + Checksum + Def-Use"]
+    generators = [tar.TAR_GRAMMAR, g_len, g_len_cs, g_len_cs_lin]
+    jobnames = ["Grammar Fuzzer", "Length", "Length + Checksum", "Length + Checksum + Def-Use"]
 
     if len(sys.argv) > 1 and sys.argv[1] in jobnames:
         idx = jobnames.index(sys.argv[1])

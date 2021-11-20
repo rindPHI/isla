@@ -6,7 +6,7 @@ contains the language of SMT (z3) formulas as an island language, and adds the p
 derivation trees on top. ISLa supports universal and existential quantifiers as well as structural predicates (e.g., "
 occurs before"). Its generation mechanism uses feedback from z3 to solve atomic
 "semantic" formulas, and constructive insertion for eliminating existential quantifiers. Universal quantifiers and
-structural predicates are treated by a top-level, deterministic breath-first search.
+structural predicates are treated deterministic, heuristic breath-first search.
 
 ## Example
 
@@ -122,45 +122,6 @@ semantic SMT formulas can be configured (`max_number_smt_instantiations`).
 In certain cases, ISLa will only produce a finite amount of solutions. This holds in particular for simple existential
 constraints. The existential quantifier will be eliminated and the solution output; the search terminates then. Usually,
 though, the stream of solutions will be infinite (given that the grammar contains recursions).
-
-## ISLa Concrete Syntax
-
-The (abbreviated) E-BNF grammar for the concrete syntax of ISLa formulas is:
-
-```
-⟨start⟩ := ⟨const⟩⟨vars_block⟩⟨constraint_decl⟩
-⟨const⟩ := ‘const␣’⟨id⟩‘:␣’⟨nonterminal⟩‘;’
-
-⟨vars_block⟩ := 𝜖| ‘vars␣{’⟨var_decl⟩+‘}’
-⟨var_decl⟩ := ⟨ID⟩𝓁‘:␣’⟨nonterminal⟩‘;’
-⟨nonterminal⟩ := ‘<’⟨LETTER⟩+‘>’
-
-⟨constraint_decl⟩ := ‘constraint␣{’⟨constraint⟩‘}’
-⟨constraint⟩ := ⟨disjunction⟩
-⟨disjunction⟩ := ⟨conjunction⟩ | ‘(’ ⟨conjunction⟩ ‘␣or␣’ ⟨disjunction⟩ ‘)’
-
-⟨conjunction⟩ := ⟨negation⟩ | ‘(’ ⟨negation⟩ ‘␣and␣’ ⟨conjunction⟩ ‘)’
-⟨negation⟩ := ⟨smt_atom⟩ | ⟨predicate_atom⟩ | ⟨quantified_formula⟩ | ‘not␣(’ ⟨constraint⟩ ‘)’
-
-⟨quantified_formula⟩ := ⟨quantifier⟩ ‘␣’ ⟨id⟩ ‘␣in␣’ ⟨id⟩ ‘:␣’ ⟨constraint⟩ | ⟨quantifier⟩ ‘␣’ ⟨id⟩ ‘=’
-
-⟨match_expr⟩ ‘␣in␣’ ⟨id⟩ ‘:␣’ ⟨constraint⟩
-⟨quantifier⟩ := ‘forall’ | ‘exists’
-⟨match_expr⟩ := ‘"’ ⟨var_esc_char⟩𝓁 ‘"’
-
-⟨var_esc_char⟩ := ‘{’⟨id⟩‘}’| ...
-⟨smt_atom⟩ := ⟨smt_bool⟩
-⟨smt_bool⟩ := ‘true’| ‘false’ | ‘(’ ⟨FSYM⟩ ‘␣’ ⟨sexpr⟩ (‘␣’ ⟨sexpr⟩)* ‘)’
-
-⟨sexpr⟩ := ⟨smt_bool⟩ | ⟨NUMBER⟩ | ⟨id⟩ | ⟨STRING⟩
-⟨predicate_atom⟩ := ⟨predicate⟩‘(’⟨arg⟩𝓁‘)’
-⟨arg⟩ := ⟨id⟩ | ⟨NUMBER⟩ | ⟨STRING⟩
-```
-
-For any `⟨arg⟩`, the symbol `⟨arg⟩𝓁` stands for `⟨arg⟩ | ⟨arg⟩ ',␣' ⟨arg⟩𝓁`. The most important context-sensitive
-property of the language is that all identifiers have to be declared; furthermore, SMT expressions have to use function
-symbols declared in some theory and arguments of the right sorts. Predicate symbols have to stem from a known signature,
-and the arity of the predicate symbol has to match the number of the supplied predicates.
 
 ## Build and Install
 

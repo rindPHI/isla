@@ -86,6 +86,9 @@ def collect_data(
             inp = next(generator)
         except StopIteration:
             break
+        except Exception as exp:
+            print("Exception occurred while executing solver; I'll stop here:\n" + str(exp), file=sys.stderr)
+            return result
 
         logger.debug("Input: %s", str(inp))
         curr_relative_time = time.time() - start_time
@@ -442,7 +445,7 @@ def evaluate_isla_generator(
         timeout: int,
         outfile_name: Optional[str] = None,
         k=3) -> PerformanceEvaluationResult:
-    print("Evaluating weight vector %s", v)
+    print(f"Evaluating weight vector {v}")
     isla_producer = ISLaSolver(
         grammar,
         formula,
@@ -573,7 +576,7 @@ def evaluate_cost_vectors_isla(
             evaluate_isla_generator(grammar, formula, vector, validator, timeout, None, k)
             for vector in population]
 
-    with mp.Pool(processes=cpu_count) as pool:
+    with pmp.Pool(processes=cpu_count) as pool:
         start_time = datetime.datetime.now()
         result = pool.starmap(evaluate_isla_generator, [
             (grammar, formula, vector, validator, timeout, None, k)
@@ -612,7 +615,7 @@ def auto_tune_weight_vector(
         seed_population = [
             CostWeightVector(
                 tree_closing_cost=randno(),
-                vacuous_penalty=randno(),
+                vacuous_penalty=0,
                 constraint_cost=randno(),
                 derivation_depth_penalty=randno(),
                 low_k_coverage_penalty=randno(),
@@ -651,7 +654,7 @@ def auto_tune_weight_vector(
             second_parent = current_population[(idx + 1) % len(current_population)]
 
             # We take two features from the first, and three from the second parent
-            all_features = list(first_parent[1].__dict__.keys())
+            all_features = list(set(first_parent[1].__dict__.keys()) - {"vacuous_penalty"})
             first_parent_features = random.sample(all_features, 2)
             child = CostWeightVector(**{
                 feature:
@@ -702,9 +705,11 @@ def print_statistics(out_dir: str, base_name: str, jobnames: List[str]):
         invalid_inputs = list(result.accumulated_invalid_inputs.values() or [0])[-1]
         max_kpath_cov = list(result.accumulated_k_path_coverage.values() or [0])[-1]
 
-        print("Seconds / valid input: " + ("N/A" if not valid_inputs
-                                           else "{:.1f}".format(result.max_time / valid_inputs)))
-        print("Precision:             " + "{:.1f}".format(100 * valid_inputs / (valid_inputs + invalid_inputs)) + " %")
+        # print("Seconds / input: " + "{:.1f}".format(result.max_time / (valid_inputs + invalid_inputs)))
+        print("Inputs / second:       " + "{:.1f}".format((valid_inputs + invalid_inputs) / result.max_time))
+        # print("Seconds / valid input: " + ("N/A" if not valid_inputs
+        #                                    else "{:.1f}".format(result.max_time / valid_inputs)))
+        print("Precision:             " + "{:.0f}".format(100 * valid_inputs / (valid_inputs + invalid_inputs)) + " %")
         print("k-path Coverage:       " + str(max_kpath_cov) + " %")
 
         print("\n")
