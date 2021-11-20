@@ -122,12 +122,12 @@ constraint {
 
     # Result is something like
     # CostWeightVector(
-    #     tree_closing_cost=28,
-    #     vacuous_penalty=5,
-    #     constraint_cost=40,
-    #     derivation_depth_penalty=3,
-    #     low_k_coverage_penalty=23,
-    #     low_global_k_path_coverage_penalty=5)
+    #     tree_closing_cost=15,
+    #     vacuous_penalty=15,
+    #     constraint_cost=0,
+    #     derivation_depth_penalty=0,
+    #     low_k_coverage_penalty=5,
+    #     low_global_k_path_coverage_penalty=7)
 
     # Run solver
     solver = ISLaSolver(

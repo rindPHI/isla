@@ -1,12 +1,12 @@
 ISLa: Input Specification Language
 ==================================
 
-ISLa is a specification language for constraints on structured inputs conforming to a given, context-free grammar. It
-contains the language of SMT (z3) formulas as an island language, and adds the power of structural quantifiers over
-derivation trees on top. ISLa supports universal and existential quantifiers as well as structural predicates (e.g., "
-occurs before"). Its generation mechanism uses feedback from z3 to solve atomic
+ISLa is a specification language for constraints on complex structured inputs conforming to a given, context-free
+grammar. It contains the language of SMT (z3) formulas as an island language, and adds the power of structural
+quantifiers over derivation trees on top. ISLa supports universal and existential quantifiers as well as structural
+predicates (e.g., "occurs before"). Its generation mechanism uses feedback from z3 to solve atomic
 "semantic" formulas, and constructive insertion for eliminating existential quantifiers. Universal quantifiers and
-structural predicates are treated deterministic, heuristic breath-first search.
+structural predicates are treated by a deterministic, heuristic breath-first search.
 
 ## Example
 
@@ -123,7 +123,18 @@ In certain cases, ISLa will only produce a finite amount of solutions. This hold
 constraints. The existential quantifier will be eliminated and the solution output; the search terminates then. Usually,
 though, the stream of solutions will be infinite (given that the grammar contains recursions).
 
-## Build and Install
+## Resources / Important Files
+
+* The file `input_constraints/xml_demo.py` demonstrates most ISLa features along the example of an XML constraint.
+* The files `input_constraints/evaluations/evaluate_...` are the scripts we used to collect and analyze our 
+  evaluation data. By running these scripts without arguments, a digest of the most recent results is returned.
+* In `eval_results`, you find the raw data of our experimental analysis. These files generally consist of the number
+  of seconds since start of the experiment when a data item was collected, and the accumulated numbers of valid / 
+  invalid inputs or k-paths, depending on the file.
+* The most important files of our evaluation are `input_constraints/isla.py` and `input_constraints/solver.py`,
+  containing most ISLa features (and the constraint checker) resp. the ISLa solver. 
+
+## Build, Run, Install
 
 ISLa depends on Python 3.9 and the Python header files (from package python3.9-dev in Ubuntu Linux). Furthermore, 
 python3.9-venv is required to run ISLa in a virtual environment.
@@ -137,23 +148,37 @@ sudo apt-get install python3.9 python3.9-dev python3.9-venv
 ```
 
 For development and testing, we recommend to use ISLa inside a virtual environment (virtualenv).
+By thing the following steps in a standard shell (bash), one can run the ISLa tests:
 
 ```shell
-cd inputconstraints
-python3.9 -m venv venv
-source venv/bin/activate    (<- falls du eine andere Shell verwendest, gibt es auch activate.fish etc.)
-pip install --upgrade pip
-pip install -r requirements.txt
+curl -L https://anonymous.4open.science/r/isla-pldi/ISLa-v0.1.zip
+unzip ISLa-v0.1.zip
 
-virtualenv -p python3 venv
+python3.9 -m venv venv
 source venv/bin/activate
+
+pip install --upgrade pip
 pip install -r requirements.txt
 
 # Run tests
 tox
 ```
 
-To install ISLa globally, run
+For running scripts without tox, you have to add the path to the ISLa folder to the PYTHONPATH environment
+variable; this is done by typing (in bash)
+
+```shell
+export PYTHONPATH=$PYTHONPATH:`pwd`
+```
+
+inside the ISLa top-level directory. Then you can, for instance, run `python3 input_constraints/xml_demo.py` (after
+entering the virtual environment as described above). For using ISLa in Visual Studio, you might have to set
+the value of the environment variable in the launch.json file; in Pycharm, we did not have to apply any special 
+settings.
+
+---
+
+To install ISLa globally (not recommended, less well tested), run
 
 ```shell
 pip install -r requirements.txt
