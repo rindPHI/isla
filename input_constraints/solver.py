@@ -389,7 +389,7 @@ class ISLaSolver:
                     for path, leaf in state.tree.open_leaves():
                         leaf_inst = DerivationTree.from_parse_tree(fuzzer.expand_tree((leaf.value, None)))
                         result = result.replace_path(path, leaf_inst)
-                    yield result
+                    yield from self.process_new_states([SolutionState(state.constraint, result)])
             else:
                 for _ in range(self.max_number_free_instantiations):
                     substitutions: Dict[DerivationTree, DerivationTree] = {
@@ -398,10 +398,10 @@ class ISLaSolver:
                     }
 
                     if substitutions:
-                        yield from self.process_new_state(
+                        yield from self.process_new_states([
                             SolutionState(
                                 state.constraint.substitute_expressions(substitutions),
-                                state.tree.substitute(substitutions)))
+                                state.tree.substitute(substitutions))])
 
     def instantiate_structural_predicates(self, state: SolutionState) -> SolutionState:
         predicate_formulas = [
@@ -1013,6 +1013,11 @@ class ISLaSolver:
 
         if self.covered_k_paths == self.graph.k_paths(self.cost_settings.k):
             self.covered_k_paths = set()
+            # self.logger.info("ALL COVERED")
+        else:
+            pass
+            # uncovered_paths = self.graph.k_paths(self.cost_settings.k) - self.covered_k_paths
+            # self.logger.info("\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]))
 
         return result
 

@@ -18,7 +18,8 @@ from input_constraints.isla_predicates import LJUST_CROP_PREDICATE, EXTEND_CROP_
 # * is inline emphasis and needs to be closed: Remove from standard text
 REST_GRAMMAR = {
     "<start>": ["<body-elements>"],
-    "<body-elements>": ["", "<body-element>\n<body-elements>"],
+    # "<body-elements>": ["", "<body-element>\n<body-elements>"],
+    "<body-elements>": ["<body-element>\n<body-elements>", "<body-element>"],
     "<body-element>": [
         "<section-title>\n",
         "<labeled_paragraph>",
@@ -86,6 +87,21 @@ constraint {
          extend_crop(underline, underline_length))))
 }
 """, semantic_predicates={LJUST_CROP_PREDICATE, EXTEND_CROP_PREDICATE})
+
+# LENGTH_UNDERLINE = parse_isla("""
+# const start: <start>;
+#
+# vars {
+#   title: <section-title>;
+#   titletxt: <title-text>;
+#   underline: <underline>;
+# }
+#
+# constraint {
+#   forall title="{titletxt}\n{underline}" in start:
+#     (>= (str.len underline) (str.len titletxt))
+# }
+# """)
 
 DEF_LINK_TARGETS = parse_isla("""
 const start: <start>;
@@ -218,13 +234,13 @@ def render_rst(tree: isla.DerivationTree) -> Union[bool, str]:
 # Below encoding, which is the conceptually cleanest one, sometimes results in timeouts
 # and produces same lengths per input... The latter seems to be the SMT solver's fault,
 # the processing in the solver seems correct.
-#
+
 # LENGTH_UNDERLINE = parse_isla("""
 # const start: <start>;
 #
 # vars {
 #   title: <section-title>;
-#   titletxt: <nobr-string>;
+#   titletxt: <title-text>;
 #   underline: <underline>;
 # }
 #
