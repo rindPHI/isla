@@ -618,13 +618,15 @@ XYZ;\" asdf \"
     def test_rest_property_2(self):
         formula = rest.LENGTH_UNDERLINE
 
-        inp = "123\n-\n\n"
+        inp = "123\n--\n"
         tree = DerivationTree.from_parse_tree(list(EarleyParser(rest.REST_GRAMMAR).parse(inp))[0])
+        self.assertTrue(tree.filter(lambda n: n.value == "<section-title>"))
         self.assertFalse(evaluate(
             formula.substitute_expressions({Constant("start", "<start>"): tree}), tree, rest.REST_GRAMMAR))
 
-        inp = "00\n--------\n\n"
+        inp = "00\n--------\n"
         tree = DerivationTree.from_parse_tree(list(EarleyParser(rest.REST_GRAMMAR).parse(inp))[0])
+        self.assertTrue(tree.filter(lambda n: n.value == "<section-title>"))
         self.assertTrue(evaluate(
             formula.substitute_expressions({Constant("start", "<start>"): tree}), tree, rest.REST_GRAMMAR))
 
