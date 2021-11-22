@@ -126,6 +126,8 @@ though, the stream of solutions will be infinite (given that the grammar contain
 ## Resources / Important Files
 
 * The file `input_constraints/xml_demo.py` demonstrates most ISLa features along the example of an XML constraint.
+* In the directory `input_constraints/tests/subject_languages/`, you find our specifications for the subject languages
+  of our experimental evaluation.
 * The files `input_constraints/evaluations/evaluate_...` are the scripts we used to collect and analyze our 
   evaluation data. By running these scripts without arguments, a digest of the most recent results is returned.
 * In `eval_results`, you find the raw data of our experimental analysis. These files generally consist of the number
