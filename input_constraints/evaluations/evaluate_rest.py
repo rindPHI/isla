@@ -102,7 +102,7 @@ def evaluate_validity(out_dir: str, base_name: str, generators, jobnames):
 
 if __name__ == '__main__':
     generators = [
-        # rest.REST_GRAMMAR,
+        rest.REST_GRAMMAR,
         g_link_defuse,
         g_link_defuse_len,
         g_link_defuse_len_numbering,
@@ -133,6 +133,6 @@ if __name__ == '__main__':
     out_dir = "../../eval_results/rest"
     base_name = "input_validity_rest_"
 
-    evaluate_validity(out_dir, base_name, generators, jobnames)
+    # evaluate_validity(out_dir, base_name, generators, jobnames)
     # plot_proportion_valid_inputs_graph(out_dir, base_name, jobnames, f"{out_dir}/input_validity_rest.pdf")
-    # print_statistics(out_dir, base_name, jobnames)
+    print_statistics(out_dir, base_name, jobnames)
