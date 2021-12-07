@@ -1,6 +1,6 @@
 import pickle
 
-from input_constraints.solver import ISLaSolver
+from isla.solver import ISLaSolver
 
 with (open("/tmp/saved_debug_state", "rb")) as debug_state_file:
     try:

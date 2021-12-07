@@ -50,7 +50,7 @@ constraint {
 or, using the Python API,
 
 ```python
-from input_constraints import isla
+from isla import isla
 
 mgr = isla.VariableManager()
 
@@ -75,8 +75,8 @@ formula: isla.Formula = mgr.create(sc.forall_bind(
 The ISLa solver can find satisfying assignments for this formula:
 
 ```python
-from input_constraints.solver import ISLaSolver
-from input_constraints.tests.test_data import LANG_GRAMMAR
+from isla.solver import ISLaSolver
+from isla.tests.test_data import LANG_GRAMMAR
 
 solver = ISLaSolver(
     grammar=LANG_GRAMMAR,
@@ -96,9 +96,9 @@ When calling the solver with an ISLa formula in concrete syntax (a string), one 
 structural and semantic predicate symbols used:
 
 ```python
-from input_constraints.solver import ISLaSolver
-from input_constraints.tests.test_data import LANG_GRAMMAR
-from input_constraints.isla_predicates import BEFORE_PREDICATE
+from isla.solver import ISLaSolver
+from isla.tests.test_data import LANG_GRAMMAR
+from isla.isla_predicates import BEFORE_PREDICATE
 
 solver = ISLaSolver(
     grammar=LANG_GRAMMAR,
