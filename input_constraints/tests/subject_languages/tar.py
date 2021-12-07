@@ -181,8 +181,8 @@ vars {
 constraint {
   forall file_size="{octal_digits}<SPACE>" in start:
     num decimal:
-      ((>= (str.to_int decimal) 10) and
-      ((<= (str.to_int decimal) 100) and 
+      ((>= (str.to.int decimal) 10) and
+      ((<= (str.to.int decimal) 100) and 
       (octal_to_decimal(octal_digits, decimal) and 
        rjust_crop_tar(file_size, 12, "0"))))
 }
@@ -394,8 +394,8 @@ constraint {
       forall characters in content_chars:
         forall file_size="{octal_digits}<SPACE>" in entry:
           num dec_digits:
-            ((>= (str.to_int dec_digits) 10) and 
-            ((<= (str.to_int dec_digits) 100) and 
+            ((>= (str.to.int dec_digits) 10) and 
+            ((<= (str.to.int dec_digits) 100) and 
             (octal_to_decimal(octal_digits, dec_digits) and 
              ljust_crop_tar(characters, dec_digits, " "))))
 }

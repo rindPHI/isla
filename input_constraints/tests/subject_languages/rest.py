@@ -81,8 +81,8 @@ constraint {
   forall title="{titletxt}\n{underline}" in start:
     num title_length:
       num underline_length:
-        ((> (str.to_int title_length) 0) and
-        ((<= (str.to_int title_length) (str.to_int underline_length)) and
+        ((> (str.to.int title_length) 0) and
+        ((<= (str.to.int title_length) (str.to.int underline_length)) and
         (ljust_crop(titletxt, title_length, " ") and
          extend_crop(underline, underline_length))))
 }
@@ -154,8 +154,8 @@ constraint {
       forall item_2="{number_2}. <paragraph_chars>" in enumeration:
         (not consecutive(item_1, item_2) or
           (consecutive(item_1, item_2) and 
-          ((= (str.to_int number_2) (+ (str.to_int number_1) 1)) and
-           (> (str.to_int number_1) 0))))
+          ((= (str.to.int number_2) (+ (str.to.int number_1) 1)) and
+           (> (str.to.int number_1) 0))))
 }
 """, structural_predicates={CONSECUTIVE_PREDICATE})
 
@@ -224,10 +224,10 @@ def render_rst(tree: isla.DerivationTree) -> Union[bool, str]:
 # constraint {
 #   forall title="{titletxt}\n{underline}" in start:
 #     num length:
-#       ((> (str.to_int length) 1) and
-#       ((< (str.to_int length) 5) and
-#       ((= (str.len titletxt) (str.to_int length)) and
-#        (>= (str.len underline) (str.to_int length)))))
+#       ((> (str.to.int length) 1) and
+#       ((< (str.to.int length) 5) and
+#       ((= (str.len titletxt) (str.to.int length)) and
+#        (>= (str.len underline) (str.to.int length)))))
 # }
 # """)
 

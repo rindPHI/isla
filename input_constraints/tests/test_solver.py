@@ -251,8 +251,8 @@ vars {
 constraint {
   forall hline in start:
     num colno:
-      ((>= (str.to_int colno) 3) and 
-      ((<= (str.to_int colno) 5) and 
+      ((>= (str.to.int colno) 3) and 
+      ((<= (str.to.int colno) 5) and 
        (count(hline, "<csv-field>", colno) and 
        forall line in start:
          count(line, "<csv-field>", colno))))
@@ -281,8 +281,8 @@ vars {
 constraint {
   forall hline in start:
     num colno:
-      ((>= (str.to_int colno) 3) and 
-      ((<= (str.to_int colno) 5) and 
+      ((>= (str.to.int colno) 3) and 
+      ((<= (str.to.int colno) 5) and 
        (count(hline, "<raw-field>", colno) and 
        forall line in start:
          count(line, "<raw-field>", colno))))
