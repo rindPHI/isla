@@ -32,7 +32,7 @@ before_script:
   - virtualenv venv
   - source venv/bin/activate
   - pip install docutils
-  - pip install -r requirements.txt
+  - pip install --no-deps -r requirements.txt
 
 test:
   script:
