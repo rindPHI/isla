@@ -11,14 +11,15 @@ max_number_free_instantiations = 10
 max_number_smt_instantiations = 2
 eval_k = 3
 
-# cost_vector = STD_COST_SETTINGS.weight_vectors[0]
-cost_vector = CostWeightVector(
-    tree_closing_cost=31,
-    vacuous_penalty=0,
-    constraint_cost=15,
-    derivation_depth_penalty=18,
-    low_k_coverage_penalty=23,
-    low_global_k_path_coverage_penalty=13)
+cost_vector = STD_COST_SETTINGS.weight_vectors[0]
+
+# cost_vector = CostWeightVector(
+#     tree_closing_cost=31,
+#     vacuous_penalty=0,
+#     constraint_cost=15,
+#     derivation_depth_penalty=18,
+#     low_k_coverage_penalty=23,
+#     low_global_k_path_coverage_penalty=13)
 
 g_title_len = ISLaSolver(
     rest.REST_GRAMMAR,

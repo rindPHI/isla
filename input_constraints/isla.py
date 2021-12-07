@@ -164,92 +164,11 @@ class DerivationTree:
             self.recompute_k_paths(graph, k)
             assert k in self.__k_paths
 
-        # assert bool(is_nonterminal(self.value)) or k == 1 or not self.__k_paths[k]
-        # assert not is_nonterminal(self.value) or self.__k_paths[k] == graph.k_paths_in_tree(self.to_parse_tree(), k)
         return self.__k_paths[k]
 
     def recompute_k_paths(self, graph: gg.GrammarGraph, k: int) -> Set[Tuple[gg.Node, ...]]:
         self.__k_paths[k] = set(graph.k_paths_in_tree(self.to_parse_tree(), k))
         return self.__k_paths[k]
-
-        if not is_nonterminal(self.value):
-            assert k > 0
-            self.__k_paths[k] = set()
-            return self.__k_paths[k]
-
-        graph_node = graph.get_node(self.value)
-
-        if self.children is None:
-            self.__k_paths[k] = set(graph.nonterminal_kpaths(graph_node, k))
-            return self.__k_paths[k]
-
-        if not self.children:
-            assert self.children is not None  # Needs to be implemented yet!
-            self.__k_paths[k] = {(graph_node,)} if k == 1 else set()
-            return self.__k_paths[k]
-
-        assert graph_node is not None, f"Could not find node for {self.value} in graph"
-        choice_node = graph.find_choice_node_for_children(graph_node, [c.value for c in self.children])
-
-        child: DerivationTree
-        g_child: gg.Node
-        for child, g_child in [(child, g_child)
-                               for child, g_child in zip(self.children, choice_node.children)
-                               if not is_nonterminal(child.value)]:
-            child.__k_paths[1] = {(g_child,)}
-
-        c: DerivationTree
-        children_up_to_k_paths = {
-            p for c in self.children
-            for k_ in range(1, k + 1)
-            for p in c.k_paths(graph, k_)}
-
-        orig_k = k
-        k += k - 1
-
-        paths_from_this_node = {
-            ((graph_node, choice_node) + p)[:k]
-            for p in children_up_to_k_paths
-            if len(p) >= k - 2 and p[0].symbol in [c.value for c in self.children]
-        }
-
-        # Check path feasibility
-        for p in set(paths_from_this_node):
-            result = False
-            stack = [(self, p)]
-            while stack:
-                t_node: DerivationTree
-                path: Tuple[gg.Node, ...]
-                t_node, path = stack.pop(0)
-
-                if not path or t_node.value != path[0].symbol:
-                    continue
-
-                if t_node.children is None or (len(path) == 1 and t_node.value == path[0].symbol):
-                    result = True
-                    break
-
-                assert len(path) >= 3
-                assert isinstance(path[1], gg.ChoiceNode)
-
-                choice_node: gg.ChoiceNode = cast(gg.ChoiceNode, path[1])
-
-                if path[2] not in choice_node.children:
-                    # Filters out the "wrong" terminal paths (there may be multiple nodes for the same
-                    # terminal symbol in the graph).
-                    continue
-
-                if (len(choice_node.children) != len(t_node.children) or
-                        any(c_1.symbol != c_2.value for c_1, c_2 in zip(choice_node.children, t_node.children))):
-                    continue
-
-                stack.extend([(child, path[2:]) for child in t_node.children])
-
-            if not result:
-                paths_from_this_node.remove(p)
-
-        self.__k_paths[orig_k] = {p for p in children_up_to_k_paths if len(p) == k} | paths_from_this_node
-        return self.__k_paths[orig_k]
 
     def root_nonterminal(self) -> str:
         if isinstance(self.value, Variable):
