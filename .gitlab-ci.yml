@@ -33,6 +33,7 @@ before_script:
   - source venv/bin/activate
   - pip install docutils
   - pip install --no-deps -r requirements.txt
+  - pip install z3-solver==4.8.13
 
 test:
   script:
