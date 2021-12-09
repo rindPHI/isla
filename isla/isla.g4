@@ -23,12 +23,12 @@ formula:
   ;
 
 sexpr:
-    'true'                                                                       # SexprTrue
-  | 'false'                                                                      # SexprFalse
-  | INT                                                                          # SexprNum
-  | ID                                                                           # SexprId
-  | STRING                                                                       # SexprStr
-  | '(' (ID | '=' | DIV | MUL | PLUS | MINUS | GEQ | LEQ | GT | LT)  sexpr + ')' # SepxrApp
+    'true'                                                                          # SexprTrue
+  | 'false'                                                                         # SexprFalse
+  | INT                                                                             # SexprNum
+  | ID                                                                              # SexprId
+  | STRING                                                                          # SexprStr
+  | '(' op=(ID | '=' | DIV | MUL | PLUS | MINUS | GEQ | LEQ | GT | LT)  sexpr + ')' # SepxrApp
   ;
 
 predicateArg: ID | INT | STRING ;
