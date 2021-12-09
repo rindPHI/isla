@@ -6,3 +6,5 @@ isla.egg-info/
 dist/
 isla/playground.py
 isla/testcvc5.py
+isla/*.tokens
+isla/parsers/
