@@ -9,7 +9,9 @@ setup(
     author='Dominic Steinhoefel',
     author_email='dominic.steinhoefel@cispa.de',
     description='ISLa (Input Specification Language)',
+    setup_requires=["setuptools-antlr"],
     install_requires=[
+      "antlr4-python3-runtime",
       "GitPython==3.1.24",
       "Jinja2==3.0.1",
       "Markdown==3.3.6",

@@ -6,6 +6,7 @@ import re
 from functools import reduce, lru_cache
 from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable, Sequence
 
+import antlr4
 import z3
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
 from fuzzingbook.Grammars import is_nonterminal, RE_NONTERMINAL
@@ -17,6 +18,8 @@ from isla.concrete_syntax import ISLA_GRAMMAR
 from isla.helpers import get_symbols, z3_subst, is_valid, \
     replace_line_breaks, delete_unreachable, pop, z3_solve, powerset, grammar_to_immutable, immutable_to_grammar, \
     nested_list_to_tuple
+import isla.parsers.isla.isla.islaListener as ISLaParserListener
+from isla.parsers.isla.isla.islaParser import islaParser
 from isla.type_defs import ParseTree, Path, Grammar, ImmutableGrammar
 
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
@@ -2654,6 +2657,86 @@ class VariableManager:
             ph_var: next(var for var_name, var in self.variables.items() if var_name == ph_name)
             for ph_name, ph_var in self.placeholders.items()
         })
+
+
+class ISLaEmitter(ISLaParserListener):
+    def __init__(
+            self,
+            structural_predicates: Optional[Set[StructuralPredicate]] = None,
+            semantic_predicates: Optional[Set[SemanticPredicate]] = None):
+        self.structural_predicates = structural_predicates
+        self.semantic_predicates = semantic_predicates
+
+        self.result: Optional[Formula] = None
+        self.constant: Optional[Constant] = None
+        self.variables: Dict[str, BoundVariable] = {}
+        self.all_vars: Dict[str, Variable] = {}
+        self.formulas = {}
+
+    def exitConstDecl(self, ctx: islaParser.ConstDeclContext):
+        self.constant = Constant(ctx.cid.text, "<" + ctx.ntid.text + ">")
+
+    def exitVarDecls(self, _):
+        self.all_vars = dict(self.variables) | {self.constant.name: self.constant}
+
+    def exitVarDecl(self, ctx: islaParser.VarDeclContext):
+        var_type = ctx.varType().getText()
+        if var_type != "NUM":
+            var_type = f"<{var_type}>"
+
+        for var_id in ctx.ID():
+            self.variables[var_id.text] = BoundVariable(var_id.text, var_type)
+
+    def exitConstraint(self, ctx: islaParser.ConstraintContext):
+        self.result = self.formulas[ctx.formula()]
+
+    def exitQfdFormula(self, ctx: islaParser.QfdFormulaContext):
+        raise NotImplementedError()
+
+    def exitQfdFormulaMexpr(self, ctx: islaParser.QfdFormulaMexprContext):
+        raise NotImplementedError()
+
+    def exitDisjunction(self, ctx: islaParser.DisjunctionContext):
+        self.formulas[ctx] = self.formulas[ctx.formula(0)] | self.formulas[ctx.formula(1)]
+
+    def exitConjunction(self, ctx: islaParser.ConjunctionContext):
+        self.formulas[ctx] = self.formulas[ctx.formula(0)] & self.formulas[ctx.formula(1)]
+
+    def exitNegation(self, ctx: islaParser.NegationContext):
+        self.formulas[ctx] = -self.formulas[ctx.formula()]
+
+    def exitPredicateAtom(self, ctx: islaParser.PredicateAtomContext):
+        raise NotImplementedError()
+
+    def exitPredicateArg(self, ctx: islaParser.PredicateArgContext):
+        raise NotImplementedError()
+
+    def exitSMTFormula(self, ctx: islaParser.SMTFormulaContext):
+        raise NotImplementedError()
+
+    def exitNumIntro(self, ctx: islaParser.NumIntroContext):
+        raise NotImplementedError()
+
+    def exitSexprTrue(self, ctx: islaParser.SexprTrueContext):
+        raise NotImplementedError()
+
+    def exitSexprFalse(self, ctx: islaParser.SexprFalseContext):
+        raise NotImplementedError()
+
+    def exitSexprNum(self, ctx: islaParser.SexprNumContext):
+        raise NotImplementedError()
+
+    def exitSexprId(self, ctx: islaParser.SexprIdContext):
+        raise NotImplementedError()
+
+    def exitSexprStr(self, ctx: islaParser.SexprStrContext):
+        raise NotImplementedError()
+
+    def exitSepxrApp(self, ctx: islaParser.SepxrAppContext):
+        raise NotImplementedError()
+
+    def exitParFormula(self, ctx: islaParser.ParFormulaContext):
+        self.formulas[ctx] = self.formulas[ctx.formula()]
 
 
 def parse_isla(
