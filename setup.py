@@ -11,7 +11,7 @@ setup(
     description='ISLa (Input Specification Language)',
     setup_requires=["setuptools-antlr"],
     install_requires=[
-      "antlr4-python3-runtime",
+      "antlr4-python3-runtime==4.7.1",
       "GitPython==3.1.24",
       "Jinja2==3.0.1",
       "Markdown==3.3.6",

@@ -11,15 +11,15 @@ varType : LT ID GT | 'NUM' ;
 constraint: 'constraint' '{' formula '}' ;
 
 formula:
-    ('forall' | 'exists') varId=ID '=' STRING 'in' inId=ID ':' formula # QfdFormulaMexpr
-  | ('forall' | 'exists') varId=ID            'in' inId=ID ':' formula # QfdFormula
-  | 'not' formula                                                      # Negation
-  | formula 'and' formula                                              # Conjunction
-  | formula 'or' formula                                               # Disjunction
-  | 'num' ID ':' formula                                               # NumIntro
-  | ID '(' predicateArg (',' predicateArg) * ')'                       # PredicateAtom
-  | sexpr                                                              # SMTFormula
-  | '(' formula ')'                                                    # ParFormula
+    t=('forall' | 'exists') varId=ID '=' STRING 'in' inId=ID ':' formula # QfdFormulaMexpr
+  | t=('forall' | 'exists') varId=ID            'in' inId=ID ':' formula # QfdFormula
+  | 'not' formula                                                        # Negation
+  | formula 'and' formula                                                # Conjunction
+  | formula 'or' formula                                                 # Disjunction
+  | 'num' ID ':' formula                                                 # NumIntro
+  | ID '(' predicateArg (',' predicateArg) * ')'                         # PredicateAtom
+  | sexpr                                                                # SMTFormula
+  | '(' formula ')'                                                      # ParFormula
   ;
 
 sexpr:
@@ -50,10 +50,6 @@ LT: '<' ;
 WS : [ \t\n\r]+ -> skip ;
 LINE_COMMENT : '#' .*? '\n' -> skip ;
 
-// Have to exclude everything but [a-zA-Z_] for normal identifiers.
-// '-' is OK for function symbols (sexpr) and nonterminal identifiers,
-// all other special characters only OK for function symbols.
-// We are more permissive here to avoid overlapping lexer rules.
 fragment ID_LETTER : 'a'..'z'|'A'..'Z' | [_\-.] ;
 fragment DIGIT : '0'..'9' ;
 

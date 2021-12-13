@@ -4,7 +4,7 @@ BRAOP : '{' -> pushMode(VAR_DECL) ;
 
 OPTOP : '[' -> pushMode(OPTIONAL) ;
 
-TEXT : (~ [{[\n]) + ;
+TEXT : (~ [{[]) + ;
 
 NL : '\n' + -> skip ;
 

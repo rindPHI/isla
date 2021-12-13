@@ -8,6 +8,7 @@ from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator
 
 import antlr4
 import z3
+from antlr4 import InputStream
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
 from fuzzingbook.Grammars import is_nonterminal, RE_NONTERMINAL
 from fuzzingbook.Parser import EarleyParser, PEGParser
@@ -18,7 +19,11 @@ from isla.concrete_syntax import ISLA_GRAMMAR
 from isla.helpers import get_symbols, z3_subst, is_valid, \
     replace_line_breaks, delete_unreachable, pop, z3_solve, powerset, grammar_to_immutable, immutable_to_grammar, \
     nested_list_to_tuple
+import isla.parsers.isla.mexpr_parser.MexprParserListener as MexprParserListener
+from isla.parsers.isla.mexpr_parser.MexprParser import MexprParser
+from isla.parsers.isla.mexpr_lexer.MexprLexer import MexprLexer
 import isla.parsers.isla.isla.islaListener as ISLaParserListener
+from isla.parsers.isla.isla.islaLexer import islaLexer
 from isla.parsers.isla.isla.islaParser import islaParser
 from isla.type_defs import ParseTree, Path, Grammar, ImmutableGrammar
 
@@ -2659,19 +2664,91 @@ class VariableManager:
         })
 
 
-class ISLaEmitter(ISLaParserListener):
+def antlr_get_text_with_whitespace(ctx) -> str:
+    if isinstance(ctx, antlr4.TerminalNode):
+        return ctx.getText()
+
+    a = ctx.start.start
+    b = ctx.stop.stop
+    assert isinstance(a, int)
+    assert isinstance(b, int)
+    stream = ctx.start.source[1]
+    assert isinstance(stream, antlr4.InputStream)
+    return stream.getText(start=a, stop=b)
+
+
+class MExprEmitter(MexprParserListener.MexprParserListener):
+    def __init__(self, variables: Set[BoundVariable]):
+        self.result: List[Union[str, BoundVariable, List[str]]] = []
+        self.variables = variables
+
+    def exitMatchExprOptional(self, ctx: MexprParser.MatchExprOptionalContext):
+        self.result.append([antlr_get_text_with_whitespace(ctx)[1:-1]])
+
+    def exitMatchExprChars(self, ctx: MexprParser.MatchExprCharsContext):
+        text = antlr_get_text_with_whitespace(ctx)
+        text = text.replace("{{", "{")
+        text = text.replace("}}", "}")
+        text = text.replace('\\"', '"')
+        self.result.append(text)
+
+    def exitMatchExprVar(self, ctx: MexprParser.MatchExprVarContext):
+        matching_variables = [var for var in self.variables if var.name == ctx.ID().getText()]
+
+        if not matching_variables:
+            raise SyntaxError(
+                f"Undeclared variable {ctx.ID().getText()} "
+                f"(line {ctx.ID().symbol.line}, column {ctx.ID().symbol.column})")
+
+        assert len(matching_variables) == 1
+
+        self.result.append(matching_variables[0])
+
+
+def parse_mexpr(inp: str, variables: Set[BoundVariable]) -> BindExpression:
+    class BailPrintErrorStrategy(antlr4.BailErrorStrategy):
+        def recover(self, recognizer: antlr4.Parser, e: antlr4.RecognitionException):
+            recognizer._errHandler.reportError(recognizer, e)
+            super().recover(recognizer, e)
+
+    lexer = MexprLexer(InputStream(inp))
+    parser = MexprParser(antlr4.CommonTokenStream(lexer))
+    parser._errHandler = BailPrintErrorStrategy()
+    mexpr_emitter = MExprEmitter(variables)
+    antlr4.ParseTreeWalker().walk(mexpr_emitter, parser.matchExpr())
+    return BindExpression(*mexpr_emitter.result)
+
+
+class ISLaEmitter(ISLaParserListener.islaListener):
     def __init__(
             self,
             structural_predicates: Optional[Set[StructuralPredicate]] = None,
             semantic_predicates: Optional[Set[SemanticPredicate]] = None):
-        self.structural_predicates = structural_predicates
-        self.semantic_predicates = semantic_predicates
+        self.structural_predicates_map = {} if not structural_predicates else {p.name: p for p in structural_predicates}
+        self.semantic_predicates_map = {} if not semantic_predicates else {p.name: p for p in semantic_predicates}
 
         self.result: Optional[Formula] = None
         self.constant: Optional[Constant] = None
         self.variables: Dict[str, BoundVariable] = {}
         self.all_vars: Dict[str, Variable] = {}
         self.formulas = {}
+        self.predicate_args = {}
+
+    def get_var(self, var: str) -> Variable:
+        if var not in self.all_vars:
+            raise SyntaxError(f"Undeclared variable symbol {var}")
+
+        return self.all_vars[var]
+
+    def get_bvar(self, var: str) -> BoundVariable:
+        if var not in self.variables:
+            raise SyntaxError(f"Undeclared variable symbol {var}")
+
+        return self.variables[var]
+
+    def exitStart(self, ctx: islaParser.StartContext):
+        if not self.constant:
+            raise SyntaxError("Missing constant declaration")
 
     def exitConstDecl(self, ctx: islaParser.ConstDeclContext):
         self.constant = Constant(ctx.cid.text, "<" + ctx.ntid.text + ">")
@@ -2681,20 +2758,49 @@ class ISLaEmitter(ISLaParserListener):
 
     def exitVarDecl(self, ctx: islaParser.VarDeclContext):
         var_type = ctx.varType().getText()
-        if var_type != "NUM":
-            var_type = f"<{var_type}>"
 
         for var_id in ctx.ID():
-            self.variables[var_id.text] = BoundVariable(var_id.text, var_type)
+            if var_id.getText() in self.variables or var_id == self.constant.name:
+                raise SyntaxError(
+                    f"Variable {ctx.ID().getText()} already declared "
+                    f"(line {ctx.ID().symbol.line}, column {ctx.ID().symbol.column})"
+                )
+
+            self.variables[var_id.getText()] = BoundVariable(var_id.getText(), var_type)
 
     def exitConstraint(self, ctx: islaParser.ConstraintContext):
         self.result = self.formulas[ctx.formula()]
 
     def exitQfdFormula(self, ctx: islaParser.QfdFormulaContext):
-        raise NotImplementedError()
+        if ctx.t.text == "forall":
+            self.formulas[ctx] = ForallFormula(
+                self.get_bvar(ctx.varId.text),
+                self.get_var(ctx.inId.text),
+                self.formulas[ctx.formula()])
+        else:
+            self.formulas[ctx] = ExistsFormula(
+                self.get_bvar(ctx.varId.text),
+                self.get_var(ctx.inId.text),
+                self.formulas[ctx.formula()])
 
     def exitQfdFormulaMexpr(self, ctx: islaParser.QfdFormulaMexprContext):
-        raise NotImplementedError()
+        mexpr = parse_mexpr(
+            antlr_get_text_with_whitespace(ctx.STRING())[1:-1],
+            set(self.variables.values()))
+        if ctx.t.text == "forall":
+            self.formulas[ctx] = ForallFormula(
+                self.get_bvar(ctx.varId.text),
+                self.get_var(ctx.inId.text),
+                self.formulas[ctx.formula()],
+                bind_expression=mexpr
+            )
+        else:
+            self.formulas[ctx] = ExistsFormula(
+                self.get_bvar(ctx.varId.text),
+                self.get_var(ctx.inId.text),
+                self.formulas[ctx.formula()],
+                bind_expression=mexpr
+            )
 
     def exitDisjunction(self, ctx: islaParser.DisjunctionContext):
         self.formulas[ctx] = self.formulas[ctx.formula(0)] | self.formulas[ctx.formula(1)]
@@ -2706,40 +2812,79 @@ class ISLaEmitter(ISLaParserListener):
         self.formulas[ctx] = -self.formulas[ctx.formula()]
 
     def exitPredicateAtom(self, ctx: islaParser.PredicateAtomContext):
-        raise NotImplementedError()
+        predicate_name = ctx.ID().getText()
+        if (predicate_name not in self.structural_predicates_map and
+                predicate_name not in self.semantic_predicates_map):
+            raise SyntaxError(f"Unknown predicate {predicate_name} in {ctx.getText()}")
+
+        args = [self.predicate_args[arg] for arg in ctx.predicateArg()]
+
+        is_structural = predicate_name in self.structural_predicates_map
+
+        predicate = (
+            self.structural_predicates_map[predicate_name] if is_structural
+            else self.semantic_predicates_map[predicate_name])
+
+        if len(args) != predicate.arity:
+            raise SyntaxError(
+                f"Unexpected number {len(args)} for predicate {predicate_name} "
+                f"({predicate.arity} expected) in {ctx.getText()} "
+                f"(line {ctx.ID().line}, column {ctx.ID().column}"
+            )
+
+        if is_structural:
+            self.formulas[ctx] = StructuralPredicateFormula(predicate, *args)
+        else:
+            self.formulas[ctx] = SemanticPredicateFormula(predicate, *args)
 
     def exitPredicateArg(self, ctx: islaParser.PredicateArgContext):
-        raise NotImplementedError()
+        if ctx.ID():
+            self.predicate_args[ctx] = self.get_var(ctx.ID().getText())
+        elif ctx.INT():
+            self.predicate_args[ctx] = int(ctx.getText())
+        elif ctx.STRING():
+            self.predicate_args[ctx] = ctx.getText()[1:-1]
 
     def exitSMTFormula(self, ctx: islaParser.SMTFormulaContext):
-        raise NotImplementedError()
+        z3_constr = z3.parse_smt2_string(
+            f"(assert {antlr_get_text_with_whitespace(ctx)})",
+            decls={var.name: z3.String(var.name) for var in self.all_vars.values()})[0]
+        free_vars = [v for v in [cast(Variable, self.constant)] + list(self.variables.values())
+                     if v.name in [str(s) for s in get_symbols(z3_constr)]]
+        self.formulas[ctx] = SMTFormula(z3_constr, *free_vars)
 
     def exitNumIntro(self, ctx: islaParser.NumIntroContext):
-        raise NotImplementedError()
-
-    def exitSexprTrue(self, ctx: islaParser.SexprTrueContext):
-        raise NotImplementedError()
-
-    def exitSexprFalse(self, ctx: islaParser.SexprFalseContext):
-        raise NotImplementedError()
-
-    def exitSexprNum(self, ctx: islaParser.SexprNumContext):
-        raise NotImplementedError()
+        self.formulas[ctx] = IntroduceNumericConstantFormula(
+            self.get_bvar(ctx.ID().getText()), self.formulas[ctx.formula()])
 
     def exitSexprId(self, ctx: islaParser.SexprIdContext):
-        raise NotImplementedError()
-
-    def exitSexprStr(self, ctx: islaParser.SexprStrContext):
-        raise NotImplementedError()
-
-    def exitSepxrApp(self, ctx: islaParser.SepxrAppContext):
-        raise NotImplementedError()
+        if ctx.ID().getText() not in self.variables:
+            raise SyntaxError(
+                f"Undeclared variable {ctx.ID().getText()} "
+                f"(line {ctx.ID().symbol.line}, column {ctx.ID().symbol.column})")
 
     def exitParFormula(self, ctx: islaParser.ParFormulaContext):
         self.formulas[ctx] = self.formulas[ctx.formula()]
 
 
 def parse_isla(
+        inp: str,
+        structural_predicates: Optional[Set[StructuralPredicate]] = None,
+        semantic_predicates: Optional[Set[SemanticPredicate]] = None) -> Formula:
+    class BailPrintErrorStrategy(antlr4.BailErrorStrategy):
+        def recover(self, recognizer: antlr4.Parser, e: antlr4.RecognitionException):
+            recognizer._errHandler.reportError(recognizer, e)
+            super().recover(recognizer, e)
+
+    lexer = islaLexer(InputStream(inp))
+    parser = islaParser(antlr4.CommonTokenStream(lexer))
+    parser._errHandler = BailPrintErrorStrategy()
+    isla_emitter = ISLaEmitter(structural_predicates, semantic_predicates)
+    antlr4.ParseTreeWalker().walk(isla_emitter, parser.start())
+    return isla_emitter.result
+
+
+def parse_isla_legacy(
         inp: str,
         structural_predicates: Optional[Set[StructuralPredicate]] = None,
         semantic_predicates: Optional[Set[SemanticPredicate]] = None) -> Formula:
