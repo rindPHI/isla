@@ -2770,36 +2770,66 @@ class ISLaEmitter(ISLaParserListener.islaListener):
     def exitConstraint(self, ctx: islaParser.ConstraintContext):
         self.result = self.formulas[ctx.formula()]
 
-    def exitQfdFormula(self, ctx: islaParser.QfdFormulaContext):
-        if ctx.t.text == "forall":
-            self.formulas[ctx] = ForallFormula(
-                self.get_bvar(ctx.varId.text),
-                self.get_var(ctx.inId.text),
-                self.formulas[ctx.formula()])
-        else:
-            self.formulas[ctx] = ExistsFormula(
-                self.get_bvar(ctx.varId.text),
-                self.get_var(ctx.inId.text),
-                self.formulas[ctx.formula()])
+    def exitForall(self, ctx: islaParser.ForallContext):
+        self.formulas[ctx] = ForallFormula(
+            self.get_bvar(ctx.varId.text),
+            self.get_var(ctx.inId.text),
+            self.formulas[ctx.formula()])
 
-    def exitQfdFormulaMexpr(self, ctx: islaParser.QfdFormulaMexprContext):
+    def exitExists(self, ctx: islaParser.ExistsContext):
+        self.formulas[ctx] = ExistsFormula(
+            self.get_bvar(ctx.varId.text),
+            self.get_var(ctx.inId.text),
+            self.formulas[ctx.formula()])
+
+    def exitForallMexpr(self, ctx: islaParser.ForallMexprContext):
         mexpr = parse_mexpr(
             antlr_get_text_with_whitespace(ctx.STRING())[1:-1],
             set(self.variables.values()))
-        if ctx.t.text == "forall":
-            self.formulas[ctx] = ForallFormula(
-                self.get_bvar(ctx.varId.text),
-                self.get_var(ctx.inId.text),
-                self.formulas[ctx.formula()],
-                bind_expression=mexpr
-            )
-        else:
-            self.formulas[ctx] = ExistsFormula(
-                self.get_bvar(ctx.varId.text),
-                self.get_var(ctx.inId.text),
-                self.formulas[ctx.formula()],
-                bind_expression=mexpr
-            )
+        self.formulas[ctx] = ForallFormula(
+            self.get_bvar(ctx.varId.text),
+            self.get_var(ctx.inId.text),
+            self.formulas[ctx.formula()],
+            bind_expression=mexpr
+        )
+
+    def exitExistsMexpr(self, ctx: islaParser.ExistsMexprContext):
+        mexpr = parse_mexpr(
+            antlr_get_text_with_whitespace(ctx.STRING())[1:-1],
+            set(self.variables.values()))
+        self.formulas[ctx] = ExistsFormula(
+            self.get_bvar(ctx.varId.text),
+            self.get_var(ctx.inId.text),
+            self.formulas[ctx.formula()],
+            bind_expression=mexpr
+        )
+
+    def exitForallStrong(self, ctx: islaParser.ForallStrongContext):
+        self.formulas[ctx] = (
+                ExistsFormula(
+                    self.get_bvar(ctx.varId.text),
+                    self.get_var(ctx.inId.text),
+                    SMTFormula(z3.BoolVal(True))) &
+                ForallFormula(
+                    self.get_bvar(ctx.varId.text),
+                    self.get_var(ctx.inId.text),
+                    self.formulas[ctx.formula()]))
+
+    def exitForallStrongMexpr(self, ctx: islaParser.ForallStrongMexprContext):
+        mexpr = parse_mexpr(
+            antlr_get_text_with_whitespace(ctx.STRING())[1:-1],
+            set(self.variables.values()))
+        self.formulas[ctx] = (
+                ExistsFormula(
+                    self.get_bvar(ctx.varId.text),
+                    self.get_var(ctx.inId.text),
+                    SMTFormula(z3.BoolVal(True)),
+                    bind_expression=mexpr) &
+                ForallFormula(
+                    self.get_bvar(ctx.varId.text),
+                    self.get_var(ctx.inId.text),
+                    self.formulas[ctx.formula()],
+                    bind_expression=mexpr))
 
     def exitNegation(self, ctx: islaParser.NegationContext):
         self.formulas[ctx] = -self.formulas[ctx.formula()]

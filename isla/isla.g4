@@ -11,16 +11,20 @@ varType : LT ID GT | 'NUM' ;
 constraint: 'constraint' '{' formula '}' ;
 
 formula:
-    t=('forall' | 'exists') varId=ID '=' STRING 'in' inId=ID ':' formula # QfdFormulaMexpr
-  | t=('forall' | 'exists') varId=ID            'in' inId=ID ':' formula # QfdFormula
-  | 'not' formula                                                        # Negation
-  | formula 'and' formula                                                # Conjunction
-  | formula 'or' formula                                                 # Disjunction
-  | formula 'implies' formula                                            # Implication
-  | 'num' ID ':' formula                                                 # NumIntro
-  | ID '(' predicateArg (',' predicateArg) * ')'                         # PredicateAtom
-  | sexpr                                                                # SMTFormula
-  | '(' formula ')'                                                      # ParFormula
+    'forall' varId=ID            'in' inId=ID ':' formula  # Forall
+  | 'exists' varId=ID            'in' inId=ID ':' formula  # Exists
+  | 'forall' varId=ID '=' STRING 'in' inId=ID ':' formula  # ForallMexpr
+  | 'exists' varId=ID '=' STRING 'in' inId=ID ':' formula  # ExistsMexpr
+  | 'forall!' varId=ID            'in' inId=ID ':' formula # ForallStrong
+  | 'forall!' varId=ID '=' STRING 'in' inId=ID ':' formula # ForallStrongMexpr
+  | 'not' formula                                          # Negation
+  | formula 'and' formula                                  # Conjunction
+  | formula 'or' formula                                   # Disjunction
+  | formula 'implies' formula                              # Implication
+  | 'num' ID ':' formula                                   # NumIntro
+  | ID '(' predicateArg (',' predicateArg) * ')'           # PredicateAtom
+  | sexpr                                                  # SMTFormula
+  | '(' formula ')'                                        # ParFormula
   ;
 
 sexpr:
