@@ -1,4 +1,4 @@
-import copy
+import logging
 import logging
 import os
 import unittest
@@ -8,12 +8,9 @@ from xml.sax.saxutils import escape
 
 import pytest
 import z3
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 
 from isla import isla
 from isla import isla_shortcuts as sc
-from isla.concrete_syntax import ISLA_GRAMMAR
-from isla.helpers import delete_unreachable
 from isla.isla import VariablesCollector, parse_isla
 from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
 from isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \

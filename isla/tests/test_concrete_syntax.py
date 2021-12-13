@@ -5,9 +5,8 @@ import z3
 
 import isla.isla_shortcuts as sc
 from isla import isla
-from isla.isla import DummyVariable, parse_isla, parse_isla_legacy
-from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, COUNT_PREDICATE
-from isla.tests.subject_languages import rest, xml_lang
+from isla.isla import DummyVariable, parse_isla
+from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
 from isla.tests.test_data import LANG_GRAMMAR
 
 

@@ -2801,14 +2801,19 @@ class ISLaEmitter(ISLaParserListener.islaListener):
                 bind_expression=mexpr
             )
 
-    def exitDisjunction(self, ctx: islaParser.DisjunctionContext):
-        self.formulas[ctx] = self.formulas[ctx.formula(0)] | self.formulas[ctx.formula(1)]
+    def exitNegation(self, ctx: islaParser.NegationContext):
+        self.formulas[ctx] = -self.formulas[ctx.formula()]
 
     def exitConjunction(self, ctx: islaParser.ConjunctionContext):
         self.formulas[ctx] = self.formulas[ctx.formula(0)] & self.formulas[ctx.formula(1)]
 
-    def exitNegation(self, ctx: islaParser.NegationContext):
-        self.formulas[ctx] = -self.formulas[ctx.formula()]
+    def exitDisjunction(self, ctx: islaParser.DisjunctionContext):
+        self.formulas[ctx] = self.formulas[ctx.formula(0)] | self.formulas[ctx.formula(1)]
+
+    def exitImplication(self, ctx: islaParser.ImplicationContext):
+        left = self.formulas[ctx.formula(0)]
+        right = self.formulas[ctx.formula(1)]
+        self.formulas[ctx] = -left | (left & right)
 
     def exitPredicateAtom(self, ctx: islaParser.PredicateAtomContext):
         predicate_name = ctx.ID().getText()

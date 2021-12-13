@@ -16,6 +16,7 @@ formula:
   | 'not' formula                                                        # Negation
   | formula 'and' formula                                                # Conjunction
   | formula 'or' formula                                                 # Disjunction
+  | formula 'implies' formula                                            # Implication
   | 'num' ID ':' formula                                                 # NumIntro
   | ID '(' predicateArg (',' predicateArg) * ')'                         # PredicateAtom
   | sexpr                                                                # SMTFormula
