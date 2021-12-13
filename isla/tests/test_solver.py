@@ -386,24 +386,6 @@ constraint {
             cost_settings=STD_COST_SETTINGS,
         )
 
-    def Xtest_isla(self):
-        # TODO
-        # grammar = ISLA_GRAMMAR
-        grammar = copy.deepcopy(ISLA_GRAMMAR)
-        grammar["<smt_atom>"] = ["(= <id> <id>)"]
-        # grammar["<predicate_atom>"] = ["before(<id>, <id>)"]
-        delete_unreachable(grammar)
-
-        fuzzer = GrammarCoverageFuzzer(grammar)
-        logger = logging.getLogger(type(self).__name__)
-        for _ in range(1000):
-            inp = fuzzer.fuzz()
-            logger.info(inp)
-            try:
-                parse_isla(inp)
-            except SyntaxError as err:
-                logger.warning(err.msg)
-
     def execute_generation_test(
             self,
             formula: Union[isla.Formula, str],

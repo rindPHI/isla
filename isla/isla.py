@@ -11,20 +11,19 @@ import z3
 from antlr4 import InputStream
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
 from fuzzingbook.Grammars import is_nonterminal, RE_NONTERMINAL
-from fuzzingbook.Parser import EarleyParser, PEGParser
+from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
 from orderedset import OrderedSet
 
-from isla.concrete_syntax import ISLA_GRAMMAR
+import isla.parsers.isla.isla.islaListener as ISLaParserListener
+import isla.parsers.isla.mexpr_parser.MexprParserListener as MexprParserListener
 from isla.helpers import get_symbols, z3_subst, is_valid, \
     replace_line_breaks, delete_unreachable, pop, z3_solve, powerset, grammar_to_immutable, immutable_to_grammar, \
     nested_list_to_tuple
-import isla.parsers.isla.mexpr_parser.MexprParserListener as MexprParserListener
-from isla.parsers.isla.mexpr_parser.MexprParser import MexprParser
-from isla.parsers.isla.mexpr_lexer.MexprLexer import MexprLexer
-import isla.parsers.isla.isla.islaListener as ISLaParserListener
 from isla.parsers.isla.isla.islaLexer import islaLexer
 from isla.parsers.isla.isla.islaParser import islaParser
+from isla.parsers.isla.mexpr_lexer.MexprLexer import MexprLexer
+from isla.parsers.isla.mexpr_parser.MexprParser import MexprParser
 from isla.type_defs import ParseTree, Path, Grammar, ImmutableGrammar
 
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
@@ -2882,159 +2881,6 @@ def parse_isla(
     isla_emitter = ISLaEmitter(structural_predicates, semantic_predicates)
     antlr4.ParseTreeWalker().walk(isla_emitter, parser.start())
     return isla_emitter.result
-
-
-def parse_isla_legacy(
-        inp: str,
-        structural_predicates: Optional[Set[StructuralPredicate]] = None,
-        semantic_predicates: Optional[Set[SemanticPredicate]] = None) -> Formula:
-    structural_predicates_map = {} if not structural_predicates else {p.name: p for p in structural_predicates}
-    semantic_predicates_map = {} if not semantic_predicates else {p.name: p for p in semantic_predicates}
-
-    pegparser = PEGParser(ISLA_GRAMMAR)
-    tree = DerivationTree.from_parse_tree(pegparser.parse(inp.strip())[0])
-
-    const_decl = tree.filter(lambda n: n.value == "<const>", enforce_unique=True)[0][1]
-    const = Constant(str(const_decl.children[2]), str(const_decl.children[-4]))
-
-    var_decls = tree.filter(lambda n: n.value == "<var_decl>")
-    variables: List[BoundVariable] = []
-    for var_decl in var_decls:
-        ids = [str(id) for _, id in var_decl[1].filter(lambda n: n.value == "<id>")]
-        ntype = [str(nt) for _, nt in var_decl[1].filter(lambda n: n.value == "<var_type>")][0]
-        variables.extend([BoundVariable(id, ntype) for id in ids])
-
-    all_vars = [cast(Variable, const)] + variables
-
-    def check_undeclared_ids(tree: DerivationTree) -> None:
-        undeclared_ids = [
-            str(var[1]) for var in tree.filter(lambda n: n.value == "<id>")
-            if all(decl_var.name != str(var[1]) for decl_var in all_vars)
-        ]
-
-        if undeclared_ids:
-            raise SyntaxError(f"Undeclared symbols '{', '.join(undeclared_ids)}' in {tree}")
-
-    def parse_constraint(tree: DerivationTree) -> Formula:
-        if tree.value == "<constraint>":
-            return parse_constraint(tree.children[0])
-        if tree.value == "<disjunction>":
-            if len(tree.children) == 1:
-                return parse_constraint(tree.children[0])
-            else:
-                return parse_constraint(tree.children[2]) | parse_constraint(tree.children[-3])
-        elif tree.value == "<conjunction>":
-            if len(tree.children) == 1:
-                return parse_constraint(tree.children[0])
-            else:
-                return parse_constraint(tree.children[2]) & parse_constraint(tree.children[-3])
-        elif tree.value == "<negation>":
-            if len(tree.children) == 1:
-                return parse_constraint(tree.children[0])
-            else:
-                return -parse_constraint(tree.children[-1])
-        elif tree.value == "<num_intro>":
-            bvar_sym = str(tree.children[2])
-
-            if all(v.name != bvar_sym for v in all_vars):
-                raise SyntaxError(f"Undeclared symbol {bvar_sym} in {str(tree)}")
-
-            bvar = next(v for v in variables if v.name == bvar_sym)
-
-            return IntroduceNumericConstantFormula(bvar, parse_constraint(tree.children[-1]))
-        elif tree.value == "<smt_atom>":
-            check_undeclared_ids(tree)
-
-            z3_constr = z3.parse_smt2_string(
-                f"(assert {str(tree)})",
-                decls={var.name: z3.String(var.name) for var in all_vars})[0]
-            free_vars = [v for v in [cast(Variable, const)] + variables
-                         if v.name in [str(s) for s in get_symbols(z3_constr)]]
-            return SMTFormula(z3_constr, *free_vars)
-        elif tree.value == "<predicate_atom>":
-            check_undeclared_ids(tree)
-
-            predicate_name = str(tree.children[0])
-            if predicate_name not in structural_predicates_map and predicate_name not in semantic_predicates_map:
-                raise SyntaxError(f"Unknown predicate {predicate_name} in {tree}")
-
-            args = [
-                next(var for var in all_vars if var.name == str(arg.children[0]))
-                if arg.children[0].value == "<id>"
-                else int(str(arg)) if arg.children[0].value == "<number>"
-                else str(arg)[1:-1] if arg.children[0].value == "<string>"
-                else str(arg)
-                for _, arg in tree.filter(lambda n: n.value == "<arg>")]
-
-            is_structural = predicate_name in structural_predicates_map
-
-            predicate = (
-                structural_predicates_map[predicate_name] if is_structural
-                else semantic_predicates_map[predicate_name])
-
-            if len(args) != predicate.arity:
-                raise SyntaxError(
-                    f"Unexpected number {len(args)} for predicate {predicate_name} "
-                    f"({predicate.arity} expected) in {tree}")
-
-            if is_structural:
-                return StructuralPredicateFormula(predicate, *args)
-            else:
-                return SemanticPredicateFormula(predicate, *args)
-        elif tree.value == "<quantified_formula>":
-            qfr_sym = str(tree.children[0])
-            bvar_sym = str(tree.children[2])
-            invar_sym = str(tree.children[-4])
-
-            for sym in [bvar_sym, invar_sym]:
-                if all(v.name != sym for v in all_vars):
-                    raise SyntaxError(f"Undeclared symbol {sym} in {str(tree)}")
-
-            bvar = next(v for v in variables if v.name == bvar_sym)
-            invar = next(v for v in all_vars if v.name == invar_sym)
-
-            bexpr = None
-            if tree.children[4].value == "<bind_expr>":
-                bexpr = parse_bind_expr(tree.children[4])
-
-            inner_constraint = parse_constraint(tree.children[-1])
-
-            if qfr_sym == "forall":
-                return ForallFormula(bvar, invar, inner_constraint, bind_expression=bexpr)
-            else:
-                return ExistsFormula(bvar, invar, inner_constraint, bind_expression=bexpr)
-        else:
-            raise NotImplementedError(f"Cannot parse expression {str(tree)}, symbol {tree.value}")
-
-    def parse_bind_expr(tree: DerivationTree) -> BindExpression:
-        result_elements: List[Union[str, BoundVariable, List[str]]] = []
-
-        leaves = cast(DerivationTree, tree.children[1]).filter(
-            lambda n: n.value == "<bind_expr_element>")
-
-        for _, leaf in leaves:
-            leaf = leaf.children[0]
-            assert leaf.value in ["<var>", "<optional>", "<esc_chars>"]
-
-            if leaf.value == "<esc_chars>":
-                esc_chars = str(leaf)
-                # Replace escaped symbols
-                esc_chars = esc_chars.replace("{{", "{")
-                esc_chars = esc_chars.replace("}}", "}")
-                esc_chars = esc_chars.replace('\\"', '"')
-                result_elements.append(esc_chars)
-            elif leaf.value == "<optional>":
-                result_elements.append([str(leaf.children[1])])
-            else:
-                try:
-                    result_elements.append(next(v for v in variables if v.name == str(leaf.children[1])))
-                except StopIteration:
-                    raise SyntaxError(f"Undeclared symbol {str(leaf.children[1])} in {str(tree)}")
-
-        return BindExpression(*result_elements)
-
-    return parse_constraint(
-        tree.filter(lambda n: n.value == "<constraint_decl>", True)[0][1].children[-3])
 
 
 def get_conjuncts(formula: Formula) -> List[Formula]:
