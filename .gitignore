@@ -8,3 +8,4 @@ isla/scriptsizec-ll1.py
 isla/testcvc5.py
 isla/*.tokens
 isla/parsers/
+.eggs/
