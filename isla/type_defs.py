@@ -1,4 +1,4 @@
-from typing import Tuple, Optional, List, Dict
+from typing import Tuple, Optional, List, Dict, TypeVar, NewType
 
 ParseTree = Tuple[str, Optional[List['ParseTree']]]
 Path = Tuple[int, ...]

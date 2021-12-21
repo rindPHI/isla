@@ -4,7 +4,6 @@ from typing import Optional, List, Tuple, cast, Union, Set, Dict
 
 from fuzzingbook.Grammars import is_nonterminal
 from fuzzingbook.Parser import non_canonical
-from grammar_graph import gg
 from grammar_graph.gg import GrammarGraph, NonterminalNode, Node, ChoiceNode
 from orderedset import OrderedSet
 

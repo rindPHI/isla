@@ -1,9 +1,8 @@
 import itertools
 import logging
-import random
 import math
+import random
 import re
-from collections import defaultdict
 from typing import Optional, Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast, Callable
 
 import z3
