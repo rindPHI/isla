@@ -40,6 +40,9 @@ test:
     #- python setup.py test
     - pip install tox
     - tox -e py39
+  artifacts:
+    paths:
+      - report.html
 
 run:
   script:
@@ -50,6 +53,7 @@ run:
   artifacts:
     paths:
       - dist/*.whl
+      - dist/*.tar.gz
 
 #pages:
 #  script:

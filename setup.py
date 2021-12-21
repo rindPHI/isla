@@ -119,6 +119,7 @@ setup(
       "pytest-pycharm==0.7.0",
       "pytest-xdist==2.4.0",
       "pytest==6.2.4",
+      "pytest-html==3.1.1",
       "python-dateutil==2.8.2",
       "python-magic==0.4.24",
       "pytz==2021.3",
