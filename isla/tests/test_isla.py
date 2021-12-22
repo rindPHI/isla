@@ -781,11 +781,11 @@ constraint {
 
         tree = DerivationTree.from_parse_tree(('<start>', [('<statement>', [('<block>', None)])]))
         for k in range(1, 6):
-            self.assertEqual(set(graph.k_paths_in_tree(tree.to_parse_tree(), k)), tree.k_paths(graph, k))
+            self.assertEqual(graph.k_paths_in_tree(tree.to_parse_tree(), k), tree.k_paths(graph, k))
 
         tree = DerivationTree.from_parse_tree(('<start>', [('<statement>', None)]))
         for k in range(1, 6):
-            self.assertEqual(set(graph.k_paths_in_tree(tree.to_parse_tree(), k)), tree.k_paths(graph, k))
+            self.assertEqual(graph.k_paths_in_tree(tree.to_parse_tree(), k), tree.k_paths(graph, k))
 
         rtree = tree.replace_path(
             (0,), DerivationTree("<statement>", [DerivationTree("<block>", None)])
@@ -800,7 +800,7 @@ constraint {
         tree = DerivationTree.from_parse_tree(('<start>', [('<statement>', None)]))
 
         for k in range(1, 6):
-            self.assertEqual(set(graph.k_paths_in_tree(tree.to_parse_tree(), k)), tree.k_paths(graph, k))
+            self.assertEqual(graph.k_paths_in_tree(tree.to_parse_tree(), k), tree.k_paths(graph, k))
 
         rtree = tree.replace_path(
             (0,), DerivationTree.from_parse_tree(("<statement>", [
