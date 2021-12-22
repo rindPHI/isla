@@ -174,7 +174,7 @@ class DerivationTree:
         return self.__k_paths[k]
 
     def recompute_k_paths(self, graph: gg.GrammarGraph, k: int) -> Set[Tuple[gg.Node, ...]]:
-        self.__k_paths[k] = set(graph.k_paths_in_tree(self.to_parse_tree(), k))
+        self.__k_paths[k] = set(iter(graph.k_paths_in_tree(self.to_parse_tree(), k)))
         return self.__k_paths[k]
 
     def root_nonterminal(self) -> str:

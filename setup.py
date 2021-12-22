@@ -161,7 +161,7 @@ setup(
       "yapf==0.31.0",
       "z3-solver>=4.8.8.0",
       "zipp==3.6.0",
-      "proxyorderedset @ git+git://github.com/rindPHI/proxyorderedset@1a11f4289789d4fa5babe67560ad3be0e19c4790",
-      "grammargraph @ git+git://github.com/rindPHI/GrammarGraph@e65454ed0613c3b015d7996c1693bad34f3997a2"
+      "proxyorderedset @ git+git://github.com/rindPHI/proxyorderedset",
+      "grammargraph @ git+git://github.com/rindPHI/GrammarGraph"
     ]
 )
