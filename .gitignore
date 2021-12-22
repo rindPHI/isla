@@ -9,3 +9,4 @@ isla/testcvc5.py
 isla/*.tokens
 .eggs/
 gen/
+venv/
