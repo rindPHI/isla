@@ -41,6 +41,7 @@ test:
     - pip install tox
     - tox -e py39
   artifacts:
+    when: always
     paths:
       - report.html
 
