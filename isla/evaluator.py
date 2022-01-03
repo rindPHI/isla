@@ -1,4 +1,3 @@
-import copy
 import logging
 import multiprocessing as mp
 import os.path
@@ -10,50 +9,17 @@ import math
 import matplotlib
 import matplotlib.pyplot as plt
 import pathos.multiprocessing as pmp
-import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
 from matplotlib import pyplot as plt, ticker as mtick
 
-import isla.isla_shortcuts as sc
 from isla import isla, solver
 from isla.helpers import weighted_geometric_mean
-from isla.isla import set_smt_auto_eval
 from isla.solver import ISLaSolver
 from isla.type_defs import Grammar
 
 logger = logging.getLogger("evaluator")
-
-
-def vacuously_satisfies(inp: isla.DerivationTree, formula: isla.Formula, grammar: Grammar) -> bool:
-    # Note: This assumes that `inp` *does* satisfy `formula`!
-    assert isla.evaluate(formula, inp, grammar)
-
-    formula = copy.deepcopy(formula)
-    set_smt_auto_eval(formula, False)
-
-    constant = next(
-        c for c in isla.VariablesCollector.collect(formula)
-        if isinstance(c, isla.Constant))
-
-    qfr_free: List[isla.Formula] = isla.eliminate_quantifiers(
-        formula.substitute_expressions({constant: inp}), grammar=grammar)
-    qfr_free_dnf: List[isla.Formula] = [isla.convert_to_dnf(isla.convert_to_nnf(f)) for f in qfr_free]
-    clauses: List[List[isla.Formula]] = [
-        isla.split_conjunction(_f)
-        for f in qfr_free_dnf
-        for _f in isla.split_disjunction(f)
-    ]
-
-    # There needs to be one non-trivial clause for non-vacuous satisfaction
-    clauses = [
-        clause for clause in clauses
-        if all(f != sc.false() for f in clause)
-           and any(not isinstance(f, isla.SMTFormula) or not z3.is_true(f.formula) for f in clause)
-    ]
-
-    return not clauses
 
 
 def generate_inputs(
