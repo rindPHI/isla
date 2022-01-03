@@ -10,7 +10,7 @@ from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.Grammars import srange
 from fuzzingbook.Parser import EarleyParser
 
-from isla.evaluator import auto_tune_weight_vector
+from isla.optimizer import auto_tune_weight_vector
 from isla.isla import parse_isla, evaluate, DerivationTree
 from isla.solver import ISLaSolver, CostSettings
 from isla.tests.subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES

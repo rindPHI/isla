@@ -3,7 +3,7 @@ import random
 import xml.etree.ElementTree as ET
 
 from isla import isla
-from isla.evaluator import auto_tune_weight_vector
+from isla.optimizer import auto_tune_weight_vector
 from isla.tests.subject_languages.xml_lang import XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, \
     XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, XML_NO_ATTR_REDEF_CONSTRAINT
 

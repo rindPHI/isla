@@ -2,7 +2,7 @@ import logging
 import random
 
 from isla import isla
-from isla.evaluator import auto_tune_weight_vector
+from isla.optimizer import auto_tune_weight_vector
 import isla.tests.subject_languages.csv as CSV
 
 

@@ -2,7 +2,7 @@ import logging
 import random
 
 from isla import isla
-from isla.evaluator import auto_tune_weight_vector
+from isla.optimizer import auto_tune_weight_vector
 from isla.tests.subject_languages.scriptsizec import SCRIPTSIZE_C_GRAMMAR, compile_scriptsizec_clang, \
     SCRIPTSIZE_C_DEF_USE_CONSTR, SCRIPTSIZE_C_NO_REDEF_CONSTR
 
