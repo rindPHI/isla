@@ -1,8 +1,14 @@
+import json
 import logging
+import multiprocessing
 import multiprocessing as mp
+import os
 import os.path
+import sqlite3
 import sys
 import time
+from datetime import datetime
+from multiprocessing import Process
 from typing import List, Generator, Dict, Callable, Set, Tuple, Optional, Union
 
 import math
@@ -17,47 +23,20 @@ from matplotlib import pyplot as plt, ticker as mtick
 from isla import isla, solver
 from isla.helpers import weighted_geometric_mean
 from isla.solver import ISLaSolver
-from isla.type_defs import Grammar
+from isla.type_defs import Grammar, ParseTree
 
 logger = logging.getLogger("evaluator")
 
 
-def generate_inputs(
-        generator: Union[Generator[isla.DerivationTree, None, None], ISLaSolver, Grammar],
-        timeout_seconds: int = 60) -> Dict[float, isla.DerivationTree]:
-    start_time = time.time()
-    result: Dict[float, isla.DerivationTree] = {}
-    print(f"Collecting data for {timeout_seconds} seconds")
+def strtime() -> str:
+    return datetime.now().strftime("%H:%M:%S")
 
-    if isinstance(generator, ISLaSolver):
-        generator = generator.solve()
-    elif isinstance(generator, dict):
-        grammar = generator
 
-        def gen():
-            fuzzer = GrammarCoverageFuzzer(grammar)
-            while True:
-                yield isla.DerivationTree.from_parse_tree(
-                    list(EarleyParser(grammar).parse(fuzzer.fuzz()))[0])
+def std_db_file() -> str:
+    return os.path.join(
+        *os.path.split(os.path.dirname(os.path.realpath(__file__)))[:-1],
+        "isla_evaluation.sqlite")
 
-        generator = gen()
-
-    while int(time.time()) - int(start_time) <= timeout_seconds:
-        try:
-            inp = next(generator)
-        except StopIteration:
-            break
-        except Exception as exp:
-            print("Exception occurred while executing solver; I'll stop here:\n" + str(exp), file=sys.stderr)
-            return result
-
-        logger.debug("Input: %s", str(inp))
-        curr_relative_time = time.time() - start_time
-        assert curr_relative_time not in result
-        result[curr_relative_time] = inp
-
-    print(f"Collected {len(result)} inputs in {timeout_seconds} seconds")
-    return result
 
 class PerformanceEvaluationResult:
     def __init__(
@@ -232,6 +211,220 @@ class PerformanceEvaluationResult:
                f"invalid inputs: {(list(self.accumulated_invalid_inputs.values()) or [0])[-1]}, " \
                f"k-Path Coverage: {(list(self.accumulated_k_path_coverage.values()) or [0])[-1]}, " \
                f"Non-Vacuity Index: {(list(self.accumulated_non_vacuous_index.values()) or [0])[-1]})"
+
+
+def generate_inputs(
+        generator: Generator[isla.DerivationTree, None, None] | ISLaSolver | Grammar,
+        timeout_seconds: int = 60,
+        jobname: Optional[str] = None) -> Dict[float, isla.DerivationTree]:
+    start_time = time.time()
+    result: Dict[float, isla.DerivationTree] = {}
+    jobname = "" if not jobname else f" ({jobname})"
+    print(f"[{strtime()}] Collecting data for {timeout_seconds} seconds{jobname}")
+
+    if isinstance(generator, ISLaSolver):
+        generator = generator.solve()
+    elif isinstance(generator, dict):
+        grammar = generator
+
+        def gen():
+            fuzzer = GrammarCoverageFuzzer(grammar)
+            while True:
+                yield isla.DerivationTree.from_parse_tree(
+                    list(EarleyParser(grammar).parse(fuzzer.fuzz()))[0])
+
+        generator = gen()
+
+    while int(time.time()) - int(start_time) <= timeout_seconds:
+        try:
+            inp = next(generator)
+        except StopIteration:
+            break
+        except Exception as exp:
+            print("Exception occurred while executing solver; I'll stop here:\n" + str(exp), file=sys.stderr)
+            return result
+
+        logger.debug("Input: %s", str(inp))
+        curr_relative_time = time.time() - start_time
+        assert curr_relative_time not in result
+        result[curr_relative_time] = inp
+
+    print(f"[{strtime()}] Collected {len(result)} inputs in {timeout_seconds} seconds{jobname}")
+    return result
+
+
+def create_db_tables(db_file: str = std_db_file()) -> None:
+    con = sqlite3.connect(db_file)
+
+    with con:
+        con.execute("""
+CREATE TABLE IF NOT EXISTS inputs (
+  inpId INTEGER PRIMARY KEY ASC, 
+  testId TEXT,
+  sid INT,
+  reltime REAL,
+  inp TEXT
+)
+""")
+
+        con.execute("CREATE TABLE IF NOT EXISTS valid(inpId INTEGER PRIMARY KEY ASC)")
+
+        con.execute("CREATE TABLE IF NOT EXISTS kpaths(inpId INTEGER PRIMARY KEY ASC, k INT, paths TEXT)")
+
+    con.close()
+
+
+def get_max_sid(test_id: str, db_file: str = std_db_file()) -> Optional[int]:
+    create_db_tables(db_file)
+    con = sqlite3.connect(db_file)
+
+    with con:
+        sid = None
+        for row in con.execute("SELECT MAX(sid) FROM inputs WHERE testId = ?", (test_id,)):
+            if row[0]:
+                sid = row[0]
+            break
+
+    con.close()
+    return sid
+
+
+def store_inputs(test_id: str, inputs: Dict[float, isla.DerivationTree], db_file: str = std_db_file()) -> None:
+    sid = (get_max_sid(test_id, db_file) or 0) + 1
+
+    create_db_tables(db_file)
+    con = sqlite3.connect(db_file)
+
+    with con:
+        reltime: float
+        inp: isla.DerivationTree
+        for reltime, inp in inputs.items():
+            con.execute(
+                "INSERT INTO inputs(testId, sid, reltime, inp) VALUES (?, ?, ?, ?)",
+                (test_id, sid, reltime, json.dumps(inp.to_parse_tree())))
+
+    con.close()
+
+
+def get_inputs_from_db(
+        test_id: str,
+        sid: Optional[int] = None,
+        db_file: str = std_db_file(),
+        only_valid: bool = False
+) -> Dict[int, isla.DerivationTree]:
+    all_inputs_query = \
+        """
+        SELECT inpId, inp FROM inputs
+        WHERE testId = ? AND sid = ?
+        """
+
+    valid_inputs_query = \
+        """
+        SELECT inpId, inp FROM inputs
+        NATURAL JOIN valid
+        WHERE testId = ? AND sid = ?
+        """
+
+    inputs: Dict[int, isla.DerivationTree] = {}
+
+    # Get newest session ID if not present
+    if sid is None:
+        sid = get_max_sid(test_id, db_file)
+        assert sid
+
+    query = valid_inputs_query if only_valid else all_inputs_query
+    con = sqlite3.connect(db_file)
+    with con:
+        for row in con.execute(query, (test_id, sid)):
+            inputs[row[0]] = isla.DerivationTree.from_parse_tree(json.loads(row[1]))
+    con.close()
+
+    return inputs
+
+
+def evaluate_validity(
+        test_id: str,
+        validator: Callable[[isla.DerivationTree], bool],
+        db_file: str = std_db_file(),
+        sid: Optional[int] = None) -> None:
+    create_db_tables(db_file)
+
+    # Get newest session ID if not present
+    if sid is None:
+        sid = get_max_sid(test_id, db_file)
+        assert sid
+
+    print(f"[{strtime()}] Evaluating validity for session {sid} of {test_id}")
+
+    # Obtain inputs from session
+    inputs = get_inputs_from_db(test_id, sid, db_file)
+
+    # Evaluate (in parallel)
+    def evaluate(inp_id: int, inp: isla.DerivationTree, queue: multiprocessing.Queue):
+        try:
+            if validator(inp) is True:
+                queue.put(inp_id)
+        except Exception as err:
+            print(f"Exception {err} raise when validating input {inp}, tree: {repr(inp)}")
+
+    manager = multiprocessing.Manager()
+    queue = manager.Queue()
+    with pmp.Pool(processes=pmp.cpu_count()) as pool:
+        pool.starmap(evaluate, [(inp_id, inp, queue) for inp_id, inp in inputs.items()])
+
+    # Insert into DB
+    con = sqlite3.connect(db_file)
+    with con:
+        while not queue.empty():
+            con.execute("INSERT INTO valid(inpId) VALUES (?)", (queue.get(),))
+    con.close()
+
+    print(f"[{strtime()}] DONE Evaluating validity for session {sid} of {test_id}")
+
+
+def evaluate_kpaths(
+        test_id: str,
+        graph: gg.GrammarGraph,
+        k: int = 3,
+        db_file: str = std_db_file(),
+        sid: Optional[int] = None) -> None:
+    if os.environ.get("PYTHONHASHSEED") is None:
+        print("WARNING: Environment variable PYTHONHASHSEED not set, "
+              "should be set to 0 for deterministic hashing of k-paths", file=sys.stderr)
+    if os.environ.get("PYTHONHASHSEED") is not None and os.environ["PYTHONHASHSEED"] != "0":
+        print("WARNING: Environment variable PYTHONHASHSEED not set, "
+              "should be set to 0 for deterministic hashing of k-paths", file=sys.stderr)
+
+    create_db_tables(db_file)
+
+    # Get newest session ID if not present
+    if sid is None:
+        sid = get_max_sid(test_id, db_file)
+        assert sid
+
+    print(f"[{strtime()}] Evaluating k-paths for session {sid} of {test_id}")
+
+    # Obtain inputs from session
+    inputs = get_inputs_from_db(test_id, sid, db_file, only_valid=True)
+
+    # Evaluate (in parallel)
+    def compute_k_paths(inp_id: int, inp: isla.DerivationTree, queue: multiprocessing.Queue):
+        queue.put((inp_id, [hash(path) for path in graph.k_paths_in_tree(inp.to_parse_tree(), k)]))
+
+    manager = multiprocessing.Manager()
+    queue = manager.Queue()
+    with pmp.Pool(processes=pmp.cpu_count()) as pool:
+        pool.starmap(compute_k_paths, [(inp_id, inp, queue) for inp_id, inp in inputs.items()])
+
+    # Insert into DB
+    con = sqlite3.connect(db_file)
+    with con:
+        while not queue.empty():
+            inp_id, path_hashes = queue.get()
+            con.execute("INSERT INTO kpaths(inpId, k, paths) VALUES (?, ?, ?)", (inp_id, k, json.dumps(path_hashes)))
+    con.close()
+
+    print(f"[{strtime()}] DONE Evaluating k-paths for session {sid} of {test_id}")
 
 
 def evaluate_data(
