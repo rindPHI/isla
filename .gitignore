@@ -10,3 +10,4 @@ isla/*.tokens
 .eggs/
 gen/
 venv/
+isla_evaluation.sqlite
