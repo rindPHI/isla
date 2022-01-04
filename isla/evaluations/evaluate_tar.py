@@ -2,7 +2,7 @@ import sys
 
 from grammar_graph.gg import GrammarGraph
 
-from isla.evaluator import evaluate_generators, plot_proportion_valid_inputs_graph, print_statistics
+from isla.evaluator import evaluate_generators, plot_proportion_valid_inputs_graph, print_statistics, Evaluator
 from isla.solver import ISLaSolver, CostSettings, STD_COST_SETTINGS
 from isla.tests.subject_languages import tar
 
@@ -76,7 +76,7 @@ length_constraints_and_checksum_and_link = (
         tar.final_entry_length_constraint
 )
 
-g_len = ISLaSolver(
+g_len = lambda timeout: ISLaSolver(
     tar.TAR_GRAMMAR,
     length_constraints,
     max_number_free_instantiations=max_number_free_instantiations,
@@ -85,7 +85,7 @@ g_len = ISLaSolver(
     cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
-g_len_cs = ISLaSolver(
+g_len_cs = lambda timeout: ISLaSolver(
     tar.TAR_GRAMMAR,
     length_constraints_and_checksum,
     max_number_free_instantiations=max_number_free_instantiations,
@@ -94,7 +94,7 @@ g_len_cs = ISLaSolver(
     cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
-g_len_cs_lin = ISLaSolver(
+g_len_cs_lin = lambda timeout: ISLaSolver(
     tar.TAR_GRAMMAR,
     length_constraints_and_checksum_and_link,
     max_number_free_instantiations=max_number_free_instantiations,
@@ -103,38 +103,17 @@ g_len_cs_lin = ISLaSolver(
     cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
 )
 
-
-def evaluate_validity(out_dir: str, base_name: str, generators, jobnames):
-    results = evaluate_generators(
-        generators,
-        None,
-        GrammarGraph.from_grammar(tar.TAR_GRAMMAR),
-        tar.extract_tar,
-        timeout,
-        k=3,
-        cpu_count=len(generators),
-        jobnames=jobnames,
-        compute_vacuity=False,
-        compute_kpath_coverage=False
-    )
-
-    for result, jobname in zip(results, jobnames):
-        result.save_to_csv_file(out_dir, base_name + jobname)
-
-
 if __name__ == '__main__':
     # logging.basicConfig(level=logging.DEBUG)
     generators = [tar.TAR_GRAMMAR, g_len, g_len_cs, g_len_cs_lin]
     jobnames = ["Grammar Fuzzer", "Length", "Length + Checksum", "Length + Checksum + Def-Use"]
 
-    if len(sys.argv) > 1 and sys.argv[1] in jobnames:
-        idx = jobnames.index(sys.argv[1])
-        generators = [generators[idx]]
-        jobnames = [jobnames[idx]]
+    evaluator = Evaluator(
+        "tar",
+        generators,
+        jobnames,
+        tar.extract_tar,
+        GrammarGraph.from_grammar(tar.TAR_GRAMMAR),
+        default_timeout=60 * 60)
 
-    out_dir = "../../eval_results/tar"
-    base_name = "input_validity_tar_"
-
-    # evaluate_validity(out_dir, base_name, generators, jobnames)
-    # plot_proportion_valid_inputs_graph(out_dir, base_name, jobnames, f"{out_dir}/input_validity_tar.pdf")
-    print_statistics(out_dir, base_name, jobnames)
+    evaluator.run()

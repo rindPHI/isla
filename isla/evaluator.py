@@ -63,7 +63,7 @@ class Evaluator:
     def __init__(
             self,
             jobname_prefix: str,
-            generators: List[Generator[isla.DerivationTree, None, None] | ISLaSolver | Grammar],
+            generators: List[Callable[[int], ISLaSolver] | Grammar],
             jobnames: List[str],
             validator: Callable[[isla.DerivationTree], bool],
             graph: gg.GrammarGraph,
@@ -72,7 +72,6 @@ class Evaluator:
             default_sessions: int = 1):
         self.validator = validator
         self.graph = graph
-        self.db_file = db_file
 
         args, print_help = self.parse_command_line(
             jobname_prefix, db_file, jobnames, default_sessions, default_timeout)
@@ -94,8 +93,16 @@ class Evaluator:
             print_help()
             exit(1)
 
+        try:
+            self.timeout: int = int(args.timeout)
+        except ValueError:
+            print("ERROR: timeout value must be an integer.", file=sys.stderr)
+            print_help()
+            exit(1)
+
         self.jobs_and_generators = {
-            f"{jobname_prefix} {job}": generator
+            f"{jobname_prefix} {job}":
+                generator if isinstance(generator, dict) else generator(self.timeout)
             for job, generator in
             zip(jobnames, generators) if job in chosen_jobs
         }
@@ -108,10 +115,10 @@ class Evaluator:
             exit(1)
 
         self.do_clean: bool = args.clean
+        self.do_analyze: bool = args.analyze
         self.do_generate: bool = args.generate
         self.do_evaluate_validity: bool = args.validity
         self.do_compute_kpaths: bool = args.kpaths
-        self.timeout: int = int(args.timeout)
 
         max_ids = {jobname: (get_max_sid(jobname, self.db_file) or 0) for jobname in self.jobs_and_generators}
         session_out_of_bounds = [
@@ -135,8 +142,9 @@ class Evaluator:
             print_help()
             exit(1)
 
-        if not (self.do_clean or self.do_generate or self.do_evaluate_validity or self.do_compute_kpaths):
-            print("ERROR: You have to set either -c, -g, -v, or -p.", file=sys.stderr)
+        if not (self.do_clean or self.do_analyze or self.do_generate
+                or self.do_evaluate_validity or self.do_compute_kpaths):
+            print("ERROR: You have to set at least one of -c, -a, -g, -v, or -p.", file=sys.stderr)
             print_help()
             exit(1)
 
@@ -170,6 +178,9 @@ class Evaluator:
         parser.add_argument(
             "-p", "--kpaths", action="store_true", default=False,
             help="Compute k-paths for the inputs of the previous [numsessions] sessions.")
+        parser.add_argument(
+            "-a", "--analyze", action="store_true", default=False,
+            help="Analyze the accumulated results of the previous [numsessions] sessions.")
 
         parser.add_argument(
             "-j", "--jobs", default=", ".join(jobnames),
@@ -198,6 +209,9 @@ class Evaluator:
         if self.do_compute_kpaths:
             self.compute_kpaths()
 
+        if self.do_analyze:
+            self.analyze()
+
     def generate(self) -> None:
         for _ in range(self.num_sessions):
             # We do not run the actual test data generation in parallel (at least not if only one job
@@ -205,13 +219,14 @@ class Evaluator:
             if len(self.jobs_and_generators) == 1:
                 for jobname, generator in self.jobs_and_generators.items():
                     inputs = generate_inputs(generator, self.timeout, jobname)
-                    store_inputs(jobname, inputs, self.db_file)
+                    store_inputs(jobname, self.timeout, inputs, self.db_file)
                 return
 
             with pmp.Pool(processes=pmp.cpu_count()) as pool:
                 pool.starmap(
                     lambda jobname, generator:
-                    store_inputs(jobname, generate_inputs(generator, self.timeout, jobname), self.db_file),
+                    store_inputs(
+                        jobname, self.timeout, generate_inputs(generator, self.timeout, jobname), self.db_file),
                     list(self.jobs_and_generators.items()))
 
     def evaluate_validity(self) -> None:
@@ -220,8 +235,8 @@ class Evaluator:
                 [jobname],
                 [self.validator],
                 [self.db_file],
-                [i for i in range(get_max_sid(jobname, self.db_file) - self.num_sessions + 1,
-                                  get_max_sid(jobname, self.db_file) + 1)])
+                [i for i in range((get_max_sid(jobname, self.db_file) or 0) - self.num_sessions + 1,
+                                  (get_max_sid(jobname, self.db_file) or 0) + 1)])
             for jobname in self.jobs_and_generators
         ]
 
@@ -238,8 +253,8 @@ class Evaluator:
                 [self.graph],
                 [k],
                 [self.db_file],
-                [i for i in range(get_max_sid(jobname, self.db_file) - self.num_sessions + 1,
-                                  get_max_sid(jobname, self.db_file) + 1)])
+                [i for i in range((get_max_sid(jobname, self.db_file) or 0) - self.num_sessions + 1,
+                                  (get_max_sid(jobname, self.db_file) or 0) + 1)])
             for jobname in self.jobs_and_generators
             for k in self.kvalues
         ]
@@ -249,6 +264,10 @@ class Evaluator:
 
         with NestablePool(processes=pmp.cpu_count()) as pool:
             pool.starmap(evaluate_kpaths, args)
+
+    def analyze(self):
+        # TODO
+        pass
 
 
 class PerformanceEvaluationResult:
@@ -481,8 +500,14 @@ def create_db_tables(db_file: str = std_db_file()) -> None:
 )"""
     valid_inputs_table_sql = "CREATE TABLE IF NOT EXISTS valid(inpId INTEGER PRIMARY KEY ASC)"
     kpaths_table_sql = "CREATE TABLE IF NOT EXISTS kpaths(inpId INT, k INT, paths TEXT, UNIQUE(inpId, k))"
+    session_length_sql = "CREATE TABLE IF NOT EXISTS session_lengths(testId TEXT, sid INT, seconds INT)"
 
-    tables = {"inputs": inputs_table_sql, "valid": valid_inputs_table_sql, "kpaths": kpaths_table_sql}
+    tables = {
+        "inputs": inputs_table_sql,
+        "valid": valid_inputs_table_sql,
+        "kpaths": kpaths_table_sql,
+        "session_lengths": session_length_sql
+    }
 
     con = sqlite3.connect(db_file)
 
@@ -532,7 +557,11 @@ def get_max_sid(test_id: str, db_file: str = std_db_file()) -> Optional[int]:
     return sid
 
 
-def store_inputs(test_id: str, inputs: Dict[float, isla.DerivationTree], db_file: str = std_db_file()) -> None:
+def store_inputs(
+        test_id: str,
+        timeout: int,
+        inputs: Dict[float, isla.DerivationTree],
+        db_file: str = std_db_file()) -> None:
     sid = (get_max_sid(test_id, db_file) or 0) + 1
 
     create_db_tables(db_file)
@@ -545,6 +574,10 @@ def store_inputs(test_id: str, inputs: Dict[float, isla.DerivationTree], db_file
             con.execute(
                 "INSERT INTO inputs(testId, sid, reltime, inp) VALUES (?, ?, ?, ?)",
                 (test_id, sid, reltime, json.dumps(inp.to_parse_tree())))
+
+        con.execute(
+            "INSERT INTO session_lengths(testId, sid, seconds) VALUES (?, ?, ?)",
+            (test_id, sid, timeout))
 
     con.close()
 
