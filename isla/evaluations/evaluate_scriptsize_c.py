@@ -5,7 +5,7 @@ from grammar_graph.gg import GrammarGraph
 import pathos.multiprocessing as pmp
 
 from isla.evaluator import evaluate_generators, plot_proportion_valid_inputs_graph, print_statistics, generate_inputs, \
-    store_inputs, evaluate_validity, evaluate_kpaths
+    store_inputs, evaluate_validity, evaluate_kpaths, Evaluator
 from isla.solver import ISLaSolver, CostSettings, CostWeightVector
 from isla.tests.subject_languages import scriptsizec
 
@@ -70,12 +70,14 @@ if __name__ == '__main__':
     generators = [scriptsizec.SCRIPTSIZE_C_GRAMMAR, g_defuse, g_redef, g_defuse_redef]
     jobnames = ["Grammar Fuzzer", "Def-Use", "No-Redef", "Def-Use + No-Redef"]
 
-    if len(sys.argv) > 1 and sys.argv[1] in jobnames:
-        idx = jobnames.index(sys.argv[1])
-        generators = [generators[idx]]
-        jobnames = [jobnames[idx]]
+    evaluator = Evaluator(
+        "Scriptsize-C",
+        generators,
+        jobnames,
+        scriptsizec.compile_scriptsizec_clang,
+        GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR))
 
-    jobnames = [f"Scriptsize-C {jobname}" for jobname in jobnames]
+    evaluator.run()
 
     # with pmp.Pool(processes=16) as pool:
     #     pool.starmap(
@@ -92,8 +94,8 @@ if __name__ == '__main__':
     # for jobname in jobnames:
     #     evaluate_validity(jobname, scriptsizec.compile_scriptsizec_clang)
 
-    for jobname in jobnames:
-        evaluate_kpaths(jobname, graph=GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR), k=3)
+    # for jobname in jobnames:
+    #     evaluate_kpaths(jobname, graph=GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR), k=3)
 
     # out_dir = "../../eval_results/scriptsizec"
     # base_name = "input_validity_scriptsizec_"
