@@ -535,7 +535,7 @@ def generate_inputs(
             fuzzer = GrammarCoverageFuzzer(grammar)
             while True:
                 yield isla.DerivationTree.from_parse_tree(
-                    list(EarleyParser(grammar).parse(fuzzer.fuzz()))[0])
+                    fuzzer.expand_tree(("<start>", None)))
 
         generator = gen()
 
