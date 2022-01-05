@@ -1,15 +1,9 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='isla',
     version='0.1',
-    packages=[
-      'isla',
-      'isla.parsers',
-      'isla.parsers.isla',
-      'isla.parsers.isla.mexpr_lexer',
-      'isla.parsers.isla.mexpr_parser',
-      'isla.tests'],
+    packages=find_packages(exclude=['tests', 'tests.*']),
     url='https://projects.cispa.saarland/c01dost/inputconstraints',
     license='GNU GPLv3',
     author='Dominic Steinhoefel',
