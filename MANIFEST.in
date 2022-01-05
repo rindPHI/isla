@@ -1,8 +1,0 @@
-include *.py
-include pytest.ini
-include tox.ini
-recursive-include isla *.g4
-recursive-include isla *.interp
-recursive-include isla *.py
-recursive-include isla *.tokens
-recursive-include libs *.gz
