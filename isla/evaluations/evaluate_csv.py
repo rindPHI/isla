@@ -1,14 +1,12 @@
 from grammar_graph.gg import GrammarGraph
 
-from grammar_graph.gg import GrammarGraph
-
 from isla.evaluator import Evaluator
 from isla.solver import ISLaSolver, CostSettings, STD_COST_SETTINGS
 from isla.tests.subject_languages import csv
 
 max_number_free_instantiations = 10
 max_number_smt_instantiations = 2
-eval_k = 3
+eval_k = 4
 
 cost_vector = STD_COST_SETTINGS.weight_vectors[0]
 

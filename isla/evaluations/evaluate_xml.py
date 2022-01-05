@@ -1,7 +1,5 @@
 from grammar_graph.gg import GrammarGraph
 
-from grammar_graph.gg import GrammarGraph
-
 from isla.evaluator import Evaluator
 from isla.solver import ISLaSolver, CostSettings, CostWeightVector
 from isla.tests.subject_languages import xml_lang

@@ -220,7 +220,7 @@ class Evaluator:
                 for jobname, generator in self.jobs_and_generators.items():
                     inputs = generate_inputs(generator, self.timeout, jobname)
                     store_inputs(jobname, self.timeout, inputs, self.db_file)
-                return
+                continue
 
             with pmp.Pool(processes=pmp.cpu_count()) as pool:
                 pool.starmap(
