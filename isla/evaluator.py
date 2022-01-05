@@ -266,8 +266,76 @@ class Evaluator:
             pool.starmap(evaluate_kpaths, args)
 
     def analyze(self):
-        # TODO
-        pass
+        con = sqlite3.connect(self.db_file)
+        cur = con.cursor()
+
+        efficiency: Dict[str, float] = {}
+        precision: Dict[str, float] = {}
+        diversity: Dict[str, float] = {}
+
+        for job in self.jobs_and_generators:
+            maxsid = get_max_sid(job, self.db_file)
+            assert maxsid > 0 and maxsid >= self.num_sessions
+
+            # Analyze efficiency: Inputs / s
+            cur.execute(
+                "SELECT COUNT(*) FROM inputs WHERE testId = ? AND sid >= ? AND sid <= ?",
+                (job, maxsid - self.num_sessions + 1, maxsid))
+            total_inputs: int = cur.fetchone()[0]
+            cur.execute(
+                "SELECT SUM(seconds) FROM session_lengths WHERE testId = ? AND sid >= ? AND sid <= ?",
+                (job, maxsid - self.num_sessions + 1, maxsid))
+            time: int = cur.fetchone()[0]
+            efficiency[job] = total_inputs / time
+
+            # Analyze precision: Fraction of valid inputs
+            cur.execute(
+                "SELECT COUNT(*) FROM inputs NATURAL JOIN valid WHERE testId = ? AND sid >= ? AND sid <= ?",
+                (job, maxsid - self.num_sessions + 1, maxsid))
+            valid_inputs: int = cur.fetchone()[0]
+            precision[job] = valid_inputs / total_inputs
+
+            # Analyze diversity: Fraction of covered k-paths
+            total_num_kpaths = {k: len(self.graph.k_paths(k)) for k in self.kvalues}
+            diversity_by_sid: Dict[int, float] = {}
+            for sid in range(maxsid - self.num_sessions + 1, maxsid + 1):
+                diversity_by_k: Dict[int, float] = {}
+                for k in self.kvalues:
+                    cur.execute(
+                        "SELECT paths FROM inputs NATURAL JOIN kpaths WHERE testId = ? AND sid = ? AND k = ?",
+                        (job, sid, k))
+                    path_hashes: Set[int] = set([])
+                    for row in cur:
+                        path_hashes.update({int(path_hash) for path_hash in json.loads(row[0])})
+
+                    diversity_by_k[k] = len(path_hashes) / total_num_kpaths[k]
+                    assert len(path_hashes) < total_num_kpaths[k]
+
+                diversity_by_sid[sid] = sum(diversity_by_k.values()) / len(diversity_by_k)
+
+            diversity[job] = sum(diversity_by_sid.values()) / len(diversity_by_sid)
+
+        con.close()
+
+        def perc(inp: float) -> str:
+            return frac(inp * 100) + " %"
+
+        def frac(inp: float) -> str:
+            return "{:8.2f}".format(inp)
+
+        col_1_len = max([len(job) for job in self.jobs_and_generators])
+        row_1 = f"| {'Job'.ljust(col_1_len)} | Efficiency | Precision  | Diversity  |"
+        sepline = f"+-{'-'.ljust(col_1_len, '-')}-+------------+------------+------------+"
+
+        print(sepline)
+        print(row_1)
+        print(sepline)
+
+        for job in self.jobs_and_generators:
+            print(f"| {job.ljust(col_1_len)} |   {frac(efficiency[job])} | "
+                  f"{perc(precision[job])} | {perc(diversity[job])} |")
+
+        print(sepline)
 
 
 class PerformanceEvaluationResult:
@@ -555,6 +623,22 @@ def get_max_sid(test_id: str, db_file: str = std_db_file()) -> Optional[int]:
 
     con.close()
     return sid
+
+
+def get_session_length(test_id: str, sid: int, db_file: str = std_db_file()) -> int:
+    create_db_tables(db_file)
+    con = sqlite3.connect(db_file)
+    result = None
+
+    with con:
+        result = None
+        for row in con.execute("SELECT seconds FROM session_lengths WHERE testId = ? AND sid = ?", (test_id, sid)):
+            result = row[0]
+            break
+
+    assert result is not None
+    con.close()
+    return result
 
 
 def store_inputs(
