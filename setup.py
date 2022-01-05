@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     name='isla',
     version='0.1',
-    packages=find_packages(exclude=['tests', 'tests.*']),
+    packages=find_packages(exclude=['isla.tests', 'isla.tests.*', "isla.evaluations"]),
     url='https://projects.cispa.saarland/c01dost/inputconstraints',
     license='GNU GPLv3',
     author='Dominic Steinhoefel',
