@@ -9,6 +9,7 @@ import os.path
 import sqlite3
 import sys
 import time
+import traceback
 from datetime import datetime
 from typing import List, Generator, Dict, Callable, Set, Tuple, Optional, cast
 
@@ -372,7 +373,8 @@ def generate_inputs(
         except StopIteration:
             break
         except Exception as exp:
-            print("Exception occurred while executing solver; I'll stop here:\n" + str(exp), file=sys.stderr)
+            print(f"{type(exp).__name__} occurred while executing solver; I'll stop here:\n" + str(exp), file=sys.stderr)
+            print(traceback.format_exc())
             return result
 
         logger.debug("Input: %s", str(inp))

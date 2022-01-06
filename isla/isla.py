@@ -2952,6 +2952,8 @@ def bound_elements_to_tree(
         bound_elements: Tuple[BoundVariable, ...],
         immutable_grammar: ImmutableGrammar,
         in_nonterminal: str) -> DerivationTree:
+    result = None
+
     grammar = immutable_to_grammar(immutable_grammar)
     fuzzer = GrammarFuzzer(grammar)
 
@@ -2972,7 +2974,12 @@ def bound_elements_to_tree(
     delete_unreachable(subgrammar)
     parser = EarleyParser(subgrammar)
 
-    return DerivationTree.from_parse_tree(list(parser.parse(inp))[0][1][0])
+    try:
+        return DerivationTree.from_parse_tree(list(parser.parse(inp))[0][1][0])
+    except SyntaxError as serr:
+        raise RuntimeError(
+            f"Could not transform bound elements {''.join(map(str, bound_elements))} "
+            f"to tree starting in {in_nonterminal}: SyntaxError {serr}")
 
 
 @lru_cache(maxsize=None)

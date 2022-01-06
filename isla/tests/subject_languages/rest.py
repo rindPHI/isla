@@ -150,8 +150,8 @@ vars {
 
 constraint {
   forall enumeration in start:
-    forall item_1="{number_1}. <paragraph_chars>" in enumeration:
-      forall item_2="{number_2}. <paragraph_chars>" in enumeration:
+    forall item_1="{number_1}. <nobr-string>" in enumeration:
+      forall item_2="{number_2}. <nobr-string>" in enumeration:
         (not consecutive(item_1, item_2) or
           (consecutive(item_1, item_2) and 
           ((= (str.to.int number_2) (+ (str.to.int number_1) 1)) and
