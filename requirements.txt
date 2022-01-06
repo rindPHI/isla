@@ -150,4 +150,4 @@ z3-solver>=4.8.8.0
 zipp==3.6.0
 proxyorderedset @ git+git://github.com/rindPHI/proxyorderedset
 grammargraph @ git+git://github.com/rindPHI/GrammarGraph
-./libs/grammar2regex-0.0.1.tar.gz
+grammar2regex @ git+git://github.com/rindPHI/grammar2regex

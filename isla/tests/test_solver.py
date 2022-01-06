@@ -166,6 +166,25 @@ constraint {
         self.assertEqual(3, len(all_chains))
         self.assertEqual(set(chains_1) | set(chains_2), set(all_chains))
 
+    def test_xml_with_prefixes_balance_defuse(self):
+        self.execute_generation_test(
+            XML_NAMESPACE_CONSTRAINT & XML_WELLFORMEDNESS_CONSTRAINT,
+            grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
+            max_number_free_instantiations=1,
+            num_solutions=50,
+            enforce_unique_trees_in_queue=False,
+            custom_test_func=validate_xml,
+            cost_settings=CostSettings(
+                weight_vectors=(
+                    CostWeightVector(tree_closing_cost=15, vacuous_penalty=0, constraint_cost=0,
+                                     derivation_depth_penalty=0, low_k_coverage_penalty=5,
+                                     low_global_k_path_coverage_penalty=7),
+                ),
+                cost_phase_lengths=(200,),
+                k=3
+            )
+        )
+
     def test_xml_with_prefixes(self):
         self.execute_generation_test(
             XML_NAMESPACE_CONSTRAINT & XML_WELLFORMEDNESS_CONSTRAINT & XML_NO_ATTR_REDEF_CONSTRAINT,

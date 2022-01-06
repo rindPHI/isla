@@ -113,6 +113,7 @@ class Evaluator:
         self.do_generate: bool = args.generate
         self.do_evaluate_validity: bool = args.validity
         self.do_compute_kpaths: bool = args.kpaths
+        self.dry_run: bool = args.dryrun
 
         max_ids = {jobname: (get_max_sid(jobname, self.db_file) or 0) for jobname in self.jobs_and_generators}
         session_out_of_bounds = [
@@ -161,9 +162,6 @@ class Evaluator:
             "-l", "--listjobs", action="store_true", default=False,
             help="Shows all jobs for this evaluator.")
         parser.add_argument(
-            "-c", "--clean", action="store_true", default=False,
-            help="Removes all data related to the given job(s) from the database. WARNING: This cannot be undone!")
-        parser.add_argument(
             "-g", "--generate", action="store_true", default=False,
             help="Generate inputs with a timeout of [timeout] seconds, [numsessions] times.")
         parser.add_argument(
@@ -175,6 +173,14 @@ class Evaluator:
         parser.add_argument(
             "-a", "--analyze", action="store_true", default=False,
             help="Analyze the accumulated results of the previous [numsessions] sessions.")
+
+        g = parser.add_mutually_exclusive_group()
+        g.add_argument(
+            "-c", "--clean", action="store_true", default=False,
+            help="Removes all data related to the given job(s) from the database. WARNING: This cannot be undone!")
+        g.add_argument(
+            "-d", "--dryrun", action="store_true", default=False,
+            help="Does not write results to database when *generating* (-g). Does not affect -v and -p.")
 
         parser.add_argument(
             "-j", "--jobs", default=", ".join(jobnames),
@@ -213,13 +219,15 @@ class Evaluator:
             if len(self.jobs_and_generators) == 1:
                 for jobname, generator in self.jobs_and_generators.items():
                     inputs = generate_inputs(generator, self.timeout, jobname)
-                    store_inputs(jobname, self.timeout, inputs, self.db_file)
+                    if not self.dry_run:
+                        store_inputs(jobname, self.timeout, inputs, self.db_file)
                 continue
 
             with pmp.Pool(processes=pmp.cpu_count()) as pool:
                 pool.starmap(
                     lambda jobname, generator:
-                    store_inputs(
+                    generate_inputs(generator, self.timeout, jobname) if self.dry_run
+                    else store_inputs(
                         jobname, self.timeout, generate_inputs(generator, self.timeout, jobname), self.db_file),
                     list(self.jobs_and_generators.items()))
 

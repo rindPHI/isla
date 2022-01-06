@@ -138,15 +138,15 @@ though, the stream of solutions will be infinite (given that the grammar contain
 
 ## Build, Run, Install
 
-ISLa depends on Python 3.9 and the Python header files (from package python3.9-dev in Ubuntu Linux). Furthermore, 
-python3.9-venv is required to run ISLa in a virtual environment.
+ISLa depends on Python 3.10 and the Python header files (from package python3.10-dev in Ubuntu Linux). Furthermore, 
+python3.10-venv is required to run ISLa in a virtual environment.
 
 On Ubuntu Linux, the dependencies can be installed using
 
 ```shell
 sudo apt-get update
 sudo apt-get upgrade
-sudo apt-get install python3.9 python3.9-dev python3.9-venv
+sudo apt-get install python3.10 python3.10-dev python3.10-venv
 ```
 
 For development and testing, we recommend to use ISLa inside a virtual environment (virtualenv).
@@ -156,15 +156,22 @@ By thing the following steps in a standard shell (bash), one can run the ISLa te
 curl -L https://anonymous.4open.science/r/isla-pldi/ISLa-v0.1.zip
 unzip ISLa-v0.1.zip
 
-python3.9 -m venv venv
+python3.10 -m venv venv
 source venv/bin/activate
 
 pip install --upgrade pip
 pip install -r requirements.txt
+pip install z3-solver=4.8.14.0
 
 # Run tests
 tox
 ```
+
+NOTE: This projects needs z3 >= 4.8.13.0, but the requirements only list
+4.8.8.0 due to a strict requirement in the fuzzingbook package. After
+installing from requirements, you have to manually install a new z3 version
+(e.g., `pip install z3-solver=4.8.14.0`) and simply ignore the upcoming
+warning.
 
 For running scripts without tox, you have to add the path to the ISLa folder to the PYTHONPATH environment
 variable; this is done by typing (in bash)
