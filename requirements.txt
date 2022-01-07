@@ -29,6 +29,7 @@ defusedxml==0.7.1
 diff-match-patch==20200713
 dill==0.3.4
 distlib==0.3.3
+docutils==0.18.1
 easyplotly==0.1.3
 enforce==0.3.4
 entrypoints==0.3

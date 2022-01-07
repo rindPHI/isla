@@ -1,9 +1,15 @@
+import io
 import os
 import string
 import subprocess
 import tempfile
+from contextlib import redirect_stderr
 from typing import Union
 import xml.etree.ElementTree as ET
+from xml.dom.minidom import Document
+
+from docutils.core import publish_doctree
+from docutils.nodes import document
 
 from fuzzingbook.Grammars import srange
 
@@ -164,9 +170,40 @@ constraint {
 #   - Bullet lists: Continuing text must be aligned after the bullet and whitespace
 #   - Footnotes: For auto-numbered footnote references without autonumber labels ("[#]_"), the references and footnotes
 #                must be in the same relative order. Similarly for auto-symbol footnotes ("[*]_").
-#   - Itemized lists: List items should be sequentially numbered, but need not start at 1
 
 def render_rst(tree: isla.DerivationTree) -> Union[bool, str]:
+    f = io.StringIO()
+    with redirect_stderr(f):
+        doc: Document = publish_doctree(str(tree), settings_overrides={'input_encoding': 'unicode'}).asdom()
+
+    err_msg = f.getvalue().strip()
+
+    section_titles_in_tree = tree.filter(lambda n: n.value == "<section-title>")
+    headings_in_output = doc.getElementsByTagName("title") + doc.getElementsByTagName("subtitle")
+
+    if len(section_titles_in_tree) != len(headings_in_output):
+        err_msg = f"Incorrect heading underlines: {len(section_titles_in_tree)} titles " \
+                  f"were rendered to {len(headings_in_output)} HTML headings."
+    else:
+        enumerations_in_tree = tree.filter(lambda n: n.value == "<enumeration>")
+        enumerations_in_output = doc.getElementsByTagName("enumerated_list")
+
+        if len(enumerations_in_tree) != len(enumerations_in_output):
+            err_msg = f"Incorrect enumeration numbering: {len(enumerations_in_tree)} enumerations " \
+                      f"were rendered to {len(enumerations_in_output)} HTML ordered lists."
+
+    has_error = bool(err_msg)
+
+    # if has_error:
+    #     with tempfile.NamedTemporaryFile(suffix=".rst", delete=False) as perm_tmp:
+    #         perm_tmp.write(str(tree).encode())
+    #         perm_tmp.flush()
+    #         print(f"Written wrong input to file {perm_tmp.name}")
+
+    return True if not has_error else err_msg
+
+
+def render_rst_io(tree: isla.DerivationTree) -> Union[bool, str]:
     with tempfile.NamedTemporaryFile(suffix=".rst") as tmp:
         tmp.write(str(tree).encode())
         tmp.flush()
