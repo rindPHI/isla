@@ -1,14 +1,20 @@
 from grammar_graph.gg import GrammarGraph
 
 from isla.evaluator import Evaluator
-from isla.solver import ISLaSolver, CostSettings, STD_COST_SETTINGS
+from isla.solver import ISLaSolver, CostSettings, CostWeightVector
 from isla.tests.subject_languages import tar
 
 max_number_free_instantiations = 10
 max_number_smt_instantiations = 2
 eval_k = 4
 
-cost_vector = STD_COST_SETTINGS.weight_vectors[0]
+cost_vector = CostWeightVector(
+    tree_closing_cost=11,
+    vacuous_penalty=0,
+    constraint_cost=3,
+    derivation_depth_penalty=5,
+    low_k_coverage_penalty=10,
+    low_global_k_path_coverage_penalty=40)
 
 length_constraints = (
     # tar.link_constraint &

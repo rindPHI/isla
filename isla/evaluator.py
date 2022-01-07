@@ -6,6 +6,7 @@ import multiprocessing as mp
 import multiprocessing.pool
 import os
 import os.path
+import re
 import sqlite3
 import sys
 import time
@@ -157,7 +158,8 @@ class Evaluator:
         parser.add_argument("--db", default=db_file, help="Path to the sqlite database file.")
         parser.add_argument(
             "-n", "--numsessions", default=default_sessions,
-            help="The number of sessions to generate or analyze.")
+            help="The number of sessions to generate or analyze. "
+                 "For analysis, this can be set to -1; in this case, all sessions are analyzed.")
 
         parser.add_argument(
             "-l", "--listjobs", action="store_true", default=False,
@@ -214,6 +216,7 @@ class Evaluator:
             self.analyze()
 
     def generate(self) -> None:
+        assert self.num_sessions > 0
         for _ in range(self.num_sessions):
             # We do not run the actual test data generation in parallel (at least not if only one job
             # is specified) to not negatively affect the performance. Thus, one session at a time.
@@ -233,13 +236,17 @@ class Evaluator:
                     list(self.jobs_and_generators.items()))
 
     def evaluate_validity(self) -> None:
+        sids: Dict[str, List[int]] = {
+            jobname: get_all_sids(jobname, self.db_file)
+            for jobname in self.jobs_and_generators}
+
         args: List[Tuple[List[str], List[Callable[[isla.DerivationTree], bool]], List[str], List[int]]] = [
             (
                 [jobname],
                 [self.validator],
                 [self.db_file],
-                [i for i in range((get_max_sid(jobname, self.db_file) or 0) - self.num_sessions + 1,
-                                  (get_max_sid(jobname, self.db_file) or 0) + 1)])
+                sids[jobname] if self.num_sessions < 0
+                else sids[jobname][len(sids[jobname]) - self.num_sessions:])
             for jobname in self.jobs_and_generators
         ]
 
@@ -250,14 +257,18 @@ class Evaluator:
             pool.starmap(evaluate_validity, args)
 
     def compute_kpaths(self) -> None:
+        sids: Dict[str, List[int]] = {
+            jobname: get_all_sids(jobname, self.db_file)
+            for jobname in self.jobs_and_generators}
+
         args: List[Tuple[List[str], List[gg.GrammarGraph], List[int], List[str], List[int]]] = [
             (
                 [jobname],
                 [self.graph],
                 [k],
                 [self.db_file],
-                [i for i in range((get_max_sid(jobname, self.db_file) or 0) - self.num_sessions + 1,
-                                  (get_max_sid(jobname, self.db_file) or 0) + 1)])
+                sids[jobname] if self.num_sessions < 0
+                else sids[jobname][len(sids[jobname]) - self.num_sessions:])
             for jobname in self.jobs_and_generators
             for k in self.kvalues
         ]
@@ -265,8 +276,11 @@ class Evaluator:
         args: List[Tuple[str, gg.GrammarGraph, int, str, int]] = [
             rt for t in args for rt in tuple(itertools.product(*t))]
 
-        with NestablePool(processes=pmp.cpu_count()) as pool:
-            pool.starmap(evaluate_kpaths, args)
+        if len(args) > 1:
+            with NestablePool(processes=pmp.cpu_count()) as pool:
+                pool.starmap(evaluate_kpaths, args)
+        else:
+            evaluate_kpaths(*args[0])
 
     def analyze(self):
         con = sqlite3.connect(self.db_file)
@@ -277,31 +291,36 @@ class Evaluator:
         diversity: Dict[str, float] = {}
 
         for job in self.jobs_and_generators:
-            maxsid = get_max_sid(job, self.db_file)
-            assert maxsid > 0 and maxsid >= self.num_sessions
+            sids = tuple(get_all_sids(job, self.db_file))
+            if self.num_sessions >= 0:
+                sids = sids[len(sids) - self.num_sessions:]
+            assert sids, f"There do not exist sufficient sessions for job {job}, found {len(sids)} sessions."
+            sids_placeholder = ','.join('?' for _ in range(len(sids)))
+
+            print(f"Analyzing sessions {', '.join(map(str, sids))} for {job}")
 
             # Analyze efficiency: Inputs / s
             cur.execute(
-                "SELECT COUNT(*) FROM inputs WHERE testId = ? AND sid >= ? AND sid <= ?",
-                (job, maxsid - self.num_sessions + 1, maxsid))
+                f"SELECT COUNT(*) FROM inputs WHERE testId = ? AND sid IN ({sids_placeholder})",
+                (job,) + sids)
             total_inputs: int = cur.fetchone()[0]
             cur.execute(
-                "SELECT SUM(seconds) FROM session_lengths WHERE testId = ? AND sid >= ? AND sid <= ?",
-                (job, maxsid - self.num_sessions + 1, maxsid))
+                f"SELECT SUM(seconds) FROM session_lengths WHERE testId = ? AND sid IN ({sids_placeholder})",
+                (job,) + sids)
             time: int = cur.fetchone()[0]
             efficiency[job] = total_inputs / time
 
             # Analyze precision: Fraction of valid inputs
             cur.execute(
-                "SELECT COUNT(*) FROM inputs NATURAL JOIN valid WHERE testId = ? AND sid >= ? AND sid <= ?",
-                (job, maxsid - self.num_sessions + 1, maxsid))
+                f"SELECT COUNT(*) FROM inputs NATURAL JOIN valid WHERE testId = ? AND sid IN ({sids_placeholder})",
+                (job,) + sids)
             valid_inputs: int = cur.fetchone()[0]
             precision[job] = valid_inputs / total_inputs
 
             # Analyze diversity: Fraction of covered k-paths
             total_num_kpaths = {k: len(self.graph.k_paths(k)) for k in self.kvalues}
             diversity_by_sid: Dict[int, float] = {}
-            for sid in range(maxsid - self.num_sessions + 1, maxsid + 1):
+            for sid in sids:
                 diversity_by_k: Dict[int, float] = {}
                 for k in self.kvalues:
                     cur.execute(
@@ -312,7 +331,9 @@ class Evaluator:
                         path_hashes.update({int(path_hash) for path_hash in json.loads(row[0])})
 
                     diversity_by_k[k] = len(path_hashes) / total_num_kpaths[k]
-                    assert len(path_hashes) < total_num_kpaths[k]
+                    assert len(path_hashes) <= total_num_kpaths[k], \
+                        f"For {job}, session {sid}, k={k}, found {len(path_hashes)} covered paths " \
+                        f"though only {total_num_kpaths[k]} paths exist in grammar graph."
 
                 diversity_by_sid[sid] = sum(diversity_by_k.values()) / len(diversity_by_k)
 
@@ -325,6 +346,8 @@ class Evaluator:
 
         def frac(inp: float) -> str:
             return "{:8.2f}".format(inp)
+
+        print("\n")
 
         col_1_len = max([len(job) for job in self.jobs_and_generators])
         row_1 = f"| {'Job'.ljust(col_1_len)} | Efficiency | Precision  | Diversity  |"
@@ -373,7 +396,8 @@ def generate_inputs(
         except StopIteration:
             break
         except Exception as exp:
-            print(f"{type(exp).__name__} occurred while executing solver; I'll stop here:\n" + str(exp), file=sys.stderr)
+            print(f"{type(exp).__name__} occurred while executing solver; I'll stop here:\n" + str(exp),
+                  file=sys.stderr)
             print(traceback.format_exc())
             return result
 
@@ -397,7 +421,8 @@ def create_db_tables(db_file: str = std_db_file()) -> None:
 )"""
     valid_inputs_table_sql = "CREATE TABLE IF NOT EXISTS valid(inpId INTEGER PRIMARY KEY ASC)"
     kpaths_table_sql = "CREATE TABLE IF NOT EXISTS kpaths(inpId INT, k INT, paths TEXT, UNIQUE(inpId, k))"
-    session_length_sql = "CREATE TABLE IF NOT EXISTS session_lengths(testId TEXT, sid INT, seconds INT)"
+    session_length_sql = "CREATE TABLE IF NOT EXISTS session_lengths(" \
+                         "testId TEXT, sid INT, seconds INT, UNIQUE (testId, sid))"
 
     tables = {
         "inputs": inputs_table_sql,
@@ -412,14 +437,25 @@ def create_db_tables(db_file: str = std_db_file()) -> None:
         with con:
             con.execute(cmd)
 
-        # Check integrity of table definitions (if could fail if tables already existed)
+    def preprocess_sql(cmd: str) -> str:
+        cmd = cmd.replace("\n", "")
+        cmd = cmd.replace('"', "")
+        cmd = re.sub(r"\s?\(\s?", "(", cmd)
+        cmd = re.sub(r",\s", ",", cmd)
+        cmd = cmd.replace(" IF NOT EXISTS", "")
+        cmd = re.sub(r"\s+", " ", cmd)
+        return cmd
+
+    # Check integrity of table definitions (if could fail if tables already existed)
+    cur = con.cursor()
     for tbl_name, cmd in tables.items():
-        with con:
-            for row in con.execute("SELECT sql FROM sqlite_master WHERE name = ?", (tbl_name,)):
-                cmd = cmd.replace(" IF NOT EXISTS", "")
-                sql: str = row[0]
-                assert sql == cmd, f"Table SQL\n---\n{sql}\n---\n" \
-                                   f"does not equal required definition\n---\n{cmd}\n---"
+        cur.execute("SELECT sql FROM sqlite_master WHERE name = ?", (tbl_name,))
+        row = cur.fetchone()
+        assert row
+        sql: str = preprocess_sql(row[0])
+        cmd = preprocess_sql(cmd)
+        assert sql == cmd, f"Table SQL\n---\n{sql}\n---\n" \
+                           f"does not equal required definition\n---\n{cmd}\n---"
 
     con.close()
 
@@ -439,18 +475,27 @@ def truncate_db_tables(jobs: List[str], db_file: str = std_db_file()) -> None:
     con.close()
 
 
+def get_all_sids(test_id: str, db_file: str = std_db_file()) -> List[int]:
+    create_db_tables(db_file)
+    con = sqlite3.connect(db_file)
+    cur = con.cursor()
+
+    cur.execute("SELECT DISTINCT sid FROM inputs WHERE testId = ?", (test_id,))
+    result: List[int] = [row[0] for row in cur.fetchall()]
+    con.close()
+
+    return result
+
+
 def get_max_sid(test_id: str, db_file: str = std_db_file()) -> Optional[int]:
     create_db_tables(db_file)
     con = sqlite3.connect(db_file)
+    cur = con.cursor()
 
-    with con:
-        sid = None
-        for row in con.execute("SELECT MAX(sid) FROM inputs WHERE testId = ?", (test_id,)):
-            if row[0]:
-                sid = row[0]
-            break
+    cur.execute("SELECT MAX(sid) FROM inputs WHERE testId = ?", (test_id,))
+    row = cur.fetchone()
+    sid = None if not row else row[0]
 
-    con.close()
     return sid
 
 
@@ -500,7 +545,8 @@ def get_inputs_from_db(
         test_id: str,
         sid: Optional[int] = None,
         db_file: str = std_db_file(),
-        only_valid: bool = False
+        only_valid: bool = False,
+        only_unkown_validity: bool = False
 ) -> Dict[int, isla.DerivationTree]:
     all_inputs_query = \
         """
@@ -515,19 +561,31 @@ def get_inputs_from_db(
         WHERE testId = ? AND sid = ?
         """
 
-    inputs: Dict[int, isla.DerivationTree] = {}
+    invalid_inputs_query = \
+        """
+        SELECT inputs.inpId, inputs.inp 
+        FROM inputs LEFT JOIN valid 
+        ON inputs.inpId = valid.inpId 
+        WHERE valid.inpId IS NULL 
+              AND inputs.testId = ? 
+              AND inputs.sid = ?
+        """
 
     # Get newest session ID if not present
     if sid is None:
         sid = get_max_sid(test_id, db_file)
         assert sid
 
-    query = valid_inputs_query if only_valid else all_inputs_query
+    query = valid_inputs_query if only_valid else (invalid_inputs_query if only_unkown_validity else all_inputs_query)
     con = sqlite3.connect(db_file)
-    with con:
-        for row in con.execute(query, (test_id, sid)):
-            inputs[row[0]] = isla.DerivationTree.from_parse_tree(json.loads(row[1]))
+    cur = con.cursor()
+    cur.execute(query, (test_id, sid))
+    rows = cur.fetchall()
     con.close()
+
+    inputs: Dict[int, isla.DerivationTree] = {
+        row[0]: isla.DerivationTree.from_parse_tree(json.loads(row[1]))
+        for row in rows}
 
     return inputs
 
@@ -536,7 +594,8 @@ def evaluate_validity(
         test_id: str,
         validator: Callable[[isla.DerivationTree], bool],
         db_file: str = std_db_file(),
-        sid: Optional[int] = None) -> None:
+        sid: Optional[int] = None,
+        parallel: bool = True) -> None:
     create_db_tables(db_file)
 
     # Get newest session ID if not present
@@ -547,26 +606,27 @@ def evaluate_validity(
     print(f"[{strtime()}] Evaluating validity for session {sid} of {test_id}")
 
     # Obtain inputs from session
-    inputs = get_inputs_from_db(test_id, sid, db_file)
+    print(f"Reading inputs for session {sid} of {test_id} from database...")
+    inputs: Dict[int, isla.DerivationTree] = get_inputs_from_db(test_id, sid, db_file, only_unkown_validity=True)
 
-    # Evaluate (in parallel)
-    def evaluate(inp_id: int, inp: isla.DerivationTree, queue: mp.Queue):
+    print(f"Evaluating validity of inputs for session {sid} of {test_id}...")
+
+    # Evaluate
+    def evaluate(inp: isla.DerivationTree) -> bool:
         try:
-            if validator(inp) is True:
-                queue.put(inp_id)
+            return validator(inp) is True
         except Exception as err:
-            print(f"Exception {err} raise when validating input {inp}, tree: {repr(inp)}")
+            print(f"Exception {err} raise when evaluating input {inp}, tree: {repr(inp)}")
+            print(f"Interpreting input '{inp}' as invalid.")
+            return False
 
-    manager = mp.Manager()
-    queue = manager.Queue()
-    with pmp.Pool(processes=pmp.cpu_count()) as pool:
-        pool.starmap(evaluate, [(inp_id, inp, queue) for inp_id, inp in inputs.items()])
+    valid_ids = [inp_id for inp_id, inp in inputs.items() if evaluate(inp)]
 
+    print(f"Writing validity data for inputs from session {sid} of {test_id} to database...")
     # Insert into DB
     con = sqlite3.connect(db_file)
     with con:
-        while not queue.empty():
-            con.execute("INSERT INTO valid(inpId) VALUES (?)", (queue.get(),))
+        con.executemany(f"INSERT INTO valid(inpId) VALUES (?)", map(lambda x: (x,), valid_ids))
     con.close()
 
     print(f"[{strtime()}] DONE Evaluating validity for session {sid} of {test_id}")
@@ -597,21 +657,25 @@ def evaluate_kpaths(
     # Obtain inputs from session
     inputs = get_inputs_from_db(test_id, sid, db_file, only_valid=True)
 
-    # Evaluate (in parallel)
-    def compute_k_paths(inp_id: int, inp: isla.DerivationTree, queue: mp.Queue):
-        queue.put((inp_id, [hash(path) for path in graph.k_paths_in_tree(inp.to_parse_tree(), k)]))
+    def kpaths_already_computed(inp_id: int) -> bool:
+        con = sqlite3.connect(db_file)
+        cur = con.cursor()
+        cur.execute("SELECT * FROM kpaths WHERE inpId = ?", (inp_id,))
+        result = cur.fetchone() is not None
+        con.close()
+        return result
 
-    manager = mp.Manager()
-    queue = manager.Queue()
-    with pmp.Pool(processes=pmp.cpu_count()) as pool:
-        pool.starmap(compute_k_paths, [(inp_id, inp, queue) for inp_id, inp in inputs.items()])
+    inputs = {inp_id: inp for inp_id, inp in inputs.items() if not kpaths_already_computed(inp_id)}
+
+    def compute_k_paths(inp: isla.DerivationTree) -> List[int]:
+        return [hash(path) for path in graph.k_paths_in_tree(inp.to_parse_tree(), k)]
 
     # Insert into DB
     con = sqlite3.connect(db_file)
     with con:
-        while not queue.empty():
-            inp_id, path_hashes = queue.get()
-            con.execute("INSERT INTO kpaths(inpId, k, paths) VALUES (?, ?, ?)", (inp_id, k, json.dumps(path_hashes)))
+        con.executemany(
+            "INSERT INTO kpaths(inpId, k, paths) VALUES (?, ?, ?)",
+            [(inp_id, k, json.dumps(compute_k_paths(inp))) for inp_id, inp in inputs.items()])
     con.close()
 
     print(f"[{strtime()}] DONE Evaluating {k}-paths for session {sid} of {test_id}")

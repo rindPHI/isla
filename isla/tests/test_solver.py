@@ -349,7 +349,7 @@ constraint {
             # print_only=True
         )
 
-    @pytest.mark.skip(reason="Have to disable assertions to run this test, disabling in CI pipeline.")
+    # @pytest.mark.skip(reason="Have to disable assertions to run this test, disabling in CI pipeline.")
     def test_tar(self):
         self.execute_generation_test(
             tar.TAR_CONSTRAINTS,
@@ -359,14 +359,27 @@ constraint {
             expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
             # debug=True,
-            num_solutions=20,
+            num_solutions=60,
             precompute_reachability=False,
             custom_test_func=extract_tar,
             cost_settings=CostSettings(
-                (CostWeightVector(1, 1, 1, 1, 1, 1),),
+                (
+                    CostWeightVector(
+                        tree_closing_cost=11,
+                        vacuous_penalty=0,
+                        constraint_cost=3,
+                        derivation_depth_penalty=5,
+                        low_k_coverage_penalty=10,
+                        low_global_k_path_coverage_penalty=40),
+                ),
                 (200,),
-                k=1
+                k=4
             ),
+            # cost_settings=CostSettings(
+            #     (CostWeightVector(1, 1, 1, 1, 1, 1),),
+            #     (200,),
+            #     k=1
+            # ),
         )
 
     def test_simple_tar(self):
