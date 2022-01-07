@@ -295,6 +295,7 @@ constraint {
             max_number_free_instantiations=2,
             max_number_smt_instantiations=2,
             enforce_unique_trees_in_queue=False,
+            print_only=True,
         )
 
     def test_rest(self):

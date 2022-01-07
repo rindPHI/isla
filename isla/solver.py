@@ -289,6 +289,7 @@ class ISLaSolver:
                 self.costs[state] = self.compute_cost(state)
 
     def solve(self) -> Generator[DerivationTree, None, None]:
+        fuzzer = GrammarCoverageFuzzer(self.grammar)
         start_time = int(time.time())
 
         while self.queue:
@@ -382,7 +383,6 @@ class ISLaSolver:
                 f"Constraint is not true and contains semantic predicate formulas which bind open leaves in the tree: " \
                 f"{state.constraint}, leaves: {', '.join(list(map(str, [leaf for _, leaf in state.tree.open_leaves()])))}"
 
-            fuzzer = GrammarCoverageFuzzer(self.grammar)
             if state.constraint == sc.true():
                 for _ in range(self.max_number_free_instantiations):
                     result = state.tree
