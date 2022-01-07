@@ -2,7 +2,6 @@ import argparse
 import itertools
 import json
 import logging
-import multiprocessing as mp
 import multiprocessing.pool
 import os
 import os.path
