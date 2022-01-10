@@ -8,6 +8,7 @@ import time
 from functools import reduce, lru_cache
 from typing import Generator, Dict, List, Set, Optional, Tuple, Union, cast
 
+import pkg_resources
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.GrammarFuzzer import GrammarFuzzer
@@ -16,6 +17,8 @@ from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph import gg
 from grammar_graph.gg import GrammarGraph
 from grammar_to_regex.cfg2regex import RegexConverter
+from grammar_to_regex.regex import regex_to_z3
+from packaging import version
 
 import isla.isla_shortcuts as sc
 from isla import isla
@@ -211,6 +214,22 @@ class ISLaSolver:
         """
         self.logger = logging.getLogger(type(self).__name__)
 
+        # We require at least z3 4.8.13.0. ISLa might work for some older versions, but
+        # at least for 4.8.8.0, we have witnessed that certain rather easy constraints,
+        # like equations, don't work since z3 cannot handle the restrictions to more
+        # complicated regular expressions. This happened in the XML case study with
+        # constraints of the kind <id> == <id_no_prefix>. At least with 4.8.13.0, this
+        # works flawlessly, but times out for 4.8.8.0.
+        #
+        # This should be solved using Python requirements, which however cannot be done
+        # currently since the fuzzingbook library inflexibly binds z3 to 4.8.8.0. Thus,
+        # one has to manually install a newer version and ignore the warning.
+
+        z3_version = pkg_resources.get_distribution("z3-solver").version
+        assert version.parse(z3_version) >= version.parse("4.8.13.0"), \
+            f"ISLa requires at least z3 4.8.13.0, present: {z3_version}. " \
+            f"Please install a newer z3 version, e.g., using 'pip install z3-solver==4.8.14.0'."
+
         self.grammar = grammar
         self.graph = GrammarGraph.from_grammar(grammar)
         self.canonical_grammar = canonical(grammar)
@@ -289,7 +308,6 @@ class ISLaSolver:
                 self.costs[state] = self.compute_cost(state)
 
     def solve(self) -> Generator[DerivationTree, None, None]:
-        fuzzer = GrammarCoverageFuzzer(self.grammar)
         start_time = int(time.time())
 
         while self.queue:
@@ -383,6 +401,7 @@ class ISLaSolver:
                 f"Constraint is not true and contains semantic predicate formulas which bind open leaves in the tree: " \
                 f"{state.constraint}, leaves: {', '.join(list(map(str, [leaf for _, leaf in state.tree.open_leaves()])))}"
 
+            fuzzer = GrammarCoverageFuzzer(self.grammar)
             if state.constraint == sc.true():
                 for _ in range(self.max_number_free_instantiations):
                     result = state.tree
@@ -1262,7 +1281,47 @@ class ISLaSolver:
     @lru_cache(maxsize=None)
     def extract_regular_expression(self, nonterminal: str) -> z3.ReRef:
         regex_conv = RegexConverter(self.grammar, compress_unions=True)
-        return regex_conv.to_regex(nonterminal)
+        regex = regex_conv.to_regex(nonterminal, convert_to_z3=False)
+        self.logger.debug(f"Computed regular expression for nonterminal {nonterminal}:\n{regex}")
+        z3_regex = regex_to_z3(regex)
+
+        if not assertions_activated():
+            # Check correctness of regular expression
+            # 1. L(grammar) \subseteq L(regex)
+            self.logger.debug(
+                "Checking L(grammar) \\subseteq L(regex) for nonterminal '%s' and regex '%s'",
+                nonterminal,
+                regex)
+            grammar = self.graph.subgraph(nonterminal).to_grammar()
+            fuzzer = GrammarCoverageFuzzer(grammar)
+            for _ in range(400):
+                inp = fuzzer.fuzz()
+                s = z3.Solver()
+                s.add(z3.InRe(z3.StringVal(inp), z3_regex))
+                assert s.check() == z3.sat, f"Input '{inp}' from grammar language is not in regex language"
+
+            # 2. L(regex) \subseteq L(grammar)
+            self.logger.debug(
+                "Checking L(regex) \\subseteq L(grammar) for nonterminal '%s' and regex '%s'",
+                nonterminal,
+                regex)
+            parser = EarleyParser(grammar)
+            c = z3.String("c")
+            prev: Set[str] = set()
+            for _ in range(100):
+                s = z3.Solver()
+                s.add(z3.InRe(c, z3_regex))
+                for inp in prev:
+                    s.add(z3.Not(c == z3.StringVal(inp)))
+                assert s.check() == z3.sat
+                new_inp = s.model()[c].as_string()
+                try:
+                    next(parser.parse(new_inp))
+                except SyntaxError:
+                    assert False, f"Input '{new_inp}' from regex language is not in grammar language."
+                prev.add(new_inp)
+
+        return z3_regex
 
     def parse(self, nonterminal: str, input: str) -> DerivationTree:
         grammar = copy.deepcopy(self.grammar)
