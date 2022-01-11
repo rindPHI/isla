@@ -1285,7 +1285,7 @@ class ISLaSolver:
         self.logger.debug(f"Computed regular expression for nonterminal {nonterminal}:\n{regex}")
         z3_regex = regex_to_z3(regex)
 
-        if not assertions_activated():
+        if assertions_activated():
             # Check correctness of regular expression
             # 1. L(grammar) \subseteq L(regex)
             self.logger.debug(
