@@ -99,13 +99,13 @@ setup(
       "pickleshare==0.7.5",
       "platformdirs==2.4.0",
       "plotly==5.4.0",
-      "pluggy==0.13.1",
+      "pluggy>=0.12.0",
       "pox==0.3.0",
       "ppft==1.6.6.4",
       "prometheus-client==0.11.0",
       "prompt-toolkit==3.0.20",
       "ptyprocess==0.7.0",
-      "py==1.10.0",
+      "py==1.11.0",
       "pyOpenSSL==21.0.0",
       "pycodestyle==2.7.0",
       "pycparser==2.20",
@@ -118,7 +118,7 @@ setup(
       "pytest-profiling==1.7.0",
       "pytest-pycharm==0.7.0",
       "pytest-xdist==2.4.0",
-      "pytest==6.2.4",
+      "pytest==6.2.5",
       "pytest-html==3.1.1",
       "python-dateutil==2.8.2",
       "python-magic==0.4.24",
@@ -161,7 +161,8 @@ setup(
       "yapf==0.31.0",
       "z3-solver>=4.8.8.0",
       "zipp==3.6.0",
-      "proxyorderedset @ git+git://github.com/rindPHI/proxyorderedset",
-      "grammargraph @ git+git://github.com/rindPHI/GrammarGraph"
+      "proxyorderedset @ git+https://github.com/rindPHI/proxyorderedset",
+      "grammargraph @ git+https://github.com/rindPHI/GrammarGraph",
+      "grammar2regex @ git+https://github.com/rindPHI/grammar2regex"
     ]
 )
