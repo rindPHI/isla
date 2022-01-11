@@ -823,13 +823,13 @@ class BindExpression:
             lambda e: f'{str(e)}'
             if isinstance(e, str)
             else ("[" + "".join(map(str, e)) + "]") if isinstance(e, list)
-            else str(e), self.bound_elements))
+            else (f"{{{str(e)}}}" if not isinstance(e, DummyVariable) else str(e)), self.bound_elements))
 
     def __hash__(self):
         return hash(tuple([tuple(e) if isinstance(e, list) else e for e in self.bound_elements]))
 
     def __eq__(self, other):
-        return self.bound_elements == other.bound_elements
+        return isinstance(other, BindExpression) and self.bound_elements == other.bound_elements
 
 
 class FormulaVisitor:
@@ -1045,9 +1045,10 @@ class StructuralPredicateFormula(Formula):
         return type(self) is type(other) and (self.predicate, self.args) == (other.predicate, other.args)
 
     def __str__(self):
-        arg_strings = []
-        for arg in self.args:
-            arg_strings.append(str(arg))
+        arg_strings = [
+            f'"{arg}"' if isinstance(arg, str) else str(arg)
+            for arg in self.args
+        ]
 
         return f"{self.predicate}({', '.join(arg_strings)})"
 
@@ -1209,9 +1210,10 @@ class SemanticPredicateFormula(Formula):
                 and self.args == other.args)
 
     def __str__(self):
-        arg_strings = []
-        for arg in self.args:
-            arg_strings.append(str(arg))
+        arg_strings = [
+            f'"{arg}"' if isinstance(arg, str) else str(arg)
+            for arg in self.args
+        ]
 
         return f"{self.predicate}({', '.join(arg_strings)})"
 
@@ -1483,6 +1485,7 @@ class IntroduceNumericConstantFormula(Formula):
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_introduce_numeric_constant_formula(self)
+        self.inner_formula.accept(visitor)
 
     def __hash__(self):
         return hash((self.bound_variable, self.inner_formula))
@@ -2916,6 +2919,80 @@ def parse_isla(
     isla_emitter = ISLaEmitter(structural_predicates, semantic_predicates)
     antlr4.ParseTreeWalker().walk(isla_emitter, parser.start())
     return isla_emitter.result
+
+
+def unparse_isla(formula: Formula) -> str:
+    result: str = ""
+    indent: str = "  "
+
+    constant: Optional[Constant] = None
+
+    try:
+        constant = next(
+            (c for c in VariablesCollector.collect(formula)
+             if isinstance(c, Constant) and not c.is_numeric()))
+
+        result += f"const {constant.name}: {constant.n_type};\n\n"
+    except StopIteration:
+        pass
+
+    variables = [var for var in VariablesCollector.collect(formula) if var != constant]
+    if variables:
+        result += f"vars {{\n{indent}"
+        result += f"\n{indent}".join([f"{var.name}: {var.n_type};" for var in variables])
+        result += "\n}\n\n"
+
+    def unparse_constraint(formula: Formula) -> List[str]:
+        if isinstance(formula, QuantifiedFormula):
+            bind_expr_str = "" if formula.bind_expression is None else f'="{formula.bind_expression}"'
+
+            qfr = "forall" if isinstance(formula, ForallFormula) else "exists"
+            result = [f"{qfr} {formula.bound_variable.name}{bind_expr_str} in {formula.in_variable}:"]
+            child_result = unparse_constraint(formula.inner_formula)
+            result += [indent + line for line in child_result]
+            return result
+
+        if isinstance(formula, IntroduceNumericConstantFormula):
+            result = [f"num {formula.bound_variable.name}:"]
+            child_result = unparse_constraint(formula.inner_formula)
+            result += [indent + line for line in child_result]
+            return result
+
+        if isinstance(formula, ConjunctiveFormula) or isinstance(formula, DisjunctiveFormula):
+            combinator = "and" if isinstance(formula, ConjunctiveFormula) else "or"
+            child_results = [unparse_constraint(child) for child in formula.args]
+
+            for idx, child_result in enumerate(child_results[:-1]):
+                child_results[idx][-1] = child_results[idx][-1] + f" {combinator}"
+
+            for idx, child_result in enumerate(child_results[1:]):
+                child_results[idx] = [" " + line for line in child_results[idx]]
+
+            child_results[0][0] = "(" + child_results[0][0][1:]
+            child_results[-1][-1] += ")"
+
+            return [line for child_result in child_results for line in child_result]
+
+        if isinstance(formula, NegatedFormula):
+            child_results = [unparse_constraint(child) for child in formula.args]
+            result = [line for child_result in child_results for line in child_result]
+            result[0] = "not(" + result[0]
+            result[-1] += ")"
+            return result
+
+        if isinstance(formula, StructuralPredicateFormula) or isinstance(formula, SemanticPredicateFormula):
+            return [str(formula)]
+
+        if isinstance(formula, SMTFormula):
+            return [formula.formula.sexpr()]
+
+        raise NotImplementedError(f"Unparsing of formulas of type {type(formula).__name__} not implemented.")
+
+    result += "constraint {\n"
+    result += "\n".join([indent + line for line in unparse_constraint(formula)])
+    result += "\n}"
+
+    return result
 
 
 def get_conjuncts(formula: Formula) -> List[Formula]:

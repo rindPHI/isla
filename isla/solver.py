@@ -1435,6 +1435,9 @@ def compute_vacuous_penalty(
 
     set_smt_auto_eval(formula, True)
 
+    # TODO XXX: Shouldn't it be "any" instead of "all(any"? The way below,
+    #           only chains are considered in which *all* quantifiers are
+    #           vacuously satisfied. One suffices, though!
     vacuous_chains = {
         c for c in quantifier_chains if
         all(any(of.id == f.id for of in vacuously_matched_quantifiers)

@@ -13,13 +13,14 @@ from isla import isla
 from isla.helpers import delete_unreachable, tree_to_string
 from isla.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
     DerivationTree, convert_to_dnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
-    matches_for_quantified_formula, QuantifiedFormula, DummyVariable, eliminate_quantifiers
+    matches_for_quantified_formula, QuantifiedFormula, DummyVariable, eliminate_quantifiers, unparse_isla, parse_isla
 from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, IN_TREE_PREDICATE, \
     SAME_POSITION_PREDICATE
 from isla.isla_predicates import count, COUNT_PREDICATE
 from isla.tests.subject_languages import rest, scriptsizec
 from isla.tests.subject_languages import tinyc, tar
-from isla.tests.subject_languages.csv import CSV_GRAMMAR
+from isla.tests.subject_languages.csv import CSV_GRAMMAR, CSV_COLNO_PROPERTY
+from isla.tests.subject_languages.scriptsizec import SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT, SCRIPTSIZE_C_NO_REDEF_TEXT
 from isla.tests.subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, validate_xml, \
     xml_no_attr_redef_constraint, XML_GRAMMAR, XML_NAMESPACE_CONSTRAINT
 from isla.tests.test_data import LANG_GRAMMAR, eval_lang
@@ -843,6 +844,28 @@ constraint {
                 {path_to_string(p) for p in tree_2.k_paths(graph, k)})
 
         print(graph.k_path_coverage(tree, 3))
+
+    def test_unparse_isla(self):
+        unparsed = unparse_isla(CSV_COLNO_PROPERTY)
+        self.assertEqual(CSV_COLNO_PROPERTY, parse_isla(unparsed, semantic_predicates={COUNT_PREDICATE}))
+
+        DummyVariable.cnt = 0
+        scriptsize_c_def_use_constr = parse_isla(
+            SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
+        unparsed = unparse_isla(scriptsize_c_def_use_constr)
+        DummyVariable.cnt = 0
+        self.assertEqual(
+            scriptsize_c_def_use_constr,
+            parse_isla(unparsed, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE}))
+
+        DummyVariable.cnt = 0
+        scriptsize_c_no_redef_constr = parse_isla(
+            SCRIPTSIZE_C_NO_REDEF_TEXT, structural_predicates={SAME_POSITION_PREDICATE})
+        unparsed = unparse_isla(scriptsize_c_no_redef_constr)
+        DummyVariable.cnt = 0
+        self.assertEqual(
+            scriptsize_c_no_redef_constr,
+            parse_isla(unparsed, structural_predicates={SAME_POSITION_PREDICATE}))
 
 
 if __name__ == '__main__':
