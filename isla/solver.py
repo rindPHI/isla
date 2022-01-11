@@ -1313,7 +1313,13 @@ class ISLaSolver:
                 s.add(z3.InRe(c, z3_regex))
                 for inp in prev:
                     s.add(z3.Not(c == z3.StringVal(inp)))
-                assert s.check() == z3.sat
+                if s.check() != z3.sat:
+                    self.logger.debug(
+                        "Cannot find the %d-th solution for regex %s (timeout).\nThis is *not* a problem "
+                        "if there not that many solutions (for regexes with finite language), or if we "
+                        "are facing a meaningless timeout of the solver.",
+                        len(prev)+1, regex)
+                    break
                 new_inp = s.model()[c].as_string()
                 try:
                     next(parser.parse(new_inp))
