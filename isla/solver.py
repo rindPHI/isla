@@ -2,17 +2,14 @@ import copy
 import heapq
 import itertools
 import logging
-import math
 import sys
 import time
 from functools import reduce, lru_cache
 from typing import Generator, Dict, List, Set, Optional, Tuple, Union, cast
 
+import math
 import pkg_resources
 import z3
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
-from fuzzingbook.GrammarFuzzer import GrammarFuzzer
-from fuzzingbook.Grammars import is_nonterminal
 from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph import gg
 from grammar_graph.gg import GrammarGraph
@@ -22,10 +19,11 @@ from packaging import version
 
 import isla.isla_shortcuts as sc
 from isla import isla
+from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.existential_helpers import insert_tree
 from isla.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
-    replace_line_breaks, z3_subst, z3_solve, weighted_geometric_mean, assertions_activated, split_str_with_nonterminals, \
-    z3_or, cluster_by_common_elements
+    replace_line_breaks, z3_subst, z3_solve, weighted_geometric_mean, assertions_activated, \
+    split_str_with_nonterminals, z3_or, cluster_by_common_elements, is_nonterminal
 from isla.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
     convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, set_smt_auto_eval
 from isla.type_defs import Grammar, Path
@@ -406,13 +404,13 @@ class ISLaSolver:
                 for _ in range(self.max_number_free_instantiations):
                     result = state.tree
                     for path, leaf in state.tree.open_leaves():
-                        leaf_inst = DerivationTree.from_parse_tree(fuzzer.expand_tree((leaf.value, None)))
+                        leaf_inst = fuzzer.expand_tree(DerivationTree(leaf.value, None))
                         result = result.replace_path(path, leaf_inst)
                     yield from self.process_new_states([SolutionState(state.constraint, result)])
             else:
                 for _ in range(self.max_number_free_instantiations):
                     substitutions: Dict[DerivationTree, DerivationTree] = {
-                        subtree: DerivationTree.from_parse_tree(fuzzer.expand_tree((subtree.value, None)))
+                        subtree: fuzzer.expand_tree(DerivationTree(subtree.value, None))
                         for path, subtree in state.tree.open_leaves()
                     }
 
@@ -1167,12 +1165,12 @@ class ISLaSolver:
 
         for nonterminal in self.grammar:
             fuzzer = GrammarFuzzer(self.grammar)
-            tree = fuzzer.expand_tree_with_strategy((nonterminal, None), fuzzer.expand_node_max_cost, 1)
+            tree = fuzzer.expand_tree_with_strategy(DerivationTree(nonterminal, None), fuzzer.expand_node_max_cost, 1)
             tree = fuzzer.expand_tree_with_strategy(tree, fuzzer.expand_node_min_cost)
             result[nonterminal] = sum([
                 len([expansion for expansion in self.canonical_grammar[tree.value]
                      if any(is_nonterminal(symbol) for symbol in expansion)])
-                for _, tree in DerivationTree.from_parse_tree(tree).paths()
+                for _, tree in tree.paths()
                 if is_nonterminal(tree.value)
             ])
 
@@ -1318,7 +1316,7 @@ class ISLaSolver:
                         "Cannot find the %d-th solution for regex %s (timeout).\nThis is *not* a problem "
                         "if there not that many solutions (for regexes with finite language), or if we "
                         "are facing a meaningless timeout of the solver.",
-                        len(prev)+1, regex)
+                        len(prev) + 1, regex)
                     break
                 new_inp = s.model()[c].as_string()
                 try:

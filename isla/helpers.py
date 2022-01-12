@@ -92,9 +92,50 @@ def get_symbols(formula: z3.BoolRef) -> Set[z3.Symbol]:
     return result
 
 
-def visit_z3_expr(e: Union[z3.ExprRef, z3.QuantifierRef],
+TRAVERSE_PREORDER = 0
+TRAVERSE_POSTORDER = 1
+
+
+def traverse(
+        tree: ParseTree,
+        action: Callable[[Path, ParseTree], None],
+        abort_condition: Callable[[Path, ParseTree], bool] = lambda p, n: False,
+        kind: int = TRAVERSE_PREORDER,
+        reverse: bool = False) -> None:
+    stack_1: List[Tuple[Path, ParseTree]] = [((), tree)]
+    stack_2: List[Tuple[Path, ParseTree]] = []
+
+    if kind == TRAVERSE_PREORDER:
+        reverse = not reverse
+
+    while stack_1:
+        path, node = stack_1.pop()
+        symbol, children = node
+
+        if abort_condition(path, node):
+            return
+
+        if kind == TRAVERSE_POSTORDER:
+            stack_2.append((path, node))
+
+        if kind == TRAVERSE_PREORDER:
+            action(path, node)
+
+        if children:
+            iterator = reversed(children) if reverse else iter(children)
+
+            for idx, child in enumerate(iterator):
+                new_path = path + ((len(children) - idx - 1) if reverse else idx,)
+                stack_1.append((new_path, child))
+
+    if kind == TRAVERSE_POSTORDER:
+        while stack_2:
+            action(*stack_2.pop())
+
+
+def visit_z3_expr(e: z3.ExprRef | z3.QuantifierRef,
                   seen: Optional[Dict[Union[z3.ExprRef, z3.QuantifierRef], bool]] = None) -> \
-        Generator[Union[z3.ExprRef, z3.QuantifierRef], None, None]:
+        Generator[z3.ExprRef | z3.QuantifierRef, None, None]:
     if seen is None:
         seen = {}
     elif e in seen:
@@ -313,3 +354,14 @@ def cluster_by_common_elements(l: Sequence[T], f: Callable[[T], Set[S]]) -> List
         result.append(no_dupl_cluster)
 
     return result
+
+
+RE_NONTERMINAL = re.compile(r'(<[^<> ]*>)')
+
+
+def is_nonterminal(s):
+    return RE_NONTERMINAL.match(s)
+
+
+def nonterminals(expansion):
+    return RE_NONTERMINAL.findall(expansion)

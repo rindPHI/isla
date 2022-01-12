@@ -1,6 +1,7 @@
 import copy
 import itertools
 import logging
+import operator
 import pickle
 import re
 from functools import reduce, lru_cache
@@ -10,13 +11,13 @@ import antlr4
 import z3
 from antlr4 import InputStream
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
-from fuzzingbook.Grammars import is_nonterminal, RE_NONTERMINAL
 from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
 from orderedset import OrderedSet
 
 import isla.parsers.isla.isla.islaListener as ISLaParserListener
 import isla.parsers.isla.mexpr_parser.MexprParserListener as MexprParserListener
+from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER
 from isla.helpers import get_symbols, z3_subst, is_valid, \
     replace_line_breaks, delete_unreachable, pop, z3_solve, powerset, grammar_to_immutable, immutable_to_grammar, \
     nested_list_to_tuple
@@ -126,12 +127,13 @@ class DerivationTree:
                  id: Optional[int] = None,
                  k_paths: Optional[Dict[int, Set[Tuple[gg.Node, ...]]]] = None,
                  hash: Optional[int] = None,
-                 structural_hash: Optional[int] = None):
+                 structural_hash: Optional[int] = None,
+                 is_open: Optional[bool] = None):
         assert isinstance(value, str)
         assert children is None or all(isinstance(child, DerivationTree) for child in children)
 
-        self.value = value
-        self.children = None if children is None else tuple(children)
+        self.__value = value
+        self.__children = None if children is None else tuple(children)
 
         if id:
             self._id = id
@@ -147,6 +149,25 @@ class DerivationTree:
         self.__hash = hash
         self.__structural_hash = structural_hash
         self.__k_paths: Dict[int, Set[Tuple[gg.Node, ...]]] = k_paths or {}
+
+        self.__is_open = is_open
+        if children is None:
+            self.__is_open = True
+        else:
+            if any(child.__is_open is True for child in children):
+                self.__is_open = True
+            if all(child.__is_open is False for child in children):
+                self.__is_open = False
+
+        # assert self.__is_open is None or self.__is_open == self.__compute_is_open()
+
+    @property
+    def children(self) -> Tuple['DerivationTree']:
+        return self.__children
+
+    @property
+    def value(self) -> str:
+        return self.__value
 
     @property
     def id(self) -> int:
@@ -188,6 +209,12 @@ class DerivationTree:
         return 0 if self.children is None else len(self.children)
 
     def is_open(self):
+        if self.__is_open is None:
+            self.__is_open = self.__compute_is_open()
+
+        return self.__is_open
+
+    def __compute_is_open(self):
         if self.children is None:
             return True
 
@@ -307,6 +334,17 @@ class DerivationTree:
 
         return result
 
+    def terminals(self) -> List[str]:
+        result: List[str] = []
+
+        def add_if_terminal(_: Path, tree: DerivationTree):
+            if not is_nonterminal(tree.value):
+                result.append(tree.value)
+
+        self.traverse(action=add_if_terminal)
+
+        return result
+
     def reachable_symbols(self, grammar: Grammar, is_reachable: Callable[[str, str], bool]) -> Set[str]:
         return self.nonterminals() | {
             nonterminal for nonterminal in grammar
@@ -353,9 +391,16 @@ class DerivationTree:
 
         assert isinstance(replacement_tree, DerivationTree)
 
+        if replacement_tree.__is_open is True:
+            is_open = True
+        elif replacement_tree.__is_open is False and self.__is_open is False:
+            is_open = False
+        else:
+            is_open = None
+
         if not path:
             if retain_id:
-                return DerivationTree(replacement_tree.value, replacement_tree.children, id=self.id)
+                return DerivationTree(replacement_tree.value, replacement_tree.children, id=self.id, is_open=is_open)
 
             return replacement_tree
 
@@ -365,7 +410,7 @@ class DerivationTree:
                 (children[head].replace_path(path[1:], replacement_tree, retain_id),) +
                 children[head + 1:])
 
-        return DerivationTree(node, new_children, id=self.id)
+        return DerivationTree(node, new_children, id=self.id, is_open=is_open)
 
     def leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
         return ((path, sub_tree)
@@ -475,22 +520,25 @@ class DerivationTree:
 
     @staticmethod
     def from_parse_tree(tree: ParseTree):
-        node, children = tree
-        result = DerivationTree(node, None)
+        result_stack: List[DerivationTree] = []
 
-        stack: List[Tuple[List[ParseTree], DerivationTree]] = [(children, result)]
-
-        while stack:
-            children, dtree = stack.pop(0)
+        def action(_, tree: ParseTree) -> None:
+            node, children = tree
             if not children:
-                dtree.children = None if children is None else ()
-                continue
+                result_stack.append(DerivationTree(node, children))
+                return
 
-            dtree.children = ()
-            for child in children:
-                new_node = DerivationTree(child[0], None)
-                dtree.children += (new_node,)
-                stack.append((child[1], new_node))
+            children_results: List[DerivationTree] = []
+            for _ in range(len(children)):
+                children_results.append(result_stack.pop())
+
+            result_stack.append(DerivationTree(node, children_results))
+
+        traverse(tree, action, kind=TRAVERSE_POSTORDER, reverse=True)
+
+        assert len(result_stack) == 1
+        result = result_stack[0]
+        assert result.to_parse_tree() == tree
 
         return result
 
