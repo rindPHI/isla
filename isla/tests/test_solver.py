@@ -171,7 +171,7 @@ constraint {
             XML_NAMESPACE_CONSTRAINT & XML_WELLFORMEDNESS_CONSTRAINT & XML_NO_ATTR_REDEF_CONSTRAINT,
             grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
             max_number_free_instantiations=1,
-            num_solutions=30,
+            num_solutions=60,
             enforce_unique_trees_in_queue=False,
             custom_test_func=validate_xml,
             cost_settings=CostSettings(
