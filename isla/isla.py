@@ -538,7 +538,6 @@ class DerivationTree:
 
         assert len(result_stack) == 1
         result = result_stack[0]
-        assert result.to_parse_tree() == tree
 
         return result
 

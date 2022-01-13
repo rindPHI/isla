@@ -77,6 +77,9 @@ class Evaluator:
 
         self.db_file: str = args.db
 
+        if not args.generate:
+            assert os.path.exists(args.db)
+
         chosen_jobs = [name.strip() for name in args.jobs.split(",")]
         if any(job not in jobnames for job in chosen_jobs):
             print("ERROR: Unknown job specified.", file=sys.stderr)
