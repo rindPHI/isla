@@ -179,7 +179,6 @@ def is_valid(formula: z3.BoolRef, timeout: int = 500) -> bool:
 
 def z3_solve(formulas: List[z3.BoolRef], timeout_ms=500) -> Tuple[z3.CheckSatResult, Optional[z3.ModelRef]]:
     logger = logging.getLogger("z3_solve")
-    logger.debug("Evaluating formulas %s", ", ".join(map(str, formulas)))
 
     result = z3.unknown  # To remove IDE warning
     model: Optional[z3.ModelRef] = None
