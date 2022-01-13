@@ -291,11 +291,11 @@ constraint {
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR,
             custom_test_func=csv_lint,
-            num_solutions=30,
+            num_solutions=40,
             max_number_free_instantiations=2,
             max_number_smt_instantiations=2,
             enforce_unique_trees_in_queue=False,
-            print_only=True,
+            global_fuzzer=True
         )
 
     def test_rest(self):
@@ -416,7 +416,8 @@ constraint {
             custom_test_func: Optional[Callable[[isla.DerivationTree], Union[bool, str]]] = None,
             cost_settings=STD_COST_SETTINGS,
             print_only: bool = False,
-            timeout_seconds: Optional[int] = None
+            timeout_seconds: Optional[int] = None,
+            global_fuzzer: bool = False
     ):
         logger = logging.getLogger(type(self).__name__)
 
@@ -436,7 +437,8 @@ constraint {
             precompute_reachability=precompute_reachability,
             debug=debug,
             cost_settings=cost_settings,
-            timeout_seconds=timeout_seconds
+            timeout_seconds=timeout_seconds,
+            global_fuzzer=global_fuzzer
         )
 
         if debug:

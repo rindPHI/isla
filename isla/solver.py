@@ -190,7 +190,8 @@ class ISLaSolver:
                  precompute_reachability: bool = False,
                  debug: bool = False,
                  cost_settings: CostSettings = STD_COST_SETTINGS,
-                 timeout_seconds: Optional[int] = None):
+                 timeout_seconds: Optional[int] = None,
+                 global_fuzzer: bool = False):
         """
         :param grammar: The underlying grammar.
         :param formula: The formula to solve.
@@ -209,6 +210,10 @@ class ISLaSolver:
         :param debug: If true, debug information about the evolution of states is collected, notably in the
         field state_tree. The root of the tree is in the field state_tree_root. The field costs stores the computed
         cost values for all new nodes.
+        :param global_fuzzer: If set to True, only one coverage-guided grammar fuzzer object is used to finish
+        off unconstrained open derivation trees throughout the whole generation time. This may be beneficial for
+        some targets; e.g., we experienced that CSV works significantly faster. However, the achieved k-path coverage
+        can be lower with that setting.
         """
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -233,6 +238,7 @@ class ISLaSolver:
         self.canonical_grammar = canonical(grammar)
         self.symbol_costs: Dict[str, int] = self.compute_symbol_costs()
         self.timeout_seconds = timeout_seconds
+        self.global_fuzzer = global_fuzzer
 
         if isinstance(formula, str):
             formula = parse_isla(formula, structural_predicates, semantic_predicates)
@@ -307,6 +313,7 @@ class ISLaSolver:
 
     def solve(self) -> Generator[DerivationTree, None, None]:
         start_time = int(time.time())
+        fuzzer = GrammarCoverageFuzzer(self.grammar)
 
         while self.queue:
             if self.timeout_seconds is not None:
@@ -399,7 +406,8 @@ class ISLaSolver:
                 f"Constraint is not true and contains semantic predicate formulas which bind open leaves in the tree: " \
                 f"{state.constraint}, leaves: {', '.join(list(map(str, [leaf for _, leaf in state.tree.open_leaves()])))}"
 
-            fuzzer = GrammarCoverageFuzzer(self.grammar)
+            if not self.global_fuzzer:
+                fuzzer = GrammarCoverageFuzzer(self.grammar)
             if state.constraint == sc.true():
                 for _ in range(self.max_number_free_instantiations):
                     result = state.tree
