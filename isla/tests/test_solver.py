@@ -291,8 +291,8 @@ constraint {
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR,
             custom_test_func=csv_lint,
-            num_solutions=40,
-            max_number_free_instantiations=2,
+            num_solutions=200,
+            max_number_free_instantiations=10,
             max_number_smt_instantiations=2,
             enforce_unique_trees_in_queue=False,
             global_fuzzer=True

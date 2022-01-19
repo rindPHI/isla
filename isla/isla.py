@@ -2243,7 +2243,8 @@ def evaluate_legacy(
         formula: Formula,
         grammar: Grammar,
         assignments: Dict[Variable, Tuple[Path, DerivationTree]],
-        reference_tree: DerivationTree) -> ThreeValuedTruth:
+        reference_tree: DerivationTree,
+        vacuously_satisfied: Optional[Set[Formula]] = None) -> ThreeValuedTruth:
     """
     An evaluation method which is based on tracking assignments in a dictionary.
     This does not work with formulas containing numeric constant introductions,
@@ -2253,6 +2254,9 @@ def evaluate_legacy(
     :param assignments: The assignments recorded so far.
     :return: A (three-valued) truth value.
     """
+    if vacuously_satisfied is None:
+        vacuously_satisfied = set()
+
     if isinstance(formula, IntroduceNumericConstantFormula):
         raise NotImplementedError("This method cannot evaluate IntroduceNumericConstantFormula formulas.")
     elif isinstance(formula, SMTFormula):
@@ -2276,12 +2280,15 @@ def evaluate_legacy(
         new_assignments = matches_for_quantified_formula(formula, grammar, in_inst, assignments)
 
         if isinstance(formula, ForallFormula):
+            if not new_assignments:
+                vacuously_satisfied.add(formula)
+
             return ThreeValuedTruth.all(
-                evaluate_legacy(formula.inner_formula, grammar, new_assignment, reference_tree)
+                evaluate_legacy(formula.inner_formula, grammar, new_assignment, reference_tree, vacuously_satisfied)
                 for new_assignment in new_assignments)
         elif isinstance(formula, ExistsFormula):
             return ThreeValuedTruth.any(
-                evaluate_legacy(formula.inner_formula, grammar, new_assignment, reference_tree)
+                evaluate_legacy(formula.inner_formula, grammar, new_assignment, reference_tree, vacuously_satisfied)
                 for new_assignment in new_assignments)
     elif isinstance(formula, StructuralPredicateFormula):
         arg_insts = [
@@ -2311,13 +2318,16 @@ def evaluate_legacy(
         assignments.update({const: (tuple(), assgn) for const, assgn in eval_res.result.items()})
         return ThreeValuedTruth.true()
     elif isinstance(formula, NegatedFormula):
-        return ThreeValuedTruth.not_(evaluate_legacy(formula.args[0], grammar, assignments, reference_tree))
+        return ThreeValuedTruth.not_(evaluate_legacy(
+            formula.args[0], grammar, assignments, reference_tree, vacuously_satisfied))
     elif isinstance(formula, ConjunctiveFormula):
         return ThreeValuedTruth.all(
-            evaluate_legacy(sub_formula, grammar, assignments, reference_tree) for sub_formula in formula.args)
+            evaluate_legacy(sub_formula, grammar, assignments, reference_tree, vacuously_satisfied)
+            for sub_formula in formula.args)
     elif isinstance(formula, DisjunctiveFormula):
         return ThreeValuedTruth.any(
-            evaluate_legacy(sub_formula, grammar, assignments, reference_tree) for sub_formula in formula.args)
+            evaluate_legacy(sub_formula, grammar, assignments, reference_tree, vacuously_satisfied)
+            for sub_formula in formula.args)
     else:
         raise NotImplementedError()
 
@@ -2327,7 +2337,8 @@ def evaluate(
         reference_tree: DerivationTree,
         grammar: Grammar,
         structural_predicates: Optional[Set[StructuralPredicate]] = None,
-        semantic_predicates: Optional[Set[SemanticPredicate]] = None) -> ThreeValuedTruth:
+        semantic_predicates: Optional[Set[SemanticPredicate]] = None,
+        vacuously_satisfied: Optional[Set[Formula]] = None) -> ThreeValuedTruth:
     if isinstance(formula, str):
         formula = parse_isla(formula, structural_predicates, semantic_predicates)
 
@@ -2346,9 +2357,14 @@ def evaluate(
     formula.accept(v)
     if not v.result:
         # The legacy evaluation performs better, but only works w/o IntroduceNumericConstantFormulas.
-        return evaluate_legacy(formula, grammar, {}, reference_tree)
+        return evaluate_legacy(formula, grammar, {}, reference_tree, vacuously_satisfied)
 
-    qfr_free: List[Formula] = eliminate_quantifiers(formula, grammar=grammar)
+    if vacuously_satisfied is not None:
+        set_smt_auto_eval(formula, False)
+    qfr_free: List[Formula] = eliminate_quantifiers(formula, grammar=grammar, vacuously_satisfied=vacuously_satisfied)
+    if vacuously_satisfied is not None:
+        set_smt_auto_eval(formula, True)
+
     qfr_free_dnf: List[Formula] = [convert_to_dnf(convert_to_nnf(f)) for f in qfr_free]
     clauses: List[List[Formula]] = [split_conjunction(_f) for f in qfr_free_dnf for _f in split_disjunction(f)]
 
@@ -3076,8 +3092,6 @@ def bound_elements_to_tree(
         bound_elements: Tuple[BoundVariable, ...],
         immutable_grammar: ImmutableGrammar,
         in_nonterminal: str) -> DerivationTree:
-    result = None
-
     grammar = immutable_to_grammar(immutable_grammar)
     fuzzer = GrammarFuzzer(grammar)
 
