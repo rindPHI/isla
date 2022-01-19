@@ -113,7 +113,6 @@ setup(
       "pyflakes==2.3.1",
       "pyparsing==2.4.7",
       "pyrsistent==0.18.0",
-      "pyswip==0.2.10",
       "pytest-forked==1.3.0",
       "pytest-profiling==1.7.0",
       "pytest-pycharm==0.7.0",
