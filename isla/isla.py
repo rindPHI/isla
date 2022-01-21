@@ -1,6 +1,7 @@
 import copy
 import itertools
 import logging
+import operator
 import pickle
 import re
 from abc import ABC
@@ -939,10 +940,10 @@ class Formula(ABC):
     def __hash__(self):
         raise NotImplementedError()
 
-    def __eq__(self, other):
+    def __eq__(self, other: 'Formula'):
         raise NotImplementedError()
 
-    def __and__(self, other):
+    def __and__(self, other: 'Formula'):
         if self == other:
             return self
 
@@ -960,7 +961,7 @@ class Formula(ABC):
 
         return ConjunctiveFormula(self, other)
 
-    def __or__(self, other):
+    def __or__(self, other: 'Formula'):
         if self == other:
             return self
 
@@ -997,6 +998,10 @@ class Formula(ABC):
         elif isinstance(self, ExistsFormula):
             return ForallFormula(
                 self.bound_variable, self.in_variable, -self.inner_formula, self.bind_expression)
+        elif isinstance(self, ForallIntFormula):
+            return ExistsIntFormula(self.bound_variable, -self.inner_formula)
+        elif isinstance(self, ExistsIntFormula):
+            return ForallIntFormula(self.bound_variable, -self.inner_formula)
 
         return NegatedFormula(self)
 
@@ -1268,9 +1273,12 @@ class SemanticPredicateFormula(Formula):
         return f'SemanticPredicateFormula({repr(self.predicate), ", ".join(map(repr, self.args))})'
 
 
-class PropositionalCombinator(Formula):
+class PropositionalCombinator(Formula, ABC):
     def __init__(self, *args: Formula):
         self.args = args
+
+    def bound_variables(self) -> OrderedSet[BoundVariable]:
+        return reduce(operator.or_, [arg.bound_variables() for arg in self.args])
 
     def free_variables(self) -> OrderedSet[Variable]:
         result: OrderedSet[Variable] = OrderedSet([])
@@ -1894,7 +1902,7 @@ def well_formed(formula: Formula,
     if unknown_typed_variables:
         return False, "Unkown types of variables " + ", ".join(map(repr, unknown_typed_variables))
 
-    if isinstance(formula, ExistsIntFormula):
+    if isinstance(formula, ExistsIntFormula) or isinstance(formula, ForallIntFormula):
         if formula.bound_variables().intersection(bound_vars):
             return False, f"Variables {', '.join(map(str, formula.bound_variables().intersection(bound_vars)))} " \
                           f"already bound in outer scope"
@@ -2098,6 +2106,23 @@ def eliminate_quantifiers(
         graph: Optional[gg.GrammarGraph] = None,
         reachable: Optional[Callable[[str, str], bool]] = None,
         non_vacuously_satisfied: Optional[Set[ForallFormula]] = None) -> List[Formula]:
+    # NOTE / TODO: Vacuous satisfaction is probably wrongly computed, since ForallFormulas might be in negation scope.
+
+    # First, we replace "forall int x: Phi(x)" by "not exists int x: not Phi(x)".
+    def replace_forall_int_formula_action(inner_formula: Formula) -> bool | Formula:
+        if not isinstance(inner_formula, ForallIntFormula):
+            return False
+
+        # Do not use negation operator "-" to avoid simplifying ExistsIntFormulas in
+        # negation scope to ForallIntFormulas
+        return NegatedFormula(ExistsIntFormula(
+            inner_formula.bound_variable,
+            NegatedFormula(inner_formula.inner_formula)))
+
+    formula = replace_formula(formula, replace_forall_int_formula_action)
+
+    assert not FilterVisitor(lambda f: isinstance(f, ForallIntFormula)).collect(formula)
+
     def in_vacuous(formula: ForallFormula) -> bool:
         return any(f.id == formula.id for f in vacuously_satisfied)
 
@@ -2194,17 +2219,17 @@ def eliminate_quantifiers(
              for f in eliminate_quantifiers(
                 r, vacuously_satisfied, grammar, graph, reachable, non_vacuously_satisfied)})
 
-    intro_const_formulas = [f for f in quantified_formulas if isinstance(f, ExistsIntFormula)]
-    if intro_const_formulas:
+    exists_int_formulas = [f for f in quantified_formulas if isinstance(f, ExistsIntFormula)]
+    if exists_int_formulas:
         used_vars = set(VariablesCollector.collect(formula))
-        for intro_const_formula in intro_const_formulas:
+        for exists_int_formula in exists_int_formulas:
             fresh = fresh_constant(
                 used_vars,
-                Constant(intro_const_formula.bound_variable.name, intro_const_formula.bound_variable.n_type))
+                Constant(exists_int_formula.bound_variable.name, exists_int_formula.bound_variable.n_type))
             formula = replace_formula(
                 formula,
-                intro_const_formula,
-                intro_const_formula.inner_formula.substitute_variables({intro_const_formula.bound_variable: fresh}))
+                exists_int_formula,
+                exists_int_formula.inner_formula.substitute_variables({exists_int_formula.bound_variable: fresh}))
 
         return eliminate_quantifiers(formula, vacuously_satisfied, grammar, graph, reachable, non_vacuously_satisfied)
 
@@ -2414,7 +2439,9 @@ def evaluate(
 
     if vacuously_satisfied is not None:
         set_smt_auto_eval(formula, False)
+
     qfr_free: List[Formula] = eliminate_quantifiers(formula, grammar=grammar, vacuously_satisfied=vacuously_satisfied)
+
     if vacuously_satisfied is not None:
         set_smt_auto_eval(formula, True)
 
@@ -2518,7 +2545,7 @@ def quantified_formula_might_match(
 
 
 def replace_formula(in_formula: Formula,
-                    to_replace: Union[Formula, Callable[[Formula], Union[bool, Formula]]],
+                    to_replace: Union[Formula, Callable[[Formula], bool | Formula]],
                     replace_with: Optional[Formula] = None) -> Formula:
     """
     Replaces a formula inside a conjunction or disjunction.
@@ -2533,8 +2560,8 @@ def replace_formula(in_formula: Formula,
         if isinstance(result, Formula):
             return result
 
-        assert type(result) is bool
-        if to_replace(in_formula):
+        assert isinstance(result, bool)
+        if result:
             assert replace_with is not None
             return replace_with
     else:
@@ -2575,6 +2602,10 @@ def replace_formula(in_formula: Formula,
         return ExistsIntFormula(
             in_formula.bound_variable,
             replace_formula(in_formula.inner_formula, to_replace, replace_with))
+    elif isinstance(in_formula, ForallIntFormula):
+        return ForallIntFormula(
+            in_formula.bound_variable,
+            replace_formula(in_formula.inner_formula, to_replace, replace_with))
 
     return in_formula
 
@@ -2597,22 +2628,28 @@ def convert_to_nnf(formula: Formula, negate=False) -> Formula:
             return reduce(lambda a, b: a | b, args)
     elif isinstance(formula, StructuralPredicateFormula) or isinstance(formula, SemanticPredicateFormula):
         if negate:
-            return NegatedFormula(formula)
+            return -formula
         else:
             return formula
     elif isinstance(formula, SMTFormula):
         if negate:
             return SMTFormula(
-                z3.Not(formula.formula),
+                z3.simplify(z3.Not(formula.formula)),
                 *formula.free_variables(),
                 instantiated_variables=formula.instantiated_variables,
-                substitutions=formula.substitutions
+                substitutions=formula.substitutions,
+                auto_eval=formula.auto_eval
             )
         else:
             return formula
-    elif isinstance(formula, ExistsIntFormula):
-        return ExistsIntFormula(
-            formula.bound_variable, convert_to_nnf(formula.inner_formula, negate))
+    elif isinstance(formula, ExistsIntFormula) or isinstance(formula, ForallIntFormula):
+        inner_formula = convert_to_nnf(formula.inner_formula, negate) if negate else formula.inner_formula
+
+        if ((isinstance(formula, ForallIntFormula) and negate)
+                or (isinstance(formula, ExistsIntFormula) and not negate)):
+            return ExistsIntFormula(formula.bound_variable, inner_formula)
+        else:
+            return ForallIntFormula(formula.bound_variable, inner_formula)
     elif isinstance(formula, QuantifiedFormula):
         inner_formula = convert_to_nnf(formula.inner_formula, negate) if negate else formula.inner_formula
         already_matched: Set[int] = formula.already_matched if isinstance(formula, ForallFormula) else set()
@@ -2984,7 +3021,8 @@ class ISLaEmitter(ISLaParserListener.islaListener):
             self.get_bvar(ctx.ID().getText()), self.formulas[ctx.formula()])
 
     def exitForallInt(self, ctx: islaParser.ForallIntContext):
-        super().exitForallInt(ctx)
+        self.formulas[ctx] = ForallIntFormula(
+            self.get_bvar(ctx.ID().getText()), self.formulas[ctx.formula()])
 
     def exitSexprId(self, ctx: islaParser.SexprIdContext):
         if ctx.ID().getText() not in self.variables:
@@ -3014,6 +3052,7 @@ def parse_isla(
 
 
 def unparse_isla(formula: Formula) -> str:
+    assert isinstance(formula, Formula)
     result: str = ""
     indent: str = "  "
 

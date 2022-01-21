@@ -612,6 +612,67 @@ XYZ;\" asdf \"
             grammar=CSV_GRAMMAR
         ))
 
+    def test_more_complex_csv_property(self):
+        str_property = """
+const start: <start>;
+
+vars {
+  colno_1, colno_2: NUM;
+  hline: <csv-header>;
+  line: <csv-record>;
+}
+
+constraint {
+  exists int colno_1:
+    forall hline in start:
+      (count(hline, "<raw-field>", colno_1) and 
+        forall int colno_2:
+          forall line in start:
+            (count(line, "<raw-field>", colno_2) implies
+             (= colno_1 colno_2)))
+}
+"""
+        property = parse_isla(str_property, semantic_predicates={COUNT_PREDICATE})
+        negated_property = -property
+
+        valid_test_input = """a;b;c
+    XYZ;\" asdf \";ABC
+    123;!@#$;\"456 \n 789\"\n"""
+
+        # self.assertTrue(evaluate(
+        #     property,
+        #     reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(valid_test_input))[0]),
+        #     semantic_predicates={COUNT_PREDICATE},
+        #     grammar=CSV_GRAMMAR
+        # ))
+
+        # self.assertFalse(evaluate(
+        #     negated_property,
+        #     reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(valid_test_input))[0]),
+        #     semantic_predicates={COUNT_PREDICATE},
+        #     grammar=CSV_GRAMMAR
+        # ))
+
+        invalid_test_input = """a;b;c
+    XYZ;\" asdf \"
+    123;!@#$;\"456 \n 789\"\n"""
+
+        # self.assertTrue(evaluate(
+        #     negated_property,
+        #     reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(invalid_test_input))[0]),
+        #     semantic_predicates={COUNT_PREDICATE},
+        #     grammar=CSV_GRAMMAR
+        # ))
+
+        # THIS SHOULD PASS, BUT DOESN'T!
+        # TODO: Check quantifier elimination. There's obviously something wrong here. Negation?
+        self.assertFalse(evaluate(
+            property,
+            reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(invalid_test_input))[0]),
+            semantic_predicates={COUNT_PREDICATE},
+            grammar=CSV_GRAMMAR
+        ))
+
     def test_rest_property_1(self):
         tree = DerivationTree.from_parse_tree(list(EarleyParser(rest.REST_GRAMMAR).parse("0\n-\n\n"))[0])
         self.assertTrue(evaluate(rest.LENGTH_UNDERLINE, tree, rest.REST_GRAMMAR))
