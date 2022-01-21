@@ -34,6 +34,8 @@ isla_logger = logging.getLogger("isla")
 
 
 class Variable:
+    NUMERIC_NTYPE = "NUM"
+
     def __init__(self, name: str, n_type: str):
         self.name = name
         self.n_type = n_type
@@ -42,7 +44,7 @@ class Variable:
         return z3.String(self.name)
 
     def is_numeric(self):
-        return False
+        return self.n_type == Constant.NUMERIC_NTYPE
 
     def __eq__(self, other):
         return type(self) is type(other) and (self.name, self.n_type) == (other.name, other.n_type)
@@ -72,8 +74,6 @@ class Variable:
 
 
 class Constant(Variable):
-    NUMERIC_NTYPE = "NUM"
-
     def __init__(self, name: str, n_type: str):
         """
         A constant is a "free variable" in a formula.
@@ -82,9 +82,6 @@ class Constant(Variable):
         :param n_type: The nonterminal type of the constant, e.g., "<var>".
         """
         super().__init__(name, n_type)
-
-    def is_numeric(self):
-        return self.n_type == Constant.NUMERIC_NTYPE
 
 
 class BoundVariable(Variable):
@@ -2687,7 +2684,7 @@ class VariableManager:
               n_type: Optional[str],
               constr: Optional[Callable[[str, Optional[str]], Variable]] = None) -> Variable:
         if n_type is not None:
-            assert n_type == Constant.NUMERIC_NTYPE or n_type in self.grammar, \
+            assert n_type == Variable.NUMERIC_NTYPE or n_type in self.grammar, \
                 f"Unknown nonterminal type {n_type} for variable {name}"
 
         matching_variables = [var for var_name, var in self.variables.items() if var_name == name]
@@ -2707,8 +2704,8 @@ class VariableManager:
     def const(self, name: str, n_type: Optional[str] = None) -> Constant:
         return cast(Constant, self.__var(name, n_type, Constant))
 
-    def num_const(self, name: str) -> Constant:
-        return cast(Constant, self.__var(name, Constant.NUMERIC_NTYPE, Constant))
+    def num_var(self, name: str) -> BoundVariable:
+        return cast(BoundVariable, self.__var(name, BoundVariable.NUMERIC_NTYPE, BoundVariable))
 
     def bv(self, name: str, n_type: Optional[str] = None) -> BoundVariable:
         return cast(BoundVariable, self.__var(name, n_type, BoundVariable))
