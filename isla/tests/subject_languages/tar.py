@@ -180,7 +180,7 @@ vars {
 
 constraint {
   forall file_size="{octal_digits}<SPACE>" in start:
-    num decimal:
+    exists int decimal:
       ((>= (str.to.int decimal) 10) and
       ((<= (str.to.int decimal) 100) and 
       (octal_to_decimal(octal_digits, decimal) and 
@@ -393,7 +393,7 @@ constraint {
     forall content="{content_chars}<maybe_nuls>" in entry:
       forall characters in content_chars:
         forall file_size="{octal_digits}<SPACE>" in entry:
-          num dec_digits:
+          exists int dec_digits:
             ((>= (str.to.int dec_digits) 10) and 
             ((<= (str.to.int dec_digits) 100) and 
             (octal_to_decimal(octal_digits, dec_digits) and 

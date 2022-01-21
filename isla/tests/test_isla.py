@@ -582,7 +582,7 @@ vars {
 
 constraint {
   forall hline in start:
-    num colno:
+    exists int colno:
       ((>= (str.to.int colno) 3) and 
       ((<= (str.to.int colno) 5) and 
        (count(hline, "<raw-field>", colno) and 

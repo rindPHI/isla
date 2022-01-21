@@ -447,7 +447,7 @@ class ISLaSolver:
     def instantiate_numeric_constant_intros(self, state: SolutionState) -> Optional[SolutionState]:
         numeric_constant_introductions = [
             conjunct for conjunct in get_conjuncts(state.constraint)
-            if isinstance(conjunct, isla.IntroduceNumericConstantFormula)]
+            if isinstance(conjunct, isla.ExistsIntFormula)]
 
         if not numeric_constant_introductions:
             return None
@@ -1412,7 +1412,7 @@ def compute_k_coverage_cost(graph: GrammarGraph, k: int, state: SolutionState) -
 
 
 def get_quantifier_chains(formula: isla.Formula) -> \
-        List[Tuple[Union[isla.QuantifiedFormula, isla.IntroduceNumericConstantFormula], ...]]:
+        List[Tuple[Union[isla.QuantifiedFormula, isla.ExistsIntFormula], ...]]:
     univ_toplevel_formulas = isla.get_toplevel_quantified_formulas(formula)
     return [(f,) + c for f in univ_toplevel_formulas for c in (get_quantifier_chains(f.inner_formula) or [()])]
 

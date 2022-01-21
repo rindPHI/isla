@@ -85,8 +85,8 @@ vars {
 
 constraint {
   forall title="{titletxt}\n{underline}" in start:
-    num title_length:
-      num underline_length:
+    exists int title_length:
+      exists int underline_length:
         ((> (str.to.int title_length) 0) and
         ((<= (str.to.int title_length) (str.to.int underline_length)) and
         (ljust_crop(titletxt, title_length, " ") and
@@ -260,7 +260,7 @@ def render_rst_io(tree: isla.DerivationTree) -> Union[bool, str]:
 #
 # constraint {
 #   forall title="{titletxt}\n{underline}" in start:
-#     num length:
+#     exists int length:
 #       ((> (str.to.int length) 1) and
 #       ((< (str.to.int length) 5) and
 #       ((= (str.len titletxt) (str.to.int length)) and

@@ -80,15 +80,6 @@ class islaListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by islaParser#NumIntro.
-    def enterNumIntro(self, ctx:islaParser.NumIntroContext):
-        pass
-
-    # Exit a parse tree produced by islaParser#NumIntro.
-    def exitNumIntro(self, ctx:islaParser.NumIntroContext):
-        pass
-
-
     # Enter a parse tree produced by islaParser#Implication.
     def enterImplication(self, ctx:islaParser.ImplicationContext):
         pass
@@ -104,6 +95,15 @@ class islaListener(ParseTreeListener):
 
     # Exit a parse tree produced by islaParser#ForallMexpr.
     def exitForallMexpr(self, ctx:islaParser.ForallMexprContext):
+        pass
+
+
+    # Enter a parse tree produced by islaParser#ExistsInt.
+    def enterExistsInt(self, ctx:islaParser.ExistsIntContext):
+        pass
+
+    # Exit a parse tree produced by islaParser#ExistsInt.
+    def exitExistsInt(self, ctx:islaParser.ExistsIntContext):
         pass
 
 
@@ -143,15 +143,6 @@ class islaListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by islaParser#ForallStrong.
-    def enterForallStrong(self, ctx:islaParser.ForallStrongContext):
-        pass
-
-    # Exit a parse tree produced by islaParser#ForallStrong.
-    def exitForallStrong(self, ctx:islaParser.ForallStrongContext):
-        pass
-
-
     # Enter a parse tree produced by islaParser#Conjunction.
     def enterConjunction(self, ctx:islaParser.ConjunctionContext):
         pass
@@ -179,12 +170,12 @@ class islaListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by islaParser#ForallStrongMexpr.
-    def enterForallStrongMexpr(self, ctx:islaParser.ForallStrongMexprContext):
+    # Enter a parse tree produced by islaParser#ForallInt.
+    def enterForallInt(self, ctx:islaParser.ForallIntContext):
         pass
 
-    # Exit a parse tree produced by islaParser#ForallStrongMexpr.
-    def exitForallStrongMexpr(self, ctx:islaParser.ForallStrongMexprContext):
+    # Exit a parse tree produced by islaParser#ForallInt.
+    def exitForallInt(self, ctx:islaParser.ForallIntContext):
         pass
 
 

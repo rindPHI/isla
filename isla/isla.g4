@@ -15,13 +15,12 @@ formula:
   | 'exists' varId=ID            'in' inId=ID ':' formula  # Exists
   | 'forall' varId=ID '=' STRING 'in' inId=ID ':' formula  # ForallMexpr
   | 'exists' varId=ID '=' STRING 'in' inId=ID ':' formula  # ExistsMexpr
-  | 'forall!' varId=ID            'in' inId=ID ':' formula # ForallStrong
-  | 'forall!' varId=ID '=' STRING 'in' inId=ID ':' formula # ForallStrongMexpr
   | 'not' formula                                          # Negation
   | formula 'and' formula                                  # Conjunction
   | formula 'or' formula                                   # Disjunction
   | formula 'implies' formula                              # Implication
-  | 'num' ID ':' formula                                   # NumIntro
+  | 'exists' 'int' ID ':' formula                          # ExistsInt
+  | 'forall' 'int' ID ':' formula                          # ForallInt
   | ID '(' predicateArg (',' predicateArg) * ')'           # PredicateAtom
   | sexpr                                                  # SMTFormula
   | '(' formula ')'                                        # ParFormula

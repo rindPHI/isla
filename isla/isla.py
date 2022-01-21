@@ -1,9 +1,9 @@
 import copy
 import itertools
 import logging
-import operator
 import pickle
 import re
+from abc import ABC
 from functools import reduce, lru_cache
 from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable, Sequence
 
@@ -901,11 +901,14 @@ class FormulaVisitor:
     def visit_forall_formula(self, formula: 'ForallFormula'):
         pass
 
-    def visit_introduce_numeric_constant_formula(self, formula: 'IntroduceNumericConstantFormula'):
+    def visit_exists_int_formula(self, formula: 'ExistsIntFormula'):
+        pass
+
+    def visit_forall_int_formula(self, formula: 'ForallIntFormula'):
         pass
 
 
-class Formula:
+class Formula(ABC):
     # def __getstate__(self):
     #     return {f: pickle.dumps(v) for f, v in self.__dict__.items()} | {"cls": type(self).__name__}
     #
@@ -1497,10 +1500,10 @@ class SMTFormula(Formula):
                 and self.substitutions == other.substitutions)
 
     def __hash__(self):
-        return hash((self.formula, tuple(self.substitutions.items())))
+        return hash((type(self), self.formula, tuple(self.substitutions.items())))
 
 
-class IntroduceNumericConstantFormula(Formula):
+class ExistsIntFormula(Formula):
     def __init__(self, bound_variable: BoundVariable, inner_formula: Formula):
         self.bound_variable = bound_variable
         self.inner_formula = inner_formula
@@ -1517,36 +1520,82 @@ class IntroduceNumericConstantFormula(Formula):
         return self.inner_formula.tree_arguments()
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> 'Formula':
-        return IntroduceNumericConstantFormula(
+        return ExistsIntFormula(
             subst_map.get(self.bound_variable, self.bound_variable),
             self.inner_formula.substitute_variables(subst_map))
 
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> 'Formula':
         assert self.bound_variable not in subst_map
-        return IntroduceNumericConstantFormula(
+        return ExistsIntFormula(
             self.bound_variable,
             self.inner_formula.substitute_expressions(subst_map))
 
     def accept(self, visitor: FormulaVisitor):
-        visitor.visit_introduce_numeric_constant_formula(self)
+        visitor.visit_exists_int_formula(self)
         self.inner_formula.accept(visitor)
 
     def __hash__(self):
-        return hash((self.bound_variable, self.inner_formula))
+        return hash((type(self), self.bound_variable, self.inner_formula))
 
     def __eq__(self, other):
-        return (isinstance(other, IntroduceNumericConstantFormula)
+        return (isinstance(other, ExistsIntFormula)
                 and self.bound_variable == other.bound_variable
                 and self.inner_formula == other.inner_formula)
 
     def __str__(self):
-        return f"num {self.bound_variable.name}: {str(self.inner_formula)}"
+        return f"exists int {self.bound_variable.name}: {str(self.inner_formula)}"
 
     def __repr__(self):
-        return f"IntroduceNumericConstantFormula({repr(self.bound_variable)}, {repr(self.inner_formula)})"
+        return f"ExistsIntFormula({repr(self.bound_variable)}, {repr(self.inner_formula)})"
 
 
-class QuantifiedFormula(Formula):
+class ForallIntFormula(Formula):
+    def __init__(self, bound_variable: BoundVariable, inner_formula: Formula):
+        self.bound_variable = bound_variable
+        self.inner_formula = inner_formula
+
+    def bound_variables(self) -> OrderedSet[BoundVariable]:
+        """Non-recursive: Only non-empty for quantified formulas"""
+        return OrderedSet([self.bound_variable])
+
+    def free_variables(self) -> OrderedSet[Variable]:
+        """Recursive."""
+        return self.inner_formula.free_variables().difference(self.bound_variables())
+
+    def tree_arguments(self) -> OrderedSet[DerivationTree]:
+        return self.inner_formula.tree_arguments()
+
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> 'Formula':
+        return ForallIntFormula(
+            subst_map.get(self.bound_variable, self.bound_variable),
+            self.inner_formula.substitute_variables(subst_map))
+
+    def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> 'Formula':
+        assert self.bound_variable not in subst_map
+        return ForallIntFormula(
+            self.bound_variable,
+            self.inner_formula.substitute_expressions(subst_map))
+
+    def accept(self, visitor: FormulaVisitor):
+        visitor.visit_forall_int_formula(self)
+        self.inner_formula.accept(visitor)
+
+    def __hash__(self):
+        return hash((type(self), self.bound_variable, self.inner_formula))
+
+    def __eq__(self, other):
+        return (isinstance(other, ForallIntFormula)
+                and self.bound_variable == other.bound_variable
+                and self.inner_formula == other.inner_formula)
+
+    def __str__(self):
+        return f"forall int {self.bound_variable.name}: {str(self.inner_formula)}"
+
+    def __repr__(self):
+        return f"ForallIntFormula({repr(self.bound_variable)}, {repr(self.inner_formula)})"
+
+
+class QuantifiedFormula(Formula, ABC):
     def __init__(self,
                  bound_variable: Union[BoundVariable, str],
                  in_variable: Union[Variable, DerivationTree],
@@ -1760,7 +1809,10 @@ class VariablesCollector(FormulaVisitor):
         if formula.bind_expression is not None:
             self.result.update(formula.bind_expression.bound_variables())
 
-    def visit_introduce_numeric_constant_formula(self, formula: IntroduceNumericConstantFormula):
+    def visit_exists_int_formula(self, formula: ExistsIntFormula):
+        self.result.add(formula.bound_variable)
+
+    def visit_forall_int_formula(self, formula: ForallIntFormula):
         self.result.add(formula.bound_variable)
 
     def visit_predicate_formula(self, formula: StructuralPredicateFormula):
@@ -1791,7 +1843,11 @@ class FilterVisitor(FormulaVisitor):
         if self.filter(formula):
             self.result.append(formula)
 
-    def visit_introduce_numeric_constant_formula(self, formula: IntroduceNumericConstantFormula):
+    def visit_exists_int_formula(self, formula: ExistsIntFormula):
+        if self.filter(formula):
+            self.result.append(formula)
+
+    def visit_forall_int_formula(self, formula: ForallIntFormula):
         if self.filter(formula):
             self.result.append(formula)
 
@@ -1838,7 +1894,7 @@ def well_formed(formula: Formula,
     if unknown_typed_variables:
         return False, "Unkown types of variables " + ", ".join(map(repr, unknown_typed_variables))
 
-    if isinstance(formula, IntroduceNumericConstantFormula):
+    if isinstance(formula, ExistsIntFormula):
         if formula.bound_variables().intersection(bound_vars):
             return False, f"Variables {', '.join(map(str, formula.bound_variables().intersection(bound_vars)))} " \
                           f"already bound in outer scope"
@@ -2026,8 +2082,8 @@ class ThreeValuedTruth:
 
 
 def get_toplevel_quantified_formulas(formula: Formula) -> \
-        List[Union[QuantifiedFormula, IntroduceNumericConstantFormula]]:
-    if isinstance(formula, QuantifiedFormula) or isinstance(formula, IntroduceNumericConstantFormula):
+        List[Union[QuantifiedFormula, ExistsIntFormula]]:
+    if isinstance(formula, QuantifiedFormula) or isinstance(formula, ExistsIntFormula):
         return [formula]
     elif isinstance(formula, PropositionalCombinator):
         return [f for arg in formula.args for f in get_toplevel_quantified_formulas(arg)]
@@ -2138,7 +2194,7 @@ def eliminate_quantifiers(
              for f in eliminate_quantifiers(
                 r, vacuously_satisfied, grammar, graph, reachable, non_vacuously_satisfied)})
 
-    intro_const_formulas = [f for f in quantified_formulas if isinstance(f, IntroduceNumericConstantFormula)]
+    intro_const_formulas = [f for f in quantified_formulas if isinstance(f, ExistsIntFormula)]
     if intro_const_formulas:
         used_vars = set(VariablesCollector.collect(formula))
         for intro_const_formula in intro_const_formulas:
@@ -2254,7 +2310,7 @@ def evaluate_legacy(
     if vacuously_satisfied is None:
         vacuously_satisfied = set()
 
-    if isinstance(formula, IntroduceNumericConstantFormula):
+    if isinstance(formula, ExistsIntFormula):
         raise NotImplementedError("This method cannot evaluate IntroduceNumericConstantFormula formulas.")
     elif isinstance(formula, SMTFormula):
         instantiation = z3.substitute(
@@ -2350,7 +2406,7 @@ def evaluate(
     res, msg = well_formed(formula, grammar)
     assert res, msg
 
-    v = FilterVisitor(lambda f: isinstance(f, IntroduceNumericConstantFormula))
+    v = FilterVisitor(lambda f: isinstance(f, ExistsIntFormula))
     formula.accept(v)
     if not v.result:
         # The legacy evaluation performs better, but only works w/o IntroduceNumericConstantFormulas.
@@ -2515,8 +2571,8 @@ def replace_formula(in_formula: Formula,
             in_formula.in_variable,
             replace_formula(in_formula.inner_formula, to_replace, replace_with),
             in_formula.bind_expression)
-    elif isinstance(in_formula, IntroduceNumericConstantFormula):
-        return IntroduceNumericConstantFormula(
+    elif isinstance(in_formula, ExistsIntFormula):
+        return ExistsIntFormula(
             in_formula.bound_variable,
             replace_formula(in_formula.inner_formula, to_replace, replace_with))
 
@@ -2554,8 +2610,8 @@ def convert_to_nnf(formula: Formula, negate=False) -> Formula:
             )
         else:
             return formula
-    elif isinstance(formula, IntroduceNumericConstantFormula):
-        return IntroduceNumericConstantFormula(
+    elif isinstance(formula, ExistsIntFormula):
+        return ExistsIntFormula(
             formula.bound_variable, convert_to_nnf(formula.inner_formula, negate))
     elif isinstance(formula, QuantifiedFormula):
         inner_formula = convert_to_nnf(formula.inner_formula, negate) if negate else formula.inner_formula
@@ -2867,33 +2923,6 @@ class ISLaEmitter(ISLaParserListener.islaListener):
             bind_expression=mexpr
         )
 
-    def exitForallStrong(self, ctx: islaParser.ForallStrongContext):
-        self.formulas[ctx] = (
-                ExistsFormula(
-                    self.get_bvar(ctx.varId.text),
-                    self.get_var(ctx.inId.text),
-                    SMTFormula(z3.BoolVal(True))) &
-                ForallFormula(
-                    self.get_bvar(ctx.varId.text),
-                    self.get_var(ctx.inId.text),
-                    self.formulas[ctx.formula()]))
-
-    def exitForallStrongMexpr(self, ctx: islaParser.ForallStrongMexprContext):
-        mexpr = parse_mexpr(
-            antlr_get_text_with_whitespace(ctx.STRING())[1:-1],
-            set(self.variables.values()))
-        self.formulas[ctx] = (
-                ExistsFormula(
-                    self.get_bvar(ctx.varId.text),
-                    self.get_var(ctx.inId.text),
-                    SMTFormula(z3.BoolVal(True)),
-                    bind_expression=mexpr) &
-                ForallFormula(
-                    self.get_bvar(ctx.varId.text),
-                    self.get_var(ctx.inId.text),
-                    self.formulas[ctx.formula()],
-                    bind_expression=mexpr))
-
     def exitNegation(self, ctx: islaParser.NegationContext):
         self.formulas[ctx] = -self.formulas[ctx.formula()]
 
@@ -2950,9 +2979,12 @@ class ISLaEmitter(ISLaParserListener.islaListener):
                      if v.name in [str(s) for s in get_symbols(z3_constr)]]
         self.formulas[ctx] = SMTFormula(z3_constr, *free_vars)
 
-    def exitNumIntro(self, ctx: islaParser.NumIntroContext):
-        self.formulas[ctx] = IntroduceNumericConstantFormula(
+    def exitExistsInt(self, ctx: islaParser.ExistsIntContext):
+        self.formulas[ctx] = ExistsIntFormula(
             self.get_bvar(ctx.ID().getText()), self.formulas[ctx.formula()])
+
+    def exitForallInt(self, ctx: islaParser.ForallIntContext):
+        super().exitForallInt(ctx)
 
     def exitSexprId(self, ctx: islaParser.SexprIdContext):
         if ctx.ID().getText() not in self.variables:
@@ -3012,8 +3044,14 @@ def unparse_isla(formula: Formula) -> str:
             result += [indent + line for line in child_result]
             return result
 
-        if isinstance(formula, IntroduceNumericConstantFormula):
-            result = [f"num {formula.bound_variable.name}:"]
+        if isinstance(formula, ExistsIntFormula):
+            result = [f"exists int {formula.bound_variable.name}:"]
+            child_result = unparse_constraint(formula.inner_formula)
+            result += [indent + line for line in child_result]
+            return result
+
+        if isinstance(formula, ForallIntFormula):
+            result = [f"forall int {formula.bound_variable.name}:"]
             child_result = unparse_constraint(formula.inner_formula)
             result += [indent + line for line in child_result]
             return result

@@ -3,8 +3,8 @@ from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, LJUST_PREDIC
     RJUST_CROP_PREDICATE, RJUST_PREDICATE, AFTER_PREDICATE, OCTAL_TO_DEC_PREDICATE, CROP_PREDICATE
 
 
-def const(bound_variable: BoundVariable, inner_formula: Formula) -> IntroduceNumericConstantFormula:
-    return IntroduceNumericConstantFormula(bound_variable, inner_formula)
+def const(bound_variable: BoundVariable, inner_formula: Formula) -> ExistsIntFormula:
+    return ExistsIntFormula(bound_variable, inner_formula)
 
 
 def bexpr(terminal_symbol: str) -> BindExpression:
