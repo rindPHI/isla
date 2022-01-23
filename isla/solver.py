@@ -19,13 +19,13 @@ from packaging import version
 
 import isla.isla_shortcuts as sc
 from isla import isla
-from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.existential_helpers import insert_tree
+from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
     replace_line_breaks, z3_subst, z3_solve, weighted_geometric_mean, assertions_activated, \
     split_str_with_nonterminals, z3_or, cluster_by_common_elements, is_nonterminal
 from isla.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
-    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, set_smt_auto_eval
+    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts
 from isla.type_defs import Grammar, Path
 
 
@@ -1367,9 +1367,7 @@ def compute_cost(
     # vacuous_penalty = compute_match_dist(state, grammar, node_distance)
 
     # What is the proportion of vacuously satisfied universal quantifiers *chains* in (extensions of) this tree?
-    vacuous_penalty = (
-        0 if not cost_weight_vector.vacuous_penalty else
-        compute_vacuous_penalty(grammar, graph, orig_formula, state.tree, quantifier_chains))
+    vacuous_penalty = 0  # Deactivated; TODO: Remove any residual code.
 
     # k-Path coverage: Fewer covered -> higher penalty
     k_cov_cost = compute_k_coverage_cost(graph, k, state)
@@ -1415,48 +1413,3 @@ def get_quantifier_chains(formula: isla.Formula) -> \
         List[Tuple[Union[isla.QuantifiedFormula, isla.ExistsIntFormula], ...]]:
     univ_toplevel_formulas = isla.get_toplevel_quantified_formulas(formula)
     return [(f,) + c for f in univ_toplevel_formulas for c in (get_quantifier_chains(f.inner_formula) or [()])]
-
-
-def compute_vacuous_penalty(
-        grammar: Grammar,
-        graph: gg.GrammarGraph,
-        orig_formula: isla.Formula,
-        tree: DerivationTree,
-        quantifier_chains: List[Tuple[isla.ForallFormula, ...]]) -> float:
-    # Returns a value between 0 (best) and 1 (worst).
-    formula = isla.instantiate_top_constant(orig_formula, tree)
-    toplevel_qfrs = isla.get_toplevel_quantified_formulas(formula)
-
-    if not quantifier_chains:
-        return 0
-
-    set_smt_auto_eval(formula, False)
-
-    vacuously_matched_quantifiers = set()
-    isla.eliminate_quantifiers(
-        formula,
-        vacuously_satisfied=vacuously_matched_quantifiers,
-        grammar=grammar,
-        graph=graph)
-
-    set_smt_auto_eval(formula, True)
-
-    # TODO XXX: Shouldn't it be "any" instead of "all(any"? The way below,
-    #           only chains are considered in which *all* quantifiers are
-    #           vacuously satisfied. One suffices, though!
-    vacuous_chains = {
-        c for c in quantifier_chains if
-        all(any(of.id == f.id for of in vacuously_matched_quantifiers)
-            for f in c)}
-
-    # Only consider one chain per top-level quantifier
-    vacuous_chains = set([
-        chains[0] for chains in
-        set([tuple(d for d in vacuous_chains
-                   if d[0].id == c[0].id)
-             for c in vacuous_chains])])
-
-    vacuous_penalty = len(vacuous_chains) / len(toplevel_qfrs)
-    assert 0 <= vacuous_penalty <= 1
-
-    return vacuous_penalty

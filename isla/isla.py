@@ -18,7 +18,7 @@ from orderedset import OrderedSet
 
 import isla.parsers.isla.isla.islaListener as ISLaParserListener
 import isla.parsers.isla.mexpr_parser.MexprParserListener as MexprParserListener
-from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER
+from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, z3_and, z3_or
 from isla.helpers import get_symbols, z3_subst, is_valid, \
     replace_line_breaks, delete_unreachable, pop, z3_solve, powerset, grammar_to_immutable, immutable_to_grammar, \
     nested_list_to_tuple
@@ -1109,7 +1109,7 @@ class StructuralPredicateFormula(Formula):
 
 
 class SemPredEvalResult:
-    def __init__(self, result: Optional[Union[bool, Dict[Union[Constant, DerivationTree], DerivationTree]]]):
+    def __init__(self, result: Optional[bool | Dict[Variable | DerivationTree, DerivationTree]]):
         self.result = result
 
     def true(self):
@@ -1511,7 +1511,11 @@ class SMTFormula(Formula):
         return hash((type(self), self.formula, tuple(self.substitutions.items())))
 
 
-class ExistsIntFormula(Formula):
+class NumericQuantifiedFormula(Formula, ABC):
+    pass
+
+
+class ExistsIntFormula(NumericQuantifiedFormula):
     def __init__(self, bound_variable: BoundVariable, inner_formula: Formula):
         self.bound_variable = bound_variable
         self.inner_formula = inner_formula
@@ -1557,7 +1561,7 @@ class ExistsIntFormula(Formula):
         return f"ExistsIntFormula({repr(self.bound_variable)}, {repr(self.inner_formula)})"
 
 
-class ForallIntFormula(Formula):
+class ForallIntFormula(NumericQuantifiedFormula):
     def __init__(self, bound_variable: BoundVariable, inner_formula: Formula):
         self.bound_variable = bound_variable
         self.inner_formula = inner_formula
@@ -2090,8 +2094,8 @@ class ThreeValuedTruth:
 
 
 def get_toplevel_quantified_formulas(formula: Formula) -> \
-        List[Union[QuantifiedFormula, ExistsIntFormula]]:
-    if isinstance(formula, QuantifiedFormula) or isinstance(formula, ExistsIntFormula):
+        List[Union[QuantifiedFormula, NumericQuantifiedFormula]]:
+    if isinstance(formula, QuantifiedFormula) or isinstance(formula, NumericQuantifiedFormula):
         return [formula]
     elif isinstance(formula, PropositionalCombinator):
         return [f for arg in formula.args for f in get_toplevel_quantified_formulas(arg)]
@@ -2099,141 +2103,89 @@ def get_toplevel_quantified_formulas(formula: Formula) -> \
         return []
 
 
-def eliminate_quantifiers(
-        formula: Formula,
-        vacuously_satisfied: Optional[Set[ForallFormula]] = None,
-        grammar: Optional[Grammar] = None,
-        graph: Optional[gg.GrammarGraph] = None,
-        reachable: Optional[Callable[[str, str], bool]] = None,
-        non_vacuously_satisfied: Optional[Set[ForallFormula]] = None) -> List[Formula]:
-    # NOTE / TODO: Vacuous satisfaction is probably wrongly computed, since ForallFormulas might be in negation scope.
+def eliminate_quantifiers(formula: Formula, grammar: Grammar) -> Formula:
+    # We eliminate all quantified formulas over derivation tree elements
+    # by replacing them by the finite set of matches in the inner trees.
+    quantified_formulas = [f for f in get_toplevel_quantified_formulas(formula)
+                           if isinstance(f, QuantifiedFormula)]
 
-    # First, we replace "forall int x: Phi(x)" by "not exists int x: not Phi(x)".
-    def replace_forall_int_formula_action(inner_formula: Formula) -> bool | Formula:
-        if not isinstance(inner_formula, ForallIntFormula):
-            return False
-
-        # Do not use negation operator "-" to avoid simplifying ExistsIntFormulas in
-        # negation scope to ForallIntFormulas
-        return NegatedFormula(ExistsIntFormula(
-            inner_formula.bound_variable,
-            NegatedFormula(inner_formula.inner_formula)))
-
-    formula = replace_formula(formula, replace_forall_int_formula_action)
-
-    assert not FilterVisitor(lambda f: isinstance(f, ForallIntFormula)).collect(formula)
-
-    def in_vacuous(formula: ForallFormula) -> bool:
-        return any(f.id == formula.id for f in vacuously_satisfied)
-
-    def in_non_vacuous(formula: ForallFormula) -> bool:
-        return any(f.id == formula.id for f in non_vacuously_satisfied)
-
-    assert vacuously_satisfied is None or grammar is not None
-    if vacuously_satisfied is not None:
-        if non_vacuously_satisfied is None:
-            non_vacuously_satisfied = set()
-
-        if graph is None:
-            graph = gg.GrammarGraph.from_grammar(grammar)
-
-        vacuously_satisfied.difference_update({f for f in vacuously_satisfied if in_non_vacuous(f)})
-
-    if grammar is not None and reachable is None:
-        reachable = lambda n1, n2: graph.reachable(graph.get_node(n1), graph.get_node(n2))
-
-    quantified_formulas = get_toplevel_quantified_formulas(formula)
-    universal_formulas = [f for f in quantified_formulas if isinstance(f, ForallFormula)]
-
-    if universal_formulas:
-        for universal_formula in universal_formulas:
-            assert isinstance(universal_formula.in_variable, DerivationTree)
-            matches = [
-                {var: tree for var, (_, tree) in match.items()}
-                for match in matches_for_quantified_formula(universal_formula, grammar, universal_formula.in_variable)]
-            instantiations = [
-                universal_formula.inner_formula.substitute_expressions(match)
-                for match in matches]
-
-            if instantiations:
-                formula = replace_formula(
-                    formula,
-                    universal_formula,
-                    reduce(lambda f1, f2: f1 & f2, instantiations))
-
-                if vacuously_satisfied is not None:
-                    if in_vacuous(universal_formula):
-                        vacuously_satisfied.difference_update(
-                            {f for f in vacuously_satisfied if f.id == universal_formula.id})
-                    if not in_non_vacuous(universal_formula):
-                        non_vacuously_satisfied.add(universal_formula)
-            else:
-                formula = replace_formula(formula, universal_formula, SMTFormula(z3.BoolVal(True)))
-
-                if (vacuously_satisfied is not None and
-                        not in_vacuous(universal_formula) and
-                        not in_non_vacuous(universal_formula)):
-
-                    # Check if there is still a chance to match the quantifier
-                    if any(quantified_formula_might_match(
-                            universal_formula,
-                            leaf_path,
-                            universal_formula.in_variable,
-                            grammar,
-                            reachable)
-                           for leaf_path, leaf_node in universal_formula.in_variable.open_leaves()):
-                        continue
-
-                    vacuously_satisfied.add(universal_formula)
-                    vacuously_satisfied.update(
-                        cast(List[ForallFormula],
-                             FilterVisitor(lambda f: isinstance(f, ForallFormula))
-                             .collect(universal_formula.inner_formula)))
-
-        return eliminate_quantifiers(formula, vacuously_satisfied, grammar, graph, reachable, non_vacuously_satisfied)
-
-    existential_formulas = [f for f in quantified_formulas if isinstance(f, ExistsFormula)]
-    if existential_formulas:
-        results: List[Formula] = [formula]
-        for existential_formula in existential_formulas:
-            assert isinstance(existential_formula.in_variable, DerivationTree)
+    if quantified_formulas:
+        for quantified_formula in quantified_formulas:
+            assert isinstance(quantified_formula.in_variable, DerivationTree)
             matches = [
                 {var: tree for var, (_, tree) in match.items()}
                 for match in matches_for_quantified_formula(
-                    existential_formula, grammar, existential_formula.in_variable)]
+                    quantified_formula, grammar, quantified_formula.in_variable)]
             instantiations = [
-                existential_formula.inner_formula.substitute_expressions(match)
+                quantified_formula.inner_formula.substitute_expressions(match)
                 for match in matches]
+
             if instantiations:
-                results = [
-                    replace_formula(result, existential_formula, instantiation)
-                    for instantiation in instantiations
-                    for result in results]
+                reduce_op = (Formula.__and__ if isinstance(quantified_formula, ForallFormula)
+                             else Formula.__or__)
+                formula = replace_formula(
+                    formula,
+                    quantified_formula,
+                    reduce(reduce_op, instantiations))
             else:
-                results = [
-                    replace_formula(result, existential_formula, SMTFormula(z3.BoolVal(False)))
-                    for result in results]
+                formula = replace_formula(
+                    formula,
+                    quantified_formula,
+                    SMTFormula(z3.BoolVal(isinstance(formula, ForallFormula))))
 
-        return list(
-            {f for r in results
-             for f in eliminate_quantifiers(
-                r, vacuously_satisfied, grammar, graph, reachable, non_vacuously_satisfied)})
+        return eliminate_quantifiers(formula, grammar)
 
-    exists_int_formulas = [f for f in quantified_formulas if isinstance(f, ExistsIntFormula)]
-    if exists_int_formulas:
-        used_vars = set(VariablesCollector.collect(formula))
-        for exists_int_formula in exists_int_formulas:
-            fresh = fresh_constant(
-                used_vars,
-                Constant(exists_int_formula.bound_variable.name, exists_int_formula.bound_variable.n_type))
-            formula = replace_formula(
-                formula,
-                exists_int_formula,
-                exists_int_formula.inner_formula.substitute_variables({exists_int_formula.bound_variable: fresh}))
+    numeric_quantified_formulas = [f for f in get_toplevel_quantified_formulas(formula)
+                                   if isinstance(f, NumericQuantifiedFormula)]
 
-        return eliminate_quantifiers(formula, vacuously_satisfied, grammar, graph, reachable, non_vacuously_satisfied)
+    if numeric_quantified_formulas:
+        for quantified_formula in numeric_quantified_formulas:
+            if isinstance(quantified_formula, ExistsIntFormula):
+                formula = replace_formula(
+                    formula,
+                    quantified_formula,
+                    ExistsIntFormula(
+                        quantified_formula.bound_variable,
+                        eliminate_quantifiers(quantified_formula.inner_formula, grammar)))
+            elif isinstance(quantified_formula, ForallIntFormula):
+                formula = replace_formula(
+                    formula,
+                    quantified_formula,
+                    ForallIntFormula(
+                        quantified_formula.bound_variable,
+                        eliminate_quantifiers(quantified_formula.inner_formula, grammar)))
 
-    return [formula]
+    return formula
+
+    # # Next, we eliminate all universal quantifiers over integers. This "Herbrandization"
+    # # process is validity-preserving (but not equivalence-preserving).
+    # # We cannot eliminate both quantifier types: This would be unsound.
+    # # In Herbrandization, one replaces universally quantified variables v by function
+    # # symbols f(x1, x2, ...), where the xi are existentially quantified variables in the
+    # # scope. We always replace v by a constant c_v. This can theoretically lead to cases
+    # # where validity is not preserved; this is less bad than the converse case of accepting
+    # # an invalid input, though, and was no problem at all in our experiments. Reason:
+    # # our theory does not support passing complex terms to predicates.
+
+    # def contains_forall_int_formulas(argf: Formula) -> bool:
+    #     return bool(FilterVisitor(lambda f: isinstance(f, ForallIntFormula)).collect(argf))
+
+    # if contains_forall_int_formulas(formula):
+    #     used_vars = set(VariablesCollector.collect(formula))
+
+    #     def replace_forall_int_formula_action(inner_formula: Formula) -> bool | Formula:
+    #         if not isinstance(inner_formula, ForallIntFormula):
+    #             return False
+
+    #         constant = fresh_constant(
+    #             used_vars,
+    #             Constant(f"c_{inner_formula.bound_variable.name}",
+    #                      inner_formula.bound_variable.n_type))
+    #         return inner_formula.inner_formula.substitute_variables({inner_formula.bound_variable: constant})
+
+    #     formula = eliminate_quantifiers(replace_formula(formula, replace_forall_int_formula_action), grammar)
+    #     assert not contains_forall_int_formulas(formula)
+    #     return formula
 
 
 def evaluate_clause(grammar: Grammar, clause: List[Formula], reference_tree: DerivationTree) -> ThreeValuedTruth:
@@ -2415,8 +2367,7 @@ def evaluate(
         reference_tree: DerivationTree,
         grammar: Grammar,
         structural_predicates: Optional[Set[StructuralPredicate]] = None,
-        semantic_predicates: Optional[Set[SemanticPredicate]] = None,
-        vacuously_satisfied: Optional[Set[Formula]] = None) -> ThreeValuedTruth:
+        semantic_predicates: Optional[Set[SemanticPredicate]] = None) -> ThreeValuedTruth:
     if isinstance(formula, str):
         formula = parse_isla(formula, structural_predicates, semantic_predicates)
 
@@ -2435,20 +2386,77 @@ def evaluate(
     formula.accept(v)
     if not v.result:
         # The legacy evaluation performs better, but only works w/o IntroduceNumericConstantFormulas.
-        return evaluate_legacy(formula, grammar, {}, reference_tree, vacuously_satisfied)
+        return evaluate_legacy(formula, grammar, {}, reference_tree)
 
-    if vacuously_satisfied is not None:
-        set_smt_auto_eval(formula, False)
+    qfr_free: Formula = eliminate_quantifiers(formula, grammar=grammar)
 
-    qfr_free: List[Formula] = eliminate_quantifiers(formula, grammar=grammar, vacuously_satisfied=vacuously_satisfied)
+    class NotYetReadyError(RuntimeError):
+        def __init__(self, *args: object) -> None:
+            super().__init__(*args)
 
-    if vacuously_satisfied is not None:
-        set_smt_auto_eval(formula, True)
+    # Evaluate predicates
+    def evaluate_predicates_action(formula: Formula) -> bool | Formula:
+        if isinstance(formula, StructuralPredicateFormula):
+            return SMTFormula(z3.BoolVal(formula.evaluate(reference_tree)))
 
-    qfr_free_dnf: List[Formula] = [convert_to_dnf(convert_to_nnf(f)) for f in qfr_free]
-    clauses: List[List[Formula]] = [split_conjunction(_f) for f in qfr_free_dnf for _f in split_disjunction(f)]
+        if isinstance(formula, SemanticPredicateFormula):
+            eval_result = formula.evaluate(grammar)
 
-    return ThreeValuedTruth.any(evaluate_clause(grammar, clause, reference_tree) for clause in clauses)
+            if not eval_result.ready():
+                raise NotYetReadyError(f"Formula {formula} is not ready to be evaluated")
+
+            if eval_result.true():
+                return SMTFormula(z3.BoolVal(True))
+            elif eval_result.false():
+                return SMTFormula(z3.BoolVal(False))
+
+            substs: Dict[Variable | DerivationTree, DerivationTree] = eval_result.result
+            assert isinstance(substs, dict)
+            assert all(isinstance(key, Variable) and key.n_type == Variable.NUMERIC_NTYPE for key in substs)
+            return SMTFormula(z3_and([
+                cast(z3.BoolRef, const.to_smt() == substs[const].value)
+                for const in substs]), *substs.keys())
+
+        return False
+
+    try:
+        without_predicates: Formula = replace_formula(qfr_free, evaluate_predicates_action)
+    except NotYetReadyError:
+        return ThreeValuedTruth.unknown()
+
+    # The remaining formula is a pure SMT formula, which only needs to be converted.
+    smt_formula: z3.BoolRef = isla_to_smt_formula(without_predicates)
+
+    solver = z3.Solver()
+    solver.add(z3.Not(smt_formula))
+    return ThreeValuedTruth(solver.check() == z3.unsat)  # original formula is valid
+
+    # qfr_free_dnf: List[Formula] = [convert_to_dnf(convert_to_nnf(f)) for f in qfr_free]
+    # clauses: List[List[Formula]] = [split_conjunction(_f) for f in qfr_free_dnf for _f in split_disjunction(f)]
+    #
+    # return ThreeValuedTruth.any(evaluate_clause(grammar, clause, reference_tree) for clause in clauses)
+
+
+def isla_to_smt_formula(formula: Formula) -> z3.BoolRef:
+    if isinstance(formula, SMTFormula):
+        return formula.formula
+
+    if isinstance(formula, ConjunctiveFormula):
+        return z3_and([isla_to_smt_formula(child) for child in formula.args])
+
+    if isinstance(formula, DisjunctiveFormula):
+        return z3_or([isla_to_smt_formula(child) for child in formula.args])
+
+    if isinstance(formula, NegatedFormula):
+        return z3.Not(isla_to_smt_formula(formula.args[0]))
+
+    if isinstance(formula, ForallIntFormula):
+        return z3.ForAll([formula.bound_variable.to_smt()], isla_to_smt_formula(formula.inner_formula))
+
+    if isinstance(formula, ExistsIntFormula):
+        return z3.Exists([formula.bound_variable.to_smt()], isla_to_smt_formula(formula.inner_formula))
+
+    raise NotImplementedError(f"Don't know how to translate formula {formula} to SMT")
 
 
 def matches_for_quantified_formula(
@@ -2558,7 +2566,7 @@ def replace_formula(in_formula: Formula,
     if callable(to_replace):
         result = to_replace(in_formula)
         if isinstance(result, Formula):
-            return result
+            return replace_formula(result, to_replace, replace_with)
 
         assert isinstance(result, bool)
         if result:

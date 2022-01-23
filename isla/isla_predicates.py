@@ -7,7 +7,7 @@ from grammar_graph.gg import GrammarGraph
 from isla import isla
 from isla.existential_helpers import insert_tree
 from isla.helpers import delete_unreachable, parent_reflexive, parent_or_child
-from isla.isla import DerivationTree, Constant, SemPredEvalResult, StructuralPredicate, SemanticPredicate
+from isla.isla import DerivationTree, Constant, SemPredEvalResult, StructuralPredicate, SemanticPredicate, Variable
 from isla.type_defs import Grammar, Path, ParseTree
 
 
@@ -161,7 +161,7 @@ def count(grammar: Grammar,
         reachable(graph, leaf_nonterminal, needle)
         for leaf_nonterminal in leaf_nonterminals)
 
-    if isinstance(num, Constant):
+    if isinstance(num, Variable):
         # Return the number of needle occurrences in in_tree, or "not ready" if in_tree is not
         # closed and more needle occurrences can yet occur in in_tree
         if more_needles_possible:

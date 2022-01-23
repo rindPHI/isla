@@ -639,33 +639,31 @@ constraint {
     XYZ;\" asdf \";ABC
     123;!@#$;\"456 \n 789\"\n"""
 
-        # self.assertTrue(evaluate(
-        #     property,
-        #     reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(valid_test_input))[0]),
-        #     semantic_predicates={COUNT_PREDICATE},
-        #     grammar=CSV_GRAMMAR
-        # ))
+        self.assertTrue(evaluate(
+            property,
+            reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(valid_test_input))[0]),
+            semantic_predicates={COUNT_PREDICATE},
+            grammar=CSV_GRAMMAR
+        ))
 
-        # self.assertFalse(evaluate(
-        #     negated_property,
-        #     reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(valid_test_input))[0]),
-        #     semantic_predicates={COUNT_PREDICATE},
-        #     grammar=CSV_GRAMMAR
-        # ))
+        self.assertFalse(evaluate(
+            negated_property,
+            reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(valid_test_input))[0]),
+            semantic_predicates={COUNT_PREDICATE},
+            grammar=CSV_GRAMMAR
+        ))
 
         invalid_test_input = """a;b;c
     XYZ;\" asdf \"
     123;!@#$;\"456 \n 789\"\n"""
 
-        # self.assertTrue(evaluate(
-        #     negated_property,
-        #     reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(invalid_test_input))[0]),
-        #     semantic_predicates={COUNT_PREDICATE},
-        #     grammar=CSV_GRAMMAR
-        # ))
+        self.assertTrue(evaluate(
+            negated_property,
+            reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(invalid_test_input))[0]),
+            semantic_predicates={COUNT_PREDICATE},
+            grammar=CSV_GRAMMAR
+        ))
 
-        # THIS SHOULD PASS, BUT DOESN'T!
-        # TODO: Check quantifier elimination. There's obviously something wrong here. Negation?
         self.assertFalse(evaluate(
             property,
             reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(invalid_test_input))[0]),
@@ -712,53 +710,6 @@ constraint {
 }
 """
         self.assertTrue(evaluate(formula, tree, structural_predicates={BEFORE_PREDICATE}, grammar=LANG_GRAMMAR))
-
-    def test_vacuously_satisfied(self):
-        inputs = ["{int a;int b;}", "{int a;}", "{int a;int b = 12;}", "17;"]
-        expected = [0, 0, 0, 2]
-
-        for inp, exp in zip(inputs, expected):
-            tree = DerivationTree.from_parse_tree(list(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp))[0])
-            formula = scriptsizec.SCRIPTSIZE_C_NO_REDEF_CONSTR.substitute_expressions(
-                {Constant("start", "<start>"): tree})
-
-            vs = set()
-            eliminate_quantifiers(formula, vs, grammar=scriptsizec.SCRIPTSIZE_C_GRAMMAR)
-            self.assertEqual(exp, len(vs))
-
-    def test_vacuously_satisfied_lang(self):
-        mgr = VariableManager(LANG_GRAMMAR)
-        start = mgr.const("$start", "<start>")
-        formula: Formula = mgr.create(sc.forall_bind(
-            mgr.bv("$lhs_1", "<var>") + " := " + mgr.bv("$rhs_1", "<rhs>"),
-            mgr.bv("$assgn_1", "<assgn>"),
-            start,
-            sc.forall(
-                mgr.bv("$var", "<var>"),
-                mgr.bv("$rhs_1"),
-                sc.exists_bind(
-                    mgr.bv("$lhs_2", "<var>") + " := " + mgr.bv("$rhs_2", "<rhs>"),
-                    mgr.bv("$assgn_2", "<assgn>"),
-                    mgr.const("$start"),
-                    sc.before(mgr.bv("$assgn_2"), mgr.bv("$assgn_1")) &
-                    mgr.smt(cast(z3.BoolRef, mgr.bv("$lhs_2").to_smt() == mgr.bv("$var").to_smt()))
-                )
-            )
-        ))
-
-        inp = "x := 1 ; y := 2 ; z := 3"
-        tree = DerivationTree.from_parse_tree(list(EarleyParser(LANG_GRAMMAR).parse(inp))[0])
-
-        vs = set()
-        eliminate_quantifiers(formula.substitute_expressions({start: tree}), vs, LANG_GRAMMAR)
-        self.assertEqual(1, len(vs))
-
-        inp = "x := 1 ; y := x ; z := 3"
-        tree = DerivationTree.from_parse_tree(list(EarleyParser(LANG_GRAMMAR).parse(inp))[0])
-
-        vs = set()
-        eliminate_quantifiers(formula.substitute_expressions({start: tree}), vs, LANG_GRAMMAR)
-        self.assertEqual(0, len(vs))
 
     def test_scriptsize_c_defuse_property(self):
         constr = """

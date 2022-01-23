@@ -623,7 +623,7 @@ def evaluate_data(
             vacuously_matched_quantifiers = set()
             isla.eliminate_quantifiers(
                 isla.instantiate_top_constant(formula, inp),
-                vacuously_matched_quantifiers, graph.to_grammar())
+                graph.to_grammar())
 
             non_vacuous_chains = {
                 c for c in quantifier_chains if
