@@ -7,7 +7,7 @@ from grammar_graph.gg import GrammarGraph
 from isla import isla
 from isla.existential_helpers import insert_tree
 from isla.helpers import delete_unreachable, parent_reflexive, parent_or_child
-from isla.isla import DerivationTree, Constant, SemPredEvalResult, StructuralPredicate, SemanticPredicate, Variable
+from isla.isla import DerivationTree, SemPredEvalResult, StructuralPredicate, SemanticPredicate, Variable
 from isla.type_defs import Grammar, Path, ParseTree
 
 
@@ -150,7 +150,7 @@ def reachable(graph: GrammarGraph, fr: str, to: str) -> bool:
 def count(grammar: Grammar,
           in_tree: DerivationTree,
           needle: str,
-          num: Union[Constant, DerivationTree]) -> SemPredEvalResult:
+          num: Variable | DerivationTree) -> SemPredEvalResult:
     graph = GrammarGraph.from_grammar(grammar)
 
     num_needle_occurrences = len(in_tree.filter(lambda t: t.value == needle))
@@ -284,7 +284,7 @@ def crop(mk_parser: Callable[[str], Callable[[str], List[ParseTree]]],
 
     unparsed = str(tree)
 
-    if isinstance(width, Constant):
+    if isinstance(width, Variable):
         return SemPredEvalResult({width: DerivationTree(str(len(unparsed)), None)})
 
     assert isinstance(width, DerivationTree)
@@ -312,7 +312,7 @@ def just(ljust: bool,
 
     unparsed = str(tree)
 
-    if isinstance(width, Constant):
+    if isinstance(width, Variable):
         return SemPredEvalResult({width: DerivationTree(str(len(unparsed)), None)})
 
     if fill_char is None:
@@ -394,9 +394,9 @@ RJUST_CROP_PREDICATE = SemanticPredicate(
 def octal_to_dec(
         _octal_parser: Callable[[str], List[ParseTree]],
         _decimal_parser: Callable[[str], List[ParseTree]],
-        octal: Union[isla.Constant, DerivationTree],
-        decimal: Union[isla.Constant, DerivationTree]) -> SemPredEvalResult:
-    assert not isinstance(octal, isla.Constant) or not isinstance(decimal, isla.Constant)
+        octal: isla.Variable | DerivationTree,
+        decimal: isla.Variable | DerivationTree) -> SemPredEvalResult:
+    assert not isinstance(octal, isla.Variable) or not isinstance(decimal, isla.Variable)
 
     decimal_parser = lambda inp: DerivationTree.from_parse_tree(_decimal_parser(inp)[0][1][0])
     octal_parser = lambda inp: DerivationTree.from_parse_tree(_octal_parser(inp)[0][1][0])
@@ -434,7 +434,7 @@ def octal_to_dec(
 
         return SemPredEvalResult({octal: octal_parser(octal_str)})
 
-    if isinstance(octal, isla.Constant) and isinstance(decimal, DerivationTree):
+    if isinstance(octal, isla.Variable) and isinstance(decimal, DerivationTree):
         if not decimal.is_complete():
             return SemPredEvalResult(None)
 
@@ -446,7 +446,7 @@ def octal_to_dec(
 
         return SemPredEvalResult({octal: octal_parser(octal_str)})
 
-    if isinstance(decimal, isla.Constant) and isinstance(octal, DerivationTree):
+    if isinstance(decimal, isla.Variable) and isinstance(octal, DerivationTree):
         if not octal.is_complete():
             return SemPredEvalResult(None)
 

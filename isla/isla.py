@@ -2131,7 +2131,7 @@ def eliminate_quantifiers(formula: Formula, grammar: Grammar) -> Formula:
                 formula = replace_formula(
                     formula,
                     quantified_formula,
-                    SMTFormula(z3.BoolVal(isinstance(formula, ForallFormula))))
+                    SMTFormula(z3.BoolVal(isinstance(quantified_formula, ForallFormula))))
 
         return eliminate_quantifiers(formula, grammar)
 
@@ -2429,12 +2429,11 @@ def evaluate(
 
     solver = z3.Solver()
     solver.add(z3.Not(smt_formula))
-    return ThreeValuedTruth(solver.check() == z3.unsat)  # original formula is valid
-
-    # qfr_free_dnf: List[Formula] = [convert_to_dnf(convert_to_nnf(f)) for f in qfr_free]
-    # clauses: List[List[Formula]] = [split_conjunction(_f) for f in qfr_free_dnf for _f in split_disjunction(f)]
-    #
-    # return ThreeValuedTruth.any(evaluate_clause(grammar, clause, reference_tree) for clause in clauses)
+    z3_result = solver.check()
+    if z3_result == z3.unknown:
+        return ThreeValuedTruth.unknown()
+   
+    return ThreeValuedTruth(z3_result == z3.unsat)  # original formula is valid
 
 
 def isla_to_smt_formula(formula: Formula) -> z3.BoolRef:
