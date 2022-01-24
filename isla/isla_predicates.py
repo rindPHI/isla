@@ -170,10 +170,12 @@ def count(grammar: Grammar,
         return SemPredEvalResult({num: DerivationTree(str(num_needle_occurrences), None)})
 
     assert not num.children
-    assert num.value.isnumeric()
-    target_num_needle_occurrences = int(num.value)
+    try:
+        target_num_needle_occurrences = int(num.value)
+    except ValueError:
+        assert False, f"Value {num.value} cannot be converted to integer."
 
-    if num_needle_occurrences > target_num_needle_occurrences:
+    if target_num_needle_occurrences < 0 or num_needle_occurrences > target_num_needle_occurrences:
         return SemPredEvalResult(False)
 
     if not more_needles_possible:

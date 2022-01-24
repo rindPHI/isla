@@ -298,6 +298,39 @@ constraint {
             global_fuzzer=True
         )
 
+    def test_csv_rows_equal_length_more_complex(self):
+        property = """
+const start: <start>;
+
+vars {
+  colno_1, colno_2: NUM;
+  hline: <csv-header>;
+  line: <csv-record>;
+}
+
+constraint {
+  exists int colno_1:
+    forall hline in start:
+      (count(hline, "<raw-field>", colno_1) and 
+        forall int colno_2:
+          forall line in start:
+            (count(line, "<raw-field>", colno_2) implies
+             (= colno_1 colno_2)))
+}
+"""
+
+        self.execute_generation_test(
+            property,
+            semantic_predicates={COUNT_PREDICATE},
+            grammar=CSV_GRAMMAR,
+            custom_test_func=csv_lint,
+            num_solutions=200,
+            max_number_free_instantiations=10,
+            max_number_smt_instantiations=2,
+            enforce_unique_trees_in_queue=False,
+            global_fuzzer=True
+        )
+
     def test_negated_csv_rows_equal_length(self):
         property = """
 const start: <start>;

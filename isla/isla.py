@@ -1555,7 +1555,7 @@ class ExistsIntFormula(NumericQuantifiedFormula):
                 and self.inner_formula == other.inner_formula)
 
     def __str__(self):
-        return f"exists int {self.bound_variable.name}: {str(self.inner_formula)}"
+        return f"∃ int {self.bound_variable.name}: {str(self.inner_formula)}"
 
     def __repr__(self):
         return f"ExistsIntFormula({repr(self.bound_variable)}, {repr(self.inner_formula)})"
@@ -1601,7 +1601,7 @@ class ForallIntFormula(NumericQuantifiedFormula):
                 and self.inner_formula == other.inner_formula)
 
     def __str__(self):
-        return f"forall int {self.bound_variable.name}: {str(self.inner_formula)}"
+        return f"∀ int {self.bound_variable.name}: {str(self.inner_formula)}"
 
     def __repr__(self):
         return f"ForallIntFormula({repr(self.bound_variable)}, {repr(self.inner_formula)})"

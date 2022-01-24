@@ -2,10 +2,11 @@ import copy
 import heapq
 import itertools
 import logging
+import random
 import sys
 import time
 from functools import reduce, lru_cache
-from typing import Generator, Dict, List, Set, Optional, Tuple, Union, cast
+from typing import Generator, Dict, List, Set, Optional, Tuple, Union, cast, Iterator
 
 import math
 import pkg_resources
@@ -349,10 +350,16 @@ class ISLaSolver:
             if state.constraint == sc.false():
                 continue
 
-            # Instantiate numeric constant introduction
-            result_state = self.instantiate_numeric_constant_intros(state)
+            # Eliminate existential quantifiers over integers -> replace by constants
+            result_state = self.eliminate_existential_integer_quantifiers(state)
             if result_state is not None:
                 yield from self.process_new_state(result_state)
+                continue
+
+            # Eliminate universal quantifiers over integers -> random choice up to max_number_free_instantiations times
+            result_states = self.instantiate_universal_integer_quantifiers(state)
+            if result_states is not None:
+                yield from self.process_new_states(result_states)
                 continue
 
             # Match all universal formulas
@@ -376,6 +383,7 @@ class ISLaSolver:
                 yield from self.process_new_states(result_states)
                 continue
 
+            # TODO: Consider negation scope! Otherwise, will never satisfy negated semantic pred. formulas
             # Eliminate all ready semantic predicate formulas
             result_state = self.eliminate_all_ready_semantic_predicate_formulas(state)
             if result_state is not None:
@@ -444,28 +452,107 @@ class ISLaSolver:
 
         return SolutionState(formula, state.tree)
 
-    def instantiate_numeric_constant_intros(self, state: SolutionState) -> Optional[SolutionState]:
-        numeric_constant_introductions = [
+    def eliminate_existential_integer_quantifiers(self, state: SolutionState) -> Optional[SolutionState]:
+        existential_int_formulas = [
             conjunct for conjunct in get_conjuncts(state.constraint)
             if isinstance(conjunct, isla.ExistsIntFormula)]
 
-        if not numeric_constant_introductions:
+        if not existential_int_formulas:
             return None
 
         formula = state.constraint
-        for numeric_constant_introduction in numeric_constant_introductions:
-            self.logger.debug("Instantiating numeric constant introduction %s", numeric_constant_introduction)
+        for existential_int_formula in existential_int_formulas:
+            self.logger.debug("Eliminating existential integer quantifier %s", existential_int_formula)
             used_vars = set(VariablesCollector.collect(formula))
             fresh = isla.fresh_constant(
                 used_vars,
                 isla.Constant(
-                    numeric_constant_introduction.bound_variable.name,
-                    numeric_constant_introduction.bound_variable.n_type))
-            instantiation = numeric_constant_introduction.inner_formula.substitute_variables(
-                {numeric_constant_introduction.bound_variable: fresh})
-            formula = isla.replace_formula(formula, numeric_constant_introduction, instantiation)
+                    existential_int_formula.bound_variable.name,
+                    existential_int_formula.bound_variable.n_type))
+            instantiation = existential_int_formula.inner_formula.substitute_variables(
+                {existential_int_formula.bound_variable: fresh})
+            formula = isla.replace_formula(formula, existential_int_formula, instantiation)
 
         return SolutionState(formula, state.tree)
+
+    def instantiate_universal_integer_quantifiers(self, state: SolutionState) -> Optional[List[SolutionState]]:
+        # TODO: Consider existing numbers and (numeric) constants in the tree, as in FOL.
+        #       For numbers, also take into account neighboured numbers.
+        universal_int_formulas = [
+            conjunct for conjunct in get_conjuncts(state.constraint)
+            if isinstance(conjunct, isla.ForallIntFormula)]
+
+        if not universal_int_formulas:
+            return None
+
+        # Obtain existing numeric constants in the formula
+        # TODO: Maybe also consider numeric expressions like "number + 1".
+        numeric_constants = {c for c in isla.VariablesCollector().collect(state.constraint)
+                             if isinstance(c, isla.Constant) and c.is_numeric()}
+
+        # Extract existing numbers from the tree and the formula
+        def is_int_node(tree: DerivationTree) -> bool:
+            if not tree.is_complete():
+                return False
+
+            try:
+                int(str(tree))
+                return True
+            except ValueError:
+                return False
+
+        # Numbers in the tree
+        numbers = {int(str(tree)) for _, tree in state.tree.filter(is_int_node)}
+
+        # Numbers in the formula
+        for inner_formula in isla.FilterVisitor(
+                lambda f: any(is_int_node(tree) for tree in f.tree_arguments())).collect(state.constraint):
+            numbers.update({int(str(tree_arg)) for tree_arg in inner_formula.tree_arguments()
+                            if is_int_node(tree_arg)})
+
+        # Also consider close neighborhood +/- 1
+        numbers.update({elem for number in numbers for elem in {number + 1, number - 1}})
+
+        # Add some random numbers
+        # TODO Make upper bound configurable
+        upper_bound, sample_size = 100, max(1, self.max_number_free_instantiations // 2)
+        numbers.update(random.choices(
+            list(range(0, 100)),
+            weights=list(reversed([1.2 ** i for i in range(upper_bound)])), k=sample_size))
+        numbers.update(random.choices(
+            list(range(-100, 0)),
+            weights=list([1.2 ** i for i in range(upper_bound)]), k=sample_size))
+
+        instantiation_values = [numeric_constants | numbers for _ in range(len(universal_int_formulas))]
+        instantiations: Iterator[Tuple[isla.Constant | DerivationTree, ...]] = itertools.product(*instantiation_values)
+
+        results: List[SolutionState] = []
+        for instantiation in instantiations:
+            formula = state.constraint
+            for idx, universal_int_formula in enumerate(universal_int_formulas):
+                self.logger.debug(
+                    "Instantiating universal integer quantifier (%s -> %s) %s",
+                    universal_int_formula.bound_variable,
+                    str(instantiation[idx]),
+                    universal_int_formula)
+
+                if isinstance(instantiation[idx], isla.Constant):
+                    formula = isla.replace_formula(
+                        formula,
+                        universal_int_formula,
+                        universal_int_formula.inner_formula.substitute_variables(
+                            {universal_int_formula.bound_variable: instantiation[idx]}))
+                else:
+                    assert isinstance(instantiation[idx], int)
+                    formula = isla.replace_formula(
+                        formula,
+                        universal_int_formula,
+                        universal_int_formula.inner_formula.substitute_expressions(
+                            {universal_int_formula.bound_variable: DerivationTree(str(instantiation[idx]), [])}))
+
+            results.append(SolutionState(formula, state.tree))
+
+        return results
 
     def eliminate_all_semantic_formulas(self, state: SolutionState) -> Optional[List[SolutionState]]:
         conjuncts = split_conjunction(state.constraint)
