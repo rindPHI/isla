@@ -1,6 +1,7 @@
 import logging
 import logging
 import os
+import string
 import unittest
 from typing import cast, Optional, Dict, List, Callable, Union, Set
 from xml.dom import minidom
@@ -8,6 +9,7 @@ from xml.sax.saxutils import escape
 
 import pytest
 import z3
+from fuzzingbook.Grammars import srange, convert_ebnf_grammar
 
 from isla import isla
 from isla import isla_shortcuts as sc
@@ -16,7 +18,7 @@ from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
 from isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
     get_quantifier_chains
 from isla.tests.subject_languages import rest, tar, simple_tar, scriptsizec
-from isla.tests.subject_languages.csv import csv_lint, CSV_GRAMMAR
+from isla.tests.subject_languages.csv import csv_lint, CSV_GRAMMAR, CSV_HEADERBODY_GRAMMAR
 from isla.tests.subject_languages.tar import extract_tar
 from isla.tests.subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, \
     XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, XML_GRAMMAR, validate_xml, XML_NO_ATTR_REDEF_CONSTRAINT
@@ -304,25 +306,30 @@ const start: <start>;
 
 vars {
   colno_1, colno_2: NUM;
-  hline: <csv-header>;
-  line: <csv-record>;
+  header: <csv-header>;
+  body: <csv-body>;
+  hline, line: <csv-record>;
 }
 
 constraint {
-  exists int colno_1:
-    forall hline in start:
-      (count(hline, "<raw-field>", colno_1) and 
-        forall int colno_2:
-          forall line in start:
-            (count(line, "<raw-field>", colno_2) implies
-             (= colno_1 colno_2)))
+  forall header in start:
+    forall body in start:
+      forall hline in header:
+        exists int colno_1:
+          ((>= (str.to.int colno_1) 3) and 
+           (<= (str.to.int colno_1) 5) and
+           count(hline, "<raw-field>", colno_1) and 
+           forall line in body:
+             forall int colno_2:
+               ((= colno_1 colno_2) implies
+                count(line, "<raw-field>", colno_2)))
 }
 """
 
         self.execute_generation_test(
             property,
             semantic_predicates={COUNT_PREDICATE},
-            grammar=CSV_GRAMMAR,
+            grammar=CSV_HEADERBODY_GRAMMAR,
             custom_test_func=csv_lint,
             num_solutions=200,
             max_number_free_instantiations=10,
@@ -332,38 +339,45 @@ constraint {
         )
 
     def test_negated_csv_rows_equal_length(self):
-        property = """
+        property = parse_isla("""
 const start: <start>;
 
 vars {
-  colno_1, colno_2: NUM;
-  hline: <csv-header>;
+  header: <csv-header>;
+  body: <csv-body>;
+  hline: <csv-record>;
+  colno_1: NUM;
   line: <csv-record>;
+  colno_2: NUM;
 }
 
 constraint {
-  exists int colno_1:
-    forall hline in start:
-      (count(hline, "<raw-field>", colno_1) and 
-        forall int colno_2:
-          forall line in start:
-            (count(line, "<raw-field>", colno_2) implies
-             (= colno_1 colno_2)))
+  exists header in start:
+    exists body in start:
+      exists hline in header:
+        forall int colno_1:
+          (not(>= (str.to_int colno_1) 3) or
+           not(<= (str.to_int colno_1) 5) or
+           not(count(hline, "<raw-field>", colno_1)) or
+           exists line in body:
+             exists int colno_2:
+               ((= colno_1 colno_2) and
+               ((not (= colno_1 colno_2)) or
+               not(count(line, "<raw-field>", colno_2)))))
 }
-"""
-        negated_property = -parse_isla(property, semantic_predicates={COUNT_PREDICATE})
+""", semantic_predicates={COUNT_PREDICATE})
 
-        # self.execute_generation_test(
-        #     property,
-        #     semantic_predicates={COUNT_PREDICATE},
-        #     grammar=CSV_GRAMMAR,
-        #     custom_test_func=csv_lint,
-        #     num_solutions=200,
-        #     max_number_free_instantiations=10,
-        #     max_number_smt_instantiations=2,
-        #     enforce_unique_trees_in_queue=False,
-        #     global_fuzzer=True
-        # )
+        self.execute_generation_test(
+            property,
+            semantic_predicates={COUNT_PREDICATE},
+            grammar=CSV_HEADERBODY_GRAMMAR,
+            custom_test_func=lambda t: isinstance(csv_lint(t), str),
+            num_solutions=200,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=1,
+            enforce_unique_trees_in_queue=False,
+            global_fuzzer=True
+        )
 
     def test_rest(self):
         self.execute_generation_test(
@@ -538,8 +552,8 @@ constraint {
                     if custom_test_func:
                         test_result = custom_test_func(assignment)
                         if test_result is not True:
-                            logger.info(f"Solution WRONG: '%s'", assignment)
-                            self.fail("" if not isinstance(test_result, str) else test_result)
+                            self.fail(f"Solution WRONG: '{assignment}'" if not isinstance(test_result, str)
+                                      else f"Solution WRONG: '{assignment}', message: {test_result}")
 
                 if print_solutions:
                     print(str(assignment))

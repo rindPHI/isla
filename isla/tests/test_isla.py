@@ -19,7 +19,7 @@ from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, IN_TREE_PRED
 from isla.isla_predicates import count, COUNT_PREDICATE
 from isla.tests.subject_languages import rest, scriptsizec
 from isla.tests.subject_languages import tinyc, tar
-from isla.tests.subject_languages.csv import CSV_GRAMMAR, CSV_COLNO_PROPERTY
+from isla.tests.subject_languages.csv import CSV_GRAMMAR, CSV_COLNO_PROPERTY, CSV_HEADERBODY_GRAMMAR
 from isla.tests.subject_languages.scriptsizec import SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT, SCRIPTSIZE_C_NO_REDEF_TEXT
 from isla.tests.subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, validate_xml, \
     xml_no_attr_redef_constraint, XML_GRAMMAR, XML_NAMESPACE_CONSTRAINT
@@ -669,6 +669,84 @@ constraint {
             reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(invalid_test_input))[0]),
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR
+        ))
+
+    def test_negated_csv_property(self):
+        tree = ('<start>', [
+            ('<csv-file>', [
+                ('<csv-header>', [
+                    ('<csv-record>', [
+                        ('<csv-string-list>', [
+                            ('<raw-field>', [
+                                ('<quoted-field>', [
+                                    ('"', []),
+                                    ('<escaped-field>', [
+                                        ('<escaped-character-1>', [
+                                            ('<escaped-character>', [('i', [])]),
+                                            ('<escaped-character-1>', [('', [])])])]),
+                                    ('"', [])])])]),
+                        ('\n', [])])]),
+                ('<csv-body>', [
+                    ('<csv-record-1>', [
+                        ('<csv-record>', [
+                            ('<csv-string-list>', [
+                                ('<raw-field>', [
+                                    ('<simple-field>', [
+                                        ('<spaces-1>', [
+                                            ('<spaces>', [(' ', []), ('<spaces>', [(' ', [])])])]),
+                                        ('<simple-character-1>', [('', [])]),
+                                        ('<spaces-2>', [('', [])])])]),
+                                (';', []),
+                                ('<csv-string-list>', [
+                                    ('<raw-field>', [
+                                        ('<simple-field>', [
+                                            ('<spaces-1>', [('', [])]),
+                                            ('<simple-character-1>', [
+                                                ('<simple-character>', [('P', [])]),
+                                                ('<simple-character-1>', [('', [])])]),
+                                            ('<spaces-2>', [('<spaces>', [(' ', [])])])])])])]),
+                            ('\n', [])]),
+                        ('<csv-record-1>', [('', [])])])])])])
+
+        property = """
+const start: <start>;
+
+vars {
+  colno_1, colno_2: NUM;
+  header: <csv-header>;
+  body: <csv-body>;
+  hline, line: <csv-record>;
+}
+
+constraint {
+  forall header in start:
+    forall body in start:
+      forall hline in header:
+        exists int colno_1:
+          ((>= (str.to.int colno_1) 3) and 
+           (<= (str.to.int colno_1) 5) and
+           count(hline, "<raw-field>", colno_1) and 
+           forall line in body:
+             forall int colno_2:
+               ((= colno_1 colno_2) implies
+                count(line, "<raw-field>", colno_2)))
+}
+"""
+
+        negated_property = -parse_isla(property, semantic_predicates={COUNT_PREDICATE})
+
+        self.assertTrue(evaluate(
+            negated_property,
+            reference_tree=DerivationTree.from_parse_tree(tree),
+            semantic_predicates={COUNT_PREDICATE},
+            grammar=CSV_HEADERBODY_GRAMMAR
+        ))
+
+        self.assertFalse(evaluate(
+            property,
+            reference_tree=DerivationTree.from_parse_tree(tree),
+            semantic_predicates={COUNT_PREDICATE},
+            grammar=CSV_HEADERBODY_GRAMMAR
         ))
 
     def test_rest_property_1(self):

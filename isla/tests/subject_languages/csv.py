@@ -26,6 +26,25 @@ CSV_EBNF_GRAMMAR = {
 
 CSV_GRAMMAR = convert_ebnf_grammar(CSV_EBNF_GRAMMAR)
 
+CSV_HEADERBODY_EBNF_GRAMMAR = {
+    "<start>": ["<csv-file>"],
+    "<csv-file>": ["<csv-header><csv-body>"],
+    "<csv-header>": ["<csv-record>"],
+    "<csv-body>": ["<csv-record>*"],
+    "<csv-record>": ["<csv-string-list>\n"],
+    "<csv-string-list>": ["<raw-field>", "<raw-field>;<csv-string-list>"],
+    "<raw-field>": ["<simple-field>", "<quoted-field>"],
+    "<simple-field>": ["<spaces>?<simple-character>*<spaces>?"],
+    "<simple-character>": [c for c in srange(string.printable) if
+                           c not in ["\n", ";", '"', " ", "\t", "\r", '"']],
+    "<quoted-field>": ['"<escaped-field>"'],
+    "<escaped-field>": ["<escaped-character>*"],
+    "<escaped-character>": [c for c in srange(string.printable) if c not in ['"']],
+    "<spaces>": [" ", " <spaces>"],
+}
+
+CSV_HEADERBODY_GRAMMAR = convert_ebnf_grammar(CSV_HEADERBODY_EBNF_GRAMMAR)
+
 
 def csv_lint(tree: isla.DerivationTree) -> Union[bool, str]:
     with tempfile.NamedTemporaryFile(suffix=".csv") as tmp:

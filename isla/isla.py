@@ -981,11 +981,8 @@ class Formula(ABC):
 
     def __neg__(self):
         if isinstance(self, SMTFormula):
-            return SMTFormula(
-                z3.Not(self.formula),
-                *self.free_variables_,
-                instantiated_variables=self.instantiated_variables,
-                substitutions=self.substitutions)
+            # Overloaded in SMTFormula
+            assert False
         elif isinstance(self, NegatedFormula):
             return self.args[0]
         elif isinstance(self, ConjunctiveFormula):
@@ -1257,7 +1254,7 @@ class SemanticPredicateFormula(Formula):
         return hash((type(self).__name__, self.predicate, self.args))
 
     def __eq__(self, other):
-        return (type(self) is type(other)
+        return (isinstance(other, SemanticPredicateFormula)
                 and self.predicate == other.predicate
                 and self.args == other.args)
 
@@ -1490,6 +1487,39 @@ class SMTFormula(Formula):
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_smt_formula(self)
 
+    def __or__(self, other: Formula) -> 'SMTFormula':
+        if not isinstance(other, SMTFormula):
+            return super().__or__(other)
+
+        return SMTFormula(
+            z3.Or(self.formula, other.formula),
+            *(self.free_variables() | other.free_variables()),
+            instantiated_variables=self.instantiated_variables | other.instantiated_variables,
+            substitutions=self.substitutions | other.substitutions,
+            auto_eval=self.auto_eval or other.auto_eval
+        )
+
+    def __and__(self, other: Formula) -> 'SMTFormula':
+        if not isinstance(other, SMTFormula):
+            return super().__and__(other)
+
+        return SMTFormula(
+            z3.And(self.formula, other.formula),
+            *(self.free_variables() | other.free_variables()),
+            instantiated_variables=self.instantiated_variables | other.instantiated_variables,
+            substitutions=self.substitutions | other.substitutions,
+            auto_eval=self.auto_eval or other.auto_eval
+        )
+
+    def __neg__(self) -> 'SMTFormula':
+        return SMTFormula(
+            z3.simplify(z3.Not(self.formula)),
+            *self.free_variables(),
+            instantiated_variables=self.instantiated_variables,
+            substitutions=self.substitutions,
+            auto_eval=self.auto_eval
+        )
+
     def __repr__(self):
         return f"SMTFormula({repr(self.formula)}, {', '.join(map(repr, self.free_variables_))}, " \
                f"instantiated_variables={repr(self.instantiated_variables)}, " \
@@ -1508,7 +1538,7 @@ class SMTFormula(Formula):
                 and self.substitutions == other.substitutions)
 
     def __hash__(self):
-        return hash((type(self), self.formula, tuple(self.substitutions.items())))
+        return hash((type(self).__name__, self.formula, tuple(self.substitutions.items())))
 
 
 class NumericQuantifiedFormula(Formula, ABC):
@@ -1547,7 +1577,7 @@ class ExistsIntFormula(NumericQuantifiedFormula):
         self.inner_formula.accept(visitor)
 
     def __hash__(self):
-        return hash((type(self), self.bound_variable, self.inner_formula))
+        return hash((type(self).__name__, self.bound_variable, self.inner_formula))
 
     def __eq__(self, other):
         return (isinstance(other, ExistsIntFormula)
@@ -1593,7 +1623,7 @@ class ForallIntFormula(NumericQuantifiedFormula):
         self.inner_formula.accept(visitor)
 
     def __hash__(self):
-        return hash((type(self), self.bound_variable, self.inner_formula))
+        return hash((type(self).__name__, self.bound_variable, self.inner_formula))
 
     def __eq__(self, other):
         return (isinstance(other, ForallIntFormula)
@@ -2432,30 +2462,56 @@ def evaluate(
     z3_result = solver.check()
     if z3_result == z3.unknown:
         return ThreeValuedTruth.unknown()
-   
+
     return ThreeValuedTruth(z3_result == z3.unsat)  # original formula is valid
 
 
-def isla_to_smt_formula(formula: Formula) -> z3.BoolRef:
+def isla_to_smt_formula(
+        formula: Formula,
+        replace_untranslatable_with_predicate=False,
+        prog_var_mapping: Optional[Dict[Formula, z3.BoolRef]] = None) -> z3.BoolRef:
+    assert not prog_var_mapping or replace_untranslatable_with_predicate
+    if prog_var_mapping is None:
+        prog_var_mapping = {}
+
     if isinstance(formula, SMTFormula):
         return formula.formula
 
     if isinstance(formula, ConjunctiveFormula):
-        return z3_and([isla_to_smt_formula(child) for child in formula.args])
+        return z3_and([isla_to_smt_formula(child, replace_untranslatable_with_predicate, prog_var_mapping)
+                       for child in formula.args])
 
     if isinstance(formula, DisjunctiveFormula):
-        return z3_or([isla_to_smt_formula(child) for child in formula.args])
+        return z3_or([isla_to_smt_formula(child, replace_untranslatable_with_predicate, prog_var_mapping)
+                      for child in formula.args])
 
     if isinstance(formula, NegatedFormula):
-        return z3.Not(isla_to_smt_formula(formula.args[0]))
+        return z3.Not(isla_to_smt_formula(formula.args[0], replace_untranslatable_with_predicate, prog_var_mapping))
 
     if isinstance(formula, ForallIntFormula):
-        return z3.ForAll([formula.bound_variable.to_smt()], isla_to_smt_formula(formula.inner_formula))
+        return z3.ForAll(
+            [formula.bound_variable.to_smt()],
+            isla_to_smt_formula(formula.inner_formula, replace_untranslatable_with_predicate, prog_var_mapping))
 
     if isinstance(formula, ExistsIntFormula):
-        return z3.Exists([formula.bound_variable.to_smt()], isla_to_smt_formula(formula.inner_formula))
+        return z3.Exists(
+            [formula.bound_variable.to_smt()],
+            isla_to_smt_formula(formula.inner_formula, replace_untranslatable_with_predicate, prog_var_mapping))
 
-    raise NotImplementedError(f"Don't know how to translate formula {formula} to SMT")
+    if not replace_untranslatable_with_predicate:
+        raise NotImplementedError(f"Don't know how to translate formula {formula} to SMT")
+
+    if formula not in prog_var_mapping:
+        name_idx = 1
+        replacement = z3.Bool(f"P_{name_idx}")
+        while replacement in prog_var_mapping.values():
+            replacement = z3.Bool(f"P_{name_idx}")
+            name_idx += 1
+
+        assert replacement not in prog_var_mapping.values()
+        prog_var_mapping[formula] = replacement
+
+    return prog_var_mapping[formula]
 
 
 def matches_for_quantified_formula(

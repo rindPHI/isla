@@ -24,7 +24,7 @@ from isla.existential_helpers import insert_tree
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
     replace_line_breaks, z3_subst, z3_solve, weighted_geometric_mean, assertions_activated, \
-    split_str_with_nonterminals, z3_or, cluster_by_common_elements, is_nonterminal
+    split_str_with_nonterminals, z3_or, cluster_by_common_elements, is_nonterminal, visit_z3_expr
 from isla.isla import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
     convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts
 from isla.type_defs import Grammar, Path
@@ -322,7 +322,7 @@ class ISLaSolver:
                     return
 
             # import dill as pickle
-            # state_hash = -6081099422178527529
+            # state_hash = -3115150621320160999
             # out_file = "/tmp/saved_debug_state"
             # if hash(self.queue[0][1]) == state_hash:
             #     with open(out_file, 'wb') as debug_state_file:
@@ -403,6 +403,8 @@ class ISLaSolver:
             # instantiation and let the predicate "fix" the resulting tree.
             assert (state.constraint == sc.true() or
                     all(isinstance(conjunct, isla.SemanticPredicateFormula)
+                        or (isinstance(conjunct, isla.NegatedFormula) and
+                            isinstance(conjunct.args[0], isla.SemanticPredicateFormula))
                         for conjunct in get_conjuncts(state.constraint))), \
                 f"Constraint is not true and contains formulas " \
                 f"other than semantic predicate formulas: {state.constraint}"
@@ -410,7 +412,13 @@ class ISLaSolver:
                     all(not pred_formula.binds_tree(leaf)
                         for pred_formula in get_conjuncts(state.constraint)
                         if isinstance(pred_formula, isla.SemanticPredicateFormula)
-                        for _, leaf in state.tree.open_leaves())), \
+                        for _, leaf in state.tree.open_leaves()) or
+                    all(not cast(isla.SemanticPredicateFormula, pred_formula.args[0]).binds_tree(leaf)
+                        for pred_formula in get_conjuncts(state.constraint)
+                        if isinstance(pred_formula, isla.NegatedFormula) and
+                        isinstance(pred_formula.args[0], isla.SemanticPredicateFormula))
+                    for _, leaf in state.tree.open_leaves()
+                    ), \
                 f"Constraint is not true and contains semantic predicate formulas which bind open leaves in the tree: " \
                 f"{state.constraint}, leaves: {', '.join(list(map(str, [leaf for _, leaf in state.tree.open_leaves()])))}"
 
@@ -476,81 +484,183 @@ class ISLaSolver:
         return SolutionState(formula, state.tree)
 
     def instantiate_universal_integer_quantifiers(self, state: SolutionState) -> Optional[List[SolutionState]]:
-        # TODO: Consider existing numbers and (numeric) constants in the tree, as in FOL.
-        #       For numbers, also take into account neighboured numbers.
         universal_int_formulas = [
             conjunct for conjunct in get_conjuncts(state.constraint)
             if isinstance(conjunct, isla.ForallIntFormula)]
 
+        # Approach:
+        # 1. If quantified formula is a disjunction, attempt to falsify as many of the
+        #    disjuncts as possible by instantiating the quantified variable. This is
+        #    needed to effectively deal with implications.
+        # 2. If quantified formula is a conjunction, attempt to make as many of the
+        #    conjuncts true as possible by instantiating the quantified variable.
+        # 3. Otherwise, collect numbers and existing numeric constants from the state
+        #    to obtain (scalar) terms for instantiation.
+
         if not universal_int_formulas:
             return None
 
-        # Obtain existing numeric constants in the formula
-        # TODO: Maybe also consider numeric expressions like "number + 1".
-        numeric_constants = {c for c in isla.VariablesCollector().collect(state.constraint)
-                             if isinstance(c, isla.Constant) and c.is_numeric()}
+        results: List[isla.Formula] = [state.constraint]
+        for universal_int_formula in universal_int_formulas:
+            results = [
+                result for formula_list in [
+                    self.instantiate_universal_integer_quantifier(
+                        previous_result, state.tree, universal_int_formula)
+                    for previous_result in results]
+                for result in formula_list]
 
-        # Extract existing numbers from the tree and the formula
-        def is_int_node(tree: DerivationTree) -> bool:
-            if not tree.is_complete():
-                return False
+        return [SolutionState(formula, state.tree) for formula in results]
 
-            try:
-                int(str(tree))
-                return True
-            except ValueError:
-                return False
+    def instantiate_universal_integer_quantifier(
+            self,
+            context_formula: isla.Formula,
+            tree: isla.DerivationTree,
+            universal_int_formula: isla.ForallIntFormula) -> List[isla.Formula]:
+        # Approach:
+        # 1. If quantified formula is a disjunction, attempt to falsify as many of the
+        #    disjuncts as possible by instantiating the quantified variable. This is
+        #    needed to effectively deal with implications.
+        # 2. If quantified formula is a conjunction, attempt to make as many of the
+        #    conjuncts true as possible by instantiating the quantified variable.
+        # 3. Otherwise, collect numbers and existing numeric constants from the state
+        #    to obtain (scalar) terms for instantiation.
 
-        # Numbers in the tree
-        numbers = {int(str(tree)) for _, tree in state.tree.filter(is_int_node)}
+        instantiations: Set[int | isla.Constant] = set()
 
-        # Numbers in the formula
-        for inner_formula in isla.FilterVisitor(
-                lambda f: any(is_int_node(tree) for tree in f.tree_arguments())).collect(state.constraint):
-            numbers.update({int(str(tree_arg)) for tree_arg in inner_formula.tree_arguments()
-                            if is_int_node(tree_arg)})
+        constant = isla.Constant(universal_int_formula.bound_variable.name,
+                                 universal_int_formula.bound_variable.n_type)
+        inner_formula = universal_int_formula.inner_formula.substitute_variables({
+            universal_int_formula.bound_variable: constant})
 
-        # Also consider close neighborhood +/- 1
-        numbers.update({elem for number in numbers for elem in {number + 1, number - 1}})
+        if isinstance(universal_int_formula.inner_formula, isla.DisjunctiveFormula):
+            relevant_disjuncts = [
+                formula for formula in isla.split_disjunction(inner_formula)
+                if constant in formula.free_variables()
+            ]
 
-        # Add some random numbers
-        # TODO Make upper bound configurable
-        upper_bound, sample_size = 100, max(1, self.max_number_free_instantiations // 2)
-        numbers.update(random.choices(
-            list(range(0, 100)),
-            weights=list(reversed([1.2 ** i for i in range(upper_bound)])), k=sample_size))
-        numbers.update(random.choices(
-            list(range(-100, 0)),
-            weights=list([1.2 ** i for i in range(upper_bound)]), k=sample_size))
+            # First, try to falsify SMT disjuncts
+            smt_disjuncts = [disjunct for disjunct in relevant_disjuncts if isinstance(disjunct, isla.SMTFormula)]
+            if smt_disjuncts:
+                free_variables = [
+                    var for l in [smt_formula.free_variables() for smt_formula in smt_disjuncts] for var in l]
 
-        instantiation_values = [numeric_constants | numbers for _ in range(len(universal_int_formulas))]
-        instantiations: Iterator[Tuple[isla.Constant | DerivationTree, ...]] = itertools.product(*instantiation_values)
+                negated_smt_formula = -reduce(isla.SMTFormula.__or__, smt_disjuncts)
+                solutions = self.solve_quantifier_free_formula([negated_smt_formula], max_instantiations=1)
+                if solutions:
+                    assert len(solutions) == 1
+                    try:
+                        solution: Dict[isla.Constant, int] = {c: int(solutions[0][c].value) for c in free_variables}
+                    except ValueError:
+                        assert False, "Expected numeric solution."
 
-        results: List[SolutionState] = []
+                    if len(free_variables) == 1:
+                        instantiations.add(solution[constant])
+                    else:
+                        # In situations with multiple variables, we might have to abstract from concrete values.
+                        # Currently, we only support simple equality inference (based on one sample...). Note that
+                        # for supporting *more complex* terms (e.g., additions), we would have to extend the whole
+                        # infrastructure: Substitutions with complex terms, and complex terms in semantic predicate
+                        # arguments, are unsupported as of now.
+                        candidates = {c for c in solution if c != constant and solution[c] == solution[constant]}
+
+                        # Filter working candidates
+                        instantiations.update({
+                            c for c in candidates
+                            if self.solve_quantifier_free_formula(
+                                [negated_smt_formula.substitute_variables({constant: c})],
+                                max_instantiations=1)})
+
+            # TODO: Falsify negated semantic predicate formulas
+        # TODO: Conjunctions
+
+        if not instantiations:
+            # We are cursed with excessive freedom. Collect instantiation material from the state.
+
+            # Obtain existing numeric constants in the constraint.
+            # TODO: Maybe also consider numeric expressions like "number + 1".
+            numeric_constants = {c for c in isla.VariablesCollector().collect(context_formula)
+                                 if isinstance(c, isla.Constant) and c.is_numeric()}
+
+            # Extract existing numbers from the tree and the formula
+            def is_int_node(tree: DerivationTree) -> bool:
+                if not tree.is_complete():
+                    return False
+
+                try:
+                    int(str(tree))
+                    return True
+                except ValueError:
+                    return False
+
+            # Numbers in the tree
+            numbers = {int(str(tree)) for _, tree in tree.filter(is_int_node)}
+
+            def collect_numbers_in_formula(formula: isla.Formula) -> Set[int]:
+                result: Set[int] = set()
+
+                result.update({
+                    int(str(tree_arg)) for tree_arg in formula.tree_arguments()
+                    if is_int_node(tree_arg)})
+
+                if isinstance(formula, isla.SMTFormula):
+                    # Collect numeric constants
+                    for expr in visit_z3_expr(formula.formula):
+                        if z3.is_int_value(expr):
+                            result.add(cast(z3.IntVal, expr).as_long())
+                        elif z3.is_string_value(expr):
+                            try:
+                                result.add(int(cast(z3.SeqRef, expr).as_string()))
+                            except ValueError:
+                                pass
+
+                return result
+
+            # Numbers in the formula
+            atomic_formulas = isla.FilterVisitor(
+                lambda f: (not isinstance(f, isla.PropositionalCombinator) and
+                           not isinstance(f, isla.QuantifiedFormula) and
+                           not isinstance(f, isla.NumericQuantifiedFormula))).collect(context_formula)
+            numbers.update({num for atom in atomic_formulas for num in collect_numbers_in_formula(atom)})
+
+            # Also consider close neighborhood +/- 1
+            numbers.update({elem for number in numbers for elem in {number + 1, number - 1}})
+
+            if len(numbers) + len(numeric_constants) == 0:
+                # Add some random numbers
+                upper_bound, sample_size = 100, max(1, self.max_number_free_instantiations // 2)
+                numbers.update(random.choices(
+                    list(range(0, 100)),
+                    weights=list(reversed([1.2 ** i for i in range(upper_bound)])), k=sample_size))
+                numbers.update(random.choices(
+                    list(range(-100, 0)),
+                    weights=list([1.2 ** i for i in range(upper_bound)]), k=sample_size))
+
+            instantiations = numeric_constants | numbers
+
+        results: List[isla.Formula] = []
         for instantiation in instantiations:
-            formula = state.constraint
-            for idx, universal_int_formula in enumerate(universal_int_formulas):
-                self.logger.debug(
-                    "Instantiating universal integer quantifier (%s -> %s) %s",
-                    universal_int_formula.bound_variable,
-                    str(instantiation[idx]),
-                    universal_int_formula)
+            formula = context_formula
+            self.logger.debug(
+                "Instantiating universal integer quantifier (%s -> %s) %s",
+                universal_int_formula.bound_variable,
+                str(instantiation),
+                universal_int_formula)
 
-                if isinstance(instantiation[idx], isla.Constant):
-                    formula = isla.replace_formula(
-                        formula,
-                        universal_int_formula,
-                        universal_int_formula.inner_formula.substitute_variables(
-                            {universal_int_formula.bound_variable: instantiation[idx]}))
-                else:
-                    assert isinstance(instantiation[idx], int)
-                    formula = isla.replace_formula(
-                        formula,
-                        universal_int_formula,
-                        universal_int_formula.inner_formula.substitute_expressions(
-                            {universal_int_formula.bound_variable: DerivationTree(str(instantiation[idx]), [])}))
+            if isinstance(instantiation, isla.Constant):
+                formula = isla.replace_formula(
+                    formula,
+                    universal_int_formula,
+                    universal_int_formula.inner_formula.substitute_variables(
+                        {universal_int_formula.bound_variable: instantiation}))
+            else:
+                assert isinstance(instantiation, int)
+                formula = isla.replace_formula(
+                    formula,
+                    universal_int_formula,
+                    universal_int_formula.inner_formula.substitute_expressions(
+                        {universal_int_formula.bound_variable: DerivationTree(str(instantiation), [])}))
 
-            results.append(SolutionState(formula, state.tree))
+            results.append(formula)
 
         return results
 
@@ -581,7 +691,7 @@ class ISLaSolver:
             pred_formula for pred_formula in isla.FilterVisitor(
                 lambda f: isinstance(f, isla.SemanticPredicateFormula)).collect(state.constraint)
             if (isinstance(pred_formula, isla.SemanticPredicateFormula)
-                and all(not isinstance(arg, isla.Variable) for arg in pred_formula.args))
+                and all(not isinstance(arg, isla.BoundVariable) for arg in pred_formula.args))
         ]
 
         semantic_predicate_formulas = sorted(semantic_predicate_formulas, key=lambda f: f.order)
@@ -666,6 +776,12 @@ class ISLaSolver:
             new_states = complete_states
         else:
             elimination_result = self.eliminate_existential_formula(existential_formulas[0], state)
+
+            if not elimination_result and not new_states:
+                self.logger.warning(
+                    "Existential qfr elimination: Could not eliminate existential formula %s "
+                    "by matching or tree insertion", existential_formulas[0])
+
             new_states.extend(elimination_result)
             self.logger.debug(
                 "Eliminating existential formula %s, %d successors", existential_formulas[0], len(elimination_result))
@@ -894,12 +1010,6 @@ class ISLaSolver:
 
                 result.append(new_state)
 
-        if not result:
-            self.logger.warning(
-                "Existential qfr elimination: Could not insert any tree in %s into tree %s",
-                [str(inserted_tree) for inserted_tree, _ in inserted_trees_and_bind_paths],
-                state.tree)
-
         return result
 
     def eliminate_semantic_formula(self, semantic_formula: isla.Formula, state: SolutionState) -> List[SolutionState]:
@@ -931,16 +1041,19 @@ class ISLaSolver:
         # need to appear in the same cluster). The solver can better handle smaller constraints,
         # and those which do not have variables in common can be handled independently.
 
-        formula_clusters: List[List[isla.SMTFormula]] = cluster_by_common_elements(
-            smt_formulas,
-            lambda smt_formula: (
-                    smt_formula.free_variables() |
+        def cluster_keys(smt_formula: isla.SMTFormula):
+            return (smt_formula.free_variables() |
                     smt_formula.instantiated_variables |
-                    set([subtree for tree in smt_formula.substitutions.values() for _, subtree in tree.paths()])
-            )
-        )
+                    set([subtree for tree in smt_formula.substitutions.values() for _, subtree in tree.paths()]))
 
-        assert all(any(smt_formula in cluster for cluster in formula_clusters) for smt_formula in smt_formulas)
+        formula_clusters: List[List[isla.SMTFormula]] = cluster_by_common_elements(smt_formulas, cluster_keys)
+
+        assert all(not cluster_keys(smt_formula) or
+                   any(smt_formula in cluster for cluster in formula_clusters)
+                   for smt_formula in smt_formulas)
+
+        formula_clusters = [cluster for cluster in formula_clusters if cluster]
+        formula_clusters.append([smt_formula for smt_formula in smt_formulas if not cluster_keys(smt_formula)])
 
         all_solutions: List[List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]]] = [
             self.solve_quantifier_free_formula(cluster) for cluster in formula_clusters
@@ -993,8 +1106,11 @@ class ISLaSolver:
 
         return results
 
-    def solve_quantifier_free_formula(self, smt_formulas: List[isla.SMTFormula]) \
-            -> List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]]:
+    def solve_quantifier_free_formula(
+            self,
+            smt_formulas: List[isla.SMTFormula],
+            max_instantiations: Optional[int] = None) -> \
+            List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]]:
         # If any SMT formula refers to subtrees in the instantiations of other SMT formulas,
         # we have to instantiate those first.
         def get_conflicts(smt_formulas):
@@ -1029,7 +1145,8 @@ class ISLaSolver:
         solutions: List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]] = []
         internal_solutions: List[Dict[isla.Constant, z3.StringVal]] = []
 
-        for _ in range(self.max_number_smt_instantiations):
+        num_instantiations = max_instantiations or self.max_number_smt_instantiations
+        for _ in range(num_instantiations):
             formulas: List[z3.BoolRef] = []
 
             for constant in constants:
@@ -1085,7 +1202,11 @@ class ISLaSolver:
                 return solutions
             else:
                 solutions.append(new_solution)
-                internal_solutions.append(new_internal_solution)
+                if new_internal_solution:
+                    internal_solutions.append(new_internal_solution)
+                else:
+                    # Again, for a trivial solution (e.g., True), the assignment can be empty
+                    break
 
         return solutions
 
@@ -1193,7 +1314,8 @@ class ISLaSolver:
             self.logger.debug("Discarding state %s, tree already in queue", state)
             return False
 
-        if state.constraint == sc.false():
+        # if state.constraint == sc.false():
+        if self.propositionally_unsatisfiable(state):
             self.logger.debug("Discarding state %s", state)
             return False
 
@@ -1220,6 +1342,12 @@ class ISLaSolver:
         #     heapq.heapify(queue)
 
         return False
+
+    def propositionally_unsatisfiable(self, state: SolutionState) -> bool:
+        z3_formula = isla.isla_to_smt_formula(state.constraint, replace_untranslatable_with_predicate=True)
+        solver = z3.Solver()
+        solver.add(z3_formula)
+        return solver.check() == z3.unsat
 
     def establish_invariant(self, state: SolutionState) -> List[SolutionState]:
         formula = convert_to_dnf(convert_to_nnf(state.constraint))
