@@ -322,7 +322,7 @@ class ISLaSolver:
                     return
 
             # import dill as pickle
-            # state_hash = 6182357268149801513
+            # state_hash = -5899019747437834227
             # out_file = "/tmp/saved_debug_state"
             # if hash(self.queue[0][1]) == state_hash:
             #     with open(out_file, 'wb') as debug_state_file:
@@ -491,15 +491,6 @@ class ISLaSolver:
             conjunct for conjunct in get_conjuncts(state.constraint)
             if isinstance(conjunct, isla.ForallIntFormula)]
 
-        # Approach:
-        # 1. If quantified formula is a disjunction, attempt to falsify as many of the
-        #    disjuncts as possible by instantiating the quantified variable. This is
-        #    needed to effectively deal with implications.
-        # 2. If quantified formula is a conjunction, attempt to make as many of the
-        #    conjuncts true as possible by instantiating the quantified variable.
-        # 3. Otherwise, collect numbers and existing numeric constants from the state
-        #    to obtain (scalar) terms for instantiation.
-
         if not universal_int_formulas:
             return None
 
@@ -525,10 +516,21 @@ class ISLaSolver:
 
         def infer_satisfying_assignments(smt_formula: isla.SMTFormula) -> Set[int | isla.Constant]:
             free_variables = smt_formula.free_variables()
-            max_instantiations = self.max_number_free_instantiations if len(free_variables) == 1 else 1
+            max_instantiations = 31 if len(free_variables) == 1 else 1
+            # max_instantiations = self.max_number_free_instantiations if len(free_variables) == 1 else 1
 
             try:
-                solver_result = self.solve_quantifier_free_formula([smt_formula], max_instantiations=max_instantiations)
+                solver_result = self.solve_quantifier_free_formula(
+                    [smt_formula], max_instantiations=max_instantiations
+                )
+
+                if len(free_variables) == 1 and len(solver_result) >= max_instantiations:
+                    self.logger.warning(
+                        "Was not able to exhaustively enumerate all possible instantiations of numeric quantifier "
+                        "%s (more than %d solutions). Either, restrict the range of the quantified variale, or "
+                        "increase the limit in the implementation."
+                    )
+
                 solutions: Dict[isla.Constant, Set[int]] = {
                     c: {int(solution[cast(isla.Constant, c)].value)
                         for solution in solver_result}
@@ -676,15 +678,12 @@ class ISLaSolver:
             self.logger.debug("Eliminating semantic predicate formula %s", semantic_predicate_formula)
             changed = True
 
-            if evaluation_result.false():
-                return SolutionState(sc.false(), result.tree)
-
-            if evaluation_result.true():
+            if evaluation_result.is_boolean():
                 result = SolutionState(
                     isla.replace_formula(
                         result.constraint,
                         semantic_predicate_formula,
-                        sc.true()),
+                        isla.SMTFormula(z3.BoolVal(evaluation_result.false() ^ negated))),
                     result.tree)
                 continue
 
@@ -1109,7 +1108,7 @@ class ISLaSolver:
             self,
             smt_formulas: List[isla.SMTFormula],
             max_instantiations: Optional[int] = None) -> \
-            List[Dict[Union[isla.Constant, DerivationTree], DerivationTree]]:
+            List[Dict[isla.Constant | DerivationTree, DerivationTree]]:
         # If any SMT formula refers to subtrees in the instantiations of other SMT formulas,
         # we have to instantiate those first.
         def get_conflicts(smt_formulas):

@@ -1114,13 +1114,16 @@ class SemPredEvalResult:
     def __init__(self, result: Optional[bool | Dict[Variable | DerivationTree, DerivationTree]]):
         self.result = result
 
-    def true(self):
+    def is_boolean(self) -> bool:
+        return self.true() or self.false()
+
+    def true(self) -> bool:
         return self.result is True
 
-    def false(self):
+    def false(self) -> bool:
         return self.result is False
 
-    def ready(self):
+    def ready(self) -> bool:
         return self.result is not None
 
     def __eq__(self, other):
