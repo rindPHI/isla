@@ -6,7 +6,7 @@ import pickle
 import re
 from abc import ABC
 from functools import reduce, lru_cache
-from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable, Sequence
+from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable, Sequence, Protocol
 
 import antlr4
 import z3
@@ -18,7 +18,8 @@ from orderedset import OrderedSet
 
 import isla.parsers.isla.isla.islaListener as ISLaParserListener
 import isla.parsers.isla.mexpr_parser.MexprParserListener as MexprParserListener
-from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, z3_and, z3_or
+from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, z3_and, z3_or, \
+    z3_push_in_negations
 from isla.helpers import get_symbols, z3_subst, is_valid, \
     replace_line_breaks, delete_unreachable, pop, z3_solve, powerset, grammar_to_immutable, immutable_to_grammar, \
     nested_list_to_tuple
@@ -878,6 +879,10 @@ class BindExpression:
 
 
 class FormulaVisitor:
+    def do_continue(self, formula: 'Formula') -> bool:
+        """If this returns False, this formula should not call the visit methods for its children."""
+        return True
+
     def visit_predicate_formula(self, formula: 'StructuralPredicateFormula'):
         pass
 
@@ -1145,11 +1150,19 @@ def binds_argument_trees(tree: DerivationTree, args: Tuple[SemPredArg, ...]) -> 
         if isinstance(tree_arg, DerivationTree))
 
 
+class SemanticPredicateEvalFun(Protocol):
+    def __call__(
+            self,
+            grammar: Grammar,
+            *args: DerivationTree | Constant | str | int,
+            negate=False) -> SemPredEvalResult: ...
+
+
 class SemanticPredicate:
     def __init__(
             self, name: str, arity: int,
-            eval_fun: Callable[[Grammar, Union[DerivationTree, Constant, str, int], ...], SemPredEvalResult],
-            binds_tree: Optional[Union[Callable[[DerivationTree, Tuple[SemPredArg, ...]], bool], bool]] = None):
+            eval_fun: SemanticPredicateEvalFun,
+            binds_tree: Optional[Callable[[DerivationTree, Tuple[SemPredArg, ...]], bool] | bool] = None):
         """
         :param name:
         :param arity:
@@ -1174,8 +1187,11 @@ class SemanticPredicate:
         else:
             self.binds_tree = binds_argument_trees
 
-    def evaluate(self, grammar: Grammar, *instantiations: SemPredArg):
-        return self.eval_fun(grammar, *instantiations)
+    def evaluate(self, grammar: Grammar, *instantiations: SemPredArg, negate: bool = False):
+        if negate:
+            return self.eval_fun(grammar, *instantiations, negate=True)
+        else:
+            return self.eval_fun(grammar, *instantiations)
 
     def __eq__(self, other):
         return isinstance(other, SemanticPredicate) and (self.name, self.arity) == (other.name, other.arity)
@@ -1197,9 +1213,9 @@ class SemanticPredicateFormula(Formula):
         self.args: Tuple[SemPredArg, ...] = args
         self.order = order
 
-    def evaluate(self, grammar: Grammar) -> SemPredEvalResult:
+    def evaluate(self, grammar: Grammar, negate: bool = False) -> SemPredEvalResult:
         assert isinstance(grammar, dict)
-        return self.predicate.eval_fun(grammar, *self.args)
+        return self.predicate.evaluate(grammar, *self.args, negate=negate)
 
     def binds_tree(self, tree: DerivationTree) -> bool:
         return self.predicate.binds_tree(tree, self.args)
@@ -1305,8 +1321,9 @@ class NegatedFormula(PropositionalCombinator):
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_negated_formula(self)
-        for formula in self.args:
-            formula.accept(visitor)
+        if visitor.do_continue(self):
+            for formula in self.args:
+                formula.accept(visitor)
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]):
         return NegatedFormula(*[arg.substitute_variables(subst_map) for arg in self.args])
@@ -1335,8 +1352,9 @@ class ConjunctiveFormula(PropositionalCombinator):
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_conjunctive_formula(self)
-        for formula in self.args:
-            formula.accept(visitor)
+        if visitor.do_continue(self):
+            for formula in self.args:
+                formula.accept(visitor)
 
     def __hash__(self):
         return hash((type(self).__name__, self.args))
@@ -1362,8 +1380,9 @@ class DisjunctiveFormula(PropositionalCombinator):
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_disjunctive_formula(self)
-        for formula in self.args:
-            formula.accept(visitor)
+        if visitor.do_continue(self):
+            for formula in self.args:
+                formula.accept(visitor)
 
     def __hash__(self):
         return hash((type(self).__name__, self.args))
@@ -1487,33 +1506,44 @@ class SMTFormula(Formula):
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_smt_formula(self)
 
-    def __or__(self, other: Formula) -> 'SMTFormula':
-        if not isinstance(other, SMTFormula):
-            return super().__or__(other)
-
+    # NOTE: Combining SMT formulas with and/or is not that easy due to tree substitutions, see
+    #       function "eliminate_semantic_formula" in solver.py. Problems: Name collisions, plus
+    #       impedes clustering which improves solver efficiency. The conjunction and disjunction
+    #       functions contain assertions preventing name collisions.
+    def disjunction(self, other: 'SMTFormula') -> 'SMTFormula':
+        assert (self.free_variables().isdisjoint(other.free_variables()) or
+                not any((var in self.substitutions and var not in other.substitutions) or
+                        (var in other.substitutions and var not in self.substitutions) or
+                        (var in self.substitutions and var in other.substitutions and
+                         self.substitutions[var].id != other.substitutions[var].id)
+                        for var in self.free_variables().intersection(other.free_variables())))
         return SMTFormula(
             z3.Or(self.formula, other.formula),
             *(self.free_variables() | other.free_variables()),
             instantiated_variables=self.instantiated_variables | other.instantiated_variables,
             substitutions=self.substitutions | other.substitutions,
-            auto_eval=self.auto_eval or other.auto_eval
+            auto_eval=self.auto_eval and other.auto_eval
         )
 
-    def __and__(self, other: Formula) -> 'SMTFormula':
-        if not isinstance(other, SMTFormula):
-            return super().__and__(other)
+    def conjunction(self, other: 'SMTFormula') -> 'SMTFormula':
+        assert (self.free_variables().isdisjoint(other.free_variables()) or
+                not any((var in self.substitutions and var not in other.substitutions) or
+                        (var in other.substitutions and var not in self.substitutions) or
+                        (var in self.substitutions and var in other.substitutions and
+                         self.substitutions[var].id != other.substitutions[var].id)
+                        for var in self.free_variables().intersection(other.free_variables())))
 
         return SMTFormula(
             z3.And(self.formula, other.formula),
             *(self.free_variables() | other.free_variables()),
             instantiated_variables=self.instantiated_variables | other.instantiated_variables,
             substitutions=self.substitutions | other.substitutions,
-            auto_eval=self.auto_eval or other.auto_eval
+            auto_eval=self.auto_eval and other.auto_eval
         )
 
     def __neg__(self) -> 'SMTFormula':
         return SMTFormula(
-            z3.simplify(z3.Not(self.formula)),
+            z3_push_in_negations(self.formula, negate=True),
             *self.free_variables(),
             instantiated_variables=self.instantiated_variables,
             substitutions=self.substitutions,
@@ -1574,7 +1604,8 @@ class ExistsIntFormula(NumericQuantifiedFormula):
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_exists_int_formula(self)
-        self.inner_formula.accept(visitor)
+        if visitor.do_continue(self):
+            self.inner_formula.accept(visitor)
 
     def __hash__(self):
         return hash((type(self).__name__, self.bound_variable, self.inner_formula))
@@ -1620,7 +1651,8 @@ class ForallIntFormula(NumericQuantifiedFormula):
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_forall_int_formula(self)
-        self.inner_formula.accept(visitor)
+        if visitor.do_continue(self):
+            self.inner_formula.accept(visitor)
 
     def __hash__(self):
         return hash((type(self).__name__, self.bound_variable, self.inner_formula))
@@ -1774,7 +1806,8 @@ class ForallFormula(QuantifiedFormula):
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_forall_formula(self)
-        self.inner_formula.accept(visitor)
+        if visitor.do_continue(self):
+            self.inner_formula.accept(visitor)
 
     def __str__(self):
         quote = '"'
@@ -1820,7 +1853,8 @@ class ExistsFormula(QuantifiedFormula):
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_exists_formula(self)
-        self.inner_formula.accept(visitor)
+        if visitor.do_continue(self):
+            self.inner_formula.accept(visitor)
 
     def __str__(self):
         quote = "'"
@@ -1868,14 +1902,21 @@ class VariablesCollector(FormulaVisitor):
 
 
 class FilterVisitor(FormulaVisitor):
-    def __init__(self, filter: Callable[[Formula], bool]):
-        self.filter = filter
+    def __init__(
+            self,
+            filter_fun: Callable[[Formula], bool],
+            do_continue: Callable[[Formula], bool] = lambda f: True):
+        self.filter = filter_fun
         self.result: List[Formula] = []
+        self.do_continue = do_continue
 
     def collect(self, formula: Formula) -> List[Formula]:
         self.result = []
         formula.accept(self)
         return self.result
+
+    def do_continue(self, formula: Formula) -> bool:
+        return self.do_continue(formula)
 
     def visit_forall_formula(self, formula: ForallFormula):
         if self.filter(formula):
@@ -2695,16 +2736,21 @@ def convert_to_nnf(formula: Formula, negate=False) -> Formula:
         else:
             return formula
     elif isinstance(formula, SMTFormula):
-        if negate:
-            return SMTFormula(
-                z3.simplify(z3.Not(formula.formula)),
-                *formula.free_variables(),
-                instantiated_variables=formula.instantiated_variables,
-                substitutions=formula.substitutions,
-                auto_eval=formula.auto_eval
-            )
-        else:
-            return formula
+        negated_smt_formula = z3_push_in_negations(formula.formula, negate)
+        # Automatic simplification can remove free variables from the formula!
+        actual_symbols = get_symbols(negated_smt_formula)
+        free_variables = [var for var in formula.free_variables() if var.to_smt() in actual_symbols]
+        instantiated_variables = OrderedSet([
+            var for var in formula.instantiated_variables if var.to_smt() in actual_symbols])
+        substitutions = {var: repl for var, repl in formula.substitutions.items() if var.to_smt() in actual_symbols}
+
+        return SMTFormula(
+            negated_smt_formula,
+            *free_variables,
+            instantiated_variables=instantiated_variables,
+            substitutions=substitutions,
+            auto_eval=formula.auto_eval
+        )
     elif isinstance(formula, ExistsIntFormula) or isinstance(formula, ForallIntFormula):
         inner_formula = convert_to_nnf(formula.inner_formula, negate) if negate else formula.inner_formula
 
@@ -3035,7 +3081,17 @@ class ISLaEmitter(ISLaParserListener.islaListener):
     def exitImplication(self, ctx: islaParser.ImplicationContext):
         left = self.formulas[ctx.formula(0)]
         right = self.formulas[ctx.formula(1)]
-        self.formulas[ctx] = -left | (left & right)
+        self.formulas[ctx] = -left | right
+
+    def exitEquivalence(self, ctx: islaParser.EquivalenceContext):
+        left = self.formulas[ctx.formula(0)]
+        right = self.formulas[ctx.formula(1)]
+        self.formulas[ctx] = (-left & -right) | (left & right)
+
+    def exitExclusiveOr(self, ctx: islaParser.ExclusiveOrContext):
+        left = self.formulas[ctx.formula(0)]
+        right = self.formulas[ctx.formula(1)]
+        self.formulas[ctx] = (left & -right) | (-left & right)
 
     def exitPredicateAtom(self, ctx: islaParser.PredicateAtomContext):
         predicate_name = ctx.ID().getText()

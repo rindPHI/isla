@@ -10,11 +10,11 @@ eval_k = 4
 
 cost_vector = CostWeightVector(
     tree_closing_cost=15,
-    vacuous_penalty=15,
+    vacuous_penalty=0,
     constraint_cost=0,
     derivation_depth_penalty=0,
     low_k_coverage_penalty=5,
-    low_global_k_path_coverage_penalty=7)
+    low_global_k_path_coverage_penalty=17)  # Changed from 7 in PLDI publication. Might need to re-calibrate vector...
 
 g_wf = lambda timeout: ISLaSolver(
     xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,

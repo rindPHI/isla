@@ -73,8 +73,8 @@ def is_prefix(path_1: Path, path_2: Path) -> bool:
         return is_prefix(cdr_1, cdr_2)
 
 
-def get_symbols(formula: z3.BoolRef) -> Set[z3.Symbol]:
-    result: Set[z3.Symbol] = set()
+def get_symbols(formula: z3.BoolRef) -> Set[z3.SeqRef]:
+    result: Set[z3.SeqRef] = set()
 
     def recurse(elem: z3.ExprRef):
         op = elem.decl()
@@ -83,7 +83,8 @@ def get_symbols(formula: z3.BoolRef) -> Set[z3.Symbol]:
                 raise NotImplementedError(
                     f"This class was developed for String symbols only, found {op.range()}")
 
-            result.add(op.name())
+            assert isinstance(elem, z3.SeqRef)
+            result.add(cast(z3.SeqRef, elem))
 
         for child in elem.children():
             recurse(child)
@@ -162,6 +163,23 @@ def is_z3_var(expr: z3.ExprRef) -> bool:
 
 def z3_subst(inp: z3.ExprRef, subst_map: Dict[z3.ExprRef, z3.ExprRef]) -> z3.ExprRef:
     return z3.substitute(inp, *tuple(subst_map.items()))
+
+
+def z3_push_in_negations(formula: z3.BoolRef, negate=False) -> z3.BoolRef:
+    if z3.is_not(formula):
+        return z3_push_in_negations(formula.children()[0], negate=not negate)
+    elif z3.is_and(formula):
+        if negate:
+            return z3.Or(*[z3_push_in_negations(child, True) for child in formula.children()])
+        else:
+            return z3.And(*[z3_push_in_negations(child, False) for child in formula.children()])
+    elif z3.is_or(formula):
+        if negate:
+            return z3.And(*[z3_push_in_negations(child, True) for child in formula.children()])
+        else:
+            return z3.Or(*[z3_push_in_negations(child, False) for child in formula.children()])
+
+    return z3.simplify(z3.Not(formula) if negate else formula)
 
 
 def is_valid(formula: z3.BoolRef, timeout: int = 500) -> bool:

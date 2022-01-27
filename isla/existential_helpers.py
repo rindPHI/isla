@@ -51,7 +51,14 @@ def insert_tree(grammar: CanonicalGrammar,
 
         add_to_result(compute_direct_embeddings(tree, in_tree, grammar, graph, num_solutions))
         add_to_result(compute_self_embeddings(current_path, tree, in_tree, grammar, graph, num_solutions))
-        add_to_result(compute_context_additions(current_path, tree, in_tree, grammar, graph, num_solutions))
+
+        # NOTE: "Context addition" has been deactivated, since it leads to a loss of subtrees:
+        #       a compatible subtree is replaced, and the lost trees shall be re-inserted into
+        #       the arising tree. This re-insertion failed (see, e.g., test case test_insert_lang_3),
+        #       i.e., it produced an output not containing the root of the tree that should be
+        #       re-inserted. We could try to fix this behavior, or simply remove the context addition
+        #       part. Insertion by embedding is, in any case, non-destructive.
+        # add_to_result(compute_context_additions(current_path, tree, in_tree, grammar, graph, num_solutions))
 
         current_path = in_tree.next_path(current_path)
 

@@ -1,4 +1,5 @@
 import copy
+import random
 from typing import Union, List, Optional, Dict, Tuple, Callable
 
 from fuzzingbook.Parser import canonical, EarleyParser
@@ -150,7 +151,8 @@ def reachable(graph: GrammarGraph, fr: str, to: str) -> bool:
 def count(grammar: Grammar,
           in_tree: DerivationTree,
           needle: str,
-          num: Variable | DerivationTree) -> SemPredEvalResult:
+          num: Variable | DerivationTree,
+          negate: bool = False) -> SemPredEvalResult:
     graph = GrammarGraph.from_grammar(grammar)
 
     num_needle_occurrences = len(in_tree.filter(lambda t: t.value == needle))
@@ -167,9 +169,15 @@ def count(grammar: Grammar,
         if more_needles_possible:
             return SemPredEvalResult(None)
 
-        return SemPredEvalResult({num: DerivationTree(str(num_needle_occurrences), None)})
+        if negate:
+            result_num = random.choice([i for i in range(15) if i != num_needle_occurrences])
+        else:
+            result_num = num_needle_occurrences
+
+        return SemPredEvalResult({num: DerivationTree(str(result_num), None)})
 
     assert not num.children
+
     try:
         target_num_needle_occurrences = int(num.value)
     except ValueError:
@@ -188,6 +196,12 @@ def count(grammar: Grammar,
 
     if more_needles_possible and num_needle_occurrences == target_num_needle_occurrences:
         return SemPredEvalResult(None)
+
+    if negate:
+        target_num_needle_occurrences = random.choice([
+            i for i in range(num_needle_occurrences + 1, target_num_needle_occurrences + 1)
+            if i != target_num_needle_occurrences
+        ])
 
     assert num_needle_occurrences < target_num_needle_occurrences
 

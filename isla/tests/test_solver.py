@@ -103,8 +103,8 @@ class TestSolver(unittest.TestCase):
             rhs, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        # TODO: Try to create infinite solution stream
-        self.execute_generation_test(formula, num_solutions=1)
+        # TODO: This creates programs where *all* RHSs are "x", which is too much. Check!
+        self.execute_generation_test(formula, num_solutions=10)
 
     def test_conjunction_of_qfd_formulas(self):
         start = isla.Constant("$start", "<start>")
@@ -180,7 +180,7 @@ constraint {
                 weight_vectors=(
                     CostWeightVector(tree_closing_cost=15, vacuous_penalty=0, constraint_cost=0,
                                      derivation_depth_penalty=0, low_k_coverage_penalty=5,
-                                     low_global_k_path_coverage_penalty=7),
+                                     low_global_k_path_coverage_penalty=17),
                 ),
                 cost_phase_lengths=(200,),
                 k=3
@@ -210,7 +210,7 @@ constraint {
             formula,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=3,
-            num_solutions=50
+            num_solutions=20
         )
 
     def test_declared_before_used_concrete_syntax(self):
@@ -318,22 +318,22 @@ constraint {
         exists int colno_1:
           ((>= (str.to.int colno_1) 3) and 
            (<= (str.to.int colno_1) 5) and
-           count(hline, "<raw-field>", colno_1) and 
+           (count(hline, "<raw-field>", colno_1) iff 
            forall line in body:
              forall int colno_2:
                ((= colno_1 colno_2) implies
-                count(line, "<raw-field>", colno_2)))
+                count(line, "<raw-field>", colno_2))))
 }
 """
-
+        # TODO Re-Run
         self.execute_generation_test(
             property,
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_HEADERBODY_GRAMMAR,
             custom_test_func=csv_lint,
-            num_solutions=200,
-            max_number_free_instantiations=10,
-            max_number_smt_instantiations=2,
+            num_solutions=20,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=1,
             enforce_unique_trees_in_queue=False,
             global_fuzzer=True
         )
@@ -356,14 +356,13 @@ constraint {
     exists body in start:
       exists hline in header:
         forall int colno_1:
-          (not(>= (str.to_int colno_1) 3) or
-           not(<= (str.to_int colno_1) 5) or
-           not(count(hline, "<raw-field>", colno_1)) or
-           exists line in body:
-             exists int colno_2:
-               ((= colno_1 colno_2) and
-               ((not (= colno_1 colno_2)) or
-               not(count(line, "<raw-field>", colno_2)))))
+          not(>= (str.to_int colno_1) 3) or 
+          not(<= (str.to_int colno_1) 5) or
+          (count(hline, "<raw-field>", colno_1) xor 
+           forall line in body:
+             forall int colno_2:
+               ((= colno_1 colno_2) implies
+                count(line, "<raw-field>", colno_2)))
 }
 """, semantic_predicates={COUNT_PREDICATE})
 
@@ -373,10 +372,11 @@ constraint {
             grammar=CSV_HEADERBODY_GRAMMAR,
             custom_test_func=lambda t: isinstance(csv_lint(t), str),
             num_solutions=200,
-            max_number_free_instantiations=1,
+            max_number_free_instantiations=1,  # TODO Test w/ 2
             max_number_smt_instantiations=1,
             enforce_unique_trees_in_queue=False,
-            global_fuzzer=True
+            global_fuzzer=True,
+            debug=True
         )
 
     def test_rest(self):
@@ -534,6 +534,14 @@ constraint {
             c for c in VariablesCollector.collect(formula)
             if isinstance(c, isla.Constant) and not c.is_numeric())
 
+        def print_tree():
+            if debug:
+                with open(state_tree_out, 'w') as file:
+                    file.write(TestSolver.state_tree_to_xml(
+                        solver.state_tree_root, solver.state_tree, solver.costs))
+                    print(f"Written derivation data (XML) to {state_tree_out}")
+                    print(f"Written log {log_out}")
+
         it = solver.solve()
         solutions_found = 0
         for idx in range(num_solutions):
@@ -558,50 +566,51 @@ constraint {
                 if print_solutions:
                     print(str(assignment))
             except StopIteration:
+                print_tree()
                 if idx == 0:
                     self.fail("No solution found.")
                 self.fail(f"Only found {idx} solutions")
 
-        if debug:
-            with open(state_tree_out, 'w') as file:
-                file.write(state_tree_to_xml(
-                    solver.state_tree_root, solver.state_tree, solver.costs))
-                print(f"Written derivation data (XML) to {state_tree_out}")
-                print(f"Written log {log_out}")
+        print_tree()
 
+    @staticmethod
+    def state_tree_to_xml(
+            root: SolutionState,
+            tree: Dict[SolutionState, List[SolutionState]],
+            costs: Dict[SolutionState, float],
+            prettify=True,
+            seen: Optional[Set[SolutionState]] = None) -> str:
+        if seen and root in seen:
+            return ""
 
-def state_tree_to_xml(
-        root: SolutionState,
-        tree: Dict[SolutionState, List[SolutionState]],
-        costs: Dict[SolutionState, float],
-        prettify=True) -> str:
-    if root not in tree:
-        children_string = ""
-    else:
-        children_string = (
-                "<children>" +
-                "".join([state_tree_to_xml(child, tree, costs, False) for child in tree[root]]) +
-                "</children>")
+        if root not in tree:
+            children_string = ""
+        else:
+            children_string = (
+                    "<children>" +
+                    "".join([TestSolver.state_tree_to_xml(
+                        child, tree, costs, False, (seen or set()) | {root}
+                    ) for child in tree[root]]) +
+                    "</children>")
 
-    special_char_map = {
-        "\x00": "&lt;NUL&gt;",
-        "\x0b": "&lt;VTAB&gt;",
-        "\x0c": "&lt;FFEED&gt;",
-    }
+        special_char_map = {
+            "\x00": "&lt;NUL&gt;",
+            "\x0b": "&lt;VTAB&gt;",
+            "\x0c": "&lt;FFEED&gt;",
+        }
 
-    result = ("<state>" +
-              "<constraint>" + escape(str(root.constraint), special_char_map) + "</constraint>" +
-              "<tree>" + escape(str(root.tree), special_char_map) + "</tree>" +
-              "<cost>" + str(costs[root]) + "</cost>" +
-              "<hash>" + str(hash(root)) + "</hash>" +
-              children_string +
-              "</state>")
+        result = ("<state>" +
+                  "<constraint>" + escape(str(root.constraint), special_char_map) + "</constraint>" +
+                  "<tree>" + escape(str(root.tree), special_char_map) + "</tree>" +
+                  "<cost>" + str(costs[root]) + "</cost>" +
+                  "<hash>" + str(hash(root)) + "</hash>" +
+                  children_string +
+                  "</state>")
 
-    if prettify:
-        return minidom.parseString(result).toprettyxml(indent="    ")
-    else:
-        return result
+        if prettify:
+            return minidom.parseString(result).toprettyxml(indent="    ")
+        else:
+            return result
 
-
-if __name__ == '__main__':
-    unittest.main()
+    if __name__ == '__main__':
+        unittest.main()

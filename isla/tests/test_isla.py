@@ -320,10 +320,11 @@ class TestISLa(unittest.TestCase):
 
     def test_dnf_conversion(self):
         a = Constant("$a", "<var>")
-        w = sc.smt_for(a.to_smt() == z3.StringVal("1"), a)
-        x = sc.smt_for(a.to_smt() == z3.StringVal("2"), a)
-        y = sc.smt_for(a.to_smt() > z3.StringVal("0"), a)
-        z = sc.smt_for(a.to_smt() < z3.StringVal("3"), a)
+        pred = isla.StructuralPredicate("pred", 1, lambda arg: True)
+        w = isla.StructuralPredicateFormula(pred, "w")
+        x = isla.StructuralPredicateFormula(pred, "x")
+        y = isla.StructuralPredicateFormula(pred, "y")
+        z = isla.StructuralPredicateFormula(pred, "z")
 
         formula = (w | x) & (y | z)
         self.assertEqual((w & y) | (w & z) | (x & y) | (x & z), convert_to_dnf(formula))

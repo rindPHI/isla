@@ -18,7 +18,9 @@ formula:
   | 'not' formula                                          # Negation
   | formula 'and' formula                                  # Conjunction
   | formula 'or' formula                                   # Disjunction
+  | formula 'xor' formula                                  # ExclusiveOr
   | formula 'implies' formula                              # Implication
+  | formula 'iff' formula                                  # Equivalence
   | 'exists' 'int' ID ':' formula                          # ExistsInt
   | 'forall' 'int' ID ':' formula                          # ForallInt
   | ID '(' predicateArg (',' predicateArg) * ')'           # PredicateAtom

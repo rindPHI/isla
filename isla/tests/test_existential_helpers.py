@@ -1,6 +1,6 @@
-import copy
 import unittest
 
+import pytest
 from fuzzingbook.Grammars import JSON_GRAMMAR
 from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph.gg import GrammarGraph
@@ -62,6 +62,36 @@ class TestExistentialHelpers(unittest.TestCase):
         self.assertTrue(all(t.find_node(into_tree.get_subtree((0, 0))) for t in result))
         self.assertTrue(all(t.find_node(into_tree.get_subtree((0, 2, 0))) for t in result))
 
+    def test_insert_lang_3(self):
+        canonical_grammar = canonical(LANG_GRAMMAR)
+
+        in_tree = DerivationTree(
+            '<start>', (
+                DerivationTree(
+                    '<stmt>', (
+                        DerivationTree(
+                            '<assgn>', (
+                                DerivationTree('<var>', None, id=245),
+                                DerivationTree(' := ', (), id=244),
+                                DerivationTree('<rhs>', (
+                                    DerivationTree(
+                                        '<var>', (DerivationTree('x', (), id=12249),),
+                                        id=12250),
+                                ), id=240)
+                            ), id=246),
+                    ), id=247),
+            ), id=237)
+
+        tree = DerivationTree('<rhs>', (DerivationTree('<var>', None, id=12251),), id=12252)
+
+        result = insert_tree(canonical_grammar, tree, in_tree, max_num_solutions=10)
+
+        self.assertTrue(all(t.find_node(tree) for t in result))
+        self.assertTrue(all(t.find_node(12249) for t in result))
+        self.assertTrue(all(t.find_node(12250) for t in result))
+        self.assertTrue(all(t.find_node(240) for t in result))
+        self.assertTrue(all(t.find_node(245) for t in result))
+
     def test_insert_trees_lang(self):
         tree_to_insert = DerivationTree('<assgn>', (
             DerivationTree('<var>', None),
@@ -86,12 +116,13 @@ class TestExistentialHelpers(unittest.TestCase):
             into_tree,
             canonical(LANG_GRAMMAR), GrammarGraph.from_grammar(LANG_GRAMMAR), 30)
 
-        str_results = [str(t) for t in result]
-        print("\n\n".join(str_results))
+        # str_results = [str(t) for t in result]
+        # print("\n\n".join(str_results))
 
         self.assertTrue(all(t.find_node(tree_to_insert) for t in result))
         self.assertTrue(all(t.find_node(into_tree.get_subtree((0, 0))) for t in result))
         self.assertTrue(all(t.find_node(into_tree.get_subtree((0, 2, 0))) for t in result))
+
 
     def test_insert_json_1(self):
         inp = ' { "T" : { "I" : true , "" : [ false , "salami" ] , "" : true , "" : null , "" : false } } '
@@ -188,6 +219,8 @@ class TestExistentialHelpers(unittest.TestCase):
         self.assertIn("<b><a>asdf<xml-close-tag></b>", str_results)
         self.assertIn("<b>asd<a>f<xml-close-tag></b>", str_results)
 
+    @pytest.mark.skip(reason="This no longer works after we removed the 'context addition' tree insertion method. "
+                             "Keeping this test case in case we want to make it work again.")
     def test_insert_xml_2(self):
         tree = DerivationTree('<start>', (
             DerivationTree('<xml-tree>', (

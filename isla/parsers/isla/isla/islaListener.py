@@ -134,6 +134,15 @@ class islaListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by islaParser#Equivalence.
+    def enterEquivalence(self, ctx:islaParser.EquivalenceContext):
+        pass
+
+    # Exit a parse tree produced by islaParser#Equivalence.
+    def exitEquivalence(self, ctx:islaParser.EquivalenceContext):
+        pass
+
+
     # Enter a parse tree produced by islaParser#Exists.
     def enterExists(self, ctx:islaParser.ExistsContext):
         pass
@@ -167,6 +176,15 @@ class islaListener(ParseTreeListener):
 
     # Exit a parse tree produced by islaParser#Forall.
     def exitForall(self, ctx:islaParser.ForallContext):
+        pass
+
+
+    # Enter a parse tree produced by islaParser#ExclusiveOr.
+    def enterExclusiveOr(self, ctx:islaParser.ExclusiveOrContext):
+        pass
+
+    # Exit a parse tree produced by islaParser#ExclusiveOr.
+    def exitExclusiveOr(self, ctx:islaParser.ExclusiveOrContext):
         pass
 
 
