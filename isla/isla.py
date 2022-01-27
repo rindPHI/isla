@@ -1008,6 +1008,34 @@ class Formula(ABC):
         return NegatedFormula(self)
 
 
+def substitute(
+        formula: Formula,
+        subst_map: Dict[Variable | DerivationTree, str | int | Variable | DerivationTree]) -> Formula:
+    assert not any(isinstance(subst, DerivationTree) and isinstance(value, Variable)
+                   for subst, value in subst_map.items())
+
+    subst_map = {
+        to_subst: (DerivationTree(str(value), [])
+                   if isinstance(value, str) or isinstance(value, int)
+                   else value)
+        for to_subst, value in subst_map.items()
+    }
+
+    result = formula.substitute_variables({
+        to_subst: value
+        for to_subst, value in subst_map.items()
+        if isinstance(to_subst, Variable) and isinstance(value, Variable)
+    })
+
+    result = result.substitute_expressions({
+        to_subst: value
+        for to_subst, value in subst_map.items()
+        if isinstance(value, DerivationTree)
+    })
+
+    return result
+
+
 class StructuralPredicate:
     def __init__(self, name: str, arity: int, eval_fun: Callable[[DerivationTree, Union[Path, str], ...], bool]):
         self.name = name
@@ -2231,117 +2259,6 @@ def eliminate_quantifiers(formula: Formula, grammar: Grammar) -> Formula:
 
     return formula
 
-    # # Next, we eliminate all universal quantifiers over integers. This "Herbrandization"
-    # # process is validity-preserving (but not equivalence-preserving).
-    # # We cannot eliminate both quantifier types: This would be unsound.
-    # # In Herbrandization, one replaces universally quantified variables v by function
-    # # symbols f(x1, x2, ...), where the xi are existentially quantified variables in the
-    # # scope. We always replace v by a constant c_v. This can theoretically lead to cases
-    # # where validity is not preserved; this is less bad than the converse case of accepting
-    # # an invalid input, though, and was no problem at all in our experiments. Reason:
-    # # our theory does not support passing complex terms to predicates.
-
-    # def contains_forall_int_formulas(argf: Formula) -> bool:
-    #     return bool(FilterVisitor(lambda f: isinstance(f, ForallIntFormula)).collect(argf))
-
-    # if contains_forall_int_formulas(formula):
-    #     used_vars = set(VariablesCollector.collect(formula))
-
-    #     def replace_forall_int_formula_action(inner_formula: Formula) -> bool | Formula:
-    #         if not isinstance(inner_formula, ForallIntFormula):
-    #             return False
-
-    #         constant = fresh_constant(
-    #             used_vars,
-    #             Constant(f"c_{inner_formula.bound_variable.name}",
-    #                      inner_formula.bound_variable.n_type))
-    #         return inner_formula.inner_formula.substitute_variables({inner_formula.bound_variable: constant})
-
-    #     formula = eliminate_quantifiers(replace_formula(formula, replace_forall_int_formula_action), grammar)
-    #     assert not contains_forall_int_formulas(formula)
-    #     return formula
-
-
-def evaluate_clause(grammar: Grammar, clause: List[Formula], reference_tree: DerivationTree) -> ThreeValuedTruth:
-    # Inside the clause, only (possibly negated) predicate formulas and (not negated) SMT formulas should appear.
-    assert all(
-        isinstance(f, SMTFormula) or
-        isinstance(f, SemanticPredicateFormula) or
-        isinstance(f, StructuralPredicateFormula) or
-        (isinstance(f, NegatedFormula) and
-         (isinstance(f.args[0], StructuralPredicateFormula) or
-          isinstance(f.args[0], SemanticPredicateFormula)))
-        for f in clause)
-
-    # Eliminate structural predicate formulas
-    for idx, formula in enumerate(clause):
-        if (not isinstance(formula, StructuralPredicateFormula) and
-                not (isinstance(formula, NegatedFormula)
-                     and isinstance(formula.args[0], StructuralPredicateFormula))):
-            continue
-
-        sf: StructuralPredicateFormula = (
-            formula if isinstance(formula, StructuralPredicateFormula) else formula.args[0])
-        args: List[Union[str, Path]] = [
-            reference_tree.find_node(arg)
-            if isinstance(arg, DerivationTree)
-            else arg
-            for arg in sf.args]
-        result = sf.predicate.evaluate(reference_tree, *args)
-
-        if ((not result and isinstance(formula, StructuralPredicateFormula)) or
-                (result and isinstance(formula, NegatedFormula))):
-            return ThreeValuedTruth.false()
-
-        clause[idx] = SMTFormula(z3.BoolVal(True))
-
-    # Eliminate semantic predicate formulas
-    for idx, formula in enumerate(clause):
-        if (not isinstance(formula, SemanticPredicateFormula) and
-                not (isinstance(formula, NegatedFormula)
-                     and isinstance(formula.args[0], SemanticPredicateFormula))):
-            continue
-
-        sf: SemanticPredicateFormula = (
-            formula if isinstance(formula, SemanticPredicateFormula) else formula.args[0])
-        result = sf.predicate.evaluate(grammar, *sf.args)
-        assert result.ready()
-
-        if ((result.false() and isinstance(formula, SemanticPredicateFormula)) or
-                (result.true() and isinstance(formula, NegatedFormula))):
-            return ThreeValuedTruth.false()
-
-        clause[idx] = SMTFormula(z3.BoolVal(True))
-
-        if result.false() or result.true():
-            continue
-
-        # Evaluation returned an assignment
-        assignment: Dict[Constant, DerivationTree] = result.result
-        assert all(c.is_numeric() for c in assignment.keys())
-        for other_idx in range(0, len(clause)):
-            if other_idx == idx:
-                continue
-            clause[other_idx] = clause[other_idx].substitute_expressions(assignment)
-
-    # Evaluate SMT formulas
-    smt_formulas: List[SMTFormula] = [f for f in clause if isinstance(f, SMTFormula)]
-    if smt_formulas:
-        smt_vars: Set[Variable] = {v for f in smt_formulas for v in f.free_variables()}
-        assert all(isinstance(v, Constant) and v.is_numeric() for v in smt_vars)
-        regex = z3.Union(z3.Re("0"), z3.Concat(z3.Range("1", "9"), z3.Star(z3.Range("0", "9"))))
-        smt_formulas.extend([SMTFormula(z3.InRe(v.to_smt(), regex), v) for v in smt_vars])
-        smt_result, _ = z3_solve([
-            cast(z3.BoolRef, z3_subst(
-                f.formula,
-                {v.to_smt(): z3.StringVal(str(s))
-                 for v, s in f.substitutions.items()}))
-            for f in smt_formulas])
-
-        return ThreeValuedTruth.from_bool(smt_result == z3.sat)
-
-    return ThreeValuedTruth.true()
-
 
 def evaluate_legacy(
         formula: Formula,
@@ -2456,10 +2373,10 @@ def evaluate(
     res, msg = well_formed(formula, grammar)
     assert res, msg
 
-    v = FilterVisitor(lambda f: isinstance(f, ExistsIntFormula))
+    v = FilterVisitor(lambda f: isinstance(f, NumericQuantifiedFormula))
     formula.accept(v)
     if not v.result:
-        # The legacy evaluation performs better, but only works w/o IntroduceNumericConstantFormulas.
+        # The legacy evaluation performs better, but only works w/o NumericQuantifiedFormulas.
         return evaluate_legacy(formula, grammar, {}, reference_tree)
 
     qfr_free: Formula = eliminate_quantifiers(formula, grammar=grammar)

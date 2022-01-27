@@ -1,7 +1,6 @@
 import logging
 import logging
 import os
-import string
 import unittest
 from typing import cast, Optional, Dict, List, Callable, Union, Set
 from xml.dom import minidom
@@ -9,7 +8,6 @@ from xml.sax.saxutils import escape
 
 import pytest
 import z3
-from fuzzingbook.Grammars import srange, convert_ebnf_grammar
 
 from isla import isla
 from isla import isla_shortcuts as sc
@@ -305,7 +303,7 @@ constraint {
 const start: <start>;
 
 vars {
-  colno_1, colno_2: NUM;
+  colno: NUM;
   header: <csv-header>;
   body: <csv-body>;
   hline, line: <csv-record>;
@@ -315,17 +313,15 @@ constraint {
   forall header in start:
     forall body in start:
       forall hline in header:
-        exists int colno_1:
-          ((>= (str.to.int colno_1) 3) and 
-           (<= (str.to.int colno_1) 5) and
-           (count(hline, "<raw-field>", colno_1) iff 
+        exists int colno:
+          ((>= (str.to.int colno) 3) and 
+           (<= (str.to.int colno) 5) and
+           count(hline, "<raw-field>", colno) and 
            forall line in body:
-             forall int colno_2:
-               ((= colno_1 colno_2) implies
-                count(line, "<raw-field>", colno_2))))
+              count(line, "<raw-field>", colno))
 }
 """
-        # TODO Re-Run
+
         self.execute_generation_test(
             property,
             semantic_predicates={COUNT_PREDICATE},
@@ -346,23 +342,20 @@ vars {
   header: <csv-header>;
   body: <csv-body>;
   hline: <csv-record>;
-  colno_1: NUM;
+  colno: NUM;
   line: <csv-record>;
-  colno_2: NUM;
 }
 
 constraint {
   exists header in start:
     exists body in start:
       exists hline in header:
-        forall int colno_1:
-          not(>= (str.to_int colno_1) 3) or 
-          not(<= (str.to_int colno_1) 5) or
-          (count(hline, "<raw-field>", colno_1) xor 
-           forall line in body:
-             forall int colno_2:
-               ((= colno_1 colno_2) implies
-                count(line, "<raw-field>", colno_2)))
+        forall int colno:
+          (not(>= (str.to_int colno) 3) or 
+           not(<= (str.to_int colno) 5) or
+           not(count(hline, "<raw-field>", colno)) or 
+           exists line in body:
+             not(count(line, "<raw-field>", colno)))
 }
 """, semantic_predicates={COUNT_PREDICATE})
 
@@ -371,8 +364,8 @@ constraint {
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_HEADERBODY_GRAMMAR,
             custom_test_func=lambda t: isinstance(csv_lint(t), str),
-            num_solutions=200,
-            max_number_free_instantiations=1,  # TODO Test w/ 2
+            num_solutions=50,
+            max_number_free_instantiations=2,
             max_number_smt_instantiations=1,
             enforce_unique_trees_in_queue=False,
             global_fuzzer=True,
