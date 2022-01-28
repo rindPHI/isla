@@ -16,7 +16,7 @@ CSV_EBNF_GRAMMAR = {
     "<csv-record>": ["<csv-string-list>\n"],
     "<csv-string-list>": ["<raw-field>", "<raw-field>;<csv-string-list>"],
     "<raw-field>": ["<simple-field>", "<quoted-field>"],
-    "<simple-field>": ["<spaces>?<simple-character>*<spaces>?"],
+    "<simple-field>": ["<spaces>?<simple-character>+<spaces>?"],
     "<simple-character>": [c for c in srange(string.printable) if c not in ["\n", ";", '"', " ", "\t", "\r", '"']],
     "<quoted-field>": ['"<escaped-field>"'],
     "<escaped-field>": ["<escaped-character>*"],
@@ -34,7 +34,7 @@ CSV_HEADERBODY_EBNF_GRAMMAR = {
     "<csv-record>": ["<csv-string-list>\n"],
     "<csv-string-list>": ["<raw-field>", "<raw-field>;<csv-string-list>"],
     "<raw-field>": ["<simple-field>", "<quoted-field>"],
-    "<simple-field>": ["<spaces>?<simple-character>*<spaces>?"],
+    "<simple-field>": ["<spaces>?<simple-character>+<spaces>?"],
     "<simple-character>": [c for c in srange(string.printable) if
                            c not in ["\n", ";", '"', " ", "\t", "\r", '"']],
     "<quoted-field>": ['"<escaped-field>"'],
