@@ -2323,10 +2323,9 @@ def evaluate_legacy(
                     for symbol, symbol_assignment
                     in assignments.items()}.items()))
 
-        # z3.set_param("smt.string_solver", "z3str3")
         solver = z3.Solver()
-        solver.add(instantiation)
-        return ThreeValuedTruth.from_bool(solver.check() == z3.sat)  # Set timeout?
+        solver.add(z3.Not(instantiation))
+        return ThreeValuedTruth.from_bool(solver.check() == z3.unsat)  # Set timeout?
     elif isinstance(formula, QuantifiedFormula):
         if isinstance(formula.in_variable, DerivationTree):
             in_inst = formula.in_variable
@@ -2439,6 +2438,7 @@ def evaluate(
     formula.accept(v)
     if not v.result:
         # The legacy evaluation performs better, but only works w/o NumericQuantifiedFormulas.
+        # TODO: Check whether it still performs better, more general evaluation improved!
         return evaluate_legacy(formula, grammar, {}, reference_tree)
 
     qfr_free: Formula = eliminate_quantifiers(formula, grammar=grammar)
