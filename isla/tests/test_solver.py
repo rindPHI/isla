@@ -86,23 +86,24 @@ class TestSolver(unittest.TestCase):
         )
 
         self.execute_generation_test(
-            formula, num_solutions=1,
+            formula,
+            num_solutions=2,
             max_number_free_instantiations=1,
-            # expand_after_existential_elimination=True
+            enforce_unique_trees_in_queue=False
         )
 
     def test_simple_existential_formula_with_bind(self):
         start = isla.Constant("$start", "<start>")
         rhs = isla.BoundVariable("$rhs", "<rhs>")
+        assgn = isla.BoundVariable("$assgn", "<assgn>")
         var1 = isla.BoundVariable("$var", "<var>")
 
-        formula = sc.exists_bind(
+        formula = sc.forall(assgn, start, sc.exists_bind(
             isla.BindExpression(var1),
             rhs, start,
-            sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
+            sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1)))
 
-        # TODO: This creates programs where *all* RHSs are "x", which is too much. Check!
-        self.execute_generation_test(formula, num_solutions=10)
+        self.execute_generation_test(formula, num_solutions=1)
 
     def test_conjunction_of_qfd_formulas(self):
         start = isla.Constant("$start", "<start>")

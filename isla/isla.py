@@ -1,4 +1,6 @@
 import copy
+import copy
+import html
 import itertools
 import logging
 import operator
@@ -14,6 +16,7 @@ from antlr4 import InputStream
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
 from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
+from graphviz import Digraph
 from orderedset import OrderedSet
 
 import isla.parsers.isla.isla.islaListener as ISLaParserListener
@@ -21,7 +24,7 @@ import isla.parsers.isla.mexpr_parser.MexprParserListener as MexprParserListener
 from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, z3_and, z3_or, \
     z3_push_in_negations
 from isla.helpers import get_symbols, z3_subst, is_valid, \
-    replace_line_breaks, delete_unreachable, pop, z3_solve, powerset, grammar_to_immutable, immutable_to_grammar, \
+    replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, immutable_to_grammar, \
     nested_list_to_tuple
 from isla.parsers.isla.isla.islaLexer import islaLexer
 from isla.parsers.isla.isla.islaParser import islaParser
@@ -159,6 +162,13 @@ class DerivationTree:
                 self.__is_open = False
 
         # assert self.__is_open is None or self.__is_open == self.__compute_is_open()
+
+    def __setstate__(self, state):
+        # To ensure that when resuming from a checkpoint during debugging,
+        # ID uniqueness constraints are maintained.
+        self.__dict__.update(state)
+        if self.id >= DerivationTree.next_id:
+            DerivationTree.next_id = self.id + 1
 
     @property
     def children(self) -> Tuple['DerivationTree']:
@@ -461,9 +471,9 @@ class DerivationTree:
         id_subst_map = {
             tree.id: repl for tree, repl in subst_map.items()
             if (isinstance(tree, DerivationTree) and
-                not any(repl.find_node(tree.id)
-                        for otree, repl in subst_map.items()
-                        if isinstance(otree, DerivationTree)))
+                all(repl.id == tree.id or repl.find_node(tree.id) is None
+                    for otree, repl in subst_map.items()
+                    if isinstance(otree, DerivationTree)))
         }
 
         result = self
@@ -671,6 +681,19 @@ class DerivationTree:
     def __str__(self) -> str:
         return self.to_string(show_open_leaves=True)
 
+    def to_dot(self) -> str:
+        dot = Digraph(comment="Derivation Tree")
+        dot.attr('node', shape='plain')
+
+        def action(_, t: DerivationTree):
+            dot.node(repr(t.id), "<" + html.escape(t.value) + f' <FONT COLOR="gray">({t.id})</FONT>>')
+            for child in t.children or []:
+                dot.edge(repr(t.id), repr(child.id))
+
+        self.traverse(action)
+
+        return dot.source
+
 
 class BindExpression:
     def __init__(self, *bound_elements: Union[str, BoundVariable, List[str]]):
@@ -681,13 +704,15 @@ class BindExpression:
                 continue
 
             if isinstance(bound_elem, list):
-                if len(bound_elem) > 1 or not isinstance(bound_elem[0], str):
+                if all(isinstance(list_elem, Variable) for list_elem in bound_elem):
                     self.bound_elements.append(bound_elem)
                     continue
 
+                assert all(isinstance(list_elem, str) for list_elem in bound_elem)
+
                 self.bound_elements.append([
                     DummyVariable(token)
-                    for token in re.split(RE_NONTERMINAL, bound_elem[0])
+                    for token in re.split(RE_NONTERMINAL, "".join(bound_elem))
                     if token
                 ])
                 continue
@@ -1059,10 +1084,10 @@ class StructuralPredicate:
 
 
 class StructuralPredicateFormula(Formula):
-    def __init__(self, predicate: StructuralPredicate, *args: Union[str, DerivationTree]):
+    def __init__(self, predicate: StructuralPredicate, *args: Variable | str | DerivationTree):
         assert len(args) == predicate.arity
         self.predicate = predicate
-        self.args: List[Union[Variable, DerivationTree]] = list(args)
+        self.args: List[Variable | str | DerivationTree] = list(args)
 
     def evaluate(self, context_tree: DerivationTree) -> bool:
         args_with_paths: List[Union[str, Tuple[Path, DerivationTree]]] = \
@@ -1488,7 +1513,7 @@ class SMTFormula(Formula):
         tree_subst_map = {k: v for k, v in subst_map.items()
                           if isinstance(k, DerivationTree)
                           and (k in self.substitutions.values()
-                               or any(t.find_node(k) for t in self.substitutions.values()))}
+                               or any(t.find_node(k) is not None for t in self.substitutions.values()))}
         var_subst_map: Dict[Variable: DerivationTree] = {
             k: v for k, v in subst_map.items() if k in self.free_variables_}
 
@@ -2275,6 +2300,17 @@ def evaluate_legacy(
     :param assignments: The assignments recorded so far.
     :return: A (three-valued) truth value.
     """
+
+    assert all(
+        reference_tree.is_valid_path(path)
+        for path, _ in assignments.values())
+    assert all(
+        reference_tree.find_node(tree) is not None
+        for _, tree in assignments.values())
+    assert all(
+        reference_tree.get_subtree(path) == tree
+        for path, tree in assignments.values())
+
     if vacuously_satisfied is None:
         vacuously_satisfied = set()
 
@@ -2294,11 +2330,37 @@ def evaluate_legacy(
     elif isinstance(formula, QuantifiedFormula):
         if isinstance(formula.in_variable, DerivationTree):
             in_inst = formula.in_variable
+            in_path: Path = reference_tree.find_node(in_inst)
+            assert in_path is not None
         else:
             assert formula.in_variable in assignments
-            in_inst: DerivationTree = assignments[formula.in_variable][1]
+            in_path, in_inst = assignments[formula.in_variable]
 
-        new_assignments = matches_for_quantified_formula(formula, grammar, in_inst, assignments)
+        assert all(
+            reference_tree.is_valid_path(path) and
+            reference_tree.find_node(tree) is not None and
+            reference_tree.get_subtree(path) == tree
+            for path, tree in assignments.values())
+
+        new_assignments = matches_for_quantified_formula(formula, grammar, in_inst, {})
+
+        assert all(
+            in_inst.is_valid_path(path) and
+            in_inst.find_node(tree) is not None and
+            in_inst.get_subtree(path) == tree
+            for assignment in new_assignments
+            for path, tree in assignment.values())
+
+        new_assignments = [
+            {var: (in_path + path, tree) for var, (path, tree) in assignment.items()} | assignments
+            for assignment in new_assignments]
+
+        assert all(
+            reference_tree.is_valid_path(path) and
+            reference_tree.find_node(tree) is not None and
+            reference_tree.get_subtree(path) == tree
+            for assignment in new_assignments
+            for path, tree in assignment.values())
 
         if isinstance(formula, ForallFormula):
             if not new_assignments:

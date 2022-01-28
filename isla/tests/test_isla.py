@@ -7,6 +7,7 @@ import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
+from orderedset import OrderedSet
 
 import isla.isla_shortcuts as sc
 from isla import isla
@@ -432,6 +433,87 @@ class TestISLa(unittest.TestCase):
         matches = matches_for_quantified_formula(formula, XML_GRAMMAR, tree, {start: tree})
         self.assertEqual(1, len(matches))
 
+    def test_match_scriptsize_c(self):
+        in_inst = DerivationTree('<start>', (
+            DerivationTree('<statement>', (
+                DerivationTree('<block>', (
+                    DerivationTree('{', (), id=44),
+                    DerivationTree('<statements>', (
+                        DerivationTree('<block_statement>', (
+                            DerivationTree('<statement>', (
+                                DerivationTree('if', (), id=438),
+                                DerivationTree('<paren_expr>', (
+                                    DerivationTree('(', (), id=1183),
+                                    DerivationTree('<expr>', (
+                                        DerivationTree('<id>', None, id=2220),
+                                        DerivationTree(' = ', (), id=2221),
+                                        DerivationTree('<expr>', (
+                                            DerivationTree('<test>', (
+                                                DerivationTree('<sum>', (
+                                                    DerivationTree('<term>', (
+                                                        DerivationTree('<id>', None, id=41940),), id=41938),
+                                                ), id=41931),), id=40917),), id=2222)), id=1184),
+                                    DerivationTree(')', (), id=1185)), id=439),
+                                DerivationTree(' ', (), id=440),
+                                DerivationTree('<statement>', (DerivationTree(';', (), id=1208),), id=441),
+                                DerivationTree(' else ', (), id=442),
+                                DerivationTree('<statement>', (
+                                    DerivationTree('<block>', (
+                                        DerivationTree('{', (), id=2224),
+                                        DerivationTree('<statements>', (), id=2225),
+                                        DerivationTree('}', (), id=2226)
+                                    ), id=1209),), id=443)), id=436),), id=52),
+                        DerivationTree('<statements>', (
+                            DerivationTree('<block_statement>', (
+                                DerivationTree('<declaration>', (
+                                    DerivationTree('int ', (), id=0),
+                                    DerivationTree('<id>', None, id=1),
+                                    DerivationTree(';', (), id=2)
+                                ), id=3),), id=106),
+                            DerivationTree('<statements>', None, id=103)), id=49)), id=50),
+                    DerivationTree('}', (), id=46)), id=47),), id=43),), id=132)
+
+        formula = isla.ExistsFormula(
+            BoundVariable("decl", "<declaration>"),
+            in_inst,
+            isla.ConjunctiveFormula(
+                isla.ConjunctiveFormula(
+                    isla.StructuralPredicateFormula(
+                        LEVEL_PREDICATE,
+                        "GE",
+                        "<block>",
+                        BoundVariable("decl", "<declaration>"),
+                        in_inst.find_node(2222)
+                    ),
+                    isla.StructuralPredicateFormula(
+                        BEFORE_PREDICATE,
+                        BoundVariable("decl", "<declaration>"),
+                        in_inst.find_node(2222)
+                    )),
+                isla.SMTFormula(
+                    Constant("use_id", "<id>").to_smt() == BoundVariable("def_id", "<id>").to_smt(),
+                    BoundVariable("def_id", "<id>"),
+                    instantiated_variables=OrderedSet([BoundVariable("use_id", "<id>")]),
+                    substitutions={Constant("use_id", "<id>"): in_inst.get_subtree(in_inst.find_node(41940))})),
+            BindExpression(
+                "int ",
+                BoundVariable("def_id", "<id>"),
+                [" = ", "<expr>"],
+                ";"))
+
+        assignments = matches_for_quantified_formula(
+            cast(isla.QuantifiedFormula, formula),
+            scriptsizec.SCRIPTSIZE_C_GRAMMAR,
+            in_inst,
+            {})
+
+        self.assertTrue(all(
+            in_inst.is_valid_path(path) and
+            in_inst.find_node(tree) and
+            in_inst.get_subtree(path) == tree
+            for assignment in assignments
+            for path, tree in assignment.values()))
+
     def test_xml_property(self):
         mgr = VariableManager(XML_GRAMMAR)
         start = mgr.const("$start", "<start>")
@@ -449,7 +531,7 @@ class TestISLa(unittest.TestCase):
             list(EarleyParser(XML_GRAMMAR).parse("<a>asdf</r>"))[0])
 
         self.assertTrue(evaluate(formula.substitute_expressions({start: correct_tree}), correct_tree, XML_GRAMMAR))
-        self.assertFalse(evaluate(formula.substitute_expressions({start: wrong_tree}), correct_tree, XML_GRAMMAR))
+        self.assertFalse(evaluate(formula.substitute_expressions({start: wrong_tree}), wrong_tree, XML_GRAMMAR))
 
     def test_xml_with_prefixes(self):
         inp = '<a xmlns:ns="salami"><ns:asdf>asdf</ns:asdf></a>'

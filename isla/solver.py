@@ -322,7 +322,7 @@ class ISLaSolver:
                     return
 
             # import dill as pickle
-            # state_hash = -7930928593348912586
+            # state_hash = 3408927394916175551
             # out_file = "/tmp/saved_debug_state"
             # if hash(self.queue[0][1]) == state_hash:
             #     with open(out_file, 'wb') as debug_state_file:
@@ -913,6 +913,15 @@ class ISLaSolver:
 
     def eliminate_existential_formula(
             self, existential_formula: isla.ExistsFormula, state: SolutionState) -> List[SolutionState]:
+        if isla.evaluate(
+                existential_formula,
+                state.tree,
+                self.grammar).is_true():
+            # This should simplify the process after quantifier re-insertion.
+            return [SolutionState(
+                isla.replace_formula(state.constraint, existential_formula, sc.true()),
+                state.tree)]
+
         if existential_formula.bind_expression is not None:
             inserted_trees_and_bind_paths = existential_formula.bind_expression.to_tree_prefix(
                 existential_formula.bound_variable.n_type, self.grammar)
@@ -985,16 +994,15 @@ class ISLaSolver:
                     state.constraint, existential_formula, sc.true()
                 ).substitute_expressions(tree_substitution)
 
-                if isla.evaluate(instantiated_original_constraint, state.tree, self.grammar).is_true():
-                    instantiated_original_constraint = sc.true()
+                new_tree = resulting_tree.substitute(tree_substitution)
 
                 new_formula = (
                         instantiated_formula &
                         self.formula.substitute_expressions(
-                            {self.top_constant: state.tree.substitute(tree_substitution)}) &
+                            {self.top_constant: new_tree}) &
                         instantiated_original_constraint)
 
-                new_state = SolutionState(new_formula, state.tree.substitute(tree_substitution))
+                new_state = SolutionState(new_formula, new_tree)
 
                 if assertions_activated() or self.debug:
                     lost_tree_predicate_arguments: List[DerivationTree] = [
@@ -1022,6 +1030,7 @@ class ISLaSolver:
 
                     if lost_semantic_formula_arguments:
                         previous_posititions = [state.tree.find_node(t) for t in lost_semantic_formula_arguments]
+                        previous_posititions = [p for p in previous_posititions if p is not None]
                         assert False, f"Dangling subtrees [{', '.join(map(repr, lost_semantic_formula_arguments))}], " \
                                       f"previously at positions [{', '.join(map(str, previous_posititions))}] " \
                                       f"in tree {repr(state.tree)} (hash: {hash(state)})."
