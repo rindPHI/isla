@@ -337,7 +337,6 @@ constraint {
         )
 
     def test_negated_csv_rows_equal_length(self):
-        random.seed(546841054)
         property = parse_isla("""
 const start: <start>;
 
@@ -377,6 +376,7 @@ constraint {
         )
 
     def test_rest(self):
+        random.seed(1234)
         self.execute_generation_test(
             rest.LENGTH_UNDERLINE & rest.DEF_LINK_TARGETS &
             rest.NO_LINK_TARGET_REDEF & rest.LIST_NUMBERING_CONSECUTIVE,

@@ -145,6 +145,9 @@ constraint {
 }
 """, structural_predicates={SAME_POSITION_PREDICATE})
 
+# NOTE: Obviously, reST allows enumerations starting with letters.
+#       This means that "f." starts an enumeration. To prevent this,
+#       we would have to mess with the grammar, so we accept it for now.
 LIST_NUMBERING_CONSECUTIVE = parse_isla("""
 const start: <start>;
 
