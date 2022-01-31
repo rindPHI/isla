@@ -17,7 +17,7 @@ import pathos.multiprocessing as pmp
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from grammar_graph import gg
 
-import isla
+import language
 from solver import ISLaSolver
 from type_defs import Grammar
 
@@ -60,7 +60,7 @@ class Evaluator:
             jobname_prefix: str,
             generators: List[Callable[[int], ISLaSolver] | Grammar],
             jobnames: List[str],
-            validator: Callable[[isla.DerivationTree], bool],
+            validator: Callable[[language.DerivationTree], bool],
             graph: gg.GrammarGraph,
             db_file: str = std_db_file(),
             default_timeout: int = 60 * 60,
@@ -242,7 +242,7 @@ class Evaluator:
             jobname: get_all_sids(jobname, self.db_file)
             for jobname in self.jobs_and_generators}
 
-        args: List[Tuple[List[str], List[Callable[[isla.DerivationTree], bool]], List[str], List[int]]] = [
+        args: List[Tuple[List[str], List[Callable[[language.DerivationTree], bool]], List[str], List[int]]] = [
             (
                 [jobname],
                 [self.validator],
@@ -252,7 +252,7 @@ class Evaluator:
             for jobname in self.jobs_and_generators
         ]
 
-        args: List[Tuple[str, Callable[[isla.DerivationTree], bool], str, int]] = [
+        args: List[Tuple[str, Callable[[language.DerivationTree], bool], str, int]] = [
             rt for t in args for rt in tuple(itertools.product(*t))]
 
         with NestablePool(processes=pmp.cpu_count()) as pool:
@@ -371,11 +371,11 @@ def strtime() -> str:
 
 
 def generate_inputs(
-        generator: Generator[isla.DerivationTree, None, None] | ISLaSolver | Grammar,
+        generator: Generator[language.DerivationTree, None, None] | ISLaSolver | Grammar,
         timeout_seconds: int = 60,
-        jobname: Optional[str] = None) -> Dict[float, isla.DerivationTree]:
+        jobname: Optional[str] = None) -> Dict[float, language.DerivationTree]:
     start_time = time.time()
-    result: Dict[float, isla.DerivationTree] = {}
+    result: Dict[float, language.DerivationTree] = {}
     jobname = "" if not jobname else f" ({jobname})"
     print(f"[{strtime()}] Collecting data for {timeout_seconds} seconds{jobname}")
 
@@ -387,7 +387,7 @@ def generate_inputs(
         def gen():
             fuzzer = GrammarCoverageFuzzer(grammar)
             while True:
-                yield isla.DerivationTree.from_parse_tree(
+                yield language.DerivationTree.from_parse_tree(
                     fuzzer.expand_tree(("<start>", None)))
 
         generator = gen()
@@ -520,7 +520,7 @@ def get_session_length(test_id: str, sid: int, db_file: str = std_db_file()) -> 
 def store_inputs(
         test_id: str,
         timeout: int,
-        inputs: Dict[float, isla.DerivationTree],
+        inputs: Dict[float, language.DerivationTree],
         db_file: str = std_db_file()) -> None:
     sid = (get_max_sid(test_id, db_file) or 0) + 1
 
@@ -528,7 +528,7 @@ def store_inputs(
     con = sqlite3.connect(db_file)
 
     reltime: float
-    inp: isla.DerivationTree
+    inp: language.DerivationTree
     for reltime, inp in inputs.items():
         with con:
             con.execute(
@@ -549,7 +549,7 @@ def get_inputs_from_db(
         db_file: str = std_db_file(),
         only_valid: bool = False,
         only_unkown_validity: bool = False
-) -> Dict[int, isla.DerivationTree]:
+) -> Dict[int, language.DerivationTree]:
     all_inputs_query = \
         """
         SELECT inpId, inp FROM inputs
@@ -585,8 +585,8 @@ def get_inputs_from_db(
     rows = cur.fetchall()
     con.close()
 
-    inputs: Dict[int, isla.DerivationTree] = {
-        row[0]: isla.DerivationTree.from_parse_tree(json.loads(row[1]))
+    inputs: Dict[int, language.DerivationTree] = {
+        row[0]: language.DerivationTree.from_parse_tree(json.loads(row[1]))
         for row in rows}
 
     return inputs
@@ -594,7 +594,7 @@ def get_inputs_from_db(
 
 def evaluate_validity(
         test_id: str,
-        validator: Callable[[isla.DerivationTree], bool],
+        validator: Callable[[language.DerivationTree], bool],
         db_file: str = std_db_file(),
         sid: Optional[int] = None,
         parallel: bool = True) -> None:
@@ -609,12 +609,12 @@ def evaluate_validity(
 
     # Obtain inputs from session
     print(f"Reading inputs for session {sid} of {test_id} from database...")
-    inputs: Dict[int, isla.DerivationTree] = get_inputs_from_db(test_id, sid, db_file, only_unkown_validity=True)
+    inputs: Dict[int, language.DerivationTree] = get_inputs_from_db(test_id, sid, db_file, only_unkown_validity=True)
 
     print(f"Evaluating validity of inputs for session {sid} of {test_id}...")
 
     # Evaluate
-    def evaluate(inp: isla.DerivationTree) -> bool:
+    def evaluate(inp: language.DerivationTree) -> bool:
         try:
             return validator(inp) is True
         except Exception as err:
@@ -669,7 +669,7 @@ def evaluate_kpaths(
 
     inputs = {inp_id: inp for inp_id, inp in inputs.items() if not kpaths_already_computed(inp_id)}
 
-    def compute_k_paths(inp: isla.DerivationTree) -> List[int]:
+    def compute_k_paths(inp: language.DerivationTree) -> List[int]:
         return [hash(path) for path in graph.k_paths_in_tree(inp.to_parse_tree(), k)]
 
     # Insert into DB

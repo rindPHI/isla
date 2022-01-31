@@ -1,7 +1,7 @@
 import logging
 import random
 
-from src.isla.isla import DerivationTree
+from src.isla.language import DerivationTree
 from src.isla.optimizer import auto_tune_weight_vector
 from tests.subject_languages import rest
 

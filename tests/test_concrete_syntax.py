@@ -3,20 +3,20 @@ from typing import cast
 
 import z3
 
-import src.isla.isla_shortcuts as sc
-from src.isla import isla
-from src.isla.isla import DummyVariable, parse_isla
-from src.isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
-from tests.subject_languages import scriptsizec
-from tests.test_data import LANG_GRAMMAR
+import isla.isla_shortcuts as sc
+from isla import language
+from isla.language import DummyVariable, parse_isla
+from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
+from subject_languages import scriptsizec
+from test_data import LANG_GRAMMAR
 
 
 class TestConcreteSyntax(unittest.TestCase):
     def test_simple_formula(self):
         DummyVariable.cnt = 0
 
-        mgr = isla.VariableManager(LANG_GRAMMAR)
-        python_formula: isla.Formula = mgr.create(sc.forall(
+        mgr = language.VariableManager(LANG_GRAMMAR)
+        python_formula: language.Formula = mgr.create(sc.forall(
             mgr.bv("var_1", "<var>"),
             mgr.const("start", "<start>"),
             sc.forall(
@@ -40,8 +40,8 @@ forall <var> var_1 in start:
         dummy_2 = DummyVariable(" := ")
         dummy_1 = DummyVariable(" := ")
 
-        mgr = isla.VariableManager(LANG_GRAMMAR)
-        python_formula: isla.Formula = mgr.create(sc.forall_bind(
+        mgr = language.VariableManager(LANG_GRAMMAR)
+        python_formula: language.Formula = mgr.create(sc.forall_bind(
             mgr.bv("lhs_1", "<var>") + dummy_1 + mgr.bv("rhs_1", "<rhs>"),
             mgr.bv("assgn_1", "<assgn>"),
             mgr.const("start", "<start>"),
@@ -85,9 +85,9 @@ forall <expr> expr in start:
         self.assertTrue(
             any(isinstance(e, list)
                 for e in
-                cast(isla.ForallFormula,
-                     cast(isla.ForallFormula,
-                          cast(isla.ForallFormula,
+                cast(language.ForallFormula,
+                     cast(language.ForallFormula,
+                          cast(language.ForallFormula,
                                parsed_formula).inner_formula).inner_formula).bind_expression.bound_elements))
 
 

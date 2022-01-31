@@ -9,26 +9,26 @@ from xml.sax.saxutils import escape
 import pytest
 import z3
 
-from src.isla import isla
-from src.isla import isla_shortcuts as sc
-from src.isla.isla import VariablesCollector, parse_isla
-from src.isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
-from src.isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
+from isla import isla_shortcuts as sc
+from isla import language
+from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
+from isla.language import VariablesCollector, parse_isla
+from isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
     get_quantifier_chains
-from tests.subject_languages import rest, tar, simple_tar, scriptsizec
-from tests.subject_languages.csv import csv_lint, CSV_GRAMMAR, CSV_HEADERBODY_GRAMMAR
-from tests.subject_languages.tar import extract_tar
-from tests.subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, \
+from subject_languages import rest, tar, simple_tar, scriptsizec
+from subject_languages.csv import csv_lint, CSV_GRAMMAR, CSV_HEADERBODY_GRAMMAR
+from subject_languages.tar import extract_tar
+from subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, \
     XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, XML_GRAMMAR, validate_xml, XML_NO_ATTR_REDEF_CONSTRAINT
-from tests.test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR
+from test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR
 
 
 class TestSolver(unittest.TestCase):
     def test_qfd_formula_might_match(self):
-        mgr = isla.VariableManager(LANG_GRAMMAR)
+        mgr = language.VariableManager(LANG_GRAMMAR)
         solver = ISLaSolver(LANG_GRAMMAR, mgr.smt(mgr.const("$DUMMY", "<start>").to_smt() == z3.StringVal("")))
 
-        tree = isla.DerivationTree.from_parse_tree(
+        tree = language.DerivationTree.from_parse_tree(
             ('<start>', [
                 ('<stmt>', [
                     ('<assgn>', [
@@ -37,8 +37,8 @@ class TestSolver(unittest.TestCase):
                     (' ; ', []),
                     ('<stmt>', [('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', None)])])])]))
 
-        formula = cast(isla.QuantifiedFormula, mgr.create(sc.forall_bind(
-            isla.BindExpression(mgr.bv("$var1", "<var>")),
+        formula = cast(language.QuantifiedFormula, mgr.create(sc.forall_bind(
+            language.BindExpression(mgr.bv("$var1", "<var>")),
             mgr.bv("$rhs1", "<rhs>"),
             tree,
             mgr.smt(mgr.bv("$var1").to_smt() == z3.StringVal("x"))
@@ -50,13 +50,13 @@ class TestSolver(unittest.TestCase):
         self.assertTrue(solver.quantified_formula_might_match(formula, (0, 0, 2, 0), tree))
 
     def test_atomic_smt_formula(self):
-        assgn = isla.Constant("$assgn", "<assgn>")
-        formula = isla.SMTFormula(cast(z3.BoolRef, assgn.to_smt() == z3.StringVal("x := x")), assgn)
+        assgn = language.Constant("$assgn", "<assgn>")
+        formula = language.SMTFormula(cast(z3.BoolRef, assgn.to_smt() == z3.StringVal("x := x")), assgn)
         self.execute_generation_test(formula, num_solutions=1)
 
     def test_simple_universal_formula(self):
-        start = isla.Constant("$start", "<start>")
-        var1 = isla.BoundVariable("$var", "<var>")
+        start = language.Constant("$start", "<start>")
+        var1 = language.BoundVariable("$var", "<var>")
 
         formula = sc.forall(
             var1, start,
@@ -65,10 +65,10 @@ class TestSolver(unittest.TestCase):
         self.execute_generation_test(formula, max_number_free_instantiations=1)
 
     def test_simple_universal_formula_with_bind(self):
-        mgr = isla.VariableManager(LANG_GRAMMAR)
+        mgr = language.VariableManager(LANG_GRAMMAR)
         formula = mgr.create(
             sc.forall_bind(
-                isla.BindExpression(mgr.bv("$var1", "<var>")),
+                language.BindExpression(mgr.bv("$var1", "<var>")),
                 mgr.bv("$rhs", "<rhs>"), mgr.const("$start", "<start>"),
                 mgr.smt(cast(z3.BoolRef, mgr.bv("$var1").to_smt() == z3.StringVal("x"))))
         )
@@ -76,8 +76,8 @@ class TestSolver(unittest.TestCase):
         self.execute_generation_test(formula)
 
     def test_simple_existential_formula(self):
-        mgr = isla.VariableManager(LANG_GRAMMAR)
-        start = isla.Constant("$start", "<start>")
+        mgr = language.VariableManager(LANG_GRAMMAR)
+        start = language.Constant("$start", "<start>")
 
         formula = mgr.create(
             sc.exists(
@@ -93,29 +93,29 @@ class TestSolver(unittest.TestCase):
         )
 
     def test_simple_existential_formula_with_bind(self):
-        start = isla.Constant("$start", "<start>")
-        rhs = isla.BoundVariable("$rhs", "<rhs>")
-        assgn = isla.BoundVariable("$assgn", "<assgn>")
-        var1 = isla.BoundVariable("$var", "<var>")
+        start = language.Constant("$start", "<start>")
+        rhs = language.BoundVariable("$rhs", "<rhs>")
+        assgn = language.BoundVariable("$assgn", "<assgn>")
+        var1 = language.BoundVariable("$var", "<var>")
 
         formula = sc.forall(assgn, start, sc.exists_bind(
-            isla.BindExpression(var1),
+            language.BindExpression(var1),
             rhs, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1)))
 
         self.execute_generation_test(formula, num_solutions=1)
 
     def test_conjunction_of_qfd_formulas(self):
-        start = isla.Constant("$start", "<start>")
-        assgn = isla.BoundVariable("$assgn", "<assgn>")
-        rhs_1 = isla.BoundVariable("$rhs_1", "<rhs>")
-        rhs_2 = isla.BoundVariable("$rhs_2", "<rhs>")
-        var_1 = isla.BoundVariable("$var1", "<var>")
-        var_2 = isla.BoundVariable("$var2", "<var>")
+        start = language.Constant("$start", "<start>")
+        assgn = language.BoundVariable("$assgn", "<assgn>")
+        rhs_1 = language.BoundVariable("$rhs_1", "<rhs>")
+        rhs_2 = language.BoundVariable("$rhs_2", "<rhs>")
+        var_1 = language.BoundVariable("$var1", "<var>")
+        var_2 = language.BoundVariable("$var2", "<var>")
 
         formula = \
             sc.forall_bind(
-                isla.BindExpression(var_1),
+                language.BindExpression(var_1),
                 rhs_1, start,
                 sc.smt_for(cast(z3.BoolRef, var_1.to_smt() == z3.StringVal("x")), var_1)) & \
             sc.forall_bind(
@@ -177,8 +177,8 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
         )
 
     def test_declared_before_used(self):
-        mgr = isla.VariableManager(LANG_GRAMMAR)
-        formula: isla.Formula = mgr.create(sc.forall_bind(
+        mgr = language.VariableManager(LANG_GRAMMAR)
+        formula: language.Formula = mgr.create(sc.forall_bind(
             mgr.bv("$lhs_1", "<var>") + " := " + mgr.bv("$rhs_1", "<rhs>"),
             mgr.bv("$assgn_1", "<assgn>"),
             mgr.const("$start", "<start>"),
@@ -413,9 +413,9 @@ exists <csv-header> header in start:
 
     def execute_generation_test(
             self,
-            formula: Union[isla.Formula, str],
-            structural_predicates: Optional[Set[isla.StructuralPredicate]] = None,
-            semantic_predicates: Optional[Set[isla.SemanticPredicate]] = None,
+            formula: Union[language.Formula, str],
+            structural_predicates: Optional[Set[language.StructuralPredicate]] = None,
+            semantic_predicates: Optional[Set[language.SemanticPredicate]] = None,
             grammar=LANG_GRAMMAR,
             num_solutions=50,
             print_solutions=False,
@@ -427,7 +427,7 @@ exists <csv-header> header in start:
             debug=False,
             state_tree_out="/tmp/state_tree.xml",
             log_out="/tmp/isla_log.txt",
-            custom_test_func: Optional[Callable[[isla.DerivationTree], Union[bool, str]]] = None,
+            custom_test_func: Optional[Callable[[language.DerivationTree], Union[bool, str]]] = None,
             cost_settings=STD_COST_SETTINGS,
             print_only: bool = False,
             timeout_seconds: Optional[int] = None,
@@ -465,7 +465,7 @@ exists <csv-header> header in start:
 
         constant = next(
             c for c in VariablesCollector.collect(formula)
-            if isinstance(c, isla.Constant) and not c.is_numeric())
+            if isinstance(c, language.Constant) and not c.is_numeric())
 
         def print_tree():
             if debug:
@@ -486,7 +486,7 @@ exists <csv-header> header in start:
 
                 if not print_only:
                     self.assertTrue(
-                        isla.evaluate(formula.substitute_expressions({constant: assignment}), assignment, grammar),
+                        language.evaluate(formula.substitute_expressions({constant: assignment}), assignment, grammar),
                         f"Solution {assignment} does not satisfy constraint {formula}"
                     )
 

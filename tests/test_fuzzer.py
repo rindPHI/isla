@@ -1,8 +1,8 @@
 import logging
 import unittest
 
-from src.isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
-from tests.subject_languages import csv as csvlang
+from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
+from subject_languages import csv as csvlang
 
 
 class TestFuzzer(unittest.TestCase):

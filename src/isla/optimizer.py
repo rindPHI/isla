@@ -15,7 +15,7 @@ from grammar_graph import gg
 from matplotlib import pyplot as plt, ticker as mtick
 from pathos import multiprocessing as pmp
 
-import isla, solver
+import language, solver
 from evaluator import logger, generate_inputs
 from helpers import weighted_geometric_mean
 from solver import CostWeightVector, ISLaSolver, CostSettings
@@ -199,8 +199,8 @@ class PerformanceEvaluationResult:
 
 def auto_tune_weight_vector(
         grammar: Grammar,
-        formula: isla.Formula,
-        validator: Callable[[isla.DerivationTree], bool],
+        formula: language.Formula,
+        validator: Callable[[language.DerivationTree], bool],
         timeout: int = 60,
         population_size: int = 10,
         generations: int = 10,
@@ -304,8 +304,8 @@ def auto_tune_weight_vector(
 def evaluate_cost_vectors_isla(
         population: List[CostWeightVector],
         grammar: Grammar,
-        formula: isla.Formula,
-        validator: Callable[[isla.DerivationTree], bool],
+        formula: language.Formula,
+        validator: Callable[[language.DerivationTree], bool],
         timeout: int,
         cpu_count: int = -1,
         k=3) -> List[PerformanceEvaluationResult]:
@@ -330,9 +330,9 @@ def evaluate_cost_vectors_isla(
 
 def evaluate_mutated_cost_vectors(
         grammar: Grammar,
-        formula: isla.Formula,
+        formula: language.Formula,
         base_vector: CostWeightVector,
-        validator: Callable[[isla.DerivationTree], bool],
+        validator: Callable[[language.DerivationTree], bool],
         final_out_file_name: str,
         timeout: int = 60,
         rounds: int = 30,
@@ -387,8 +387,8 @@ def mutate_cost_weight(w: float, max_add: int = 5, max_factor: int = 3) -> float
 
 def evaluate_random_cost_vectors(
         grammar: Grammar,
-        formula: isla.Formula,
-        validator: Callable[[isla.DerivationTree], bool],
+        formula: language.Formula,
+        validator: Callable[[language.DerivationTree], bool],
         final_out_file_name: str,
         timeout: int = 60,
         rounds: int = 30,
@@ -424,9 +424,9 @@ def randno(maxno: int = 40) -> int:
 
 def evaluate_isla_generator(
         grammar: Grammar,
-        formula: isla.Formula,
+        formula: language.Formula,
         v: CostWeightVector,
-        validator: Callable[[isla.DerivationTree], bool],
+        validator: Callable[[language.DerivationTree], bool],
         timeout: int,
         outfile_name: Optional[str] = None,
         k=3) -> PerformanceEvaluationResult:
@@ -452,10 +452,10 @@ def evaluate_isla_generator(
 
 
 def evaluate_producer(
-        producer: Union[Generator[isla.DerivationTree, None, None], ISLaSolver, Grammar],
-        formula: Optional[isla.Formula],
+        producer: Union[Generator[language.DerivationTree, None, None], ISLaSolver, Grammar],
+        formula: Optional[language.Formula],
         graph: gg.GrammarGraph,
-        validator: Callable[[isla.DerivationTree], bool],
+        validator: Callable[[language.DerivationTree], bool],
         outfile_pdf: Optional[str] = None,
         timeout_seconds: int = 60,
         diagram_title: str = "Performance Data",
@@ -482,9 +482,9 @@ def evaluate_producer(
 
 def evaluate_generators(
         producers: List[Union[Grammar, ISLaSolver]],
-        formula: Optional[isla.Formula],
+        formula: Optional[language.Formula],
         graph: gg.GrammarGraph,
-        validator: Callable[[isla.DerivationTree], bool],
+        validator: Callable[[language.DerivationTree], bool],
         timeout_seconds: int = 60,
         k=3,
         cpu_count: int = -1,
@@ -581,10 +581,10 @@ def plot_proportion_valid_inputs_graph(
 
 
 def evaluate_data(
-        data: Dict[float, isla.DerivationTree],
-        formula: Optional[isla.Formula],
+        data: Dict[float, language.DerivationTree],
+        formula: Optional[language.Formula],
         graph: gg.GrammarGraph,
-        validator: Callable[[isla.DerivationTree], bool],
+        validator: Callable[[language.DerivationTree], bool],
         k: int = 3,
         jobname: str = "Unnamed",
         compute_kpath_coverage: bool = True,
@@ -594,15 +594,15 @@ def evaluate_data(
     accumulated_k_path_coverage: Dict[float, int] = {}
     accumulated_non_vacuous_index: Dict[float, float] = {}
 
-    quantifier_chains: List[Tuple[isla.ForallFormula, ...]] = (
+    quantifier_chains: List[Tuple[language.ForallFormula, ...]] = (
         [] if (not compute_vacuity or formula is None)
-        else [tuple([f for f in c if isinstance(f, isla.ForallFormula)])
+        else [tuple([f for f in c if isinstance(f, language.ForallFormula)])
               for c in solver.get_quantifier_chains(formula)])
 
     valid_inputs: int = 0
     invalid_inputs: int = 0
     covered_kpaths: Set[Tuple[gg.Node, ...]] = set()
-    chains_satisfied: Dict[Tuple[isla.ForallFormula, ...], int] = {c: 0 for c in quantifier_chains}
+    chains_satisfied: Dict[Tuple[language.ForallFormula, ...], int] = {c: 0 for c in quantifier_chains}
 
     for seconds, inp in data.items():
         try:
@@ -621,8 +621,8 @@ def evaluate_data(
 
         if quantifier_chains:
             vacuously_matched_quantifiers = set()
-            isla.eliminate_quantifiers(
-                isla.instantiate_top_constant(formula, inp),
+            language.eliminate_quantifiers(
+                language.instantiate_top_constant(formula, inp),
                 graph.to_grammar())
 
             non_vacuous_chains = {

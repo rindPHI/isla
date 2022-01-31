@@ -1,11 +1,12 @@
 import unittest
+
 from fuzzingbook.Parser import EarleyParser
 
-from src.isla.helpers import delete_unreachable
-from src.isla.isla import DerivationTree
-from src.isla.isla_predicates import embed_tree, mk_parser, level_check
-from tests.subject_languages import tar, rest, scriptsizec
-from src.isla.type_defs import Path
+from isla.helpers import delete_unreachable
+from isla.isla_predicates import embed_tree, mk_parser, level_check
+from isla.language import DerivationTree
+from isla.type_defs import Path
+from subject_languages import tar, rest, scriptsizec
 
 
 class TestPredicates(unittest.TestCase):

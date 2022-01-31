@@ -7,11 +7,11 @@ from fuzzingbook.Grammars import srange
 from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
 
-import src.isla.isla_shortcuts as sc
-from src.isla import isla
-from src.isla.helpers import delete_unreachable
-from src.isla.type_defs import Grammar
-from tests.subject_languages.tar import ljust_crop_tar, rjust_crop_tar
+import isla.isla_shortcuts as sc
+from isla import language
+from isla.helpers import delete_unreachable
+from isla.type_defs import Grammar
+from .tar import ljust_crop_tar, rjust_crop_tar
 
 SIMPLE_TAR_GRAMMAR = {
     "<start>": ["<entries>"],
@@ -53,9 +53,9 @@ SIMPLE_TAR_GRAMMAR = {
 
 
 def tar_checksum(
-        grammar: Grammar, header: isla.DerivationTree, checksum_tree: isla.DerivationTree) -> isla.SemPredEvalResult:
+        grammar: Grammar, header: language.DerivationTree, checksum_tree: language.DerivationTree) -> language.SemPredEvalResult:
     if not header.is_complete():
-        return isla.SemPredEvalResult(None)
+        return language.SemPredEvalResult(None)
 
     graph = gg.GrammarGraph.from_grammar(grammar)
 
@@ -67,7 +67,7 @@ def tar_checksum(
     delete_unreachable(checksum_grammar)
     checksum_parser = EarleyParser(checksum_grammar)
 
-    space_checksum = isla.DerivationTree.from_parse_tree(list(checksum_parser.parse("        "))[0]).get_subtree((0,))
+    space_checksum = language.DerivationTree.from_parse_tree(list(checksum_parser.parse("        "))[0]).get_subtree((0,))
     header_wo_checksum = header.replace_path(current_checksum_path, space_checksum)
 
     header_bytes: List[int] = list(str(header_wo_checksum).encode("ascii"))
@@ -79,25 +79,25 @@ def tar_checksum(
     delete_unreachable(checksum_grammar)
     checksum_parser = EarleyParser(checksum_grammar)
 
-    new_checksum_tree = isla.DerivationTree.from_parse_tree(
+    new_checksum_tree = language.DerivationTree.from_parse_tree(
         list(checksum_parser.parse(checksum_value))[0]).get_subtree((0,))
 
     if str(new_checksum_tree) == str(checksum_tree):
-        return isla.SemPredEvalResult(True)
+        return language.SemPredEvalResult(True)
 
-    return isla.SemPredEvalResult({checksum_tree: new_checksum_tree})
+    return language.SemPredEvalResult({checksum_tree: new_checksum_tree})
 
 
-TAR_CHECKSUM_PREDICATE = isla.SemanticPredicate("tar_checksum", 2, tar_checksum, binds_tree=False)
+TAR_CHECKSUM_PREDICATE = language.SemanticPredicate("tar_checksum", 2, tar_checksum, binds_tree=False)
 
 
 def tar_checksum(
-        header: Union[isla.Variable, isla.DerivationTree],
-        checksum: Union[isla.Variable, isla.DerivationTree]) -> isla.SemanticPredicateFormula:
-    return isla.SemanticPredicateFormula(TAR_CHECKSUM_PREDICATE, header, checksum)
+        header: Union[language.Variable, language.DerivationTree],
+        checksum: Union[language.Variable, language.DerivationTree]) -> language.SemanticPredicateFormula:
+    return language.SemanticPredicateFormula(TAR_CHECKSUM_PREDICATE, header, checksum)
 
 
-mgr = isla.VariableManager(SIMPLE_TAR_GRAMMAR)
+mgr = language.VariableManager(SIMPLE_TAR_GRAMMAR)
 start = mgr.const("$start", "<start>")
 TAR_CONSTRAINTS = mgr.create(
     sc.forall(

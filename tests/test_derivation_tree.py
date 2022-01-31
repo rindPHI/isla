@@ -4,11 +4,11 @@ from typing import List
 
 from fuzzingbook.GrammarFuzzer import GrammarFuzzer
 
-from src.isla.helpers import parent_or_child
-from src.isla.isla import DerivationTree
-from tests.subject_languages.xml_lang import XML_GRAMMAR
-from tests.test_data import LANG_GRAMMAR
-from tests.test_helpers import parse
+from isla.helpers import parent_or_child
+from isla.language import DerivationTree
+from subject_languages.xml_lang import XML_GRAMMAR
+from test_data import LANG_GRAMMAR
+from test_helpers import parse
 
 
 class TestDerivationTree(unittest.TestCase):

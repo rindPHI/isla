@@ -8,7 +8,7 @@ from typing import Optional, Set, Generator, Tuple, List, Dict, Union, TypeVar, 
 import z3
 from fuzzingbook.Grammars import unreachable_nonterminals, is_nonterminal, RE_NONTERMINAL
 
-from type_defs import Path, Grammar, ParseTree, ImmutableGrammar
+from isla.type_defs import Path, Grammar, ParseTree, ImmutableGrammar
 
 S = TypeVar('S')
 T = TypeVar('T')

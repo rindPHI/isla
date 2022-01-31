@@ -20,18 +20,18 @@ from grammar_graph import gg
 from graphviz import Digraph
 from orderedset import OrderedSet
 
-import mexpr_parser.MexprParserListener as MexprParserListener
-from helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, z3_and, z3_or, \
+import isla.mexpr_parser.MexprParserListener as MexprParserListener
+from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, z3_and, z3_or, \
     z3_push_in_negations
-from helpers import get_symbols, z3_subst, is_valid, \
+from isla.helpers import get_symbols, z3_subst, is_valid, \
     replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, immutable_to_grammar, \
     nested_list_to_tuple
-from isla_language import IslaLanguageListener
-from isla_language.IslaLanguageLexer import IslaLanguageLexer
-from isla_language.IslaLanguageParser import IslaLanguageParser
-from mexpr_lexer.MexprLexer import MexprLexer
-from mexpr_parser.MexprParser import MexprParser
-from type_defs import ParseTree, Path, Grammar, ImmutableGrammar
+from isla.isla_language import IslaLanguageListener
+from isla.isla_language.IslaLanguageLexer import IslaLanguageLexer
+from isla.isla_language.IslaLanguageParser import IslaLanguageParser
+from isla.mexpr_lexer.MexprLexer import MexprLexer
+from isla.mexpr_parser.MexprParser import MexprParser
+from isla.type_defs import ParseTree, Path, Grammar, ImmutableGrammar
 
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
 Assignment = Tuple['Constant', 'Formula', 'DerivationTree']

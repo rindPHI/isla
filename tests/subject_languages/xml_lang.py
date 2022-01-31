@@ -6,8 +6,8 @@ from typing import Optional, List
 
 from fuzzingbook.Grammars import srange
 
-from src.isla.isla import parse_isla, DerivationTree
-from src.isla.isla_predicates import IN_TREE_PREDICATE, SAME_POSITION_PREDICATE
+from isla.language import parse_isla, DerivationTree
+from isla.isla_predicates import IN_TREE_PREDICATE, SAME_POSITION_PREDICATE
 
 XML_GRAMMAR = {
     "<start>": ["<xml-tree>"],

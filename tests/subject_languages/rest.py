@@ -10,9 +10,9 @@ from xml.dom.minidom import Document
 from docutils.core import publish_doctree
 from fuzzingbook.Grammars import srange
 
-from src.isla import isla
-from src.isla.isla import parse_isla
-from src.isla.isla_predicates import LJUST_CROP_PREDICATE, EXTEND_CROP_PREDICATE, SAME_POSITION_PREDICATE, \
+from isla import language
+from isla.language import parse_isla
+from isla.isla_predicates import LJUST_CROP_PREDICATE, EXTEND_CROP_PREDICATE, SAME_POSITION_PREDICATE, \
     CONSECUTIVE_PREDICATE
 
 # NOTE: The following special characters are removed from general text.
@@ -117,7 +117,7 @@ forall <enumeration> enumeration in start:
 #   - Footnotes: For auto-numbered footnote references without autonumber labels ("[#]_"), the references and footnotes
 #                must be in the same relative order. Similarly for auto-symbol footnotes ("[*]_").
 
-def render_rst(tree: isla.DerivationTree) -> Union[bool, str]:
+def render_rst(tree: language.DerivationTree) -> Union[bool, str]:
     f = io.StringIO()
     with redirect_stderr(f):
         doc: Document = publish_doctree(str(tree), settings_overrides={'input_encoding': 'unicode'}).asdom()
@@ -149,7 +149,7 @@ def render_rst(tree: isla.DerivationTree) -> Union[bool, str]:
     return True if not has_error else err_msg
 
 
-def render_rst_io(tree: isla.DerivationTree) -> Union[bool, str]:
+def render_rst_io(tree: language.DerivationTree) -> Union[bool, str]:
     with tempfile.NamedTemporaryFile(suffix=".rst") as tmp:
         tmp.write(str(tree).encode())
         tmp.flush()

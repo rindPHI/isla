@@ -4,8 +4,8 @@ from typing import Dict, Callable
 from fuzzingbook.GrammarFuzzer import tree_to_string
 from fuzzingbook.Parser import EarleyParser
 
-from src.isla import isla
-from src.isla.type_defs import ParseTree, Path
+from isla import language
+from isla.type_defs import ParseTree, Path
 
 LANG_GRAMMAR = {
     "<start>":
@@ -55,7 +55,7 @@ def eval_lang(inp: str) -> Dict[str, int]:
     return valueMap
 
 
-def validate_lang(inp: isla.DerivationTree) -> bool:
+def validate_lang(inp: language.DerivationTree) -> bool:
     try:
         eval_lang(str(inp))
         return True

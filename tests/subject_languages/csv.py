@@ -5,9 +5,9 @@ from typing import Union
 
 from fuzzingbook.Grammars import convert_ebnf_grammar, srange
 
-from src.isla import isla
-from src.isla.isla import parse_isla
-from src.isla.isla_predicates import COUNT_PREDICATE
+from isla import language
+from isla.language import parse_isla
+from isla.isla_predicates import COUNT_PREDICATE
 
 CSV_EBNF_GRAMMAR = {
     "<start>": ["<csv-file>"],
@@ -46,7 +46,7 @@ CSV_HEADERBODY_EBNF_GRAMMAR = {
 CSV_HEADERBODY_GRAMMAR = convert_ebnf_grammar(CSV_HEADERBODY_EBNF_GRAMMAR)
 
 
-def csv_lint(tree: isla.DerivationTree) -> Union[bool, str]:
+def csv_lint(tree: language.DerivationTree) -> Union[bool, str]:
     with tempfile.NamedTemporaryFile(suffix=".csv") as tmp:
         tmp.write(str(tree).encode())
         tmp.flush()

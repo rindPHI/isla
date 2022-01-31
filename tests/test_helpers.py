@@ -5,12 +5,12 @@ from typing import Optional
 from fuzzingbook.Parser import EarleyParser, canonical
 from grammar_graph.gg import GrammarGraph
 
-from src.isla.existential_helpers import path_to_tree, paths_between
-from src.isla.helpers import is_prefix, path_iterator, delete_unreachable, \
+from isla.existential_helpers import path_to_tree, paths_between
+from isla.helpers import is_prefix, path_iterator, delete_unreachable, \
     dict_of_lists_to_list_of_dicts, weighted_geometric_mean
-from src.isla.isla_predicates import is_before
-from src.isla.type_defs import Grammar, ParseTree
-from tests.test_data import LANG_GRAMMAR
+from isla.isla_predicates import is_before
+from isla.type_defs import Grammar, ParseTree
+from test_data import LANG_GRAMMAR
 
 
 class TestHelpers(unittest.TestCase):

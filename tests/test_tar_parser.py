@@ -1,7 +1,7 @@
 import unittest
 
-from src.isla.helpers import tree_to_string
-from tests.subject_languages import tar
+from isla.helpers import tree_to_string
+from subject_languages import tar
 
 
 class TestTarParser(unittest.TestCase):

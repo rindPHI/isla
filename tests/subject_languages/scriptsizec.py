@@ -6,11 +6,11 @@ from typing import Union
 
 from fuzzingbook.Grammars import srange
 
-from src.isla import isla
+from isla import language
 # Based on:
 # Kartik Talwar. Tiny-C Compiler. https://gist.github.com/KartikTalwar/3095780.
-from src.isla.isla import parse_isla
-from src.isla.isla_predicates import BEFORE_PREDICATE, SAME_POSITION_PREDICATE, LEVEL_PREDICATE
+from isla.language import parse_isla
+from isla.isla_predicates import BEFORE_PREDICATE, SAME_POSITION_PREDICATE, LEVEL_PREDICATE
 
 SCRIPTSIZE_C_GRAMMAR = {
     "<start>": ["<statement>"],
@@ -93,7 +93,7 @@ SCRIPTSIZE_C_NO_REDEF_CONSTR = parse_isla(
     structural_predicates={SAME_POSITION_PREDICATE})
 
 
-def compile_scriptsizec_clang(tree: isla.DerivationTree) -> Union[bool, str]:
+def compile_scriptsizec_clang(tree: language.DerivationTree) -> Union[bool, str]:
     contents = "int main() {\n"
     contents += "\n" + str(tree).replace("\n", "    \t")
     contents += "\n" + "}"

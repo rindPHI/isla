@@ -5,11 +5,11 @@ from typing import Union, List, Optional, Dict, Tuple, Callable
 from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph.gg import GrammarGraph
 
-import isla
-from existential_helpers import insert_tree
-from helpers import delete_unreachable, parent_reflexive, parent_or_child
-from isla import DerivationTree, SemPredEvalResult, StructuralPredicate, SemanticPredicate, Variable
-from type_defs import Grammar, Path, ParseTree
+from isla import language
+from isla.existential_helpers import insert_tree
+from isla.helpers import delete_unreachable, parent_reflexive, parent_or_child
+from isla.language import DerivationTree, SemPredEvalResult, StructuralPredicate, SemanticPredicate, Variable
+from isla.type_defs import Grammar, Path, ParseTree
 
 
 def is_before(_: Optional[DerivationTree], path_1: Path, path_2: Path) -> bool:
@@ -410,9 +410,9 @@ RJUST_CROP_PREDICATE = SemanticPredicate(
 def octal_to_dec(
         _octal_parser: Callable[[str], List[ParseTree]],
         _decimal_parser: Callable[[str], List[ParseTree]],
-        octal: isla.Variable | DerivationTree,
-        decimal: isla.Variable | DerivationTree) -> SemPredEvalResult:
-    assert not isinstance(octal, isla.Variable) or not isinstance(decimal, isla.Variable)
+        octal: language.Variable | DerivationTree,
+        decimal: language.Variable | DerivationTree) -> SemPredEvalResult:
+    assert not isinstance(octal, language.Variable) or not isinstance(decimal, language.Variable)
 
     decimal_parser = lambda inp: DerivationTree.from_parse_tree(_decimal_parser(inp)[0][1][0])
     octal_parser = lambda inp: DerivationTree.from_parse_tree(_octal_parser(inp)[0][1][0])
@@ -450,7 +450,7 @@ def octal_to_dec(
 
         return SemPredEvalResult({octal: octal_parser(octal_str)})
 
-    if isinstance(octal, isla.Variable) and isinstance(decimal, DerivationTree):
+    if isinstance(octal, language.Variable) and isinstance(decimal, DerivationTree):
         if not decimal.is_complete():
             return SemPredEvalResult(None)
 
@@ -462,7 +462,7 @@ def octal_to_dec(
 
         return SemPredEvalResult({octal: octal_parser(octal_str)})
 
-    if isinstance(decimal, isla.Variable) and isinstance(octal, DerivationTree):
+    if isinstance(decimal, language.Variable) and isinstance(octal, DerivationTree):
         if not octal.is_complete():
             return SemPredEvalResult(None)
 

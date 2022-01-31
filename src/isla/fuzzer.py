@@ -38,9 +38,9 @@ from typing import Tuple, List, Any, Set, Callable, Optional
 
 from fuzzingbook.Grammars import is_valid_grammar
 
-from helpers import RE_NONTERMINAL, is_nonterminal, nonterminals
-from isla import DerivationTree
-from type_defs import Grammar
+from isla.helpers import RE_NONTERMINAL, is_nonterminal, nonterminals
+from isla.language import DerivationTree
+from isla.type_defs import Grammar
 
 Expansion = str
 Outcome = str

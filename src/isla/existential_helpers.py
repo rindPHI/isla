@@ -7,10 +7,10 @@ from fuzzingbook.Parser import non_canonical
 from grammar_graph.gg import GrammarGraph, NonterminalNode, Node, ChoiceNode
 from orderedset import OrderedSet
 
-import isla
-from helpers import is_prefix, path_iterator, dict_of_lists_to_list_of_dicts, assertions_activated
-from isla import DerivationTree
-from type_defs import Path, CanonicalGrammar, ParseTree
+from isla import language
+from isla.helpers import is_prefix, path_iterator, dict_of_lists_to_list_of_dicts, assertions_activated
+from isla.language import DerivationTree
+from isla.type_defs import Path, CanonicalGrammar, ParseTree
 
 
 def insert_tree(grammar: CanonicalGrammar,
@@ -370,7 +370,7 @@ def shrink_tree(tree: DerivationTree) -> DerivationTree:
 
     contains_constant = False
     for _, subtree in tree.paths():
-        if isinstance(subtree.value, isla.Constant):
+        if isinstance(subtree.value, language.Constant):
             contains_constant = True
             break
 

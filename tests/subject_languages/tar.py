@@ -9,11 +9,11 @@ from typing import Union, List, Optional, Callable
 from fuzzingbook.GrammarFuzzer import tree_to_string
 from fuzzingbook.Grammars import srange
 
-from src.isla import isla
-from src.isla.helpers import delete_unreachable, roundup
-from src.isla.isla import parse_isla
-from src.isla.isla_predicates import just, OCTAL_TO_DEC_PREDICATE, SAME_POSITION_PREDICATE
-from src.isla.type_defs import ParseTree, Grammar
+from isla import language
+from isla.helpers import delete_unreachable, roundup
+from isla.language import parse_isla
+from isla.isla_predicates import just, OCTAL_TO_DEC_PREDICATE, SAME_POSITION_PREDICATE
+from isla.type_defs import ParseTree, Grammar
 
 TAR_GRAMMAR = {
     "<start>": ["<entries><final_entry>"],
@@ -89,10 +89,10 @@ TAR_GRAMMAR = {
 
 def tar_checksum(
         _: Grammar,
-        header: isla.DerivationTree,
-        checksum_tree: isla.DerivationTree) -> isla.SemPredEvalResult:
+        header: language.DerivationTree,
+        checksum_tree: language.DerivationTree) -> language.SemPredEvalResult:
     if not header.is_complete():
-        return isla.SemPredEvalResult(None)
+        return language.SemPredEvalResult(None)
 
     checksum_parser = TarParser(start_symbol="<checksum>")
 
@@ -100,27 +100,27 @@ def tar_checksum(
 
     header_wo_checksum = header.replace_path(
         header.find_node(checksum_tree),
-        isla.DerivationTree.from_parse_tree(space_checksum))
+        language.DerivationTree.from_parse_tree(space_checksum))
 
     header_bytes: List[int] = list(str(header_wo_checksum).encode("ascii"))
 
     checksum_value = str(oct(sum(header_bytes)))[2:].rjust(6, "0") + "\x00 "
-    new_checksum_tree = isla.DerivationTree.from_parse_tree(
+    new_checksum_tree = language.DerivationTree.from_parse_tree(
         list(checksum_parser.parse(checksum_value))[0]).get_subtree((0,))
 
     if str(new_checksum_tree) == str(checksum_tree):
-        return isla.SemPredEvalResult(True)
+        return language.SemPredEvalResult(True)
 
-    return isla.SemPredEvalResult({checksum_tree: new_checksum_tree})
+    return language.SemPredEvalResult({checksum_tree: new_checksum_tree})
 
 
-TAR_CHECKSUM_PREDICATE = isla.SemanticPredicate("tar_checksum", 2, tar_checksum, binds_tree=False)
+TAR_CHECKSUM_PREDICATE = language.SemanticPredicate("tar_checksum", 2, tar_checksum, binds_tree=False)
 
 
 def tar_checksum(
-        header: Union[isla.Variable, isla.DerivationTree],
-        checksum: Union[isla.Variable, isla.DerivationTree]) -> isla.SemanticPredicateFormula:
-    return isla.SemanticPredicateFormula(TAR_CHECKSUM_PREDICATE, header, checksum, order=100)
+        header: Union[language.Variable, language.DerivationTree],
+        checksum: Union[language.Variable, language.DerivationTree]) -> language.SemanticPredicateFormula:
+    return language.SemanticPredicateFormula(TAR_CHECKSUM_PREDICATE, header, checksum, order=100)
 
 
 def mk_tar_parser(start: str) -> Callable[[str], List[ParseTree]]:
@@ -128,29 +128,29 @@ def mk_tar_parser(start: str) -> Callable[[str], List[ParseTree]]:
     return lambda inp: parser.parse(inp)
 
 
-LJUST_CROP_TAR_PREDICATE = isla.SemanticPredicate(
+LJUST_CROP_TAR_PREDICATE = language.SemanticPredicate(
     "ljust_crop_tar", 3,
     lambda grammar, tree, width, fillchar: just(True, True, mk_tar_parser, tree, width, fillchar),
     binds_tree=False)
 
-RJUST_CROP_TAR_PREDICATE = isla.SemanticPredicate(
+RJUST_CROP_TAR_PREDICATE = language.SemanticPredicate(
     "rjust_crop_tar", 3,
     lambda grammar, tree, width, fillchar: just(False, True, mk_tar_parser, tree, width, fillchar),
     binds_tree=False)
 
 
 def ljust_crop_tar(
-        tree: Union[isla.Variable, isla.DerivationTree],
+        tree: Union[language.Variable, language.DerivationTree],
         width: int,
-        fillchar: str) -> isla.SemanticPredicateFormula:
-    return isla.SemanticPredicateFormula(LJUST_CROP_TAR_PREDICATE, tree, width, fillchar)
+        fillchar: str) -> language.SemanticPredicateFormula:
+    return language.SemanticPredicateFormula(LJUST_CROP_TAR_PREDICATE, tree, width, fillchar)
 
 
 def rjust_crop_tar(
-        tree: Union[isla.Variable, isla.DerivationTree],
+        tree: Union[language.Variable, language.DerivationTree],
         width: int,
-        fillchar: str) -> isla.SemanticPredicateFormula:
-    return isla.SemanticPredicateFormula(RJUST_CROP_TAR_PREDICATE, tree, width, fillchar)
+        fillchar: str) -> language.SemanticPredicateFormula:
+    return language.SemanticPredicateFormula(RJUST_CROP_TAR_PREDICATE, tree, width, fillchar)
 
 
 octal_conv_grammar = copy.deepcopy(TAR_GRAMMAR)
@@ -163,9 +163,9 @@ delete_unreachable(octal_conv_grammar)
 
 
 def octal_to_decimal_tar(
-        octal: Union[isla.Variable, isla.DerivationTree],
-        decimal: Union[isla.Variable, isla.DerivationTree]) -> isla.SemanticPredicateFormula:
-    return isla.SemanticPredicateFormula(
+        octal: Union[language.Variable, language.DerivationTree],
+        decimal: Union[language.Variable, language.DerivationTree]) -> language.SemanticPredicateFormula:
+    return language.SemanticPredicateFormula(
         OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"), octal, decimal)
 
 
@@ -736,7 +736,7 @@ class TarParser:
         return result
 
 
-def extract_tar(tree: isla.DerivationTree) -> Union[bool, str]:
+def extract_tar(tree: language.DerivationTree) -> Union[bool, str]:
     with tempfile.NamedTemporaryFile(suffix=".tar") as outfile:
         outfile.write(str(tree).encode())
         outfile.flush()

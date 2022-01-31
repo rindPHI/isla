@@ -9,30 +9,30 @@ from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
 from orderedset import OrderedSet
 
-import src.isla.isla_shortcuts as sc
-from src.isla import isla
-from src.isla.helpers import delete_unreachable, tree_to_string
-from src.isla.isla import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
+import isla.isla_shortcuts as sc
+from isla import language
+from isla.helpers import delete_unreachable, tree_to_string
+from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, IN_TREE_PREDICATE, \
+    SAME_POSITION_PREDICATE
+from isla.isla_predicates import count, COUNT_PREDICATE
+from isla.language import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
     DerivationTree, convert_to_dnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
     matches_for_quantified_formula, QuantifiedFormula, DummyVariable, unparse_isla, parse_isla
-from src.isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, IN_TREE_PREDICATE, \
-    SAME_POSITION_PREDICATE
-from src.isla.isla_predicates import count, COUNT_PREDICATE
-from tests.subject_languages import rest, scriptsizec
-from tests.subject_languages import tinyc, tar
-from tests.subject_languages.csv import CSV_GRAMMAR, CSV_COLNO_PROPERTY, CSV_HEADERBODY_GRAMMAR
-from tests.subject_languages.scriptsizec import SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT, SCRIPTSIZE_C_NO_REDEF_TEXT
-from tests.subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, validate_xml, \
+from subject_languages import rest, scriptsizec
+from subject_languages import tar
+from subject_languages.csv import CSV_GRAMMAR, CSV_COLNO_PROPERTY, CSV_HEADERBODY_GRAMMAR
+from subject_languages.scriptsizec import SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT, SCRIPTSIZE_C_NO_REDEF_TEXT
+from subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, validate_xml, \
     xml_no_attr_redef_constraint, XML_GRAMMAR, XML_NAMESPACE_CONSTRAINT
-from tests.test_data import LANG_GRAMMAR, eval_lang
-from tests.test_helpers import parse
+from test_data import LANG_GRAMMAR, eval_lang
+from test_helpers import parse
 
 
 def path_to_string(p) -> str:
     return " ".join([f'"{n.symbol}" ({n.id})' if isinstance(n, gg.TerminalNode) else n.symbol for n in p])
 
 
-class TestISLa(unittest.TestCase):
+class TestCore(unittest.TestCase):
     def test_wellformed(self):
         prog = Constant("$prog", "<start>")
         lhs_1 = BoundVariable("$lhs_1", "<var>")
@@ -240,14 +240,6 @@ class TestISLa(unittest.TestCase):
         match = bind_expr.match(tree, LANG_GRAMMAR)
         self.assertFalse(match)
 
-    def test_match_tinyc_assignment(self):
-        mgr = VariableManager(tinyc.TINYC_GRAMMAR)
-        bind_expr = mgr.bv("$id_2", "<id>") + " = <expr>;"
-        tree = DerivationTree.from_parse_tree(
-            ('<statement>', [('<id>', [('c', [])]), (' = ', []), ('<expr>', None), (';', [])]))
-        match = bind_expr.match(tree, tinyc.TINYC_GRAMMAR)
-        self.assertTrue(match)
-
     def test_use_constraint_as_filter(self):
         lhs_1 = BoundVariable("$lhs_1", "<var>")
         lhs_2 = BoundVariable("$lhs_2", "<var>")
@@ -321,11 +313,11 @@ class TestISLa(unittest.TestCase):
 
     def test_dnf_conversion(self):
         a = Constant("$a", "<var>")
-        pred = isla.StructuralPredicate("pred", 1, lambda arg: True)
-        w = isla.StructuralPredicateFormula(pred, "w")
-        x = isla.StructuralPredicateFormula(pred, "x")
-        y = isla.StructuralPredicateFormula(pred, "y")
-        z = isla.StructuralPredicateFormula(pred, "z")
+        pred = language.StructuralPredicate("pred", 1, lambda arg: True)
+        w = language.StructuralPredicateFormula(pred, "w")
+        x = language.StructuralPredicateFormula(pred, "x")
+        y = language.StructuralPredicateFormula(pred, "y")
+        z = language.StructuralPredicateFormula(pred, "z")
 
         formula = (w | x) & (y | z)
         self.assertEqual((w & y) | (w & z) | (x & y) | (x & z), convert_to_dnf(formula))
@@ -473,24 +465,24 @@ class TestISLa(unittest.TestCase):
                             DerivationTree('<statements>', None, id=103)), id=49)), id=50),
                     DerivationTree('}', (), id=46)), id=47),), id=43),), id=132)
 
-        formula = isla.ExistsFormula(
+        formula = language.ExistsFormula(
             BoundVariable("decl", "<declaration>"),
             in_inst,
-            isla.ConjunctiveFormula(
-                isla.ConjunctiveFormula(
-                    isla.StructuralPredicateFormula(
+            language.ConjunctiveFormula(
+                language.ConjunctiveFormula(
+                    language.StructuralPredicateFormula(
                         LEVEL_PREDICATE,
                         "GE",
                         "<block>",
                         BoundVariable("decl", "<declaration>"),
                         in_inst.find_node(2222)
                     ),
-                    isla.StructuralPredicateFormula(
+                    language.StructuralPredicateFormula(
                         BEFORE_PREDICATE,
                         BoundVariable("decl", "<declaration>"),
                         in_inst.find_node(2222)
                     )),
-                isla.SMTFormula(
+                language.SMTFormula(
                     Constant("use_id", "<id>").to_smt() == BoundVariable("def_id", "<id>").to_smt(),
                     BoundVariable("def_id", "<id>"),
                     instantiated_variables=OrderedSet([BoundVariable("use_id", "<id>")]),
@@ -502,7 +494,7 @@ class TestISLa(unittest.TestCase):
                 ";"))
 
         assignments = matches_for_quantified_formula(
-            cast(isla.QuantifiedFormula, formula),
+            cast(language.QuantifiedFormula, formula),
             scriptsizec.SCRIPTSIZE_C_GRAMMAR,
             in_inst,
             {})
@@ -535,7 +527,7 @@ class TestISLa(unittest.TestCase):
 
     def test_xml_with_prefixes(self):
         inp = '<a xmlns:ns="salami"><ns:asdf>asdf</ns:asdf></a>'
-        tree = isla.DerivationTree.from_parse_tree(
+        tree = language.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert validate_xml(tree)
 
@@ -546,7 +538,7 @@ class TestISLa(unittest.TestCase):
             structural_predicates={IN_TREE_PREDICATE}))
 
         inp = '<a xmlns:ns="salami" xmlns:ns1="toast"><ns:asdf ns1:asdf="asdf">asdf</ns:asdf></a>'
-        tree = isla.DerivationTree.from_parse_tree(
+        tree = language.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert validate_xml(tree)
 
@@ -557,7 +549,7 @@ class TestISLa(unittest.TestCase):
             structural_predicates={IN_TREE_PREDICATE}))
 
         inp = '<a xmlns:ons="salami"><ns:asdf>asdf</ns:asdf></a>'
-        tree = isla.DerivationTree.from_parse_tree(
+        tree = language.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert not validate_xml(tree)
 
@@ -568,7 +560,7 @@ class TestISLa(unittest.TestCase):
             structural_predicates={IN_TREE_PREDICATE}))
 
         inp = '<xmlns:S47 s1="mr"/>'
-        tree = isla.DerivationTree.from_parse_tree(
+        tree = language.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert not validate_xml(tree)
 
@@ -602,7 +594,7 @@ class TestISLa(unittest.TestCase):
 
     def test_xml_attr_redefs(self):
         inp = '<a b="..." c="...">asdf</a>'
-        tree = isla.DerivationTree.from_parse_tree(
+        tree = language.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert validate_xml(tree)
 
@@ -615,7 +607,7 @@ class TestISLa(unittest.TestCase):
                 SAME_POSITION_PREDICATE}))
 
         inp = '<a b="..." b="...">asdf</a>'
-        tree = isla.DerivationTree.from_parse_tree(
+        tree = language.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert not validate_xml(tree)
 
@@ -628,7 +620,7 @@ class TestISLa(unittest.TestCase):
                 SAME_POSITION_PREDICATE}))
 
         inp = '<x xmlns:ns="..."><a ns:b="..." ns:c="..."/></x>'
-        tree = isla.DerivationTree.from_parse_tree(
+        tree = language.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert validate_xml(tree)
 
@@ -641,7 +633,7 @@ class TestISLa(unittest.TestCase):
                 SAME_POSITION_PREDICATE}))
 
         inp = '<x xmlns:ns="..."><a ns:b="..." ns:b="..."/></x>'
-        tree = isla.DerivationTree.from_parse_tree(
+        tree = language.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert not validate_xml(tree)
 

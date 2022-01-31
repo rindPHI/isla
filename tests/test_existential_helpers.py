@@ -5,12 +5,12 @@ from fuzzingbook.Grammars import JSON_GRAMMAR
 from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph.gg import GrammarGraph
 
-from src.isla.existential_helpers import insert_tree, wrap_in_tree_starting_in, insert_trees
-from src.isla.isla import DerivationTree
-from tests.subject_languages import tinyc, scriptsizec
-from tests.subject_languages.xml_lang import XML_GRAMMAR, XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
-from tests.test_data import LANG_GRAMMAR
-from tests.test_helpers import parse
+from isla.existential_helpers import insert_tree, wrap_in_tree_starting_in, insert_trees
+from isla.language import DerivationTree
+from subject_languages import scriptsizec
+from subject_languages.xml_lang import XML_GRAMMAR, XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
+from test_data import LANG_GRAMMAR
+from test_helpers import parse
 
 
 class TestExistentialHelpers(unittest.TestCase):
@@ -194,13 +194,6 @@ class TestExistentialHelpers(unittest.TestCase):
         self.assertIn('<assgn> ; <var> := <var>', result_trees_str)
 
         print(result_trees_str)
-
-    def test_wrap_tinyc_assignment(self):
-        tree = DerivationTree.from_parse_tree(
-            ('<expr>', [('<id>', None), ('<mwss>', None), ('=', []), ('<mwss>', None), ('<expr>', None)]))
-        result = wrap_in_tree_starting_in(
-            "<term>", tree, tinyc.TINYC_GRAMMAR, GrammarGraph.from_grammar(tinyc.TINYC_GRAMMAR))
-        self.assertTrue(result.find_node(tree))
 
     def test_insert_xml_1(self):
         tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse("<b>asdf</b>"))[0])
