@@ -15,10 +15,10 @@ from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
 from isla.language import VariablesCollector, parse_isla
 from isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
     get_quantifier_chains
-from subject_languages import rest, tar, simple_tar, scriptsizec
-from subject_languages.csv import csv_lint, CSV_GRAMMAR, CSV_HEADERBODY_GRAMMAR
-from subject_languages.tar import extract_tar
-from subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, \
+from isla_formalizations import rest, tar, simple_tar, scriptsizec
+from isla_formalizations.csv import csv_lint, CSV_GRAMMAR, CSV_HEADERBODY_GRAMMAR
+from isla_formalizations.tar import extract_tar
+from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, \
     XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, XML_GRAMMAR, validate_xml, XML_NO_ATTR_REDEF_CONSTRAINT
 from test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR
 
@@ -252,8 +252,8 @@ forall <csv-header> hline in start:
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR,
             custom_test_func=csv_lint,
-            num_solutions=200,
-            max_number_free_instantiations=10,
+            num_solutions=40,
+            max_number_free_instantiations=2,
             max_number_smt_instantiations=2,
             enforce_unique_trees_in_queue=False,
             global_fuzzer=True

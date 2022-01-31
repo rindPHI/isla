@@ -7,8 +7,8 @@ from grammar_graph.gg import GrammarGraph
 
 from isla.existential_helpers import insert_tree, insert_trees
 from isla.language import DerivationTree
-from subject_languages import scriptsizec
-from subject_languages.xml_lang import XML_GRAMMAR, XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
+from isla_formalizations import scriptsizec
+from isla_formalizations.xml_lang import XML_GRAMMAR, XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 from test_data import LANG_GRAMMAR
 from test_helpers import parse
 
@@ -212,8 +212,6 @@ class TestExistentialHelpers(unittest.TestCase):
         self.assertIn("<b><a>asdf<xml-close-tag></b>", str_results)
         self.assertIn("<b>asd<a>f<xml-close-tag></b>", str_results)
 
-    @pytest.mark.skip(reason="This no longer works after we removed the 'context addition' tree insertion method. "
-                             "Keeping this test case in case we want to make it work again.")
     def test_insert_xml_2(self):
         tree = DerivationTree('<start>', (
             DerivationTree('<xml-tree>', (

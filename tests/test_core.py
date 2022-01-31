@@ -18,11 +18,10 @@ from isla.isla_predicates import count, COUNT_PREDICATE
 from isla.language import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
     DerivationTree, convert_to_dnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
     matches_for_quantified_formula, QuantifiedFormula, DummyVariable, unparse_isla, parse_isla
-from subject_languages import rest, scriptsizec
-from subject_languages import tar
-from subject_languages.csv import CSV_GRAMMAR, CSV_COLNO_PROPERTY, CSV_HEADERBODY_GRAMMAR
-from subject_languages.scriptsizec import SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT, SCRIPTSIZE_C_NO_REDEF_TEXT
-from subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, validate_xml, \
+from isla_formalizations import rest, scriptsizec, tar
+from isla_formalizations.csv import CSV_GRAMMAR, CSV_COLNO_PROPERTY, CSV_HEADERBODY_GRAMMAR
+from isla_formalizations.scriptsizec import SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT, SCRIPTSIZE_C_NO_REDEF_TEXT
+from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, validate_xml, \
     xml_no_attr_redef_constraint, XML_GRAMMAR, XML_NAMESPACE_CONSTRAINT
 from test_data import LANG_GRAMMAR, eval_lang
 from test_helpers import parse

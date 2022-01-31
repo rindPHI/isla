@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 
 from isla.language import DerivationTree
 from isla.optimizer import auto_tune_weight_vector
-from tests.subject_languages.xml_lang import XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, \
+from isla_formalizations.xml_lang import XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, \
     XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, XML_NO_ATTR_REDEF_CONSTRAINT
 
 

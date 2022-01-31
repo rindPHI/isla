@@ -6,7 +6,7 @@ from fuzzingbook.GrammarFuzzer import GrammarFuzzer
 
 from isla.helpers import parent_or_child
 from isla.language import DerivationTree
-from subject_languages.xml_lang import XML_GRAMMAR
+from isla_formalizations.xml_lang import XML_GRAMMAR
 from test_data import LANG_GRAMMAR
 from test_helpers import parse
 

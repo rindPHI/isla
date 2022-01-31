@@ -7,7 +7,7 @@ import isla.isla_shortcuts as sc
 from isla import language
 from isla.language import DummyVariable, parse_isla
 from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
-from subject_languages import scriptsizec
+from isla_formalizations import scriptsizec
 from test_data import LANG_GRAMMAR
 
 

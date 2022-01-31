@@ -12,7 +12,7 @@ from fuzzingbook.Parser import EarleyParser
 from isla.language import parse_isla, evaluate, DerivationTree
 from isla.optimizer import auto_tune_weight_vector
 from isla.solver import ISLaSolver, CostSettings
-from subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
+from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 
 XML_GRAMMAR = {
     "<start>": ["<xml-tree>"],
