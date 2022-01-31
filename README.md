@@ -13,6 +13,8 @@ structural predicates are treated by a deterministic, heuristic breath-first sea
 Consider a grammar of a simple assignment programming language (e.g., "x := 1 ; y := x"):
 
 ```python
+import string
+
 LANG_GRAMMAR = {
     "<start>":
         ["<stmt>"],
@@ -31,30 +33,21 @@ An interesting, context-sensitive property for this language is that all right-h
 somewhere before. In ISLa's concrete syntax, this can be expressed as a constraint
 
 ```
-const start: <start>;
-
-vars {
-    lhs_1, var, lhs_2: <var>;
-    rhs_1, rhs_2: <rhs>;
-    assgn_1, assgn_2: <assgn>;
-}
-
-constraint {
-  forall assgn_1="{lhs_1} := {rhs_1}" in start:
-    forall var in rhs_1:
-      exists assgn_2="{lhs_2} := {rhs_2}" in start:
-        (before(assgn_2, assgn_1) and (= lhs_2 var))
-}
+forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
+  forall <var> var in rhs_1:
+    exists <assgn> assgn_2="{<var> lhs_2} := {<rhs> rhs_2}" in start:
+      (before(assgn_2, assgn_1) and (= lhs_2 var))
 ```
 
 or, using the Python API,
 
 ```python
-from isla import isla
+from isla import language
+import isla.isla_shortcuts as sc 
 
-mgr = isla.VariableManager()
+mgr = language.VariableManager()
 
-formula: isla.Formula = mgr.create(sc.forall_bind(
+formula: language.Formula = mgr.create(sc.forall_bind(
     mgr.bv("$lhs_1", "<var>") + " := " + mgr.bv("$rhs_1", "<rhs>"),
     mgr.bv("$assgn_1", "<assgn>"),
     mgr.const("$start", "<start>"),
@@ -76,7 +69,6 @@ The ISLa solver can find satisfying assignments for this formula:
 
 ```python
 from isla.solver import ISLaSolver
-from isla.tests.test_data import LANG_GRAMMAR
 
 solver = ISLaSolver(
     grammar=LANG_GRAMMAR,
@@ -97,13 +89,12 @@ structural and semantic predicate symbols used:
 
 ```python
 from isla.solver import ISLaSolver
-from isla.tests.test_data import LANG_GRAMMAR
 from isla.isla_predicates import BEFORE_PREDICATE
 
 solver = ISLaSolver(
     grammar=LANG_GRAMMAR,
     formula=concrete_syntax_formula,
-    structural_predicates={"before": BEFORE_PREDICATE},
+    structural_predicates={BEFORE_PREDICATE},
     max_number_free_instantiations=10,
     max_number_smt_instantiations=10)
 
@@ -190,6 +181,5 @@ settings.
 To install ISLa globally (not recommended, less well tested), run
 
 ```shell
-pip install -r requirements.txt
-python setup.py install
+python3 -m build
 ```

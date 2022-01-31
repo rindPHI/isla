@@ -1,0 +1,17 @@
+BRAOP=1
+OPTOP=2
+TEXT=3
+NL=4
+BRACL=5
+ID=6
+GT=7
+LT=8
+WS=9
+OPTCL=10
+OPTTXT=11
+'{'=1
+'['=2
+'}'=5
+'>'=7
+'<'=8
+']'=10
