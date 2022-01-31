@@ -1,8 +1,8 @@
 from grammar_graph.gg import GrammarGraph
 
-from src.isla.evaluator import Evaluator
-from src.isla.solver import ISLaSolver, CostSettings, CostWeightVector
-from tests.subject_languages import tar
+from isla.evaluator import Evaluator
+from isla.solver import ISLaSolver, CostSettings, CostWeightVector
+from ..subject_languages import tar
 
 max_number_free_instantiations = 10
 max_number_smt_instantiations = 2

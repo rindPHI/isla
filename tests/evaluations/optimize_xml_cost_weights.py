@@ -2,9 +2,9 @@ import logging
 import random
 import xml.etree.ElementTree as ET
 
-from src.isla.language import DerivationTree
-from src.isla.optimizer import auto_tune_weight_vector
-from tests.subject_languages.xml_lang import XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, \
+from isla.language import DerivationTree
+from isla.optimizer import auto_tune_weight_vector
+from ..subject_languages.xml_lang import XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, \
     XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, XML_NO_ATTR_REDEF_CONSTRAINT
 
 

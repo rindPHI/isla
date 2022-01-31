@@ -1,9 +1,9 @@
 import logging
 import random
 
-from src.isla.language import DerivationTree
-from src.isla.optimizer import auto_tune_weight_vector
-from tests.subject_languages.scriptsizec import SCRIPTSIZE_C_GRAMMAR, compile_scriptsizec_clang, \
+from isla.language import DerivationTree
+from isla.optimizer import auto_tune_weight_vector
+from ..subject_languages.scriptsizec import SCRIPTSIZE_C_GRAMMAR, compile_scriptsizec_clang, \
     SCRIPTSIZE_C_DEF_USE_CONSTR, SCRIPTSIZE_C_NO_REDEF_CONSTR
 
 
