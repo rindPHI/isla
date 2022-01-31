@@ -3,7 +3,7 @@ import random
 
 from isla.language import DerivationTree
 from isla.optimizer import auto_tune_weight_vector
-from ..subject_languages import rest
+from tests.subject_languages import rest
 
 
 def validator(t: DerivationTree) -> bool:

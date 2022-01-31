@@ -2,7 +2,7 @@ from grammar_graph.gg import GrammarGraph
 
 from isla.evaluator import Evaluator
 from isla.solver import ISLaSolver, CostSettings, CostWeightVector
-from ..subject_languages import xml_lang
+from tests.subject_languages import xml_lang
 
 max_number_free_instantiations = 10
 max_number_smt_instantiations = 2
