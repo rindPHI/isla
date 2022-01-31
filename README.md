@@ -94,7 +94,7 @@ from isla.isla_predicates import BEFORE_PREDICATE
 solver = ISLaSolver(
     grammar=LANG_GRAMMAR,
     formula=concrete_syntax_formula,
-    structural_predicates={"before": BEFORE_PREDICATE},
+    structural_predicates={BEFORE_PREDICATE},
     max_number_free_instantiations=10,
     max_number_smt_instantiations=10)
 
