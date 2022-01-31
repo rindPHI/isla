@@ -17,9 +17,9 @@ import pathos.multiprocessing as pmp
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from grammar_graph import gg
 
-import language
-from solver import ISLaSolver
-from type_defs import Grammar
+from isla import language
+from isla.solver import ISLaSolver
+from isla.type_defs import Grammar
 
 logger = logging.getLogger("evaluator")
 

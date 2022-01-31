@@ -9,10 +9,10 @@ from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.Grammars import srange
 from fuzzingbook.Parser import EarleyParser
 
-from src.isla.language import parse_isla, evaluate, DerivationTree
-from src.isla.optimizer import auto_tune_weight_vector
-from src.isla.solver import ISLaSolver, CostSettings
-from tests.subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
+from isla.language import parse_isla, evaluate, DerivationTree
+from isla.optimizer import auto_tune_weight_vector
+from isla.solver import ISLaSolver, CostSettings
+from subject_languages.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 
 XML_GRAMMAR = {
     "<start>": ["<xml-tree>"],

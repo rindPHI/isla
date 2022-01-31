@@ -5,7 +5,7 @@ from fuzzingbook.Grammars import JSON_GRAMMAR
 from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph.gg import GrammarGraph
 
-from isla.existential_helpers import insert_tree, wrap_in_tree_starting_in, insert_trees
+from isla.existential_helpers import insert_tree, insert_trees
 from isla.language import DerivationTree
 from subject_languages import scriptsizec
 from subject_languages.xml_lang import XML_GRAMMAR, XML_GRAMMAR_WITH_NAMESPACE_PREFIXES

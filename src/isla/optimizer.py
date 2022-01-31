@@ -15,11 +15,11 @@ from grammar_graph import gg
 from matplotlib import pyplot as plt, ticker as mtick
 from pathos import multiprocessing as pmp
 
-import language, solver
-from evaluator import logger, generate_inputs
-from helpers import weighted_geometric_mean
-from solver import CostWeightVector, ISLaSolver, CostSettings
-from type_defs import Grammar
+from isla import language, solver
+from isla.evaluator import logger, generate_inputs
+from isla.helpers import weighted_geometric_mean
+from isla.solver import CostWeightVector, ISLaSolver, CostSettings
+from isla.type_defs import Grammar
 
 
 class PerformanceEvaluationResult:
