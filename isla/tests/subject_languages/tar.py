@@ -170,280 +170,123 @@ def octal_to_decimal_tar(
 
 
 file_size_constr = parse_isla("""
-const start: <start>;
-
-vars {
-  file_size: <file_size>;
-  octal_digits: <octal_digits>;
-  decimal: NUM;
-}
-
-constraint {
-  forall file_size="{octal_digits}<SPACE>" in start:
-    exists int decimal:
-      ((>= (str.to.int decimal) 10) and
-      ((<= (str.to.int decimal) 100) and 
-      (octal_to_decimal(octal_digits, decimal) and 
-       rjust_crop_tar(file_size, 12, "0"))))
-}
-""", semantic_predicates={
+forall <file_size> file_size="{<octal_digits> octal_digits}<SPACE>" in start:
+  exists int decimal:
+    ((>= (str.to.int decimal) 10) and
+    ((<= (str.to.int decimal) 100) and 
+    (octal_to_decimal(octal_digits, decimal) and 
+     rjust_crop_tar(file_size, 12, "0"))))
+""", TAR_GRAMMAR, semantic_predicates={
     OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"),
     RJUST_CROP_TAR_PREDICATE})
 
 file_name_length_constraint = parse_isla("""
-const start: <start>;
-
-vars {
-  file_name: <file_name>;
-}
-
-constraint {
-  forall file_name in start:
-    ((> (str.len file_name) 0) and
-     ljust_crop_tar(file_name, 100, "\x00"))
-}
-""", semantic_predicates={LJUST_CROP_TAR_PREDICATE})
+forall <file_name> file_name in start:
+  ((> (str.len file_name) 0) and
+   ljust_crop_tar(file_name, 100, "\x00"))
+""", TAR_GRAMMAR, semantic_predicates={LJUST_CROP_TAR_PREDICATE})
 
 file_mode_length_constraint = parse_isla("""
-const start: <start>;
-
-vars {
-  file_mode: <file_mode>;
-}
-
-constraint {
-  forall file_mode in start:
-    rjust_crop_tar(file_mode, 8, "0")
-}
-""", semantic_predicates={RJUST_CROP_TAR_PREDICATE})
+forall <file_mode> file_mode in start:
+  rjust_crop_tar(file_mode, 8, "0")
+""", TAR_GRAMMAR, semantic_predicates={RJUST_CROP_TAR_PREDICATE})
 
 uid_length_constraint = parse_isla("""
-const start: <start>;
-
-vars {
-  uid: <uid>;
-}
-
-constraint {
-  forall uid in start:
-    rjust_crop_tar(uid, 8, "0")
-}
-""", semantic_predicates={RJUST_CROP_TAR_PREDICATE})
+forall <uid> uid in start:
+  rjust_crop_tar(uid, 8, "0")
+""", TAR_GRAMMAR, semantic_predicates={RJUST_CROP_TAR_PREDICATE})
 
 gid_length_constraint = parse_isla("""
-const start: <start>;
-
-vars {
-  gid: <gid>;
-}
-
-constraint {
-  forall gid in start:
-    rjust_crop_tar(gid, 8, "0")
-}
-""", semantic_predicates={RJUST_CROP_TAR_PREDICATE})
+forall <gid> gid in start:
+  rjust_crop_tar(gid, 8, "0")
+""", TAR_GRAMMAR, semantic_predicates={RJUST_CROP_TAR_PREDICATE})
 
 mod_time_length_constraint = parse_isla("""
-const start: <start>;
-
-vars {
-  mod_time: <mod_time>;
-}
-
-constraint {
-  forall mod_time in start:
-    rjust_crop_tar(mod_time, 12, "0")
-}
-""", semantic_predicates={RJUST_CROP_TAR_PREDICATE})
+forall <mod_time> mod_time in start:
+  rjust_crop_tar(mod_time, 12, "0")
+""", TAR_GRAMMAR, semantic_predicates={RJUST_CROP_TAR_PREDICATE})
 
 checksum_constraint = parse_isla("""
-const start: <start>;
-
-vars {
-  header: <header>;
-  checksum: <checksum>;
-}
-
-constraint {
-  forall header in start:
-    forall checksum in header:
-      tar_checksum(header, checksum)
-}
-""", semantic_predicates={TAR_CHECKSUM_PREDICATE})
+forall <header> header in start:
+  forall <checksum> checksum in header:
+    tar_checksum(header, checksum)
+""", TAR_GRAMMAR, semantic_predicates={TAR_CHECKSUM_PREDICATE})
 
 linked_file_name_length_constraint = parse_isla("""
-const start: <start>;
-
-vars {
-  linked_file_name: <linked_file_name>;
-}
-
-constraint {
-  forall linked_file_name in start:
-    ljust_crop_tar(linked_file_name, 100, "\x00")
-}
-""", semantic_predicates={LJUST_CROP_TAR_PREDICATE})
+forall <linked_file_name> linked_file_name in start:
+  ljust_crop_tar(linked_file_name, 100, "\x00")
+""", TAR_GRAMMAR, semantic_predicates={LJUST_CROP_TAR_PREDICATE})
 
 uname_length_constraint = parse_isla("""
-const start: <start>;
-
-vars {
-  uname: <uname>;
-}
-
-constraint {
-  forall uname in start:
-    ljust_crop_tar(uname, 32, "\x00")
-}
-""", semantic_predicates={LJUST_CROP_TAR_PREDICATE})
+forall <uname> uname in start:
+  ljust_crop_tar(uname, 32, "\x00")
+""", TAR_GRAMMAR, semantic_predicates={LJUST_CROP_TAR_PREDICATE})
 
 gname_length_constraint = parse_isla("""
-const start: <start>;
-
-vars {
-  gname: <gname>;
-}
-
-constraint {
-  forall gname in start:
-    ljust_crop_tar(gname, 32, "\x00")
-}
-""", semantic_predicates={LJUST_CROP_TAR_PREDICATE})
+forall <gname> gname in start:
+  ljust_crop_tar(gname, 32, "\x00")
+""", TAR_GRAMMAR, semantic_predicates={LJUST_CROP_TAR_PREDICATE})
 
 dev_maj_num_length_constraint = parse_isla("""
-const start: <start>;
-
-vars {
-  dev_maj_num: <dev_maj_num>;
-}
-
-constraint {
-  forall dev_maj_num in start:
-    rjust_crop_tar(dev_maj_num, 8, "0")
-}
-""", semantic_predicates={RJUST_CROP_TAR_PREDICATE})
+forall <dev_maj_num> dev_maj_num in start:
+  rjust_crop_tar(dev_maj_num, 8, "0")
+""", TAR_GRAMMAR, semantic_predicates={RJUST_CROP_TAR_PREDICATE})
 
 dev_min_num_length_constraint = parse_isla("""
-const start: <start>;
-
-vars {
-  dev_min_num: <dev_min_num>;
-}
-
-constraint {
-  forall dev_min_num in start:
-    rjust_crop_tar(dev_min_num, 8, "0")
-}
-""", semantic_predicates={RJUST_CROP_TAR_PREDICATE})
+forall <dev_min_num> dev_min_num in start:
+  rjust_crop_tar(dev_min_num, 8, "0")
+""", TAR_GRAMMAR, semantic_predicates={RJUST_CROP_TAR_PREDICATE})
 
 prefix_length_constraint = parse_isla("""
-const start: <start>;
-
-vars {
-  prefix: <file_name_prefix>;
-}
-
-constraint {
-  forall prefix in start:
-    ljust_crop_tar(prefix, 155, "\x00")
-}
-""", semantic_predicates={LJUST_CROP_TAR_PREDICATE})
+forall <file_name_prefix> prefix in start:
+  ljust_crop_tar(prefix, 155, "\x00")
+""", TAR_GRAMMAR, semantic_predicates={LJUST_CROP_TAR_PREDICATE})
 
 header_padding_length_constraint = parse_isla("""
-const start: <start>;
-
-vars {
-  padding: <header_padding>;
-}
-
-constraint {
-  forall padding in start:
-    ljust_crop_tar(padding, 12, "\x00")
-}
-""", semantic_predicates={LJUST_CROP_TAR_PREDICATE})
+forall <header_padding> padding in start:
+  ljust_crop_tar(padding, 12, "\x00")
+""", TAR_GRAMMAR, semantic_predicates={LJUST_CROP_TAR_PREDICATE})
 
 content_length_constraint = parse_isla("""
-const start: <start>;
-
-vars {
-  content: <content>;
-}
-
-constraint {
-  forall content in start:
-    ljust_crop_tar(content, 512, "\x00")
-}
-""", semantic_predicates={LJUST_CROP_TAR_PREDICATE})
+forall <content> content in start:
+  ljust_crop_tar(content, 512, "\x00")
+""", TAR_GRAMMAR, semantic_predicates={LJUST_CROP_TAR_PREDICATE})
 
 content_size_constr = parse_isla("""
-const start: <start>;
-
-vars {
-  entry: <entry>;
-  content: <content>;
-  content_chars: <maybe_characters>;
-  characters: <characters>;
-  file_size: <file_size>;
-  octal_digits: <octal_digits>;
-  dec_digits: NUM;
-}
-
-constraint {
-  forall entry in start:
-    forall content="{content_chars}<maybe_nuls>" in entry:
-      forall characters in content_chars:
-        forall file_size="{octal_digits}<SPACE>" in entry:
-          exists int dec_digits:
-            ((>= (str.to.int dec_digits) 10) and 
-            ((<= (str.to.int dec_digits) 100) and 
-            (octal_to_decimal(octal_digits, dec_digits) and 
-             ljust_crop_tar(characters, dec_digits, " "))))
-}
-""", semantic_predicates={
+forall <entry> entry in start:
+  forall <content> content="{<maybe_characters> content_chars}<maybe_nuls>" in entry:
+    forall <characters> characters in content_chars:
+      forall <file_size> file_size="{<octal_digits> octal_digits}<SPACE>" in entry:
+        exists int dec_digits:
+          ((>= (str.to.int dec_digits) 10) and 
+          ((<= (str.to.int dec_digits) 100) and 
+          (octal_to_decimal(octal_digits, dec_digits) and 
+           ljust_crop_tar(characters, dec_digits, " "))))
+""", TAR_GRAMMAR, semantic_predicates={
     OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"),
     LJUST_CROP_TAR_PREDICATE})
 
 final_entry_length_constraint = parse_isla("""
-const start: <start>;
-
-vars {
-  final: <final_entry>;
-}
-
-constraint {
-  forall final in start:
-    ljust_crop_tar(final, 1024, "\x00")
-}
-""", semantic_predicates={LJUST_CROP_TAR_PREDICATE})
+forall <final_entry> final in start:
+  ljust_crop_tar(final, 1024, "\x00")
+""", TAR_GRAMMAR, semantic_predicates={LJUST_CROP_TAR_PREDICATE})
 
 link_constraint = parse_isla("""
-const start: <start>;
-
-vars {
-  entry, linked_entry: <entry>;
-  typeflag: <typeflag>;
-  linked_file_name_field: <linked_file_name>;
-  linked_file_name, file_name, entry_file_name: <file_name>;
-  linked_file_name_str, file_name_str, entry_file_name_str: <file_name_str>;
-}
-
-constraint {
-  forall entry in start:
-    forall typeflag in entry:
-      ((= typeflag "0") or 
-        ((= typeflag "2") and 
-        (forall linked_file_name_field="<nuls>" in entry:
-           false 
-         and 
-         forall linked_file_name_field="{linked_file_name_str}<maybe_nuls>" in entry:
-           exists linked_entry in start:
-             (not same_position(entry, linked_entry) and 
-              forall file_name="{file_name_str}<maybe_nuls>" in linked_entry:
-                ((= linked_file_name_str file_name_str) and
-                 forall entry_file_name="{entry_file_name_str}<maybe_nuls>" in entry:
-                   not (= file_name_str entry_file_name_str))))))
-}
-""", structural_predicates={SAME_POSITION_PREDICATE})
+forall <entry> entry in start:
+  forall <typeflag> typeflag in entry:
+    ((= typeflag "0") or 
+      ((= typeflag "2") and 
+      (forall <linked_file_name> linked_file_name_field_1="<nuls>" in entry:
+         false 
+       and 
+       forall <file_name> linked_file_name_field_2="{<file_name_str> linked_file_name_str}<maybe_nuls>" in entry:
+         exists <entry> linked_entry in start:
+           (not same_position(entry, linked_entry) and 
+            forall <file_name> file_name="{<file_name_str> file_name_str}<maybe_nuls>" in linked_entry:
+              ((= linked_file_name_str file_name_str) and
+               forall <file_name> entry_file_name="{<file_name_str> entry_file_name_str}<maybe_nuls>" in entry:
+                 not (= file_name_str entry_file_name_str))))))
+""", TAR_GRAMMAR, structural_predicates={SAME_POSITION_PREDICATE})
 
 TAR_CONSTRAINTS = (
         link_constraint &

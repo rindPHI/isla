@@ -242,7 +242,7 @@ class ISLaSolver:
         self.global_fuzzer = global_fuzzer
 
         if isinstance(formula, str):
-            formula = parse_isla(formula, structural_predicates, semantic_predicates)
+            formula = parse_isla(formula, grammar, structural_predicates, semantic_predicates)
 
         self.formula = ensure_unique_bound_variables(formula)
         top_constants: Set[isla.Constant] = set(

@@ -6,7 +6,9 @@ import z3
 import isla.isla_shortcuts as sc
 from isla import isla
 from isla.isla import DummyVariable, parse_isla
-from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
+from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, IN_TREE_PREDICATE
+from isla.tests.subject_languages import scriptsizec
+from isla.tests.subject_languages.xml_lang import XML_GRAMMAR, XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 from isla.tests.test_data import LANG_GRAMMAR
 
 
@@ -26,19 +28,11 @@ class TestConcreteSyntax(unittest.TestCase):
 
         DummyVariable.cnt = 0
         concr_syntax_formula = """
-             const start: <start>;
+forall <var> var_1 in start:
+    forall <var> var_2 in start:
+        (= var_1 var_2)"""
 
-             vars {
-                 var_1, var_2: <var>;
-             }
-
-             constraint {
-               forall var_1 in start:
-                   forall var_2 in start:
-                       (= var_1 var_2)
-             }"""
-
-        parsed_formula = parse_isla(concr_syntax_formula)
+        parsed_formula = parse_isla(concr_syntax_formula, LANG_GRAMMAR)
 
         self.assertEqual(python_formula, parsed_formula)
 
@@ -67,46 +61,28 @@ class TestConcreteSyntax(unittest.TestCase):
 
         DummyVariable.cnt = 0
         concr_syntax_formula = """
-             const start: <start>;
+forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
+  forall <var> var in rhs_1:
+    exists <assgn> assgn_2="{<var> lhs_2} := {<rhs> rhs_2}" in start:
+      (before(assgn_2, assgn_1) and (= lhs_2 var))"""
 
-             vars {
-                 lhs_1, var, lhs_2: <var>;
-                 rhs_1, rhs_2: <rhs>;
-                 assgn_1, assgn_2: <assgn>;
-             }
-
-             constraint {
-               forall assgn_1="{lhs_1} := {rhs_1}" in start:
-                 forall var in rhs_1:
-                   exists assgn_2="{lhs_2} := {rhs_2}" in start:
-                     (before(assgn_2, assgn_1) and (= lhs_2 var))
-             }"""
-
-        parsed_formula = parse_isla(concr_syntax_formula, structural_predicates={BEFORE_PREDICATE})
+        parsed_formula = parse_isla(concr_syntax_formula, LANG_GRAMMAR, structural_predicates={BEFORE_PREDICATE})
 
         self.assertEqual(python_formula, parsed_formula)
 
     def test_parse_conditional_bind_expression(self):
         constr = """
-const start: <start>;
+forall <expr> expr in start:
+  forall <id> use_id in expr:
+    exists <declaration> decl="int {<id> def_id}[ = <expr>];" in start:
+      (level("GE", "<block>", decl, expr) and
+      (before(decl, expr) and
+      (= use_id def_id)))"""
 
-vars {
-  expr: <expr>;
-  def_id, use_id: <id>;
-  decl: <declaration>;
-}
-
-constraint {
-  forall expr in start:
-    forall use_id in expr:
-      exists decl="int {def_id}[ = <expr>];" in start:
-        (level("GE", "<block>", decl, expr) and 
-        (before(decl, expr) and 
-        (= use_id def_id)))
-}
-"""
-
-        parsed_formula = parse_isla(constr, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
+        parsed_formula = parse_isla(
+            constr,
+            scriptsizec.SCRIPTSIZE_C_GRAMMAR,
+            structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
         self.assertTrue(
             any(isinstance(e, list)
                 for e in

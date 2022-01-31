@@ -26,42 +26,6 @@ class islaListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by islaParser#varDecls.
-    def enterVarDecls(self, ctx:islaParser.VarDeclsContext):
-        pass
-
-    # Exit a parse tree produced by islaParser#varDecls.
-    def exitVarDecls(self, ctx:islaParser.VarDeclsContext):
-        pass
-
-
-    # Enter a parse tree produced by islaParser#varDecl.
-    def enterVarDecl(self, ctx:islaParser.VarDeclContext):
-        pass
-
-    # Exit a parse tree produced by islaParser#varDecl.
-    def exitVarDecl(self, ctx:islaParser.VarDeclContext):
-        pass
-
-
-    # Enter a parse tree produced by islaParser#varType.
-    def enterVarType(self, ctx:islaParser.VarTypeContext):
-        pass
-
-    # Exit a parse tree produced by islaParser#varType.
-    def exitVarType(self, ctx:islaParser.VarTypeContext):
-        pass
-
-
-    # Enter a parse tree produced by islaParser#constraint.
-    def enterConstraint(self, ctx:islaParser.ConstraintContext):
-        pass
-
-    # Exit a parse tree produced by islaParser#constraint.
-    def exitConstraint(self, ctx:islaParser.ConstraintContext):
-        pass
-
-
     # Enter a parse tree produced by islaParser#ExistsMexpr.
     def enterExistsMexpr(self, ctx:islaParser.ExistsMexprContext):
         pass
@@ -194,6 +158,15 @@ class islaListener(ParseTreeListener):
 
     # Exit a parse tree produced by islaParser#ForallInt.
     def exitForallInt(self, ctx:islaParser.ForallIntContext):
+        pass
+
+
+    # Enter a parse tree produced by islaParser#varType.
+    def enterVarType(self, ctx:islaParser.VarTypeContext):
+        pass
+
+    # Exit a parse tree produced by islaParser#varType.
+    def exitVarType(self, ctx:islaParser.VarTypeContext):
         pass
 
 

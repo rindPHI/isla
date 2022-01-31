@@ -44,3 +44,12 @@ class MexprParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by MexprParser#varType.
+    def enterVarType(self, ctx:MexprParser.VarTypeContext):
+        pass
+
+    # Exit a parse tree produced by MexprParser#varType.
+    def exitVarType(self, ctx:MexprParser.VarTypeContext):
+        pass
+
+

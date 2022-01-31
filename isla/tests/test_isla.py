@@ -655,23 +655,13 @@ class TestISLa(unittest.TestCase):
 
     def test_csv_property(self):
         property = """
-const start: <start>;
-
-vars {
-  colno: NUM;
-  hline: <csv-header>;
-  line: <csv-record>;
-}
-
-constraint {
-  forall hline in start:
-    exists int colno:
-      ((>= (str.to.int colno) 3) and 
-      ((<= (str.to.int colno) 5) and 
-       (count(hline, "<raw-field>", colno) and 
-       forall line in start:
-         count(line, "<raw-field>", colno))))
-}
+forall <csv-header> hline in start:
+  exists int colno:
+    ((>= (str.to.int colno) 3) and 
+    ((<= (str.to.int colno) 5) and 
+     (count(hline, "<raw-field>", colno) and 
+     forall <csv-record> line in start:
+       count(line, "<raw-field>", colno))))
 """
         valid_test_input = """a;b;c
 XYZ;\" asdf \";ABC
@@ -697,25 +687,14 @@ XYZ;\" asdf \"
 
     def test_more_complex_csv_property(self):
         str_property = """
-const start: <start>;
-
-vars {
-  colno_1, colno_2: NUM;
-  hline: <csv-header>;
-  line: <csv-record>;
-}
-
-constraint {
-  exists int colno_1:
-    forall hline in start:
-      (count(hline, "<raw-field>", colno_1) and 
-        forall int colno_2:
-          forall line in start:
-            (count(line, "<raw-field>", colno_2) implies
-             (= colno_1 colno_2)))
-}
-"""
-        property = parse_isla(str_property, semantic_predicates={COUNT_PREDICATE})
+exists int colno_1:
+  forall <csv-header> hline in start:
+    (count(hline, "<raw-field>", colno_1) and 
+      forall int colno_2:
+        forall <csv-record> line in start:
+          (count(line, "<raw-field>", colno_2) implies
+           (= colno_1 colno_2)))"""
+        property = parse_isla(str_property, CSV_GRAMMAR, semantic_predicates={COUNT_PREDICATE})
         negated_property = -property
 
         valid_test_input = """a;b;c
@@ -792,31 +771,19 @@ constraint {
                         ('<csv-record-1>', [('', [])])])])])])
 
         property = """
-const start: <start>;
+forall <csv-header> header in start:
+  forall <csv-body> body in start:
+    forall <csv-record> hline in header:
+      exists int colno_1:
+        ((>= (str.to.int colno_1) 3) and 
+         (<= (str.to.int colno_1) 5) and
+         count(hline, "<raw-field>", colno_1) and 
+         forall <csv-record> line in body:
+           forall int colno_2:
+             ((= colno_1 colno_2) implies
+              count(line, "<raw-field>", colno_2)))"""
 
-vars {
-  colno_1, colno_2: NUM;
-  header: <csv-header>;
-  body: <csv-body>;
-  hline, line: <csv-record>;
-}
-
-constraint {
-  forall header in start:
-    forall body in start:
-      forall hline in header:
-        exists int colno_1:
-          ((>= (str.to.int colno_1) 3) and 
-           (<= (str.to.int colno_1) 5) and
-           count(hline, "<raw-field>", colno_1) and 
-           forall line in body:
-             forall int colno_2:
-               ((= colno_1 colno_2) implies
-                count(line, "<raw-field>", colno_2)))
-}
-"""
-
-        negated_property = -parse_isla(property, semantic_predicates={COUNT_PREDICATE})
+        negated_property = -parse_isla(property, CSV_HEADERBODY_GRAMMAR, semantic_predicates={COUNT_PREDICATE})
 
         self.assertTrue(evaluate(
             negated_property,
@@ -855,41 +822,21 @@ constraint {
         tree = DerivationTree.from_parse_tree(
             list(EarleyParser(LANG_GRAMMAR).parse("c := 6 ; x := c ; c := c ; c := c ; c := 9 ; x := c"))[0])
         formula = """
-const start: <start>;
-
-vars {
-    lhs_1, var, lhs_2: <var>;
-    rhs_1, rhs_2: <rhs>;
-    assgn_1, assgn_2: <assgn>;
-}
-
-constraint {
-  forall assgn_1="{lhs_1} := {rhs_1}" in start:
-    forall var in rhs_1:
-      exists assgn_2="{lhs_2} := {rhs_2}" in start:
-        (before(assgn_2, assgn_1) and (= lhs_2 var))
-}
+forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
+  forall <var> var in rhs_1:
+    exists <assgn> assgn_2="{<var> lhs_2} := {<rhs> rhs_2}" in start:
+      (before(assgn_2, assgn_1) and (= lhs_2 var))
 """
         self.assertTrue(evaluate(formula, tree, structural_predicates={BEFORE_PREDICATE}, grammar=LANG_GRAMMAR))
 
     def test_scriptsize_c_defuse_property(self):
         constr = """
-const start: <start>;
-
-vars {
-  expr: <expr>;
-  def_id, use_id: <id>;
-  decl: <declaration>;
-}
-
-constraint {
-  forall expr in start:
-    forall use_id in expr:
-      exists decl="int {def_id}[ = <expr>];" in start:
-        (level("GE", "<block>", decl, expr) and 
-        (before(decl, expr) and 
-        (= use_id def_id)))
-}
+forall <expr> expr in start:
+  forall <id> use_id in expr:
+    exists <declaration> decl="int {<id> def_id}[ = <expr>];" in start:
+      (level("GE", "<block>", decl, expr) and 
+      (before(decl, expr) and 
+      (= use_id def_id)))
 """
         inp = "{int c;c;}"
         tree = DerivationTree.from_parse_tree(list(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp))[0])
@@ -1020,25 +967,32 @@ constraint {
 
     def test_unparse_isla(self):
         unparsed = unparse_isla(CSV_COLNO_PROPERTY)
-        self.assertEqual(CSV_COLNO_PROPERTY, parse_isla(unparsed, semantic_predicates={COUNT_PREDICATE}))
+        self.assertEqual(CSV_COLNO_PROPERTY, parse_isla(unparsed, CSV_GRAMMAR, semantic_predicates={COUNT_PREDICATE}))
 
         DummyVariable.cnt = 0
         scriptsize_c_def_use_constr = parse_isla(
-            SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
+            SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT,
+            scriptsizec.SCRIPTSIZE_C_GRAMMAR,
+            structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
         unparsed = unparse_isla(scriptsize_c_def_use_constr)
+
         DummyVariable.cnt = 0
         self.assertEqual(
             scriptsize_c_def_use_constr,
-            parse_isla(unparsed, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE}))
+            parse_isla(
+                unparsed,
+                scriptsizec.SCRIPTSIZE_C_GRAMMAR,
+                structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE}))
 
         DummyVariable.cnt = 0
         scriptsize_c_no_redef_constr = parse_isla(
-            SCRIPTSIZE_C_NO_REDEF_TEXT, structural_predicates={SAME_POSITION_PREDICATE})
+            SCRIPTSIZE_C_NO_REDEF_TEXT, scriptsizec.SCRIPTSIZE_C_GRAMMAR,
+            structural_predicates={SAME_POSITION_PREDICATE})
         unparsed = unparse_isla(scriptsize_c_no_redef_constr)
         DummyVariable.cnt = 0
         self.assertEqual(
             scriptsize_c_no_redef_constr,
-            parse_isla(unparsed, structural_predicates={SAME_POSITION_PREDICATE}))
+            parse_isla(unparsed, scriptsizec.SCRIPTSIZE_C_GRAMMAR, structural_predicates={SAME_POSITION_PREDICATE}))
 
 
 if __name__ == '__main__':

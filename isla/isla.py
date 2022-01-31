@@ -12,7 +12,8 @@ from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator
 
 import antlr4
 import z3
-from antlr4 import InputStream
+from antlr4 import InputStream, RuleContext
+from antlr4.Token import CommonToken
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
 from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
@@ -894,7 +895,8 @@ class BindExpression:
             lambda e: f'{str(e)}'
             if isinstance(e, str)
             else ("[" + "".join(map(str, e)) + "]") if isinstance(e, list)
-            else (f"{{{str(e)}}}" if not isinstance(e, DummyVariable) else str(e)), self.bound_elements))
+            else (f"{{{e.n_type} {str(e)}}}" if not isinstance(e, DummyVariable)
+                  else str(e)), self.bound_elements))
 
     def __hash__(self):
         return hash(tuple([tuple(e) if isinstance(e, list) else e for e in self.bound_elements]))
@@ -2421,7 +2423,7 @@ def evaluate(
         structural_predicates: Optional[Set[StructuralPredicate]] = None,
         semantic_predicates: Optional[Set[SemanticPredicate]] = None) -> ThreeValuedTruth:
     if isinstance(formula, str):
-        formula = parse_isla(formula, structural_predicates, semantic_predicates)
+        formula = parse_isla(formula, grammar, structural_predicates, semantic_predicates)
 
     top_level_constants = {
         c for c in VariablesCollector.collect(formula)
@@ -2885,6 +2887,12 @@ class VariableManager:
         assert constr is not None
         return self.placeholders.setdefault(name, constr(name, None))
 
+    def var_declared(self, name: str) -> bool:
+        return name in self.variables.keys()
+
+    def all_var_names(self) -> Set[str]:
+        return set(self.variables.keys()) | set(self.placeholders.keys())
+
     def const(self, name: str, n_type: Optional[str] = None) -> Constant:
         return cast(Constant, self.__var(name, n_type, Constant))
 
@@ -2901,8 +2909,13 @@ class VariableManager:
         return SMTFormula(formula, *isla_variables)
 
     def create(self, formula: Formula) -> Formula:
-        assert all(any(var_name == ph_name for var_name in self.variables)
-                   for ph_name in self.placeholders)
+        undeclared_variables = [
+            ph_name for ph_name in self.placeholders
+            if all(var_name != ph_name for var_name in self.variables)
+        ]
+
+        if undeclared_variables:
+            raise RuntimeError("Undeclared variales: " + ", ".join(undeclared_variables))
 
         return formula.substitute_variables({
             ph_var: next(var for var_name, var in self.variables.items() if var_name == ph_name)
@@ -2923,10 +2936,17 @@ def antlr_get_text_with_whitespace(ctx) -> str:
     return stream.getText(start=a, stop=b)
 
 
+def parse_tree_text(elem: RuleContext | CommonToken) -> str:
+    if isinstance(elem, CommonToken):
+        return elem.text
+    else:
+        return elem.getText()
+
+
 class MExprEmitter(MexprParserListener.MexprParserListener):
-    def __init__(self, variables: Set[BoundVariable]):
+    def __init__(self, mgr: VariableManager):
         self.result: List[Union[str, BoundVariable, List[str]]] = []
-        self.variables = variables
+        self.mgr = mgr
 
     def exitMatchExprOptional(self, ctx: MexprParser.MatchExprOptionalContext):
         self.result.append([antlr_get_text_with_whitespace(ctx)[1:-1]])
@@ -2939,19 +2959,10 @@ class MExprEmitter(MexprParserListener.MexprParserListener):
         self.result.append(text)
 
     def exitMatchExprVar(self, ctx: MexprParser.MatchExprVarContext):
-        matching_variables = [var for var in self.variables if var.name == ctx.ID().getText()]
-
-        if not matching_variables:
-            raise SyntaxError(
-                f"Undeclared variable {ctx.ID().getText()} "
-                f"(line {ctx.ID().symbol.line}, column {ctx.ID().symbol.column})")
-
-        assert len(matching_variables) == 1
-
-        self.result.append(matching_variables[0])
+        self.result.append(self.mgr.bv(parse_tree_text(ctx.ID()), parse_tree_text(ctx.varType())))
 
 
-def parse_mexpr(inp: str, variables: Set[BoundVariable]) -> BindExpression:
+def parse_mexpr(inp: str, mgr: VariableManager) -> BindExpression:
     class BailPrintErrorStrategy(antlr4.BailErrorStrategy):
         def recover(self, recognizer: antlr4.Parser, e: antlr4.RecognitionException):
             recognizer._errHandler.reportError(recognizer, e)
@@ -2960,7 +2971,7 @@ def parse_mexpr(inp: str, variables: Set[BoundVariable]) -> BindExpression:
     lexer = MexprLexer(InputStream(inp))
     parser = MexprParser(antlr4.CommonTokenStream(lexer))
     parser._errHandler = BailPrintErrorStrategy()
-    mexpr_emitter = MExprEmitter(variables)
+    mexpr_emitter = MExprEmitter(mgr)
     antlr4.ParseTreeWalker().walk(mexpr_emitter, parser.matchExpr())
     return BindExpression(*mexpr_emitter.result)
 
@@ -2968,74 +2979,84 @@ def parse_mexpr(inp: str, variables: Set[BoundVariable]) -> BindExpression:
 class ISLaEmitter(ISLaParserListener.islaListener):
     def __init__(
             self,
+            grammar: Grammar,
             structural_predicates: Optional[Set[StructuralPredicate]] = None,
             semantic_predicates: Optional[Set[SemanticPredicate]] = None):
         self.structural_predicates_map = {} if not structural_predicates else {p.name: p for p in structural_predicates}
         self.semantic_predicates_map = {} if not semantic_predicates else {p.name: p for p in semantic_predicates}
 
         self.result: Optional[Formula] = None
-        self.constant: Optional[Constant] = None
-        self.variables: Dict[str, BoundVariable] = {}
-        self.all_vars: Dict[str, Variable] = {}
+        self.constant: Constant = Constant("start", "<start>")
         self.formulas = {}
         self.predicate_args = {}
 
-    def get_var(self, var: str) -> Variable:
-        if var not in self.all_vars:
-            raise SyntaxError(f"Undeclared variable symbol {var}")
-
-        return self.all_vars[var]
-
-    def get_bvar(self, var: str) -> BoundVariable:
-        if var not in self.variables:
-            raise SyntaxError(f"Undeclared variable symbol {var}")
-
-        return self.variables[var]
+        self.mgr = VariableManager(grammar)
 
     def exitStart(self, ctx: islaParser.StartContext):
-        if not self.constant:
-            raise SyntaxError("Missing constant declaration")
+        try:
+            self.result = self.mgr.create(self.formulas[ctx.formula()])
+        except RuntimeError as exc:
+            raise SyntaxError(str(exc))
+
+    def get_var(self, var_name: str, var_type: Optional[str] = None) -> BoundVariable | Constant:
+        if var_name == self.constant.name:
+            return self.constant
+
+        return self.mgr.bv(var_name, var_type)
+
+    def known_var_names(self) -> Set[str]:
+        return self.mgr.all_var_names() | {self.constant.name}
 
     def exitConstDecl(self, ctx: islaParser.ConstDeclContext):
-        self.constant = Constant(ctx.cid.text, "<" + ctx.ntid.text + ">")
-
-    def exitVarDecls(self, _):
-        self.all_vars = dict(self.variables) | {self.constant.name: self.constant}
-
-    def exitVarDecl(self, ctx: islaParser.VarDeclContext):
-        var_type = ctx.varType().getText()
-
-        for var_id in ctx.ID():
-            if var_id.getText() in self.variables or var_id == self.constant.name:
-                raise SyntaxError(
-                    f"Variable {ctx.ID().getText()} already declared "
-                    f"(line {ctx.ID().symbol.line}, column {ctx.ID().symbol.column})"
-                )
-
-            self.variables[var_id.getText()] = BoundVariable(var_id.getText(), var_type)
-
-    def exitConstraint(self, ctx: islaParser.ConstraintContext):
-        self.result = self.formulas[ctx.formula()]
+        self.constant = Constant(parse_tree_text(ctx.ID()), parse_tree_text(ctx.varType()))
 
     def exitForall(self, ctx: islaParser.ForallContext):
+        var_id = parse_tree_text(ctx.varId)
+        var_type = parse_tree_text(ctx.varType())
+
+        if self.mgr.var_declared(var_id):
+            raise SyntaxError(
+                f"Variable {var_id} already declared "
+                f"(line {ctx.varId.symbol.line}, column {ctx.varId.symbol.column})"
+            )
+
         self.formulas[ctx] = ForallFormula(
-            self.get_bvar(ctx.varId.text),
-            self.get_var(ctx.inId.text),
+            self.get_var(var_id, var_type),
+            self.get_var(parse_tree_text(ctx.inId)),
             self.formulas[ctx.formula()])
 
     def exitExists(self, ctx: islaParser.ExistsContext):
+        var_id = parse_tree_text(ctx.varId)
+        var_type = parse_tree_text(ctx.varType())
+
+        if self.mgr.var_declared(var_id):
+            raise SyntaxError(
+                f"Variable {var_id} already declared "
+                f"(line {ctx.varId.symbol.line}, column {ctx.varId.symbol.column})"
+            )
+
         self.formulas[ctx] = ExistsFormula(
-            self.get_bvar(ctx.varId.text),
-            self.get_var(ctx.inId.text),
+            self.get_var(var_id, var_type),
+            self.get_var(parse_tree_text(ctx.inId)),
             self.formulas[ctx.formula()])
 
     def exitForallMexpr(self, ctx: islaParser.ForallMexprContext):
         mexpr = parse_mexpr(
             antlr_get_text_with_whitespace(ctx.STRING())[1:-1],
-            set(self.variables.values()))
+            self.mgr)
+
+        var_id = parse_tree_text(ctx.varId)
+        var_type = parse_tree_text(ctx.varType())
+
+        if self.mgr.var_declared(var_id):
+            raise SyntaxError(
+                f"Variable {var_id} already declared "
+                f"(line {ctx.varId.line}, column {ctx.varId.column})"
+            )
+
         self.formulas[ctx] = ForallFormula(
-            self.get_bvar(ctx.varId.text),
-            self.get_var(ctx.inId.text),
+            self.get_var(var_id, var_type),
+            self.get_var(parse_tree_text(ctx.inId)),
             self.formulas[ctx.formula()],
             bind_expression=mexpr
         )
@@ -3043,10 +3064,20 @@ class ISLaEmitter(ISLaParserListener.islaListener):
     def exitExistsMexpr(self, ctx: islaParser.ExistsMexprContext):
         mexpr = parse_mexpr(
             antlr_get_text_with_whitespace(ctx.STRING())[1:-1],
-            set(self.variables.values()))
+            self.mgr)
+
+        var_id = parse_tree_text(ctx.varId)
+        var_type = parse_tree_text(ctx.varType())
+
+        if self.mgr.var_declared(var_id):
+            raise SyntaxError(
+                f"Variable {var_id} already declared "
+                f"(line {ctx.varId.line}, column {ctx.varId.column})"
+            )
+
         self.formulas[ctx] = ExistsFormula(
-            self.get_bvar(ctx.varId.text),
-            self.get_var(ctx.inId.text),
+            self.get_var(var_id, var_type),
+            self.get_var(parse_tree_text(ctx.inId)),
             self.formulas[ctx.formula()],
             bind_expression=mexpr
         )
@@ -3076,10 +3107,10 @@ class ISLaEmitter(ISLaParserListener.islaListener):
         self.formulas[ctx] = (left & -right) | (-left & right)
 
     def exitPredicateAtom(self, ctx: islaParser.PredicateAtomContext):
-        predicate_name = ctx.ID().getText()
+        predicate_name = parse_tree_text(ctx.ID())
         if (predicate_name not in self.structural_predicates_map and
                 predicate_name not in self.semantic_predicates_map):
-            raise SyntaxError(f"Unknown predicate {predicate_name} in {ctx.getText()}")
+            raise SyntaxError(f"Unknown predicate {predicate_name} in {parse_tree_text(ctx)}")
 
         args = [self.predicate_args[arg] for arg in ctx.predicateArg()]
 
@@ -3092,7 +3123,7 @@ class ISLaEmitter(ISLaParserListener.islaListener):
         if len(args) != predicate.arity:
             raise SyntaxError(
                 f"Unexpected number {len(args)} for predicate {predicate_name} "
-                f"({predicate.arity} expected) in {ctx.getText()} "
+                f"({predicate.arity} expected) in {parse_tree_text(ctx)} "
                 f"(line {ctx.ID().line}, column {ctx.ID().column}"
             )
 
@@ -3103,33 +3134,53 @@ class ISLaEmitter(ISLaParserListener.islaListener):
 
     def exitPredicateArg(self, ctx: islaParser.PredicateArgContext):
         if ctx.ID():
-            self.predicate_args[ctx] = self.get_var(ctx.ID().getText())
+            self.predicate_args[ctx] = self.get_var(parse_tree_text(ctx.ID()))
         elif ctx.INT():
-            self.predicate_args[ctx] = int(ctx.getText())
+            self.predicate_args[ctx] = int(parse_tree_text(ctx))
         elif ctx.STRING():
-            self.predicate_args[ctx] = ctx.getText()[1:-1]
+            self.predicate_args[ctx] = parse_tree_text(ctx)[1:-1]
 
     def exitSMTFormula(self, ctx: islaParser.SMTFormulaContext):
-        z3_constr = z3.parse_smt2_string(
-            f"(assert {antlr_get_text_with_whitespace(ctx)})",
-            decls={var.name: z3.String(var.name) for var in self.all_vars.values()})[0]
-        free_vars = [v for v in [cast(Variable, self.constant)] + list(self.variables.values())
-                     if v.name in [str(s) for s in get_symbols(z3_constr)]]
+        try:
+            formula_text = antlr_get_text_with_whitespace(ctx)
+            z3_constr = z3.parse_smt2_string(
+                f"(assert {formula_text})",
+                decls={var: z3.String(var) for var in self.known_var_names()})[0]
+        except z3.Z3Exception as exp:
+            raise SyntaxError(
+                f"Error parsing SMT formula '{formula_text}', {exp.value.decode().strip()}")
+
+        free_vars = [self.get_var(str(s)) for s in get_symbols(z3_constr)]
         self.formulas[ctx] = SMTFormula(z3_constr, *free_vars)
 
     def exitExistsInt(self, ctx: islaParser.ExistsIntContext):
+        var_id = parse_tree_text(ctx.ID())
+
+        if self.mgr.var_declared(var_id):
+            raise SyntaxError(
+                f"Variable {var_id} already declared "
+                f"(line {ctx.varId.symbol.line}, column {ctx.varId.symbol.column})"
+            )
+
         self.formulas[ctx] = ExistsIntFormula(
-            self.get_bvar(ctx.ID().getText()), self.formulas[ctx.formula()])
+            self.get_var(var_id, Variable.NUMERIC_NTYPE),
+            self.formulas[ctx.formula()])
 
     def exitForallInt(self, ctx: islaParser.ForallIntContext):
+        var_id = parse_tree_text(ctx.ID())
+
+        if self.mgr.var_declared(var_id):
+            raise SyntaxError(
+                f"Variable {var_id} already declared "
+                f"(line {ctx.varId.symbol.line}, column {ctx.varId.symbol.column})"
+            )
+
         self.formulas[ctx] = ForallIntFormula(
-            self.get_bvar(ctx.ID().getText()), self.formulas[ctx.formula()])
+            self.get_var(var_id, Variable.NUMERIC_NTYPE),
+            self.formulas[ctx.formula()])
 
     def exitSexprId(self, ctx: islaParser.SexprIdContext):
-        if ctx.ID().getText() not in self.variables:
-            raise SyntaxError(
-                f"Undeclared variable {ctx.ID().getText()} "
-                f"(line {ctx.ID().symbol.line}, column {ctx.ID().symbol.column})")
+        self.get_var(parse_tree_text(ctx.ID()))  # Simply register variable
 
     def exitParFormula(self, ctx: islaParser.ParFormulaContext):
         self.formulas[ctx] = self.formulas[ctx.formula()]
@@ -3137,6 +3188,7 @@ class ISLaEmitter(ISLaParserListener.islaListener):
 
 def parse_isla(
         inp: str,
+        grammar: Grammar,
         structural_predicates: Optional[Set[StructuralPredicate]] = None,
         semantic_predicates: Optional[Set[SemanticPredicate]] = None) -> Formula:
     class BailPrintErrorStrategy(antlr4.BailErrorStrategy):
@@ -3147,7 +3199,7 @@ def parse_isla(
     lexer = islaLexer(InputStream(inp))
     parser = islaParser(antlr4.CommonTokenStream(lexer))
     parser._errHandler = BailPrintErrorStrategy()
-    isla_emitter = ISLaEmitter(structural_predicates, semantic_predicates)
+    isla_emitter = ISLaEmitter(grammar, structural_predicates, semantic_predicates)
     antlr4.ParseTreeWalker().walk(isla_emitter, parser.start())
     return isla_emitter.result
 
@@ -3157,29 +3209,22 @@ def unparse_isla(formula: Formula) -> str:
     result: str = ""
     indent: str = "  "
 
-    constant: Optional[Constant] = None
-
     try:
         constant = next(
             (c for c in VariablesCollector.collect(formula)
              if isinstance(c, Constant) and not c.is_numeric()))
 
-        result += f"const {constant.name}: {constant.n_type};\n\n"
+        if constant != Constant("start", "<start>"):
+            result += f"const {constant.name}: {constant.n_type};\n\n"
     except StopIteration:
         pass
-
-    variables = [var for var in VariablesCollector.collect(formula) if var != constant]
-    if variables:
-        result += f"vars {{\n{indent}"
-        result += f"\n{indent}".join([f"{var.name}: {var.n_type};" for var in variables])
-        result += "\n}\n\n"
 
     def unparse_constraint(formula: Formula) -> List[str]:
         if isinstance(formula, QuantifiedFormula):
             bind_expr_str = "" if formula.bind_expression is None else f'="{formula.bind_expression}"'
 
             qfr = "forall" if isinstance(formula, ForallFormula) else "exists"
-            result = [f"{qfr} {formula.bound_variable.name}{bind_expr_str} in {formula.in_variable}:"]
+            result = [f"{qfr} {formula.bound_variable.n_type} {formula.bound_variable.name}{bind_expr_str} in {formula.in_variable}:"]
             child_result = unparse_constraint(formula.inner_formula)
             result += [indent + line for line in child_result]
             return result
@@ -3226,9 +3271,7 @@ def unparse_isla(formula: Formula) -> str:
 
         raise NotImplementedError(f"Unparsing of formulas of type {type(formula).__name__} not implemented.")
 
-    result += "constraint {\n"
-    result += "\n".join([indent + line for line in unparse_constraint(formula)])
-    result += "\n}"
+    result += "\n".join(unparse_constraint(formula))
 
     return result
 

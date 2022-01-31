@@ -67,45 +67,30 @@ SCRIPTSIZE_C_GRAMMAR = {
 #     which occurs before use_id and on the same or a higher <block> level,
 #       that assigns use_id a value.
 SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT = """
-const start: <start>;
-
-vars {
-  expr: <expr>;
-  def_id, use_id: <id>;
-  decl: <declaration>;
-}
-
-constraint {
-  forall expr in start:
-    forall use_id in expr:
-      exists decl="int {def_id}[ = <expr>];" in start:
-        (level("GE", "<block>", decl, expr) and 
-        (before(decl, expr) and 
-        (= use_id def_id)))
-}
+forall <expr> expr in start:
+  forall <id> use_id in expr:
+    exists <declaration> decl="int {<id> def_id}[ = <expr>];" in start:
+      (level("GE", "<block>", decl, expr) and 
+      (before(decl, expr) and 
+      (= use_id def_id)))
 """
 
 SCRIPTSIZE_C_DEF_USE_CONSTR = parse_isla(
-    SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
+    SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT,
+    SCRIPTSIZE_C_GRAMMAR,
+    structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
 
 # TODO: Scoping!
 SCRIPTSIZE_C_NO_REDEF_TEXT = """
-const start: <start>;
+forall <declaration> declaration="int {<id> def_id}[ = <expr>];" in start:
+   forall <declaration> other_declaration="int {<id> other_def_id}[ = <expr>];" in start:
+     (same_position(declaration, other_declaration) or
+      (not same_position(declaration, other_declaration) and not (= def_id other_def_id)))"""
 
-vars {
-  declaration, other_declaration: <declaration>;
-  def_id, other_def_id: <id>;
-}
-
-constraint {
-  forall declaration="int {def_id}[ = <expr>];" in start:
-     forall other_declaration="int {other_def_id}[ = <expr>];" in start:
-       (same_position(declaration, other_declaration) or
-        (not same_position(declaration, other_declaration) and not (= def_id other_def_id)))
-}
-"""
-
-SCRIPTSIZE_C_NO_REDEF_CONSTR = parse_isla(SCRIPTSIZE_C_NO_REDEF_TEXT, structural_predicates={SAME_POSITION_PREDICATE})
+SCRIPTSIZE_C_NO_REDEF_CONSTR = parse_isla(
+    SCRIPTSIZE_C_NO_REDEF_TEXT,
+    SCRIPTSIZE_C_GRAMMAR,
+    structural_predicates={SAME_POSITION_PREDICATE})
 
 
 def compile_scriptsizec_clang(tree: isla.DerivationTree) -> Union[bool, str]:

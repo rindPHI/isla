@@ -73,100 +73,46 @@ REST_GRAMMAR = {
 
 # The below encoding is the most efficient one, but heavily uses semantic predicates
 LENGTH_UNDERLINE = parse_isla("""
-const start: <start>;
-
-vars {
-  title_length: NUM;
-  underline_length: NUM;
-  title: <section-title>;
-  titletxt: <title-text>;
-  underline: <underline>;
-}
-
-constraint {
-  forall title="{titletxt}\n{underline}" in start:
-    exists int title_length:
-      exists int underline_length:
-        ((> (str.to.int title_length) 0) and
-        ((<= (str.to.int title_length) (str.to.int underline_length)) and
-        (ljust_crop(titletxt, title_length, " ") and
-         extend_crop(underline, underline_length))))
-}
-""", semantic_predicates={LJUST_CROP_PREDICATE, EXTEND_CROP_PREDICATE})
+forall <section-title> title="{<title-text> titletxt}\n{<underline> underline}" in start:
+  exists int title_length:
+    exists int underline_length:
+      ((> (str.to.int title_length) 0) and
+      ((<= (str.to.int title_length) (str.to.int underline_length)) and
+      (ljust_crop(titletxt, title_length, " ") and
+       extend_crop(underline, underline_length))))
+""", REST_GRAMMAR, semantic_predicates={LJUST_CROP_PREDICATE, EXTEND_CROP_PREDICATE})
 
 # LENGTH_UNDERLINE = parse_isla("""
-# const start: <start>;
-#
-# vars {
-#   title: <section-title>;
-#   titletxt: <title-text>;
-#   underline: <underline>;
-# }
-#
-# constraint {
-#   forall title="{titletxt}\n{underline}" in start:
-#     (>= (str.len underline) (str.len titletxt))
-# }
+# forall <section-title> title="{<title-text> titletxt}\n{<underline> underline}" in start:
+#   (>= (str.len underline) (str.len titletxt))
 # """)
 
 DEF_LINK_TARGETS = parse_isla("""
-const start: <start>;
-
-vars {
-  ref: <internal_reference>;
-  fref: <internal_reference_nospace>;
-  use_id, def_id: <id>;
-  labeled_par: <labeled_paragraph>;
-}
-
-constraint {
-  (forall ref="<presep>{use_id}_<postsep>" in start:
-     exists labeled_par=".. _{def_id}:\n\n<paragraph>" in start:
-       (= use_id def_id) and
-   forall fref="{use_id}_<postsep>" in start:
-     exists labeled_par=".. _{def_id}:\n\n<paragraph>" in start:
-       (= use_id def_id))
-}
-""")
+(forall <internal_reference> ref="<presep>{<id> use_id}_<postsep>" in start:
+   exists <labeled_paragraph> labeled_par_1=".. _{<id> def_id}:\n\n<paragraph>" in start:
+     (= use_id def_id) and
+ forall <internal_reference_nospace> fref="{<id> use_id}_<postsep>" in start:
+   exists <labeled_paragraph> labeled_par_2=".. _{<id> def_id}:\n\n<paragraph>" in start:
+     (= use_id def_id))
+""", REST_GRAMMAR)
 
 NO_LINK_TARGET_REDEF = parse_isla("""
-const start: <start>;
-
-vars {
-  label_1, label_2: <label>;
-  id_1, id_2: <id>;
-}
-
-constraint {
-  forall label_1=".. _{id_1}:" in start:
-    forall label_2=".. _{id_2}:" in start:
-      (same_position(label_1, label_2) or
-       not (= id_1 id_2))
-}
-""", structural_predicates={SAME_POSITION_PREDICATE})
+forall <label> label_1=".. _{<id> id_1}:" in start:
+  forall <label> label_2=".. _{<id> id_2}:" in start:
+    (same_position(label_1, label_2) or
+     not (= id_1 id_2))""", REST_GRAMMAR, structural_predicates={SAME_POSITION_PREDICATE})
 
 # NOTE: Obviously, reST allows enumerations starting with letters.
 #       This means that "f." starts an enumeration. To prevent this,
 #       we would have to mess with the grammar, so we accept it for now.
 LIST_NUMBERING_CONSECUTIVE = parse_isla("""
-const start: <start>;
-
-vars {
-  enumeration: <enumeration>;
-  item_1, item_2: <enumeration_item>;
-  number_1, number_2: <number>;
-}
-
-constraint {
-  forall enumeration in start:
-    forall item_1="{number_1}. <nobr-string>" in enumeration:
-      forall item_2="{number_2}. <nobr-string>" in enumeration:
-        (not consecutive(item_1, item_2) or
-          (consecutive(item_1, item_2) and 
-          ((= (str.to.int number_2) (+ (str.to.int number_1) 1)) and
-           (> (str.to.int number_1) 0))))
-}
-""", structural_predicates={CONSECUTIVE_PREDICATE})
+forall <enumeration> enumeration in start:
+  forall <enumeration_item> item_1="{<number> number_1}. <nobr-string>" in enumeration:
+    forall <enumeration_item> item_2="{<number> number_2}. <nobr-string>" in enumeration:
+      (not consecutive(item_1, item_2) or
+        (consecutive(item_1, item_2) and 
+        ((= (str.to.int number_2) (+ (str.to.int number_1) 1)) and
+         (> (str.to.int number_1) 0))))""", REST_GRAMMAR, structural_predicates={CONSECUTIVE_PREDICATE})
 
 
 # TODO: Further rst properties:

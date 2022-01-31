@@ -67,23 +67,12 @@ def csv_lint(tree: isla.DerivationTree) -> Union[bool, str]:
 
 
 csv_colno_property = """
-const start: <start>;
+forall <csv-header> hline in start:
+  exists int colno:
+    ((>= (str.to.int colno) 3) and 
+    ((<= (str.to.int colno) 5) and 
+     (count(hline, "<raw-field>", colno) and 
+     forall <csv-record> line in start:
+       count(line, "<raw-field>", colno))))"""
 
-vars {
-  colno: NUM;
-  hline: <csv-header>;
-  line: <csv-record>;
-}
-
-constraint {
-  forall hline in start:
-    exists int colno:
-      ((>= (str.to.int colno) 3) and 
-      ((<= (str.to.int colno) 5) and 
-       (count(hline, "<raw-field>", colno) and 
-       forall line in start:
-         count(line, "<raw-field>", colno))))
-}
-"""
-
-CSV_COLNO_PROPERTY = parse_isla(csv_colno_property, semantic_predicates={COUNT_PREDICATE})
+CSV_COLNO_PROPERTY = parse_isla(csv_colno_property, CSV_GRAMMAR, semantic_predicates={COUNT_PREDICATE})

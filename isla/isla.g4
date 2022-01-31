@@ -1,32 +1,28 @@
 grammar isla;
 
-start: constDecl varDecls constraint;
+start: constDecl? formula;
 
-constDecl: 'const' cid=ID ':' LT ntid=ID GT ';' ;
-
-varDecls: 'vars' '{' varDecl + '}' ;
-varDecl: ID (',' ID) *':' varType ';' ;
-varType : LT ID GT | 'NUM' ;
-
-constraint: 'constraint' '{' formula '}' ;
+constDecl: 'const' ID ':' varType ';' ;
 
 formula:
-    'forall' varId=ID            'in' inId=ID ':' formula  # Forall
-  | 'exists' varId=ID            'in' inId=ID ':' formula  # Exists
-  | 'forall' varId=ID '=' STRING 'in' inId=ID ':' formula  # ForallMexpr
-  | 'exists' varId=ID '=' STRING 'in' inId=ID ':' formula  # ExistsMexpr
-  | 'exists' 'int' ID ':' formula                          # ExistsInt
-  | 'forall' 'int' ID ':' formula                          # ForallInt
-  | 'not' formula                                          # Negation
-  | formula 'and' formula                                  # Conjunction
-  | formula 'or' formula                                   # Disjunction
-  | formula 'xor' formula                                  # ExclusiveOr
-  | formula 'implies' formula                              # Implication
-  | formula 'iff' formula                                  # Equivalence
-  | ID '(' predicateArg (',' predicateArg) * ')'           # PredicateAtom
-  | sexpr                                                  # SMTFormula
-  | '(' formula ')'                                        # ParFormula
+    'forall' varType varId=ID            'in' inId=ID ':' formula  # Forall
+  | 'exists' varType varId=ID            'in' inId=ID ':' formula  # Exists
+  | 'forall' varType varId=ID '=' STRING 'in' inId=ID ':' formula  # ForallMexpr
+  | 'exists' varType varId=ID '=' STRING 'in' inId=ID ':' formula  # ExistsMexpr
+  | 'exists' 'int' ID ':' formula                                  # ExistsInt
+  | 'forall' 'int' ID ':' formula                                  # ForallInt
+  | 'not' formula                                                  # Negation
+  | formula 'and' formula                                          # Conjunction
+  | formula 'or' formula                                           # Disjunction
+  | formula 'xor' formula                                          # ExclusiveOr
+  | formula 'implies' formula                                      # Implication
+  | formula 'iff' formula                                          # Equivalence
+  | ID '(' predicateArg (',' predicateArg) * ')'                   # PredicateAtom
+  | sexpr                                                          # SMTFormula
+  | '(' formula ')'                                                # ParFormula
   ;
+
+varType : LT ID GT ;
 
 sexpr:
     'true'                                                                          # SexprTrue

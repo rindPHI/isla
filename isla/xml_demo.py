@@ -76,21 +76,11 @@ if __name__ == '__main__':
     print("Encountered errors: " + ", ".join({f"{e} ({n})" for e, n in errors.items()}))
 
     constraint = """
-const start: <start>;
-
-vars {
-    tree: <xml-tree>;
-    opid, clid: <id>;
-}
-
-constraint {
-    forall tree="<{opid}[ <xml-attribute>]><inner-xml-tree></{clid}>" in start:
-        (= opid clid)
-}
-"""
+forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> clid}>" in start:
+  (= opid clid)"""
 
     # Check whether constraint can be parsed
-    parsed_constraint = parse_isla(constraint)
+    parsed_constraint = parse_isla(constraint, XML_GRAMMAR)
 
     # Try out evaluator
     c_inp = "<a>asdf</a>"

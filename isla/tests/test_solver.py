@@ -128,18 +128,8 @@ class TestSolver(unittest.TestCase):
 
     def test_xml(self):
         constraint = """
-const start: <start>;
-
-vars {
-    tree: <xml-tree>;
-    opid, clid: <id>;
-}
-
-constraint {
-    forall tree="<{opid}[ <xml-attribute>]><inner-xml-tree></{clid}>" in start:
-        (= opid clid)
-}
-"""
+forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> clid}>" in start:
+    (= opid clid)"""
 
         self.execute_generation_test(
             constraint,
@@ -215,20 +205,10 @@ constraint {
 
     def test_declared_before_used_concrete_syntax(self):
         formula = """
-const start: <start>;
-
-vars {
-    lhs_1, var, lhs_2: <var>;
-    rhs_1, rhs_2: <rhs>;
-    assgn_1, assgn_2: <assgn>;
-}
-
-constraint {
-  forall assgn_1="{lhs_1} := {rhs_1}" in start:
-    forall var in rhs_1:
-      exists assgn_2="{lhs_2} := {rhs_2}" in start:
-        (before(assgn_2, assgn_1) and (= lhs_2 var))
-}
+forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
+  forall <var> var in rhs_1:
+    exists <assgn> assgn_2="{<var> lhs_2} := {<rhs> rhs_2}" in start:
+      (before(assgn_2, assgn_1) and (= lhs_2 var))
 """
 
         self.execute_generation_test(
@@ -239,23 +219,13 @@ constraint {
 
     def test_simple_csv_rows_equal_length(self):
         property = """
-const start: <start>;
-
-vars {
-  colno: NUM;
-  hline: <csv-header>;
-  line: <csv-record>;
-}
-
-constraint {
-  forall hline in start:
-    exists int colno:
-      ((>= (str.to.int colno) 3) and 
-      ((<= (str.to.int colno) 5) and 
-       (count(hline, "<csv-field>", colno) and 
-       forall line in start:
-         count(line, "<csv-field>", colno))))
-}
+forall <csv-header> hline in start:
+  exists int colno:
+    ((>= (str.to.int colno) 3) and 
+    ((<= (str.to.int colno) 5) and 
+     (count(hline, "<csv-field>", colno) and 
+     forall <csv-record> line in start:
+       count(line, "<csv-field>", colno))))
 """
 
         self.execute_generation_test(
@@ -269,23 +239,13 @@ constraint {
 
     def test_csv_rows_equal_length(self):
         property = """
-const start: <start>;
-
-vars {
-  colno: NUM;
-  hline: <csv-header>;
-  line: <csv-record>;
-}
-
-constraint {
-  forall hline in start:
-    exists int colno:
-      ((>= (str.to.int colno) 3) and 
-      ((<= (str.to.int colno) 5) and 
-       (count(hline, "<raw-field>", colno) and 
-       forall line in start:
-         count(line, "<raw-field>", colno))))
-}
+forall <csv-header> hline in start:
+  exists int colno:
+    ((>= (str.to.int colno) 3) and 
+    ((<= (str.to.int colno) 5) and 
+     (count(hline, "<raw-field>", colno) and 
+     forall <csv-record> line in start:
+       count(line, "<raw-field>", colno))))
 """
 
         self.execute_generation_test(
@@ -302,26 +262,15 @@ constraint {
 
     def test_csv_rows_equal_length_more_complex(self):
         property = """
-const start: <start>;
-
-vars {
-  colno: NUM;
-  header: <csv-header>;
-  body: <csv-body>;
-  hline, line: <csv-record>;
-}
-
-constraint {
-  forall header in start:
-    forall body in start:
-      forall hline in header:
-        exists int colno:
-          ((>= (str.to.int colno) 3) and 
-           (<= (str.to.int colno) 5) and
-           count(hline, "<raw-field>", colno) and 
-           forall line in body:
-              count(line, "<raw-field>", colno))
-}
+forall <csv-header> header in start:
+  forall <csv-body> body in start:
+    forall <csv-record> hline in header:
+      exists int colno:
+        ((>= (str.to.int colno) 3) and 
+         (<= (str.to.int colno) 5) and
+         count(hline, "<raw-field>", colno) and 
+         forall <csv-record> line in body:
+            count(line, "<raw-field>", colno))
 """
 
         self.execute_generation_test(
@@ -338,28 +287,16 @@ constraint {
 
     def test_negated_csv_rows_equal_length(self):
         property = parse_isla("""
-const start: <start>;
-
-vars {
-  header: <csv-header>;
-  body: <csv-body>;
-  hline: <csv-record>;
-  colno: NUM;
-  line: <csv-record>;
-}
-
-constraint {
-  exists header in start:
-    exists body in start:
-      exists hline in header:
-        forall int colno:
-          (not(>= (str.to_int colno) 3) or 
-           not(<= (str.to_int colno) 5) or
-           not(count(hline, "<raw-field>", colno)) or 
-           exists line in body:
-             not(count(line, "<raw-field>", colno)))
-}
-""", semantic_predicates={COUNT_PREDICATE})
+exists <csv-header> header in start:
+  exists <csv-body> body in start:
+    exists <csv-record> hline in header:
+      forall int colno:
+        (not(>= (str.to_int colno) 3) or 
+         not(<= (str.to_int colno) 5) or
+         not(count(hline, "<raw-field>", colno)) or 
+         exists <csv-record> line in body:
+           not(count(line, "<raw-field>", colno)))
+""", CSV_HEADERBODY_GRAMMAR, semantic_predicates={COUNT_PREDICATE})
 
         # We don't find infinite solutions here, problem with existentially quantified top-level formulas...
         self.execute_generation_test(
@@ -525,7 +462,7 @@ constraint {
                 logging.getLogger(name).addHandler(file_handler)
 
         if isinstance(formula, str):
-            formula = parse_isla(formula, structural_predicates, semantic_predicates)
+            formula = parse_isla(formula, grammar, structural_predicates, semantic_predicates)
 
         constant = next(
             c for c in VariablesCollector.collect(formula)

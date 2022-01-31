@@ -1,8 +1,9 @@
 from setuptools import setup, find_packages
+exec(open("isla/version.py").read())
 
 setup(
     name='isla',
-    version='0.1',
+    version=__version__,
     packages=find_packages(),
     url='https://projects.cispa.saarland/c01dost/inputconstraints',
     license='GNU GPLv3',
