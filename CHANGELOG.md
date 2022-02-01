@@ -31,6 +31,9 @@ version mostly conforms to the state as documented in the ISLa paper.
   consists of a constant declaration followed by an ISLa formula, or only of an
   ISLa formula.
 - The ISLa source is now organized with a so-called ["src layout"](https://docs.pytest.org/en/6.2.x/goodpractices.html).
+- The package `isla.isla` (i.e., the `isla.py` file in the `isla` package) was
+  renamed to `isla.language`. Thus, you have to replace all `from isla.isla import ...`
+  import statements (or similar) by `from isla.language import ...`.
 - The existing language formalizations (e.g., Scriptsize-C and TAR) were moved
   into a package `isla_formalizations` under the `src` directory. Tests are now
   in the top-level directory `tests`, the evaluation scripts for the
