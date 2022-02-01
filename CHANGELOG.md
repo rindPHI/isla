@@ -17,7 +17,7 @@ version mostly conforms to the state as documented in the ISLa paper.
   incomplete approach to instantiate universal quantifiers over integers,
   depending on SMT formula (and possibly semantic predicates) on top level
   inside the inner formula.
-- ISLa now has its own, performance-optimized Grammar-Based fuzzer (forked from
+- ISLa now has its own, performance-optimized grammar fuzzer (forked from
   the Fuzzing Book).
 
 ### Changed
