@@ -1,6 +1,6 @@
 from grammar_graph.gg import GrammarGraph
 
-from isla.evaluator import Evaluator
+from isla.performance_evaluator import Evaluator
 from isla.solver import ISLaSolver, CostSettings, CostWeightVector
 from isla_formalizations import tar
 

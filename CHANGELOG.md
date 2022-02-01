@@ -11,6 +11,15 @@ version mostly conforms to the state as documented in the ISLa paper.
 - Added forgotten mention of the renaming of `isla.isla` to `isla.language` to
   the changelog (this file), section 0.2a1.
 
+### Changed
+
+- Factored out functions related to ISLa evaluations from `isla.language` to `isla.evaluator`.
+  The previous `isla.evaluator` file was named `isla.performance_evaluator`.
+- Both the evaluator and the solver are passed default sets of predicates. Thus, unless some
+  user-defined special predicates should be used, one does not need to pass the predicates to
+  the solver/evaluator when generating from/checking a constraint in ISLa's concrete syntax
+  (a string).
+
 ## [0.2a1] - 2022-02-01
 
 ### Added

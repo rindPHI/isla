@@ -15,8 +15,9 @@ from grammar_graph import gg
 from matplotlib import pyplot as plt, ticker as mtick
 from pathos import multiprocessing as pmp
 
+import isla.evaluator
 from isla import language, solver
-from isla.evaluator import logger, generate_inputs
+from isla.performance_evaluator import logger, generate_inputs
 from isla.helpers import weighted_geometric_mean
 from isla.solver import CostWeightVector, ISLaSolver, CostSettings
 from isla.type_defs import Grammar
@@ -621,7 +622,7 @@ def evaluate_data(
 
         if quantifier_chains:
             vacuously_matched_quantifiers = set()
-            language.eliminate_quantifiers(
+            isla.evaluator.eliminate_quantifiers(
                 language.instantiate_top_constant(formula, inp),
                 graph.to_grammar())
 

@@ -1,683 +1,581 @@
-import argparse
-import itertools
-import json
-import logging
-import multiprocessing.pool
-import os
-import os.path
-import re
-import sqlite3
-import sys
-import time
-import traceback
-from datetime import datetime
-from typing import List, Generator, Dict, Callable, Set, Tuple, Optional, cast
+import copy
+from functools import reduce
+from typing import Union, Optional, Set, Dict, cast, Tuple, List, Iterable
 
-import pathos.multiprocessing as pmp
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
-from grammar_graph import gg
+import z3
+from orderedset import OrderedSet
 
-from isla import language
-from isla.solver import ISLaSolver
-from isla.type_defs import Grammar
-
-logger = logging.getLogger("evaluator")
+from isla.helpers import z3_and, is_nonterminal, z3_or
+from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES
+from isla.language import Formula, DerivationTree, StructuralPredicate, SemanticPredicate, parse_isla, \
+    VariablesCollector, Constant, FilterVisitor, NumericQuantifiedFormula, StructuralPredicateFormula, SMTFormula, \
+    SemanticPredicateFormula, Variable, replace_formula, \
+    BoundVariable, ExistsIntFormula, ForallIntFormula, QuantifiedFormula, PropositionalCombinator, \
+    ConjunctiveFormula, ForallFormula, ExistsFormula, NegatedFormula, \
+    DisjunctiveFormula, BindExpression
+from isla.type_defs import Grammar, Path
 
 
-def std_db_file() -> str:
-    return os.path.join(
-        *os.path.split(os.path.dirname(os.path.realpath(__file__)))[:-1],
-        "isla_evaluation.sqlite")
+class ThreeValuedTruth:
+    FALSE = 0
+    TRUE = 1
+    UNKNOWN = 2
+
+    def __init__(self, val: int):
+        assert 0 <= val <= 2
+        self.val = val
+
+    def __eq__(self, other):
+        return self.val == other.val
+
+    def __hash__(self):
+        return self.val
+
+    def to_bool(self) -> bool:
+        assert self.val != ThreeValuedTruth.UNKNOWN
+        return bool(self.val)
+
+    def __bool__(self):
+        return self.to_bool()
+
+    def is_false(self):
+        return self.val == ThreeValuedTruth.FALSE
+
+    def is_true(self):
+        return self.val == ThreeValuedTruth.TRUE
+
+    def is_unknown(self):
+        return self.val == ThreeValuedTruth.UNKNOWN
+
+    @staticmethod
+    def from_bool(b: bool) -> 'ThreeValuedTruth':
+        return ThreeValuedTruth(int(b))
+
+    @staticmethod
+    def all(args: Iterable['ThreeValuedTruth']) -> 'ThreeValuedTruth':
+        args = list(args)
+        if any(elem.is_false() for elem in args):
+            return ThreeValuedTruth.false()
+        if any(elem.is_unknown() for elem in args):
+            return ThreeValuedTruth.unknown()
+        return ThreeValuedTruth.true()
+
+    @staticmethod
+    def any(args: Iterable['ThreeValuedTruth']) -> 'ThreeValuedTruth':
+        args = list(args)
+        if any(elem.is_true() for elem in args):
+            return ThreeValuedTruth.true()
+        if any(elem.is_unknown() for elem in args):
+            return ThreeValuedTruth.unknown()
+        return ThreeValuedTruth.false()
+
+    @staticmethod
+    def not_(arg: 'ThreeValuedTruth') -> 'ThreeValuedTruth':
+        if arg.is_true():
+            return ThreeValuedTruth.false()
+        if arg.is_false():
+            return ThreeValuedTruth.true()
+        return ThreeValuedTruth.unknown()
+
+    @staticmethod
+    def true():
+        return ThreeValuedTruth(ThreeValuedTruth.TRUE)
+
+    @staticmethod
+    def false():
+        return ThreeValuedTruth(ThreeValuedTruth.FALSE)
+
+    @staticmethod
+    def unknown():
+        return ThreeValuedTruth(ThreeValuedTruth.UNKNOWN)
+
+    def __repr__(self):
+        return f"ThreeValuedTruth({self.val})"
+
+    def __str__(self):
+        return ("TRUE" if self.is_true() else
+                "FALSE" if self.is_false() else
+                "UNKNOWN")
 
 
-# Non-Deamon solution from https://stackoverflow.com/questions/6974695/python-process-pool-non-daemonic#answer-53180921
-# to enable spawning subprocesses inside spawned subprocesses.
-class NoDaemonProcess(multiprocessing.Process):
-    @property
-    def daemon(self):
+def evaluate(
+        formula: Union[Formula, str],
+        reference_tree: DerivationTree,
+        grammar: Grammar,
+        structural_predicates: Set[StructuralPredicate] = STANDARD_STRUCTURAL_PREDICATES,
+        semantic_predicates: Set[SemanticPredicate] = STANDARD_SEMANTIC_PREDICATES) -> ThreeValuedTruth:
+    if isinstance(formula, str):
+        formula = parse_isla(formula, grammar, structural_predicates, semantic_predicates)
+
+    top_level_constants = {
+        c for c in VariablesCollector.collect(formula)
+        if isinstance(c, Constant) and not c.is_numeric()}
+    assert len(top_level_constants) <= 1
+    if len(top_level_constants) > 0:
+        assert reference_tree is not None
+        formula = formula.substitute_expressions({next(iter(top_level_constants)): reference_tree})
+
+    res, msg = well_formed(formula, grammar)
+    assert res, msg
+
+    v = FilterVisitor(lambda f: isinstance(f, NumericQuantifiedFormula))
+    formula.accept(v)
+    if not v.result:
+        # The legacy evaluation performs better, but only works w/o NumericQuantifiedFormulas.
+        # TODO: Check whether it still performs better, more general evaluation improved!
+        return evaluate_legacy(formula, grammar, {}, reference_tree)
+
+    qfr_free: Formula = eliminate_quantifiers(formula, grammar=grammar)
+
+    class NotYetReadyError(RuntimeError):
+        def __init__(self, *args: object) -> None:
+            super().__init__(*args)
+
+    # Evaluate predicates
+    def evaluate_predicates_action(formula: Formula) -> bool | Formula:
+        if isinstance(formula, StructuralPredicateFormula):
+            return SMTFormula(z3.BoolVal(formula.evaluate(reference_tree)))
+
+        if isinstance(formula, SemanticPredicateFormula):
+            eval_result = formula.evaluate(grammar)
+
+            if not eval_result.ready():
+                raise NotYetReadyError(f"Formula {formula} is not ready to be evaluated")
+
+            if eval_result.true():
+                return SMTFormula(z3.BoolVal(True))
+            elif eval_result.false():
+                return SMTFormula(z3.BoolVal(False))
+
+            substs: Dict[Variable | DerivationTree, DerivationTree] = eval_result.result
+            assert isinstance(substs, dict)
+            assert all(isinstance(key, Variable) and key.n_type == Variable.NUMERIC_NTYPE for key in substs)
+            return SMTFormula(z3_and([
+                cast(z3.BoolRef, const.to_smt() == substs[const].value)
+                for const in substs]), *substs.keys())
+
         return False
 
-    @daemon.setter
-    def daemon(self, value):
-        pass
+    try:
+        without_predicates: Formula = replace_formula(qfr_free, evaluate_predicates_action)
+    except NotYetReadyError:
+        return ThreeValuedTruth.unknown()
+
+    # The remaining formula is a pure SMT formula, which only needs to be converted.
+    smt_formula: z3.BoolRef = isla_to_smt_formula(without_predicates)
+
+    solver = z3.Solver()
+    solver.add(z3.Not(smt_formula))
+    z3_result = solver.check()
+    if z3_result == z3.unknown:
+        return ThreeValuedTruth.unknown()
+
+    return ThreeValuedTruth(z3_result == z3.unsat)  # original formula is valid
 
 
-class NoDaemonContext(type(multiprocessing.get_context())):
-    Process = NoDaemonProcess
+def well_formed(formula: Formula,
+                grammar: Grammar,
+                bound_vars: Optional[OrderedSet[BoundVariable]] = None,
+                in_expr_vars: Optional[OrderedSet[Variable]] = None,
+                bound_by_smt: Optional[OrderedSet[Variable]] = None) -> Tuple[bool, str]:
+    if bound_vars is None:
+        bound_vars = OrderedSet([])
+    if in_expr_vars is None:
+        in_expr_vars = OrderedSet([])
+    if bound_by_smt is None:
+        bound_by_smt = OrderedSet([])
 
+    unknown_typed_variables = [
+        var for var in formula.free_variables()
+        if is_nonterminal(var.n_type) and var.n_type not in grammar]
+    if unknown_typed_variables:
+        return False, "Unkown types of variables " + ", ".join(map(repr, unknown_typed_variables))
 
-# We sub-class multiprocessing.pool.Pool instead of multiprocessing.Pool
-# because the latter is only a wrapper function, not a proper class.
-class NestablePool(multiprocessing.pool.Pool):
-    def __init__(self, *args, **kwargs):
-        kwargs['context'] = NoDaemonContext()
-        super(NestablePool, self).__init__(*args, **kwargs)
+    if isinstance(formula, ExistsIntFormula) or isinstance(formula, ForallIntFormula):
+        if formula.bound_variables().intersection(bound_vars):
+            return False, f"Variables {', '.join(map(str, formula.bound_variables().intersection(bound_vars)))} " \
+                          f"already bound in outer scope"
 
+        unbound_variables = [
+            free_var for free_var in formula.free_variables()
+            if type(free_var) is BoundVariable
+            if free_var not in bound_vars]
+        if unbound_variables:
+            return False, f"Unbound variables " + ", ".join(map(repr, unbound_variables)) + f" in {formula}"
 
-class Evaluator:
-    def __init__(
-            self,
-            jobname_prefix: str,
-            generators: List[Callable[[int], ISLaSolver] | Grammar],
-            jobnames: List[str],
-            validator: Callable[[language.DerivationTree], bool],
-            graph: gg.GrammarGraph,
-            db_file: str = std_db_file(),
-            default_timeout: int = 60 * 60,
-            default_sessions: int = 1):
-        self.validator = validator
-        self.graph = graph
+        return well_formed(
+            formula.inner_formula,
+            grammar,
+            bound_vars | formula.bound_variables(),
+            in_expr_vars,
+            bound_by_smt
+        )
+    elif isinstance(formula, QuantifiedFormula):
+        if formula.in_variable in bound_by_smt:
+            return False, f"Variable {formula.in_variable} in {formula} bound be outer SMT formula"
+        if formula.bound_variables().intersection(bound_vars):
+            return False, f"Variables {', '.join(map(str, formula.bound_variables().intersection(bound_vars)))} " \
+                          f"already bound in outer scope"
+        if type(formula.in_variable) is BoundVariable and formula.in_variable not in bound_vars:
+            return False, f"Unbound variable {formula.in_variable} in {formula}"
+        unbound_variables = [
+            free_var for free_var in formula.free_variables()
+            if type(free_var) is BoundVariable
+            if free_var not in bound_vars]
+        if unbound_variables:
+            return False, f"Unbound variables " + ", ".join(map(repr, unbound_variables)) + f" in {formula}"
 
-        args, print_help = self.parse_command_line(
-            jobname_prefix, db_file, jobnames, default_sessions, default_timeout)
+        unknown_typed_variables = [
+            var for var in formula.bound_variables()
+            if is_nonterminal(var.n_type) and var.n_type not in grammar]
+        if unknown_typed_variables:
+            return False, "Unkown types of variables " + ", ".join(map(repr, unknown_typed_variables)) + \
+                   f" in {formula}"
 
-        if args.listjobs:
-            print(f"Available jobs for {jobname_prefix}: " + ", ".join(jobnames))
-            exit(0)
+        if formula.bind_expression is not None:
+            unknown_typed_variables = [
+                var for var in formula.bind_expression.all_bound_variables(grammar)
+                if is_nonterminal(var.n_type) and var.n_type not in grammar]
+            if unknown_typed_variables:
+                return False, "Unkown types of variables " + ", ".join(map(repr, unknown_typed_variables)) + \
+                       f" in match expression {formula.bind_expression}"
 
-        self.db_file: str = args.db
+        return well_formed(
+            formula.inner_formula,
+            grammar,
+            bound_vars | formula.bound_variables(),
+            in_expr_vars | OrderedSet([formula.in_variable]),
+            bound_by_smt
+        )
+    elif isinstance(formula, SMTFormula):
+        if any(free_var in in_expr_vars for free_var in formula.free_variables()):
+            return False, f"Formula {formula} binding variables of 'in' expressions in an outer quantifier."
 
-        if not args.generate:
-            assert os.path.exists(args.db)
+        if any(free_var not in bound_vars
+               for free_var in formula.free_variables()
+               if type(free_var) is BoundVariable):
+            return False, "(TODO)"
 
-        chosen_jobs = [name.strip() for name in args.jobs.split(",")]
-        if any(job not in jobnames for job in chosen_jobs):
-            print("ERROR: Unknown job specified.", file=sys.stderr)
-            print_help()
-            exit(1)
+        return True, ""
+    elif isinstance(formula, PropositionalCombinator):
+        if isinstance(formula, ConjunctiveFormula):
+            smt_formulas = [f for f in formula.args if type(f) is SMTFormula]
+            other_formulas = [f for f in formula.args if type(f) is not SMTFormula]
 
-        if not chosen_jobs:
-            print("ERROR: You have to choose at least one job.", file=sys.stderr)
-            print_help()
-            exit(1)
+            for smt_formula in smt_formulas:
+                res, msg = well_formed(smt_formula, grammar, bound_vars, in_expr_vars, bound_by_smt)
+                if not res:
+                    return False, msg
 
-        try:
-            self.timeout: int = int(args.timeout)
-        except ValueError:
-            print("ERROR: timeout value must be an integer.", file=sys.stderr)
-            print_help()
-            exit(1)
+            for smt_formula in smt_formulas:
+                bound_vars |= [var for var in smt_formula.free_variables() if type(var) is BoundVariable]
+                bound_by_smt |= smt_formula.free_variables()
 
-        self.jobs_and_generators = {
-            f"{jobname_prefix} {job}":
-                generator if isinstance(generator, dict) else generator(self.timeout)
-            for job, generator in
-            zip(jobnames, generators) if job in chosen_jobs
-        }
+            for f in other_formulas:
+                res, msg = well_formed(f, grammar, bound_vars, in_expr_vars, bound_by_smt)
+                if not res:
+                    return False, msg
 
-        try:
-            self.num_sessions: int = int(args.numsessions)
-        except ValueError:
-            print("ERROR: numsessions value must be an integer.", file=sys.stderr)
-            print_help()
-            exit(1)
-
-        self.do_clean: bool = args.clean
-        self.do_analyze: bool = args.analyze
-        self.do_generate: bool = args.generate
-        self.do_evaluate_validity: bool = args.validity
-        self.do_compute_kpaths: bool = args.kpaths
-        self.dry_run: bool = args.dryrun
-
-        max_ids = {jobname: (get_max_sid(jobname, self.db_file) or 0) for jobname in self.jobs_and_generators}
-        session_out_of_bounds = [
-            jobname for jobname in self.jobs_and_generators
-            if (max_ids[jobname] < self.num_sessions
-                and not self.do_generate
-                and not (self.do_clean and
-                         not (self.do_generate or self.do_evaluate_validity or self.do_compute_kpaths)))
-        ]
-
-        if session_out_of_bounds:
-            print(f"ERROR: Too large numsessions value (for job(s) {', '.join(session_out_of_bounds)}).",
-                  file=sys.stderr)
-            print_help()
-            exit(1)
-
-        try:
-            self.kvalues: List[int] = [int(val.strip()) for val in cast(str, args.kvalues).split(",")]
-        except ValueError:
-            print("ERROR: kvalues must be a comma-separated list of integers.", file=sys.stderr)
-            print_help()
-            exit(1)
-
-        if not (self.do_clean or self.do_analyze or self.do_generate
-                or self.do_evaluate_validity or self.do_compute_kpaths):
-            print("ERROR: You have to set at least one of -c, -a, -g, -v, or -p.", file=sys.stderr)
-            print_help()
-            exit(1)
-
-    def parse_command_line(
-            self,
-            jobname_prefix: str,
-            db_file: str,
-            jobnames: List[str],
-            default_sessions: int, default_timeout: int
-    ) -> Tuple[argparse.Namespace, Callable[[], None]]:
-        parser = argparse.ArgumentParser(
-            description=f"Evaluating the ISLa producer with case study {jobname_prefix}.",
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-        parser.add_argument("--db", default=db_file, help="Path to the sqlite database file.")
-        parser.add_argument(
-            "-n", "--numsessions", default=default_sessions,
-            help="The number of sessions to generate or analyze. "
-                 "For analysis, this can be set to -1; in this case, all sessions are analyzed.")
-
-        parser.add_argument(
-            "-l", "--listjobs", action="store_true", default=False,
-            help="Shows all jobs for this evaluator.")
-        parser.add_argument(
-            "-g", "--generate", action="store_true", default=False,
-            help="Generate inputs with a timeout of [timeout] seconds, [numsessions] times.")
-        parser.add_argument(
-            "-v", "--validity", action="store_true", default=False,
-            help="Compute validity of the inputs of the previous [numsessions] sessions.")
-        parser.add_argument(
-            "-p", "--kpaths", action="store_true", default=False,
-            help="Compute k-paths for the inputs of the previous [numsessions] sessions.")
-        parser.add_argument(
-            "-a", "--analyze", action="store_true", default=False,
-            help="Analyze the accumulated results of the previous [numsessions] sessions.")
-
-        g = parser.add_mutually_exclusive_group()
-        g.add_argument(
-            "-c", "--clean", action="store_true", default=False,
-            help="Removes all data related to the given job(s) from the database. WARNING: This cannot be undone!")
-        g.add_argument(
-            "-d", "--dryrun", action="store_true", default=False,
-            help="Does not write results to database when *generating* (-g). Does not affect -v and -p.")
-
-        parser.add_argument(
-            "-j", "--jobs", default=", ".join(jobnames),
-            help="Comma-separated list of jobs to run / evaluate.")
-        parser.add_argument(
-            "-t", "--timeout", default=default_timeout,
-            help="The timeout for test input generation. Useful with the '-g' option.")
-        parser.add_argument(
-            "-k", "--kvalues", default="3,4",
-            help="Comma-separated list of the values 'k' for which to compute k-path coverage. "
-                 "Useful with the '-p' option.")
-        args = parser.parse_args()
-
-        return args, lambda: parser.print_help(file=sys.stderr)
-
-    def run(self):
-        if self.do_clean:
-            truncate_db_tables(list(self.jobs_and_generators.keys()), self.db_file)
-
-        if self.do_generate:
-            self.generate()
-
-        if self.do_evaluate_validity:
-            self.evaluate_validity()
-
-        if self.do_compute_kpaths:
-            self.compute_kpaths()
-
-        if self.do_analyze:
-            self.analyze()
-
-    def generate(self) -> None:
-        assert self.num_sessions > 0
-        for _ in range(self.num_sessions):
-            # We do not run the actual test data generation in parallel (at least not if only one job
-            # is specified) to not negatively affect the performance. Thus, one session at a time.
-            if len(self.jobs_and_generators) == 1:
-                for jobname, generator in self.jobs_and_generators.items():
-                    inputs = generate_inputs(generator, self.timeout, jobname)
-                    if not self.dry_run:
-                        store_inputs(jobname, self.timeout, inputs, self.db_file)
-                continue
-
-            with pmp.Pool(processes=pmp.cpu_count()) as pool:
-                pool.starmap(
-                    lambda jobname, generator:
-                    generate_inputs(generator, self.timeout, jobname) if self.dry_run
-                    else store_inputs(
-                        jobname, self.timeout, generate_inputs(generator, self.timeout, jobname), self.db_file),
-                    list(self.jobs_and_generators.items()))
-
-    def evaluate_validity(self) -> None:
-        sids: Dict[str, List[int]] = {
-            jobname: get_all_sids(jobname, self.db_file)
-            for jobname in self.jobs_and_generators}
-
-        args: List[Tuple[List[str], List[Callable[[language.DerivationTree], bool]], List[str], List[int]]] = [
-            (
-                [jobname],
-                [self.validator],
-                [self.db_file],
-                sids[jobname] if self.num_sessions < 0
-                else sids[jobname][len(sids[jobname]) - self.num_sessions:])
-            for jobname in self.jobs_and_generators
-        ]
-
-        args: List[Tuple[str, Callable[[language.DerivationTree], bool], str, int]] = [
-            rt for t in args for rt in tuple(itertools.product(*t))]
-
-        with NestablePool(processes=pmp.cpu_count()) as pool:
-            pool.starmap(evaluate_validity, args)
-
-    def compute_kpaths(self) -> None:
-        sids: Dict[str, List[int]] = {
-            jobname: get_all_sids(jobname, self.db_file)
-            for jobname in self.jobs_and_generators}
-
-        args: List[Tuple[List[str], List[gg.GrammarGraph], List[int], List[str], List[int]]] = [
-            (
-                [jobname],
-                [self.graph],
-                [k],
-                [self.db_file],
-                sids[jobname] if self.num_sessions < 0
-                else sids[jobname][len(sids[jobname]) - self.num_sessions:])
-            for jobname in self.jobs_and_generators
-            for k in self.kvalues
-        ]
-
-        args: List[Tuple[str, gg.GrammarGraph, int, str, int]] = [
-            rt for t in args for rt in tuple(itertools.product(*t))]
-
-        if len(args) > 1:
-            with NestablePool(processes=pmp.cpu_count()) as pool:
-                pool.starmap(evaluate_kpaths, args)
+            return True, ""
         else:
-            evaluate_kpaths(*args[0])
-
-    def analyze(self):
-        con = sqlite3.connect(self.db_file)
-        cur = con.cursor()
-
-        efficiency: Dict[str, float] = {}
-        precision: Dict[str, float] = {}
-        diversity: Dict[str, float] = {}
-
-        for job in self.jobs_and_generators:
-            sids = tuple(get_all_sids(job, self.db_file))
-            if self.num_sessions >= 0:
-                sids = sids[len(sids) - self.num_sessions:]
-            assert sids, f"There do not exist sufficient sessions for job {job}, found {len(sids)} sessions."
-            sids_placeholder = ','.join('?' for _ in range(len(sids)))
-
-            print(f"Analyzing sessions {', '.join(map(str, sids))} for {job}")
-
-            # Analyze efficiency: Inputs / s
-            cur.execute(
-                f"SELECT COUNT(*) FROM inputs WHERE testId = ? AND sid IN ({sids_placeholder})",
-                (job,) + sids)
-            total_inputs: int = cur.fetchone()[0]
-            cur.execute(
-                f"SELECT SUM(seconds) FROM session_lengths WHERE testId = ? AND sid IN ({sids_placeholder})",
-                (job,) + sids)
-            time: int = cur.fetchone()[0]
-            efficiency[job] = total_inputs / time
-
-            # Analyze precision: Fraction of valid inputs
-            cur.execute(
-                f"SELECT COUNT(*) FROM inputs NATURAL JOIN valid WHERE testId = ? AND sid IN ({sids_placeholder})",
-                (job,) + sids)
-            valid_inputs: int = cur.fetchone()[0]
-            precision[job] = valid_inputs / total_inputs
-
-            # Analyze diversity: Fraction of covered k-paths
-            total_num_kpaths = {k: len(self.graph.k_paths(k)) for k in self.kvalues}
-            diversity_by_sid: Dict[int, float] = {}
-            for sid in sids:
-                diversity_by_k: Dict[int, float] = {}
-                for k in self.kvalues:
-                    cur.execute(
-                        "SELECT paths FROM inputs NATURAL JOIN kpaths WHERE testId = ? AND sid = ? AND k = ?",
-                        (job, sid, k))
-                    path_hashes: Set[int] = set([])
-                    for row in cur:
-                        path_hashes.update({int(path_hash) for path_hash in json.loads(row[0])})
-
-                    diversity_by_k[k] = len(path_hashes) / total_num_kpaths[k]
-                    assert len(path_hashes) <= total_num_kpaths[k], \
-                        f"For {job}, session {sid}, k={k}, found {len(path_hashes)} covered paths " \
-                        f"though only {total_num_kpaths[k]} paths exist in grammar graph."
-
-                diversity_by_sid[sid] = sum(diversity_by_k.values()) / len(diversity_by_k)
-
-            diversity[job] = sum(diversity_by_sid.values()) / len(diversity_by_sid)
-
-        con.close()
-
-        def perc(inp: float) -> str:
-            return frac(inp * 100) + " %"
-
-        def frac(inp: float) -> str:
-            return "{:8.2f}".format(inp)
-
-        print("\n")
-
-        col_1_len = max([len(job) for job in self.jobs_and_generators])
-        row_1 = f"| {'Job'.ljust(col_1_len)} | Efficiency | Precision  | Diversity  |"
-        sepline = f"+-{'-'.ljust(col_1_len, '-')}-+------------+------------+------------+"
-
-        print(sepline)
-        print(row_1)
-        print(sepline)
-
-        for job in self.jobs_and_generators:
-            print(f"| {job.ljust(col_1_len)} |   {frac(efficiency[job])} | "
-                  f"{perc(precision[job])} | {perc(diversity[job])} |")
-
-        print(sepline)
-
-
-def strtime() -> str:
-    return datetime.now().strftime("%H:%M:%S")
-
-
-def generate_inputs(
-        generator: Generator[language.DerivationTree, None, None] | ISLaSolver | Grammar,
-        timeout_seconds: int = 60,
-        jobname: Optional[str] = None) -> Dict[float, language.DerivationTree]:
-    start_time = time.time()
-    result: Dict[float, language.DerivationTree] = {}
-    jobname = "" if not jobname else f" ({jobname})"
-    print(f"[{strtime()}] Collecting data for {timeout_seconds} seconds{jobname}")
-
-    if isinstance(generator, ISLaSolver):
-        generator = generator.solve()
-    elif isinstance(generator, dict):
-        grammar = generator
-
-        def gen():
-            fuzzer = GrammarCoverageFuzzer(grammar)
-            while True:
-                yield language.DerivationTree.from_parse_tree(
-                    fuzzer.expand_tree(("<start>", None)))
-
-        generator = gen()
-
-    while int(time.time()) - int(start_time) <= timeout_seconds:
-        try:
-            inp = next(generator)
-        except StopIteration:
-            break
-        except Exception as exp:
-            print(f"{type(exp).__name__} occurred while executing solver; I'll stop here:\n" + str(exp),
-                  file=sys.stderr)
-            print(traceback.format_exc())
-            return result
-
-        logger.debug("Input: %s", str(inp))
-        curr_relative_time = time.time() - start_time
-        assert curr_relative_time not in result
-        result[curr_relative_time] = inp
-
-    print(f"[{strtime()}] Collected {len(result)} inputs in {timeout_seconds} seconds{jobname}")
-    return result
-
-
-def create_db_tables(db_file: str = std_db_file()) -> None:
-    inputs_table_sql = \
-        """CREATE TABLE IF NOT EXISTS inputs (
-    inpId INTEGER PRIMARY KEY ASC, 
-    testId TEXT,
-    sid INT,
-    reltime REAL,
-    inp TEXT
-)"""
-    valid_inputs_table_sql = "CREATE TABLE IF NOT EXISTS valid(inpId INTEGER PRIMARY KEY ASC)"
-    kpaths_table_sql = "CREATE TABLE IF NOT EXISTS kpaths(inpId INT, k INT, paths TEXT, UNIQUE(inpId, k))"
-    session_length_sql = "CREATE TABLE IF NOT EXISTS session_lengths(" \
-                         "testId TEXT, sid INT, seconds INT, UNIQUE (testId, sid))"
-
-    tables = {
-        "inputs": inputs_table_sql,
-        "valid": valid_inputs_table_sql,
-        "kpaths": kpaths_table_sql,
-        "session_lengths": session_length_sql
-    }
-
-    con = sqlite3.connect(db_file)
-
-    for tbl_name, cmd in tables.items():
-        with con:
-            con.execute(cmd)
-
-    def preprocess_sql(cmd: str) -> str:
-        cmd = cmd.replace("\n", "")
-        cmd = cmd.replace('"', "")
-        cmd = re.sub(r"\s?\(\s?", "(", cmd)
-        cmd = re.sub(r",\s", ",", cmd)
-        cmd = cmd.replace(" IF NOT EXISTS", "")
-        cmd = re.sub(r"\s+", " ", cmd)
-        return cmd
-
-    # Check integrity of table definitions (if could fail if tables already existed)
-    cur = con.cursor()
-    for tbl_name, cmd in tables.items():
-        cur.execute("SELECT sql FROM sqlite_master WHERE name = ?", (tbl_name,))
-        row = cur.fetchone()
-        assert row
-        sql: str = preprocess_sql(row[0])
-        cmd = preprocess_sql(cmd)
-        assert sql == cmd, f"Table SQL\n---\n{sql}\n---\n" \
-                           f"does not equal required definition\n---\n{cmd}\n---"
-
-    con.close()
-
-
-def truncate_db_tables(jobs: List[str], db_file: str = std_db_file()) -> None:
-    create_db_tables(db_file)
-    con = sqlite3.connect(db_file)
-
-    for job in jobs:
-        with con:
-            for row in con.execute("SELECT inpId FROM inputs WHERE testId = ?", (job,)):
-                con.execute("DELETE FROM valid WHERE inpId = ?", (row[0],))
-                con.execute("DELETE FROM kpaths WHERE inpId = ?", (row[0],))
-
-            con.execute("DELETE FROM inputs WHERE testId = ?", (job,))
-
-    con.close()
-
-
-def get_all_sids(test_id: str, db_file: str = std_db_file()) -> List[int]:
-    create_db_tables(db_file)
-    con = sqlite3.connect(db_file)
-    cur = con.cursor()
-
-    cur.execute("SELECT DISTINCT sid FROM inputs WHERE testId = ?", (test_id,))
-    result: List[int] = [row[0] for row in cur.fetchall()]
-    con.close()
-
-    return result
-
-
-def get_max_sid(test_id: str, db_file: str = std_db_file()) -> Optional[int]:
-    create_db_tables(db_file)
-    con = sqlite3.connect(db_file)
-    cur = con.cursor()
-
-    cur.execute("SELECT MAX(sid) FROM inputs WHERE testId = ?", (test_id,))
-    row = cur.fetchone()
-    sid = None if not row else row[0]
-
-    return sid
-
-
-def get_session_length(test_id: str, sid: int, db_file: str = std_db_file()) -> int:
-    create_db_tables(db_file)
-    con = sqlite3.connect(db_file)
-    result = None
-
-    with con:
-        result = None
-        for row in con.execute("SELECT seconds FROM session_lengths WHERE testId = ? AND sid = ?", (test_id, sid)):
-            result = row[0]
-            break
-
-    assert result is not None
-    con.close()
-    return result
-
-
-def store_inputs(
-        test_id: str,
-        timeout: int,
-        inputs: Dict[float, language.DerivationTree],
-        db_file: str = std_db_file()) -> None:
-    sid = (get_max_sid(test_id, db_file) or 0) + 1
-
-    create_db_tables(db_file)
-    con = sqlite3.connect(db_file)
-
-    reltime: float
-    inp: language.DerivationTree
-    for reltime, inp in inputs.items():
-        with con:
-            con.execute(
-                "INSERT INTO inputs(testId, sid, reltime, inp) VALUES (?, ?, ?, ?)",
-                (test_id, sid, reltime, json.dumps(inp.to_parse_tree())))
-
-    with con:
-        con.execute(
-            "INSERT INTO session_lengths(testId, sid, seconds) VALUES (?, ?, ?)",
-            (test_id, sid, timeout))
-
-    con.close()
-
-
-def get_inputs_from_db(
-        test_id: str,
-        sid: Optional[int] = None,
-        db_file: str = std_db_file(),
-        only_valid: bool = False,
-        only_unkown_validity: bool = False
-) -> Dict[int, language.DerivationTree]:
-    all_inputs_query = \
-        """
-        SELECT inpId, inp FROM inputs
-        WHERE testId = ? AND sid = ?
-        """
-
-    valid_inputs_query = \
-        """
-        SELECT inpId, inp FROM inputs
-        NATURAL JOIN valid
-        WHERE testId = ? AND sid = ?
-        """
-
-    invalid_inputs_query = \
-        """
-        SELECT inputs.inpId, inputs.inp 
-        FROM inputs LEFT JOIN valid 
-        ON inputs.inpId = valid.inpId 
-        WHERE valid.inpId IS NULL 
-              AND inputs.testId = ? 
-              AND inputs.sid = ?
-        """
-
-    # Get newest session ID if not present
-    if sid is None:
-        sid = get_max_sid(test_id, db_file)
-        assert sid
-
-    query = valid_inputs_query if only_valid else (invalid_inputs_query if only_unkown_validity else all_inputs_query)
-    con = sqlite3.connect(db_file)
-    cur = con.cursor()
-    cur.execute(query, (test_id, sid))
-    rows = cur.fetchall()
-    con.close()
-
-    inputs: Dict[int, language.DerivationTree] = {
-        row[0]: language.DerivationTree.from_parse_tree(json.loads(row[1]))
-        for row in rows}
-
-    return inputs
-
-
-def evaluate_validity(
-        test_id: str,
-        validator: Callable[[language.DerivationTree], bool],
-        db_file: str = std_db_file(),
-        sid: Optional[int] = None,
-        parallel: bool = True) -> None:
-    create_db_tables(db_file)
-
-    # Get newest session ID if not present
-    if sid is None:
-        sid = get_max_sid(test_id, db_file)
-        assert sid
-
-    print(f"[{strtime()}] Evaluating validity for session {sid} of {test_id}")
-
-    # Obtain inputs from session
-    print(f"Reading inputs for session {sid} of {test_id} from database...")
-    inputs: Dict[int, language.DerivationTree] = get_inputs_from_db(test_id, sid, db_file, only_unkown_validity=True)
-
-    print(f"Evaluating validity of inputs for session {sid} of {test_id}...")
-
-    # Evaluate
-    def evaluate(inp: language.DerivationTree) -> bool:
-        try:
-            return validator(inp) is True
-        except Exception as err:
-            print(f"Exception {err} raise when evaluating input {inp}, tree: {repr(inp)}")
-            print(f"Interpreting input '{inp}' as invalid.")
-            return False
-
-    valid_ids = [inp_id for inp_id, inp in inputs.items() if evaluate(inp)]
-
-    print(f"Writing validity data for inputs from session {sid} of {test_id} to database...")
-    # Insert into DB
-    con = sqlite3.connect(db_file)
-    with con:
-        con.executemany(f"INSERT INTO valid(inpId) VALUES (?)", map(lambda x: (x,), valid_ids))
-    con.close()
-
-    print(f"[{strtime()}] DONE Evaluating validity for session {sid} of {test_id}")
-
-
-def evaluate_kpaths(
-        test_id: str,
-        graph: gg.GrammarGraph,
-        k: int = 3,
-        db_file: str = std_db_file(),
-        sid: Optional[int] = None) -> None:
-    if os.environ.get("PYTHONHASHSEED") is None:
-        print("WARNING: Environment variable PYTHONHASHSEED not set, "
-              "should be set to 0 for deterministic hashing of k-paths", file=sys.stderr)
-    if os.environ.get("PYTHONHASHSEED") is not None and os.environ["PYTHONHASHSEED"] != "0":
-        print("WARNING: Environment variable PYTHONHASHSEED not set, "
-              "should be set to 0 for deterministic hashing of k-paths", file=sys.stderr)
-
-    create_db_tables(db_file)
-
-    # Get newest session ID if not present
-    if sid is None:
-        sid = get_max_sid(test_id, db_file)
-        assert sid
-
-    print(f"[{strtime()}] Evaluating {k}-paths for session {sid} of {test_id}")
-
-    # Obtain inputs from session
-    inputs = get_inputs_from_db(test_id, sid, db_file, only_valid=True)
-
-    def kpaths_already_computed(inp_id: int) -> bool:
-        con = sqlite3.connect(db_file)
-        cur = con.cursor()
-        cur.execute("SELECT * FROM kpaths WHERE inpId = ?", (inp_id,))
-        result = cur.fetchone() is not None
-        con.close()
-        return result
-
-    inputs = {inp_id: inp for inp_id, inp in inputs.items() if not kpaths_already_computed(inp_id)}
-
-    def compute_k_paths(inp: language.DerivationTree) -> List[int]:
-        return [hash(path) for path in graph.k_paths_in_tree(inp.to_parse_tree(), k)]
-
-    # Insert into DB
-    con = sqlite3.connect(db_file)
-    with con:
-        con.executemany(
-            "INSERT INTO kpaths(inpId, k, paths) VALUES (?, ?, ?)",
-            [(inp_id, k, json.dumps(compute_k_paths(inp))) for inp_id, inp in inputs.items()])
-    con.close()
-
-    print(f"[{strtime()}] DONE Evaluating {k}-paths for session {sid} of {test_id}")
+            for subformula in formula.args:
+                res, msg = well_formed(subformula, grammar, bound_vars, in_expr_vars, bound_by_smt)
+                if not res:
+                    return False, msg
+
+            return True, ""
+    elif isinstance(formula, StructuralPredicateFormula) or isinstance(formula, SemanticPredicateFormula):
+        unbound_variables = [
+            free_var for free_var in formula.free_variables()
+            if type(free_var) is BoundVariable
+            if free_var not in bound_vars]
+        if unbound_variables:
+            return False, f"Unbound variables " + ", ".join(map(repr, unbound_variables)) + f" in {formula}"
+        return True, ""
+    else:
+        raise NotImplementedError(f"Unsupported formula type {type(formula).__name__}")
+
+
+def evaluate_legacy(
+        formula: Formula,
+        grammar: Grammar,
+        assignments: Dict[Variable, Tuple[Path, DerivationTree]],
+        reference_tree: DerivationTree,
+        vacuously_satisfied: Optional[Set[Formula]] = None) -> ThreeValuedTruth:
+    """
+    An evaluation method which is based on tracking assignments in a dictionary.
+    This does not work with formulas containing numeric constant introductions,
+    but is significantly faster than the more general method based on formula manipulations.
+
+    :param formula: The formula to evaluate.
+    :param assignments: The assignments recorded so far.
+    :return: A (three-valued) truth value.
+    """
+
+    assert all(
+        reference_tree.is_valid_path(path)
+        for path, _ in assignments.values())
+    assert all(
+        reference_tree.find_node(tree) is not None
+        for _, tree in assignments.values())
+    assert all(
+        reference_tree.get_subtree(path) == tree
+        for path, tree in assignments.values())
+
+    if vacuously_satisfied is None:
+        vacuously_satisfied = set()
+
+    if isinstance(formula, ExistsIntFormula):
+        raise NotImplementedError("This method cannot evaluate IntroduceNumericConstantFormula formulas.")
+    elif isinstance(formula, SMTFormula):
+        instantiation = z3.substitute(
+            formula.formula,
+            *tuple({z3.String(symbol.name): z3.StringVal(str(symbol_assignment[1]))
+                    for symbol, symbol_assignment
+                    in assignments.items()}.items()))
+
+        solver = z3.Solver()
+        solver.add(z3.Not(instantiation))
+        return ThreeValuedTruth.from_bool(solver.check() == z3.unsat)  # Set timeout?
+    elif isinstance(formula, QuantifiedFormula):
+        if isinstance(formula.in_variable, DerivationTree):
+            in_inst = formula.in_variable
+            in_path: Path = reference_tree.find_node(in_inst)
+            assert in_path is not None
+        else:
+            assert formula.in_variable in assignments
+            in_path, in_inst = assignments[formula.in_variable]
+
+        assert all(
+            reference_tree.is_valid_path(path) and
+            reference_tree.find_node(tree) is not None and
+            reference_tree.get_subtree(path) == tree
+            for path, tree in assignments.values())
+
+        new_assignments = matches_for_quantified_formula(formula, grammar, in_inst, {})
+
+        assert all(
+            in_inst.is_valid_path(path) and
+            in_inst.find_node(tree) is not None and
+            in_inst.get_subtree(path) == tree
+            for assignment in new_assignments
+            for path, tree in assignment.values())
+
+        new_assignments = [
+            {var: (in_path + path, tree) for var, (path, tree) in assignment.items()} | assignments
+            for assignment in new_assignments]
+
+        assert all(
+            reference_tree.is_valid_path(path) and
+            reference_tree.find_node(tree) is not None and
+            reference_tree.get_subtree(path) == tree
+            for assignment in new_assignments
+            for path, tree in assignment.values())
+
+        if isinstance(formula, ForallFormula):
+            if not new_assignments:
+                vacuously_satisfied.add(formula)
+
+            return ThreeValuedTruth.all(
+                evaluate_legacy(formula.inner_formula, grammar, new_assignment, reference_tree, vacuously_satisfied)
+                for new_assignment in new_assignments)
+        elif isinstance(formula, ExistsFormula):
+            return ThreeValuedTruth.any(
+                evaluate_legacy(formula.inner_formula, grammar, new_assignment, reference_tree, vacuously_satisfied)
+                for new_assignment in new_assignments)
+    elif isinstance(formula, StructuralPredicateFormula):
+        arg_insts = [
+            arg if isinstance(arg, str)
+            else reference_tree.find_node(arg)
+            if isinstance(arg, DerivationTree)
+            else assignments[arg][0]
+            for arg in formula.args]
+        return ThreeValuedTruth.from_bool(formula.predicate.evaluate(reference_tree, *arg_insts))
+    elif isinstance(formula, SemanticPredicateFormula):
+        arg_insts = [arg if isinstance(arg, DerivationTree) or arg not in assignments
+                     else assignments[arg][1]
+                     for arg in formula.args]
+        eval_res = formula.predicate.evaluate(grammar, *arg_insts)
+
+        if eval_res.true():
+            return ThreeValuedTruth.true()
+        elif eval_res.false():
+            return ThreeValuedTruth.false()
+
+        if not eval_res.ready() or not all(isinstance(key, Constant) for key in eval_res.result):
+            # Evaluation resulted in a tree update; that is, the formula is satisfiable, but only
+            # after an update of its arguments. This result happens when evaluating formulas during
+            # solution search after instantiating variables with concrete trees.
+            return ThreeValuedTruth.unknown()
+
+        assignments.update({const: (tuple(), assgn) for const, assgn in eval_res.result.items()})
+        return ThreeValuedTruth.true()
+    elif isinstance(formula, NegatedFormula):
+        return ThreeValuedTruth.not_(evaluate_legacy(
+            formula.args[0], grammar, assignments, reference_tree, vacuously_satisfied))
+    elif isinstance(formula, ConjunctiveFormula):
+        return ThreeValuedTruth.all(
+            evaluate_legacy(sub_formula, grammar, assignments, reference_tree, vacuously_satisfied)
+            for sub_formula in formula.args)
+    elif isinstance(formula, DisjunctiveFormula):
+        return ThreeValuedTruth.any(
+            evaluate_legacy(sub_formula, grammar, assignments, reference_tree, vacuously_satisfied)
+            for sub_formula in formula.args)
+    else:
+        raise NotImplementedError()
+
+
+def eliminate_quantifiers(formula: Formula, grammar: Grammar) -> Formula:
+    # We eliminate all quantified formulas over derivation tree elements
+    # by replacing them by the finite set of matches in the inner trees.
+    quantified_formulas = [f for f in get_toplevel_quantified_formulas(formula)
+                           if isinstance(f, QuantifiedFormula)]
+
+    if quantified_formulas:
+        for quantified_formula in quantified_formulas:
+            assert isinstance(quantified_formula.in_variable, DerivationTree)
+            matches = [
+                {var: tree for var, (_, tree) in match.items()}
+                for match in matches_for_quantified_formula(
+                    quantified_formula, grammar, quantified_formula.in_variable)]
+            instantiations = [
+                quantified_formula.inner_formula.substitute_expressions(match)
+                for match in matches]
+
+            if instantiations:
+                reduce_op = (Formula.__and__ if isinstance(quantified_formula, ForallFormula)
+                             else Formula.__or__)
+                formula = replace_formula(
+                    formula,
+                    quantified_formula,
+                    reduce(reduce_op, instantiations))
+            else:
+                formula = replace_formula(
+                    formula,
+                    quantified_formula,
+                    SMTFormula(z3.BoolVal(isinstance(quantified_formula, ForallFormula))))
+
+        return eliminate_quantifiers(formula, grammar)
+
+    numeric_quantified_formulas = [f for f in get_toplevel_quantified_formulas(formula)
+                                   if isinstance(f, NumericQuantifiedFormula)]
+
+    if numeric_quantified_formulas:
+        for quantified_formula in numeric_quantified_formulas:
+            if isinstance(quantified_formula, ExistsIntFormula):
+                formula = replace_formula(
+                    formula,
+                    quantified_formula,
+                    ExistsIntFormula(
+                        quantified_formula.bound_variable,
+                        eliminate_quantifiers(quantified_formula.inner_formula, grammar)))
+            elif isinstance(quantified_formula, ForallIntFormula):
+                formula = replace_formula(
+                    formula,
+                    quantified_formula,
+                    ForallIntFormula(
+                        quantified_formula.bound_variable,
+                        eliminate_quantifiers(quantified_formula.inner_formula, grammar)))
+
+    return formula
+
+
+def matches_for_quantified_formula(
+        formula: QuantifiedFormula,
+        grammar: Grammar,
+        in_tree: Optional[DerivationTree] = None,
+        initial_assignments: Optional[Dict[Variable, Tuple[Path, DerivationTree]]] = None) -> \
+        List[Dict[Variable, Tuple[Path, DerivationTree]]]:
+    if in_tree is None:
+        in_tree = formula.in_variable
+        assert isinstance(in_tree, DerivationTree)
+
+    qfd_var: BoundVariable = formula.bound_variable
+    bind_expr: Optional[BindExpression] = formula.bind_expression
+    new_assignments: List[Dict[Variable, Tuple[Path, DerivationTree]]] = []
+    if initial_assignments is None:
+        initial_assignments = {}
+
+    def search_action(path: Path, tree: DerivationTree) -> None:
+        nonlocal new_assignments
+        node, children = tree
+        if node == qfd_var.n_type:
+            if bind_expr is not None:
+                maybe_match: Optional[Tuple[Tuple[BoundVariable, Tuple[Path, DerivationTree]]], ...]
+                maybe_match = bind_expr.match(tree, grammar)
+
+                if maybe_match is not None:
+                    maybe_match = dict(maybe_match)
+                    new_assignment = copy.copy(initial_assignments)
+                    new_assignment[qfd_var] = path, tree
+                    new_assignment.update({v: (path + p[0], p[1]) for v, p in maybe_match.items()})
+
+                    # The assignment is correct if there is not any non-matched leaf
+                    if all(any(len(match_path) <= len(leaf_path) and match_path == leaf_path[:len(match_path)]
+                               for match_path, _ in maybe_match.values()) for leaf_path, _ in tree.leaves()):
+                        new_assignments.append(new_assignment)
+            else:
+                new_assignment = copy.copy(initial_assignments)
+                new_assignment[qfd_var] = path, tree
+                new_assignments.append(new_assignment)
+
+    in_tree.traverse(search_action)
+    return new_assignments
+
+
+def get_toplevel_quantified_formulas(formula: Formula) -> \
+        List[Union[QuantifiedFormula, NumericQuantifiedFormula]]:
+    if isinstance(formula, QuantifiedFormula) or isinstance(formula, NumericQuantifiedFormula):
+        return [formula]
+    elif isinstance(formula, PropositionalCombinator):
+        return [f for arg in formula.args for f in get_toplevel_quantified_formulas(arg)]
+    else:
+        return []
+
+
+def isla_to_smt_formula(
+        formula: Formula,
+        replace_untranslatable_with_predicate=False,
+        prog_var_mapping: Optional[Dict[Formula, z3.BoolRef]] = None) -> z3.BoolRef:
+    assert not prog_var_mapping or replace_untranslatable_with_predicate
+    if prog_var_mapping is None:
+        prog_var_mapping = {}
+
+    if isinstance(formula, SMTFormula):
+        return formula.formula
+
+    if isinstance(formula, ConjunctiveFormula):
+        return z3_and([isla_to_smt_formula(child, replace_untranslatable_with_predicate, prog_var_mapping)
+                       for child in formula.args])
+
+    if isinstance(formula, DisjunctiveFormula):
+        return z3_or([isla_to_smt_formula(child, replace_untranslatable_with_predicate, prog_var_mapping)
+                      for child in formula.args])
+
+    if isinstance(formula, NegatedFormula):
+        return z3.Not(isla_to_smt_formula(formula.args[0], replace_untranslatable_with_predicate, prog_var_mapping))
+
+    if isinstance(formula, ForallIntFormula):
+        return z3.ForAll(
+            [formula.bound_variable.to_smt()],
+            isla_to_smt_formula(formula.inner_formula, replace_untranslatable_with_predicate, prog_var_mapping))
+
+    if isinstance(formula, ExistsIntFormula):
+        return z3.Exists(
+            [formula.bound_variable.to_smt()],
+            isla_to_smt_formula(formula.inner_formula, replace_untranslatable_with_predicate, prog_var_mapping))
+
+    if not replace_untranslatable_with_predicate:
+        raise NotImplementedError(f"Don't know how to translate formula {formula} to SMT")
+
+    if formula not in prog_var_mapping:
+        name_idx = 1
+        replacement = z3.Bool(f"P_{name_idx}")
+        while replacement in prog_var_mapping.values():
+            replacement = z3.Bool(f"P_{name_idx}")
+            name_idx += 1
+
+        assert replacement not in prog_var_mapping.values()
+        prog_var_mapping[formula] = replacement
+
+    return prog_var_mapping[formula]

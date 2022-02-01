@@ -6,7 +6,7 @@ import math
 import sys
 import time
 from functools import reduce, lru_cache
-from typing import Generator, Dict, List, Set, Optional, Tuple, Union, cast
+from typing import Generator, Dict, List, Set, Optional, Tuple, Union, cast, Callable
 
 import pkg_resources
 import z3
@@ -18,6 +18,7 @@ from grammar_to_regex.regex import regex_to_z3
 from orderedset import OrderedSet
 from packaging import version
 
+import isla.evaluator
 from isla import language
 import isla.isla_shortcuts as sc
 from isla.existential_helpers import insert_tree
@@ -25,8 +26,9 @@ from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
     replace_line_breaks, z3_subst, z3_solve, weighted_geometric_mean, assertions_activated, \
     split_str_with_nonterminals, cluster_by_common_elements, is_nonterminal
+from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES
 from isla.language import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
-    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts
+    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, QuantifiedFormula
 from isla.type_defs import Grammar, Path
 
 
@@ -37,12 +39,12 @@ class SolutionState:
         self.level = level
         self.__hash = None
 
-    def formula_satisfied(self, grammar: Grammar) -> language.ThreeValuedTruth:
+    def formula_satisfied(self, grammar: Grammar) -> isla.evaluator.ThreeValuedTruth:
         if self.tree.is_open():
             # Have to instantiate variables first
-            return language.ThreeValuedTruth.unknown()
+            return isla.evaluator.ThreeValuedTruth.unknown()
 
-        return language.evaluate(self.constraint, self.tree, grammar)
+        return isla.evaluator.evaluate(self.constraint, self.tree, grammar)
 
     def complete(self) -> bool:
         if not self.tree.is_complete():
@@ -181,8 +183,8 @@ class ISLaSolver:
     def __init__(self,
                  grammar: Grammar,
                  formula: Union[language.Formula, str],
-                 structural_predicates: Optional[Set[language.StructuralPredicate]] = None,
-                 semantic_predicates: Optional[Set[language.SemanticPredicate]] = None,
+                 structural_predicates: Set[language.StructuralPredicate] = STANDARD_STRUCTURAL_PREDICATES,
+                 semantic_predicates: Set[language.SemanticPredicate] = STANDARD_SEMANTIC_PREDICATES,
                  max_number_free_instantiations: int = 10,
                  max_number_smt_instantiations: int = 10,
                  max_number_tree_insertion_results: int = 5,
@@ -871,7 +873,7 @@ class ISLaSolver:
 
         for universal_formula in universal_formulas:
             matches: List[Dict[language.Variable, Tuple[Path, DerivationTree]]] = \
-                [match for match in language.matches_for_quantified_formula(universal_formula, self.grammar)
+                [match for match in isla.evaluator.matches_for_quantified_formula(universal_formula, self.grammar)
                  if not universal_formula.is_already_matched(match[universal_formula.bound_variable][1])]
 
             universal_formula_with_matches = universal_formula.add_already_matched({
@@ -900,7 +902,7 @@ class ISLaSolver:
         result: List[SolutionState] = []
 
         matches: List[Dict[language.Variable, Tuple[Path, DerivationTree]]] = \
-            language.matches_for_quantified_formula(existential_formula, self.grammar)
+            isla.evaluator.matches_for_quantified_formula(existential_formula, self.grammar)
 
         for match in matches:
             inst_formula = existential_formula.inner_formula.substitute_expressions({
@@ -913,7 +915,7 @@ class ISLaSolver:
 
     def eliminate_existential_formula(
             self, existential_formula: language.ExistsFormula, state: SolutionState) -> List[SolutionState]:
-        if language.evaluate(
+        if isla.evaluator.evaluate(
                 existential_formula,
                 state.tree,
                 self.grammar).is_true():
@@ -1485,7 +1487,7 @@ class ISLaSolver:
         for universal_formula in [conjunct for conjunct in get_conjuncts(state.constraint)
                                   if isinstance(conjunct, language.ForallFormula)]:
             if (universal_formula.in_variable.is_complete()
-                    and not language.matches_for_quantified_formula(universal_formula, self.grammar)):
+                    and not isla.evaluator.matches_for_quantified_formula(universal_formula, self.grammar)):
                 result = SolutionState(
                     language.replace_formula(result.constraint, universal_formula, sc.true()),
                     result.tree)
@@ -1500,7 +1502,7 @@ class ISLaSolver:
 
             if not (any(self.quantified_formula_might_match(universal_formula, leaf_path, universal_formula.in_variable)
                         for leaf_path, leaf_node in universal_formula.in_variable.open_leaves())
-                    or [match for match in language.matches_for_quantified_formula(universal_formula, self.grammar)
+                    or [match for match in isla.evaluator.matches_for_quantified_formula(universal_formula, self.grammar)
                         if not universal_formula.is_already_matched(match[universal_formula.bound_variable][1])]):
                 result = SolutionState(
                     language.replace_formula(result.constraint, universal_formula, sc.true()),
@@ -1510,7 +1512,7 @@ class ISLaSolver:
 
     def quantified_formula_might_match(
             self, qfd_formula: language.QuantifiedFormula, path_to_nonterminal: Path, tree: DerivationTree) -> bool:
-        return language.quantified_formula_might_match(
+        return quantified_formula_might_match(
             qfd_formula,
             path_to_nonterminal,
             tree,
@@ -1660,5 +1662,55 @@ def compute_k_coverage_cost(graph: GrammarGraph, k: int, state: SolutionState) -
 
 def get_quantifier_chains(formula: language.Formula) -> \
         List[Tuple[Union[language.QuantifiedFormula, language.ExistsIntFormula], ...]]:
-    univ_toplevel_formulas = language.get_toplevel_quantified_formulas(formula)
+    univ_toplevel_formulas = isla.evaluator.get_toplevel_quantified_formulas(formula)
     return [(f,) + c for f in univ_toplevel_formulas for c in (get_quantifier_chains(f.inner_formula) or [()])]
+
+
+def quantified_formula_might_match(
+        qfd_formula: QuantifiedFormula,
+        path_to_nonterminal: Path,
+        tree: DerivationTree,
+        grammar: Grammar,
+        reachable: Callable[[str, str], bool]) -> bool:
+    node = tree.get_subtree(path_to_nonterminal)
+
+    if qfd_formula.in_variable.find_node(node) is None:
+        return False
+
+    if qfd_formula.is_already_matched(node):
+        # This formula won't match node IFF there is no subtree in node that matches.
+        return any(quantified_formula_might_match(qfd_formula, path, node, grammar, reachable)
+                   for path, _ in node.paths() if path)
+
+    qfd_nonterminal = qfd_formula.bound_variable.n_type
+    if qfd_nonterminal == node.value or reachable(node.value, qfd_nonterminal):
+        return True
+
+    if qfd_formula.bind_expression is None:
+        return False
+
+    # Is there an extension of some tree `node` is a subtree of, such that the
+    # bind expression tree is a prefix tree of that extension, and extending
+    # the nonterminal might approach a match?
+    # Note that the prefix tree must not *already* be a match.
+
+    maybe_prefix_tree: DerivationTree
+    for maybe_prefix_tree, var_map in qfd_formula.bind_expression.to_tree_prefix(
+            qfd_formula.bound_variable.n_type, grammar):
+        for idx in reversed(range(len(path_to_nonterminal))):
+            subtree = tree.get_subtree(path_to_nonterminal[:idx])
+            if (maybe_prefix_tree.is_potential_prefix(subtree) and
+                    not qfd_formula.is_already_matched(subtree)):
+                # If the current nonterminal does not need to be further expanded to match
+                # the prefix tree, we need to return false; otherwise, we would needlessly
+                # expand nonterminals that could actually be freely instantiated.
+
+                path_to_node_in_prefix_tree = path_to_nonterminal[idx:]
+                while not maybe_prefix_tree.is_valid_path(path_to_node_in_prefix_tree):
+                    path_to_node_in_prefix_tree = path_to_node_in_prefix_tree[:-1]
+                node_in_prefix_tree = maybe_prefix_tree.get_subtree(path_to_node_in_prefix_tree)
+
+                if reachable(node.value, node_in_prefix_tree.value):
+                    return True
+
+    return False

@@ -15,9 +15,10 @@ from isla.helpers import delete_unreachable, tree_to_string
 from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, IN_TREE_PREDICATE, \
     SAME_POSITION_PREDICATE
 from isla.isla_predicates import count, COUNT_PREDICATE
-from isla.language import Constant, BoundVariable, Formula, well_formed, evaluate, BindExpression, \
+from isla.language import Constant, BoundVariable, Formula, BindExpression, \
     DerivationTree, convert_to_dnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
-    matches_for_quantified_formula, QuantifiedFormula, DummyVariable, unparse_isla, parse_isla
+    QuantifiedFormula, DummyVariable, unparse_isla, parse_isla
+from isla.evaluator import evaluate, well_formed, matches_for_quantified_formula
 from isla_formalizations import rest, scriptsizec, tar
 from isla_formalizations.csv import CSV_GRAMMAR, CSV_COLNO_PROPERTY, CSV_HEADERBODY_GRAMMAR
 from isla_formalizations.scriptsizec import SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT, SCRIPTSIZE_C_NO_REDEF_TEXT

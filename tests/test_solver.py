@@ -9,6 +9,7 @@ from xml.sax.saxutils import escape
 import pytest
 import z3
 
+import isla.evaluator
 from isla import isla_shortcuts as sc
 from isla import language
 from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
@@ -486,7 +487,7 @@ exists <csv-header> header in start:
 
                 if not print_only:
                     self.assertTrue(
-                        language.evaluate(formula.substitute_expressions({constant: assignment}), assignment, grammar),
+                        isla.evaluator.evaluate(formula.substitute_expressions({constant: assignment}), assignment, grammar),
                         f"Solution {assignment} does not satisfy constraint {formula}"
                     )
 
