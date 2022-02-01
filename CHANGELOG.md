@@ -6,6 +6,11 @@ version mostly conforms to the state as documented in the ISLa paper.
 
 ## [Unreleased]
 
+### Added
+
+- Added forgotten mention of the renaming of `isla.isla` to `isla.language` to
+  the changelog (this file), section 0.2a1.
+
 ## [0.2a1] - 2022-02-01
 
 ### Added
