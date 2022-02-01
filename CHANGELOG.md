@@ -1,0 +1,52 @@
+# Changelog
+
+This file contains the notable changes in the ISLa project since version 0.2a1
+(February 2022). Changes prior to this date are not documented; the prior
+version mostly conforms to the state as documented in the ISLa paper.
+
+## [Unreleased]
+
+## [0.2a1] - 2022-02-01
+
+### Added
+
+- Support for universal and existential quantifiers over integers: `forall int
+  x: ...` and `exists int x: ...`. Existential quantification replaces the
+  previous `num x: ...` syntax, universal quantification is new. ISLa is now
+  also closed under negation for numeric quantifiers. The ISLa solver uses an
+  incomplete approach to instantiate universal quantifiers over integers,
+  depending on SMT formula (and possibly semantic predicates) on top level
+  inside the inner formula.
+- ISLa now has its own, performance-optimized Grammar-Based fuzzer (forked from
+  the Fuzzing Book).
+
+### Changed
+
+- The ISLa concrete syntax was changed. In the new syntax, there is not variable
+  definition block (`vars`) and the constant declaration is now optional (only
+  needed if the top-level constant is not named "start" and has the nonterminal
+  type `<start>`). Instead, all types are directly declared inside the
+  constraint: E.g., `forall <expr> expr="{<sum> sum} + {<factor> factor}": ...`.
+  The `constraint` keyword was also removed; an ISLa specification either
+  consists of a constant declaration followed by an ISLa formula, or only of an
+  ISLa formula.
+- The ISLa source is now organized with a so-called ["src layout"](https://docs.pytest.org/en/6.2.x/goodpractices.html).
+- The existing language formalizations (e.g., Scriptsize-C and TAR) were moved
+  into a package `isla_formalizations` under the `src` directory. Tests are now
+  in the top-level directory `tests`, the evaluation scripts for the
+  formalizations in the top-level `evaluations` directory. The demo file
+  `xml_demo.py` moved to inside the `tests` directory. You can still run `tox`
+  in the top-level directory to run tests. For running tests without tox, you
+  might have to do a `pip install -e .` for an editable installation of ISLa
+  (preferrably within a virtual environment).
+- Switched to a PEP517-based build system. You can now run `python3 -m build`
+  from inside the virtual environment to run a build. All settings are now in
+  `setup.cfg`, the `setup.py` file is only there for backward compatibility and
+  to make the "setuptools-antlr" package work (`python3 setup.py antlr`). Only
+  ISLa developers need this.
+- Various bug fixes, enhancements and new safety assertions related to
+  existential quantifier solving (both instantiation and tree insertion).
+
+### Removed
+
+- The outdated formalizations for tiny-C and minipy were removed.

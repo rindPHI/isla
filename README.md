@@ -183,3 +183,7 @@ To install ISLa globally (not recommended, less well tested), run
 ```shell
 python3 -m build
 ```
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
