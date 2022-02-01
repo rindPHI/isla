@@ -1,6 +1,5 @@
 import unittest
 
-import pytest
 from fuzzingbook.Grammars import JSON_GRAMMAR
 from fuzzingbook.Parser import canonical, EarleyParser
 from grammar_graph.gg import GrammarGraph
