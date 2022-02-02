@@ -2248,10 +2248,10 @@ class VariableManager:
         self.variables: Dict[str, Variable] = {}
         self.grammar = grammar
 
-    def __var(self,
-              name: str,
-              n_type: Optional[str],
-              constr: Optional[Callable[[str, Optional[str]], Variable]] = None) -> Variable:
+    def _var(self,
+             name: str,
+             n_type: Optional[str],
+             constr: Optional[Callable[[str, Optional[str]], Variable]] = None) -> Variable:
         if n_type is not None:
             assert n_type == Variable.NUMERIC_NTYPE or n_type in self.grammar, \
                 f"Unknown nonterminal type {n_type} for variable {name}"
@@ -2277,18 +2277,18 @@ class VariableManager:
         return set(self.variables.keys()) | set(self.placeholders.keys())
 
     def const(self, name: str, n_type: Optional[str] = None) -> Constant:
-        return cast(Constant, self.__var(name, n_type, Constant))
+        return cast(Constant, self._var(name, n_type, Constant))
 
     def num_var(self, name: str) -> BoundVariable:
-        return cast(BoundVariable, self.__var(name, BoundVariable.NUMERIC_NTYPE, BoundVariable))
+        return cast(BoundVariable, self._var(name, BoundVariable.NUMERIC_NTYPE, BoundVariable))
 
     def bv(self, name: str, n_type: Optional[str] = None) -> BoundVariable:
-        return cast(BoundVariable, self.__var(name, n_type, BoundVariable))
+        return cast(BoundVariable, self._var(name, n_type, BoundVariable))
 
     def smt(self, formula) -> SMTFormula:
         assert isinstance(formula, z3.BoolRef)
         z3_symbols = get_symbols(formula)
-        isla_variables = [self.__var(str(z3_symbol), None) for z3_symbol in z3_symbols]
+        isla_variables = [self._var(str(z3_symbol), None) for z3_symbol in z3_symbols]
         return SMTFormula(formula, *isla_variables)
 
     def create(self, formula: Formula) -> Formula:
