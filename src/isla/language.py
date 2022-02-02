@@ -2298,7 +2298,7 @@ class VariableManager:
         ]
 
         if undeclared_variables:
-            raise RuntimeError("Undeclared variales: " + ", ".join(undeclared_variables))
+            raise RuntimeError("Undeclared variables: " + ", ".join(undeclared_variables))
 
         return formula.substitute_variables({
             ph_var: next(var for var_name, var in self.variables.items() if var_name == ph_name)
