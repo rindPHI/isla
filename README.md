@@ -116,16 +116,14 @@ though, the stream of solutions will be infinite (given that the grammar contain
 
 ## Resources / Important Files
 
-* The file `input_constraints/xml_demo.py` demonstrates most ISLa features along the example of an XML constraint.
-* In the directory `input_constraints/tests/subject_languages/`, you find our specifications for the subject languages
+* The file `tests/xml_demo.py` demonstrates most ISLa features along the example of an XML constraint.
+* In the directory `src/isla_formalizations/`, you find our specifications for the subject languages
   of our experimental evaluation.
-* The files `input_constraints/evaluations/evaluate_...` are the scripts we used to collect and analyze our 
+* The files `evaluations/evaluate_...` are the scripts we used to collect and analyze our 
   evaluation data. By running these scripts without arguments, a digest of the most recent results is returned.
-* In `eval_results`, you find the raw data of our experimental analysis. These files generally consist of the number
-  of seconds since start of the experiment when a data item was collected, and the accumulated numbers of valid / 
-  invalid inputs or k-paths, depending on the file.
-* The most important files of our evaluation are `input_constraints/isla.py` and `input_constraints/solver.py`,
-  containing most ISLa features (and the constraint checker) resp. the ISLa solver. 
+* The most important files of our implementation are `src/isla/language.py`, `src/isla/evaluator.py` 
+  and `input_constraints/solver.py`, containing ISLa language features, the constraint checker, 
+  and the ISLa solver. 
 
 ## Build, Run, Install
 
@@ -144,15 +142,15 @@ For development and testing, we recommend to use ISLa inside a virtual environme
 By thing the following steps in a standard shell (bash), one can run the ISLa tests:
 
 ```shell
-curl -L https://anonymous.4open.science/r/isla-pldi/ISLa-v0.1.zip
-unzip ISLa-v0.1.zip
+git clone git@github.com:rindPHI/isla.git
+cd isla/
 
 python3.10 -m venv venv
 source venv/bin/activate
 
-pip install --upgrade pip
-pip install -r requirements.txt
-pip install z3-solver=4.8.14.0
+pip3 install --upgrade pip
+pip3 install -r requirements.txt
+pip3 install z3-solver=4.8.14.0
 
 # Run tests
 tox
@@ -182,6 +180,7 @@ To install ISLa globally (not recommended, less well tested), run
 
 ```shell
 python3 -m build
+pip3 install dist/isla-0.2a1-py3-none-any.whl
 ```
 
 ## Changelog

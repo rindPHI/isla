@@ -19,6 +19,11 @@ version mostly conforms to the state as documented in the ISLa paper.
   user-defined special predicates should be used, one does not need to pass the predicates to
   the solver/evaluator when generating from/checking a constraint in ISLa's concrete syntax
   (a string).
+- Corrections in README.txt
+
+### Removed
+
+- Removed "eval_results" folder. New evaluation scripts output SQLITE files.
 
 ## [0.2a1] - 2022-02-01
 
