@@ -38,7 +38,8 @@ version mostly conforms to the state as documented in the ISLa paper.
 ### Changed
 
 - Factored out functions related to ISLa evaluations from `isla.language` to `isla.evaluator`.
-  The previous `isla.evaluator` file was named `isla.performance_evaluator`.
+  The previous `isla.evaluator` file was named `isla.performance_evaluator`. This change is also
+  reflected in the organization of the tests in `tests/`.
 - Corrections in README.txt
 - Checking whether existential (integer / tree) quantifiers are already satisfied, taking into account
   existing constraints (assumptions).
