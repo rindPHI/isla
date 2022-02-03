@@ -7,7 +7,8 @@ import pickle
 import re
 from abc import ABC
 from functools import reduce, lru_cache
-from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable, Sequence, Protocol
+from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable, Sequence, Protocol, \
+    TypeVar, AbstractSet, MutableSet
 
 import antlr4
 import z3
@@ -1192,7 +1193,7 @@ class SemPredEvalResult:
             return "UNKNOWN"
 
 
-SemPredArg = Union[DerivationTree, Constant, str, int]
+SemPredArg = Union[DerivationTree, Variable, str, int]
 
 
 def binds_nothing(tree: DerivationTree, args: Tuple[SemPredArg, ...]) -> bool:
@@ -2607,7 +2608,8 @@ def unparse_isla(formula: Formula) -> str:
             bind_expr_str = "" if formula.bind_expression is None else f'="{formula.bind_expression}"'
 
             qfr = "forall" if isinstance(formula, ForallFormula) else "exists"
-            result = [f"{qfr} {formula.bound_variable.n_type} {formula.bound_variable.name}{bind_expr_str} in {formula.in_variable}:"]
+            result = [
+                f"{qfr} {formula.bound_variable.n_type} {formula.bound_variable.name}{bind_expr_str} in {formula.in_variable}:"]
             child_result = unparse_constraint(formula.inner_formula)
             result += [indent + line for line in child_result]
             return result
@@ -2665,20 +2667,34 @@ def get_conjuncts(formula: Formula) -> List[Formula]:
             for conjunct in split_conjunction(disjunct)]
 
 
-def fresh_constant(used: Set[Variable], proposal: Constant, add: bool = True) -> Constant:
-    base_name, n_type = proposal.name, proposal.n_type
+T = TypeVar("T")
 
+
+def fresh_variable(
+        used: MutableSet[Variable],
+        base_name: str,
+        n_type: str,
+        constructor: Callable[[str, str], T],
+        add: bool = True) -> T:
     name = base_name
     idx = 0
     while any(used_var.name == name for used_var in used):
         name = f"{base_name}_{idx}"
         idx += 1
 
-    result = Constant(name, n_type)
+    result = constructor(name, n_type)
     if add:
         used.add(result)
 
     return result
+
+
+def fresh_constant(used: MutableSet[Variable], proposal: Constant, add: bool = True) -> Constant:
+    return fresh_variable(used, proposal.name, proposal.n_type, Constant, add)
+
+
+def fresh_bound_variable(used: MutableSet[Variable], proposal: BoundVariable, add: bool = True) -> BoundVariable:
+    return fresh_variable(used, proposal.name, proposal.n_type, BoundVariable, add)
 
 
 def instantiate_top_constant(formula: Formula, tree: DerivationTree) -> Formula:

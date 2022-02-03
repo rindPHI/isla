@@ -26,9 +26,10 @@ from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
     replace_line_breaks, z3_subst, z3_solve, weighted_geometric_mean, assertions_activated, \
     split_str_with_nonterminals, cluster_by_common_elements, is_nonterminal
-from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES
+from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES, COUNT_PREDICATE
 from isla.language import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
-    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, QuantifiedFormula
+    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, QuantifiedFormula, \
+    fresh_variable
 from isla.type_defs import Grammar, Path
 
 
@@ -194,7 +195,8 @@ class ISLaSolver:
                  debug: bool = False,
                  cost_settings: CostSettings = STD_COST_SETTINGS,
                  timeout_seconds: Optional[int] = None,
-                 global_fuzzer: bool = False):
+                 global_fuzzer: bool = False,
+                 predicates_unique_in_int_arg: Tuple[language.SemanticPredicate, ...] = (COUNT_PREDICATE,)):
         """
         :param grammar: The underlying grammar.
         :param formula: The formula to solve.
@@ -217,6 +219,9 @@ class ISLaSolver:
         off unconstrained open derivation trees throughout the whole generation time. This may be beneficial for
         some targets; e.g., we experienced that CSV works significantly faster. However, the achieved k-path coverage
         can be lower with that setting.
+        :param predicates_unique_in_int_arg: This is needed in certain cases for instantiating universal
+        integer quantifiers. The supplied predicates should have exactly one integer argument, and hold
+        for exactly one integer value once all other parameters are fixed.
         """
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -299,6 +304,8 @@ class ISLaSolver:
         for state in initial_states:
             heapq.heappush(self.queue, (self.compute_cost(state), state))
         self.current_level = 0
+
+        self.predicates_unique_in_int_arg: Set[language.SemanticPredicate] = set(predicates_unique_in_int_arg)
 
         # Debugging stuff
         self.debug = debug
@@ -512,7 +519,7 @@ class ISLaSolver:
             state: SolutionState,
             universal_int_formula: language.ForallIntFormula) -> List[SolutionState]:
         constant = language.Constant(universal_int_formula.bound_variable.name,
-                                 universal_int_formula.bound_variable.n_type)
+                                     universal_int_formula.bound_variable.n_type)
         inner_formula = universal_int_formula.inner_formula.substitute_variables({
             universal_int_formula.bound_variable: constant})
 
@@ -566,7 +573,8 @@ class ISLaSolver:
             ]
 
             if smt_disjuncts and len(smt_disjuncts) < len(language.split_disjunction(inner_formula)):
-                instantiation_values = infer_satisfying_assignments(-reduce(language.SMTFormula.disjunction, smt_disjuncts))
+                instantiation_values = infer_satisfying_assignments(
+                    -reduce(language.SMTFormula.disjunction, smt_disjuncts))
 
                 # We also try to falsify (negated) semantic predicate formulas, if present,
                 # if there exist any remaining disjuncts.
@@ -600,24 +608,6 @@ class ISLaSolver:
                 else:
                     instantiations.extend([{constant: value} for value in instantiation_values])
 
-        if isinstance(universal_int_formula.inner_formula, language.ConjunctiveFormula):
-            # In the conjunctive case, we attempt make all SMT formulas in the inner formula
-            # true (on top level) that contain the bound variable as argument.
-            smt_conjuncts = [
-                formula for formula in language.split_conjunction(inner_formula)
-                if isinstance(formula, language.SMTFormula) and constant in formula.free_variables()
-            ]
-
-            # TODO: Should also try to make all semantic predicate formulas true.
-            if smt_conjuncts:
-                instantiation_values = infer_satisfying_assignments(reduce(language.SMTFormula.conjunction, smt_conjuncts))
-                instantiations.extend([{constant: value} for value in instantiation_values])
-
-        if not instantiations:
-            self.logger.warning(f"Did not find a way to instantiate formula {universal_int_formula}!\n"
-                                f"Discarding this state. Please report this to your nearest ISLa developer.")
-            return []
-
         results: List[SolutionState] = []
         for instantiation in instantiations:
             self.logger.debug(
@@ -638,7 +628,95 @@ class ISLaSolver:
 
             results.append(SolutionState(formula, tree))
 
-        return results
+        if results:
+            return results
+
+        # If the above approach was not successful, we con transform the universal int
+        # quantifier to an existential one in a particular situation:
+        #
+        # Let phi(elem, i) be such that phi(elem) (for fixed first argument) is a unary
+        # relation that holds for exactly one argument:
+        #
+        # forall <A> elem:
+        #   exists int i:
+        #     phi(elem, i) and
+        #     forall int i':
+        #       phi(elem, i) <==> i = i'
+        #
+        # Then, the following transformations are equivalence-preserving:
+        #
+        # forall int i:
+        #   exists <A> elem:
+        #     not phi(elem, i)
+        #
+        # <==> (*)
+        #
+        # exists int i:
+        #   exists <A> elem':
+        #     phi(elem', i) &
+        #   exists <A> elem:
+        #     not phi(elem, i) &
+        #   forall int i':
+        #     i != i' ->
+        #     exists <A> elem'':
+        #       not phi(elem'', i')
+        #
+        # <==> (+)
+        #
+        # exists int i:
+        #   exists <A> elem':
+        #     phi(elem', i) &
+        #   exists <A> elem:
+        #     not phi(elem, i)
+        #
+        # (*)
+        # Problematic is only the first inner conjunct. However, for every elem, there
+        # has to be an i such that phi(elem, i) holds. If there is no no in the first
+        # place, also the original formula would be unsatisfiable. Without this conjunct,
+        # the transformation is a simple "quantifier unwinding."
+        #
+        # (+)
+        # Let i' != i. Choose elem'' := elem': Since phi(elem', i) holds and i != i',
+        # "not phi(elem', i')" has to hold.
+
+        if (isinstance(universal_int_formula.inner_formula, language.ExistsFormula) and
+                isinstance(universal_int_formula.inner_formula.inner_formula, language.NegatedFormula) and
+                isinstance(
+                    universal_int_formula.inner_formula.inner_formula.args[0],
+                    language.SemanticPredicateFormula) and
+                cast(language.SemanticPredicateFormula,
+                     universal_int_formula.inner_formula.inner_formula.args[0]).predicate
+                in self.predicates_unique_in_int_arg):
+            inner_formula: language.ExistsFormula = universal_int_formula.inner_formula
+            predicate_formula: language.SemanticPredicateFormula = cast(
+                language.SemanticPredicateFormula,
+                cast(language.NegatedFormula, inner_formula.inner_formula).args[0])
+
+            fresh_var = language.fresh_bound_variable(
+                language.VariablesCollector().collect(state.constraint),
+                inner_formula.bound_variable, add=False)
+
+            new_formula = language.ExistsIntFormula(
+                universal_int_formula.bound_variable,
+                language.ExistsFormula(
+                    fresh_var,
+                    inner_formula.in_variable,
+                    predicate_formula.substitute_variables({inner_formula.bound_variable: fresh_var})) &
+                inner_formula)
+
+            self.logger.debug(
+                "Transforming universal integer quantifier "
+                "(special case, see code comments for explanation):\n%s ==> %s",
+                universal_int_formula,
+                new_formula)
+
+            return [SolutionState(
+                language.replace_formula(state.constraint, universal_int_formula, new_formula),
+                state.tree)]
+
+        self.logger.warning(f"Did not find a way to instantiate formula {universal_int_formula}!\n"
+                            f"Discarding this state. Please report this to your nearest ISLa developer.")
+        return []
 
     def eliminate_all_semantic_formulas(self, state: SolutionState) -> Optional[List[SolutionState]]:
         conjuncts = split_conjunction(state.constraint)
@@ -1041,7 +1119,8 @@ class ISLaSolver:
 
         return result
 
-    def eliminate_semantic_formula(self, semantic_formula: language.Formula, state: SolutionState) -> List[SolutionState]:
+    def eliminate_semantic_formula(self, semantic_formula: language.Formula, state: SolutionState) -> List[
+        SolutionState]:
         """
         Solves a semantic formula and, for each solution, substitutes the solution for the respective
         constant in each assignment of the state. Also instantiates all "free" constants in the given
@@ -1502,7 +1581,8 @@ class ISLaSolver:
 
             if not (any(self.quantified_formula_might_match(universal_formula, leaf_path, universal_formula.in_variable)
                         for leaf_path, leaf_node in universal_formula.in_variable.open_leaves())
-                    or [match for match in isla.evaluator.matches_for_quantified_formula(universal_formula, self.grammar)
+                    or [match for match in
+                        isla.evaluator.matches_for_quantified_formula(universal_formula, self.grammar)
                         if not universal_formula.is_already_matched(match[universal_formula.bound_variable][1])]):
                 result = SolutionState(
                     language.replace_formula(result.constraint, universal_formula, sc.true()),

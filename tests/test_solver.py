@@ -12,7 +12,8 @@ import z3
 import isla.evaluator
 from isla import isla_shortcuts as sc
 from isla import language
-from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE
+from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, STANDARD_SEMANTIC_PREDICATES, \
+    STANDARD_STRUCTURAL_PREDICATES
 from isla.language import VariablesCollector, parse_isla
 from isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
     get_quantifier_chains
@@ -312,6 +313,28 @@ exists <csv-header> header in start:
             debug=True
         )
 
+    def test_simple_equal_length_csv_negated(self):
+        # Original property:
+        # exists int colno:
+        #   forall <csv-record> record in start:
+        #     count(record, "<raw-field>", colno)
+        property = """
+forall int colno:
+  exists <csv-record> record in start:
+    not(count(record, "<raw-field>", colno))"""
+
+        self.execute_generation_test(
+            property,
+            grammar=CSV_GRAMMAR,
+            custom_test_func=lambda t: isinstance(csv_lint(t), str),
+            num_solutions=32,
+            max_number_free_instantiations=2,
+            max_number_smt_instantiations=1,
+            enforce_unique_trees_in_queue=False,
+            global_fuzzer=True,
+            debug=True
+        )
+
     def test_rest(self):
         random.seed(1234)
         self.execute_generation_test(
@@ -415,8 +438,8 @@ exists <csv-header> header in start:
     def execute_generation_test(
             self,
             formula: Union[language.Formula, str],
-            structural_predicates: Optional[Set[language.StructuralPredicate]] = None,
-            semantic_predicates: Optional[Set[language.SemanticPredicate]] = None,
+            structural_predicates: Set[language.StructuralPredicate] = STANDARD_STRUCTURAL_PREDICATES,
+            semantic_predicates: Set[language.SemanticPredicate] = STANDARD_SEMANTIC_PREDICATES,
             grammar=LANG_GRAMMAR,
             num_solutions=50,
             print_solutions=False,
@@ -487,7 +510,8 @@ exists <csv-header> header in start:
 
                 if not print_only:
                     self.assertTrue(
-                        isla.evaluator.evaluate(formula.substitute_expressions({constant: assignment}), assignment, grammar),
+                        isla.evaluator.evaluate(formula.substitute_expressions({constant: assignment}), assignment,
+                                                grammar),
                         f"Solution {assignment} does not satisfy constraint {formula}"
                     )
 

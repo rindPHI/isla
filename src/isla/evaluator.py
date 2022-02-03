@@ -103,7 +103,8 @@ def evaluate(
         reference_tree: DerivationTree,
         grammar: Grammar,
         structural_predicates: Set[StructuralPredicate] = STANDARD_STRUCTURAL_PREDICATES,
-        semantic_predicates: Set[SemanticPredicate] = STANDARD_SEMANTIC_PREDICATES) -> ThreeValuedTruth:
+        semantic_predicates: Set[SemanticPredicate] = STANDARD_SEMANTIC_PREDICATES,
+        assumptions: Optional[Set[Formula]] = None) -> ThreeValuedTruth:
     if isinstance(formula, str):
         formula = parse_isla(formula, grammar, structural_predicates, semantic_predicates)
 
@@ -123,9 +124,29 @@ def evaluate(
     if not v.result:
         # The legacy evaluation performs better, but only works w/o NumericQuantifiedFormulas.
         # TODO: Check whether it still performs better, more general evaluation improved!
+        # TODO: If keeping legacy evaluation, also consider assumptions!
         return evaluate_legacy(formula, grammar, {}, reference_tree)
 
-    qfr_free: Formula = eliminate_quantifiers(formula, grammar=grammar)
+    qfr_free: Formula = eliminate_quantifiers(
+        formula,
+        grammar=grammar,
+        numeric_constants={
+            c for f in (assumptions | {formula}) for c in VariablesCollector.collect(f)
+            if isinstance(c, Constant) and c.is_numeric()
+        }
+    )
+
+    # Substitute assumptions
+
+    # First, eliminate quantifiers in assumptions. We don't supply any numeric constants
+    # here, as this would be unsound in assumptions: We know that the core holds for any
+    # int, but not for which one.
+    qfr_free_assumptions = {eliminate_quantifiers(assumption, grammar=grammar) for assumption in assumptions}
+
+    # Then, replace the assumptions by True in the formula
+    assumptions_instantiated = qfr_free
+    for assumption in qfr_free_assumptions:
+        assumptions_instantiated = replace_formula(assumptions_instantiated, assumption, SMTFormula(z3.BoolVal(True)))
 
     class NotYetReadyError(RuntimeError):
         def __init__(self, *args: object) -> None:
@@ -157,7 +178,7 @@ def evaluate(
         return False
 
     try:
-        without_predicates: Formula = replace_formula(qfr_free, evaluate_predicates_action)
+        without_predicates: Formula = replace_formula(assumptions_instantiated, evaluate_predicates_action)
     except NotYetReadyError:
         return ThreeValuedTruth.unknown()
 
@@ -425,7 +446,15 @@ def evaluate_legacy(
         raise NotImplementedError()
 
 
-def eliminate_quantifiers(formula: Formula, grammar: Grammar) -> Formula:
+def eliminate_quantifiers(
+        formula: Formula,
+        grammar: Grammar,
+        numeric_constants: Optional[Set[Constant]] = None) -> Formula:
+    if numeric_constants is None:
+        numeric_constants = {
+            var for var in VariablesCollector().collect(formula)
+            if isinstance(var, Constant) and var.is_numeric()}
+
     # We eliminate all quantified formulas over derivation tree elements
     # by replacing them by the finite set of matches in the inner trees.
     quantified_formulas = [f for f in get_toplevel_quantified_formulas(formula)
@@ -455,7 +484,7 @@ def eliminate_quantifiers(formula: Formula, grammar: Grammar) -> Formula:
                     quantified_formula,
                     SMTFormula(z3.BoolVal(isinstance(quantified_formula, ForallFormula))))
 
-        return eliminate_quantifiers(formula, grammar)
+        return eliminate_quantifiers(formula, grammar, numeric_constants)
 
     numeric_quantified_formulas = [f for f in get_toplevel_quantified_formulas(formula)
                                    if isinstance(f, NumericQuantifiedFormula)]
@@ -463,19 +492,29 @@ def eliminate_quantifiers(formula: Formula, grammar: Grammar) -> Formula:
     if numeric_quantified_formulas:
         for quantified_formula in numeric_quantified_formulas:
             if isinstance(quantified_formula, ExistsIntFormula):
+                # There might be a constant for which this formula is satisfied
                 formula = replace_formula(
                     formula,
                     quantified_formula,
                     ExistsIntFormula(
                         quantified_formula.bound_variable,
-                        eliminate_quantifiers(quantified_formula.inner_formula, grammar)))
+                        eliminate_quantifiers(quantified_formula.inner_formula, grammar, numeric_constants)))
+
+                formula = formula | reduce(Formula.__or__, [
+                    eliminate_quantifiers(
+                        quantified_formula.inner_formula.substitute_variables({
+                            quantified_formula.bound_variable: constant}),
+                        grammar,
+                        numeric_constants)
+                    for constant in numeric_constants
+                ], SMTFormula(z3.BoolVal(False)))
             elif isinstance(quantified_formula, ForallIntFormula):
                 formula = replace_formula(
                     formula,
                     quantified_formula,
                     ForallIntFormula(
                         quantified_formula.bound_variable,
-                        eliminate_quantifiers(quantified_formula.inner_formula, grammar)))
+                        eliminate_quantifiers(quantified_formula.inner_formula, grammar, numeric_constants)))
 
     return formula
 

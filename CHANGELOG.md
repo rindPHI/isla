@@ -10,15 +10,35 @@ version mostly conforms to the state as documented in the ISLa paper.
 
 - Added forgotten mention of the renaming of `isla.isla` to `isla.language` to
   the changelog (this file), section 0.2a1.
+- Both the evaluator and the solver are passed default sets of predicates. Thus, unless some
+  user-defined special predicates should be used, one does not need to pass the predicates to
+  the solver/evaluator when generating from/checking a constraint in ISLa's concrete syntax
+  (a string).
+- Added universal integer quantification method for a special case:
+  
+      forall int i:
+        exists <?> elem in container: 
+          not phi(elem, i) 
+  
+  is transformed to
+
+      exists int i: (
+        exists <?> elem in container: 
+          phi(elem, i) and 
+        exists <?> elem in container: 
+          not phi(elem, i))
+ 
+  if the predicate / formula phi exactly holds true for a single instantiation of `i` once elem
+  (and potentially other parameters) have fixed values. In the code, we briefly sketch a correctness
+  proof that this transformation is equivalence-preserving.
+- Constraint checking can consider preconditions. This is highly useful when eliminating existential
+  quantifiers (esp. after re-insertion): They may not generally hold, but taking the already existing
+  constraints into account.
 
 ### Changed
 
 - Factored out functions related to ISLa evaluations from `isla.language` to `isla.evaluator`.
   The previous `isla.evaluator` file was named `isla.performance_evaluator`.
-- Both the evaluator and the solver are passed default sets of predicates. Thus, unless some
-  user-defined special predicates should be used, one does not need to pass the predicates to
-  the solver/evaluator when generating from/checking a constraint in ISLa's concrete syntax
-  (a string).
 - Corrections in README.txt
 
 ### Removed
