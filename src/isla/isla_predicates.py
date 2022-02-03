@@ -155,6 +155,9 @@ def count(grammar: Grammar,
           negate: bool = False) -> SemPredEvalResult:
     graph = GrammarGraph.from_grammar(grammar)
 
+    if isinstance(in_tree, Variable):
+        return SemPredEvalResult(None)
+
     num_needle_occurrences = len(in_tree.filter(lambda t: t.value == needle))
 
     leaf_nonterminals = [node.value for _, node in in_tree.open_leaves()]

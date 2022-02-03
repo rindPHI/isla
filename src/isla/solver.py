@@ -331,7 +331,7 @@ class ISLaSolver:
                     return
 
             # import dill as pickle
-            # state_hash = 3628212357218564972
+            # state_hash = 4087898962125456383
             # out_file = "/tmp/saved_debug_state"
             # if hash(self.queue[0][1]) == state_hash:
             #     with open(out_file, 'wb') as debug_state_file:
@@ -482,6 +482,19 @@ class ISLaSolver:
 
         formula = state.constraint
         for existential_int_formula in existential_int_formulas:
+            if isla.evaluator.evaluate(
+                    existential_int_formula,
+                    state.tree,
+                    self.grammar,
+                    assumptions={f for f in split_conjunction(state.constraint) if f != existential_int_formula}
+            ).is_true():
+                self.logger.debug("Removing existential integer quantifier '%.30s', already implied "
+                                  "by tree and existing constraints", existential_int_formula)
+                # This should simplify the process after quantifier re-insertion.
+                return SolutionState(
+                    language.replace_formula(state.constraint, existential_int_formula, sc.true()),
+                    state.tree)
+
             self.logger.debug("Eliminating existential integer quantifier %s", existential_int_formula)
             used_vars = set(VariablesCollector.collect(formula))
             fresh = language.fresh_constant(
@@ -755,7 +768,7 @@ class ISLaSolver:
 
         semantic_predicate_formulas = sorted(
             semantic_predicate_formulas,
-            key=lambda f: (cast(language.SemanticPredicateFormula, f.args[0]).order
+            key=lambda f: (2 * cast(language.SemanticPredicateFormula, f.args[0]).order + 100
                            if isinstance(f, language.NegatedFormula)
                            else f.order))
 
@@ -996,7 +1009,10 @@ class ISLaSolver:
         if isla.evaluator.evaluate(
                 existential_formula,
                 state.tree,
-                self.grammar).is_true():
+                self.grammar,
+                assumptions={f for f in split_conjunction(state.constraint) if f != existential_formula}).is_true():
+            self.logger.debug("Removing existential quantifier '%.30s', already implied "
+                              "by tree and existing constraints", existential_formula)
             # This should simplify the process after quantifier re-insertion.
             return [SolutionState(
                 language.replace_formula(state.constraint, existential_formula, sc.true()),

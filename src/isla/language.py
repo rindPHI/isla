@@ -35,7 +35,7 @@ from isla.type_defs import ParseTree, Path, Grammar, ImmutableGrammar
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
 Assignment = Tuple['Constant', 'Formula', 'DerivationTree']
 
-isla_logger = logging.getLogger("isla")
+language_core_logger = logging.getLogger("isla-language-core")
 
 
 class Variable:
@@ -990,6 +990,12 @@ class Formula(ABC):
         if isinstance(other, SMTFormula) and z3.is_true(other.formula):
             return self
 
+        if isinstance(self, NegatedFormula) and self.args[0] == other:
+            return SMTFormula(z3.BoolVal(False))
+
+        if isinstance(other, NegatedFormula) and other.args[0] == self:
+            return SMTFormula(z3.BoolVal(False))
+
         return ConjunctiveFormula(self, other)
 
     def __or__(self, other: 'Formula'):
@@ -1007,6 +1013,12 @@ class Formula(ABC):
 
         if isinstance(other, SMTFormula) and z3.is_false(other.formula):
             return self
+
+        if isinstance(self, NegatedFormula) and self.args[0] == other:
+            return SMTFormula(z3.BoolVal(True))
+
+        if isinstance(other, NegatedFormula) and other.args[0] == self:
+            return SMTFormula(z3.BoolVal(True))
 
         return DisjunctiveFormula(self, other)
 

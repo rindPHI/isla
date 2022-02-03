@@ -1,8 +1,11 @@
 import copy
+import itertools
+import logging
 from functools import reduce
 from typing import Union, Optional, Set, Dict, cast, Tuple, List, Iterable
 
 import z3
+from grammar_graph import gg
 from orderedset import OrderedSet
 
 from isla.helpers import z3_and, is_nonterminal, z3_or
@@ -12,8 +15,10 @@ from isla.language import Formula, DerivationTree, StructuralPredicate, Semantic
     SemanticPredicateFormula, Variable, replace_formula, \
     BoundVariable, ExistsIntFormula, ForallIntFormula, QuantifiedFormula, PropositionalCombinator, \
     ConjunctiveFormula, ForallFormula, ExistsFormula, NegatedFormula, \
-    DisjunctiveFormula, BindExpression
+    DisjunctiveFormula, BindExpression, split_conjunction, split_disjunction
 from isla.type_defs import Grammar, Path
+
+logger = logging.getLogger("evaluator")
 
 
 class ThreeValuedTruth:
@@ -98,6 +103,18 @@ class ThreeValuedTruth:
                 "UNKNOWN")
 
 
+def propositionally_unsatisfiable(formula: Formula) -> bool:
+    if formula == SMTFormula(z3.BoolVal(True)):
+        return False
+    if formula == SMTFormula(z3.BoolVal(False)):
+        return True
+
+    z3_formula = isla_to_smt_formula(formula, replace_untranslatable_with_predicate=True)
+    solver = z3.Solver()
+    solver.add(z3_formula)
+    return solver.check() == z3.unsat
+
+
 def evaluate(
         formula: Union[Formula, str],
         reference_tree: DerivationTree,
@@ -105,6 +122,8 @@ def evaluate(
         structural_predicates: Set[StructuralPredicate] = STANDARD_STRUCTURAL_PREDICATES,
         semantic_predicates: Set[SemanticPredicate] = STANDARD_SEMANTIC_PREDICATES,
         assumptions: Optional[Set[Formula]] = None) -> ThreeValuedTruth:
+    assumptions = assumptions or set()
+
     if isinstance(formula, str):
         formula = parse_isla(formula, grammar, structural_predicates, semantic_predicates)
 
@@ -119,12 +138,10 @@ def evaluate(
     res, msg = well_formed(formula, grammar)
     assert res, msg
 
-    v = FilterVisitor(lambda f: isinstance(f, NumericQuantifiedFormula))
-    formula.accept(v)
-    if not v.result:
-        # The legacy evaluation performs better, but only works w/o NumericQuantifiedFormulas.
-        # TODO: Check whether it still performs better, more general evaluation improved!
-        # TODO: If keeping legacy evaluation, also consider assumptions!
+    if not assumptions and not FilterVisitor(lambda f: isinstance(f, NumericQuantifiedFormula)).collect(formula):
+        # The legacy evaluation performs better, but only works w/o NumericQuantifiedFormulas / assumptions.
+        # It might be possible to consider assumptions, but the implemented method works and we would
+        # rather not invest that work to gain some seconds of performance.
         return evaluate_legacy(formula, grammar, {}, reference_tree)
 
     qfr_free: Formula = eliminate_quantifiers(
@@ -141,57 +158,85 @@ def evaluate(
     # First, eliminate quantifiers in assumptions. We don't supply any numeric constants
     # here, as this would be unsound in assumptions: We know that the core holds for any
     # int, but not for which one.
-    qfr_free_assumptions = {eliminate_quantifiers(assumption, grammar=grammar) for assumption in assumptions}
+    # NOTE: We could eliminate unsatisfiable preconditions already here, but that turned
+    #       out to be quite expensive. Rather, we check whether the precondition was
+    #       unsatisfiable before returning a negative evaluation result.
+    # NOTE: We only check propositional unsatisfiability, which is an approximation; thus,
+    #       it is theoretically possible that we return a negative result for an actually
+    #       true formula. This, however, only happens with assumptions present, which are
+    #       used in the solver when checking whether an existential quantifier can be quickly
+    #       removed. Not removing the quantifier is thus not soundness critical. Also,
+    #       false negative results should generally be less critical than false positive ones.
+    qfr_free_assumptions_set: Set[Tuple[Formula, ...]] = {
+        assumptions for assumptions in itertools.product(*[
+            split_disjunction(conjunct)
+            for assumption in assumptions
+            for conjunct in split_conjunction(eliminate_quantifiers(
+                assumption, grammar=grammar, keep_existential_quantifiers=True))])
+        # if not propositionally_unsatisfiable(
+        #     reduce(Formula.__and__, assumptions, SMTFormula(z3.BoolVal(True))))  # <- See comment above
+    }
 
-    # Then, replace the assumptions by True in the formula
-    assumptions_instantiated = qfr_free
-    for assumption in qfr_free_assumptions:
-        assumptions_instantiated = replace_formula(assumptions_instantiated, assumption, SMTFormula(z3.BoolVal(True)))
+    assert qfr_free_assumptions_set
 
-    class NotYetReadyError(RuntimeError):
-        def __init__(self, *args: object) -> None:
-            super().__init__(*args)
+    # The assumptions in qfr_free_assumptions_set have to be regarded as a disjunction,
+    # thus we can only return True if the formula holds for all assumptions. However,
+    # we can already return False if it does not hold for any assumption.
 
-    # Evaluate predicates
-    def evaluate_predicates_action(formula: Formula) -> bool | Formula:
-        if isinstance(formula, StructuralPredicateFormula):
-            return SMTFormula(z3.BoolVal(formula.evaluate(reference_tree)))
+    for qfr_free_assumptions in qfr_free_assumptions_set:
+        # Replace the assumptions by True in the formula
+        assumptions_instantiated = qfr_free
+        for assumption in qfr_free_assumptions:
+            assumptions_instantiated = replace_formula(assumptions_instantiated, assumption, SMTFormula(z3.BoolVal(True)))
 
-        if isinstance(formula, SemanticPredicateFormula):
-            eval_result = formula.evaluate(grammar)
+        # Evaluate predicates
+        def evaluate_predicates_action(formula: Formula) -> bool | Formula:
+            if isinstance(formula, StructuralPredicateFormula):
+                return SMTFormula(z3.BoolVal(formula.evaluate(reference_tree)))
 
-            if not eval_result.ready():
-                raise NotYetReadyError(f"Formula {formula} is not ready to be evaluated")
+            if isinstance(formula, SemanticPredicateFormula):
+                eval_result = formula.evaluate(grammar)
 
-            if eval_result.true():
-                return SMTFormula(z3.BoolVal(True))
-            elif eval_result.false():
-                return SMTFormula(z3.BoolVal(False))
+                if not eval_result.ready():
+                    return False
 
-            substs: Dict[Variable | DerivationTree, DerivationTree] = eval_result.result
-            assert isinstance(substs, dict)
-            assert all(isinstance(key, Variable) and key.n_type == Variable.NUMERIC_NTYPE for key in substs)
-            return SMTFormula(z3_and([
-                cast(z3.BoolRef, const.to_smt() == substs[const].value)
-                for const in substs]), *substs.keys())
+                if eval_result.true():
+                    return SMTFormula(z3.BoolVal(True))
+                elif eval_result.false():
+                    return SMTFormula(z3.BoolVal(False))
 
-        return False
+                substs: Dict[Variable | DerivationTree, DerivationTree] = eval_result.result
+                assert isinstance(substs, dict)
+                assert all(isinstance(key, Variable) and key.n_type == Variable.NUMERIC_NTYPE for key in substs)
+                return SMTFormula(z3_and([
+                    cast(z3.BoolRef, const.to_smt() == substs[const].value)
+                    for const in substs]), *substs.keys())
 
-    try:
+            return False
+
         without_predicates: Formula = replace_formula(assumptions_instantiated, evaluate_predicates_action)
-    except NotYetReadyError:
-        return ThreeValuedTruth.unknown()
 
-    # The remaining formula is a pure SMT formula, which only needs to be converted.
-    smt_formula: z3.BoolRef = isla_to_smt_formula(without_predicates)
+        # The remaining formula is a pure SMT formula if there were no quantifiers over open trees.
+        # In the case that there *were* such quantifiers, we still convert to an SMT formula, replacing
+        # all quantifiers with fresh predicates, which still allows us to perform an evaluation.
+        smt_formula: z3.BoolRef = isla_to_smt_formula(without_predicates, replace_untranslatable_with_predicate=True)
 
-    solver = z3.Solver()
-    solver.add(z3.Not(smt_formula))
-    z3_result = solver.check()
-    if z3_result == z3.unknown:
-        return ThreeValuedTruth.unknown()
+        solver = z3.Solver()
+        solver.add(z3.Not(smt_formula))
+        z3_result = solver.check()
 
-    return ThreeValuedTruth(z3_result == z3.unsat)  # original formula is valid
+        # We return unknown / false directly if the result is unknown / false for any assumption.
+        if z3_result == z3.unknown:
+            return ThreeValuedTruth.unknown()
+        elif z3_result == z3.sat:
+            if not propositionally_unsatisfiable(
+                    reduce(Formula.__and__, qfr_free_assumptions, SMTFormula(z3.BoolVal(True)))):
+                return ThreeValuedTruth.false()
+        else:
+            assert z3_result == z3.unsat
+
+    # We have proven the formula true for all assumptions: Return True
+    return ThreeValuedTruth.true()
 
 
 def well_formed(formula: Formula,
@@ -449,11 +494,15 @@ def evaluate_legacy(
 def eliminate_quantifiers(
         formula: Formula,
         grammar: Grammar,
-        numeric_constants: Optional[Set[Constant]] = None) -> Formula:
+        graph: Optional[gg.GrammarGraph] = None,
+        numeric_constants: Optional[Set[Constant]] = None,
+        keep_existential_quantifiers=False) -> Formula:
     if numeric_constants is None:
         numeric_constants = {
             var for var in VariablesCollector().collect(formula)
             if isinstance(var, Constant) and var.is_numeric()}
+    if graph is None:
+        graph = gg.GrammarGraph.from_grammar(grammar)
 
     # We eliminate all quantified formulas over derivation tree elements
     # by replacing them by the finite set of matches in the inner trees.
@@ -463,28 +512,43 @@ def eliminate_quantifiers(
     if quantified_formulas:
         for quantified_formula in quantified_formulas:
             assert isinstance(quantified_formula.in_variable, DerivationTree)
+
+            # We can only eliminate this quantifier if in the in_expr, there is no open tree
+            # from which the nonterminal of the bound variale can be reached. In that case,
+            # we don't know whether the formula holds. We can still instantiate all matches,
+            # but have to keep the original formula.
+
+            keep_orig_formula = keep_existential_quantifiers or any(
+                graph.reachable(leaf.value, quantified_formula.bound_variable.n_type)
+                for _, leaf in quantified_formula.in_variable.open_leaves())
+
             matches = [
                 {var: tree for var, (_, tree) in match.items()}
                 for match in matches_for_quantified_formula(
                     quantified_formula, grammar, quantified_formula.in_variable)]
             instantiations = [
-                quantified_formula.inner_formula.substitute_expressions(match)
+                eliminate_quantifiers(
+                    quantified_formula.inner_formula.substitute_expressions(match),
+                    grammar,
+                    graph=graph,
+                    numeric_constants=numeric_constants,
+                    keep_existential_quantifiers=keep_existential_quantifiers)
                 for match in matches]
 
-            if instantiations:
-                reduce_op = (Formula.__and__ if isinstance(quantified_formula, ForallFormula)
-                             else Formula.__or__)
-                formula = replace_formula(
-                    formula,
-                    quantified_formula,
-                    reduce(reduce_op, instantiations))
-            else:
-                formula = replace_formula(
-                    formula,
-                    quantified_formula,
-                    SMTFormula(z3.BoolVal(isinstance(quantified_formula, ForallFormula))))
+            reduce_op = Formula.__and__ if isinstance(quantified_formula, ForallFormula) else Formula.__or__
 
-        return eliminate_quantifiers(formula, grammar, numeric_constants)
+            if instantiations:
+                replacement = reduce(reduce_op, instantiations)
+                if keep_orig_formula:
+                    replacement = reduce_op(quantified_formula, replacement)
+
+                formula = replace_formula(formula, quantified_formula, replacement)
+            else:
+                if not keep_orig_formula:
+                    formula = replace_formula(
+                        formula,
+                        quantified_formula,
+                        SMTFormula(z3.BoolVal(isinstance(quantified_formula, ForallFormula))))
 
     numeric_quantified_formulas = [f for f in get_toplevel_quantified_formulas(formula)
                                    if isinstance(f, NumericQuantifiedFormula)]
@@ -498,14 +562,19 @@ def eliminate_quantifiers(
                     quantified_formula,
                     ExistsIntFormula(
                         quantified_formula.bound_variable,
-                        eliminate_quantifiers(quantified_formula.inner_formula, grammar, numeric_constants)))
+                        eliminate_quantifiers(
+                            quantified_formula.inner_formula,
+                            grammar,
+                            graph=graph,
+                            numeric_constants=numeric_constants,
+                            keep_existential_quantifiers=keep_existential_quantifiers)))
 
                 formula = formula | reduce(Formula.__or__, [
                     eliminate_quantifiers(
                         quantified_formula.inner_formula.substitute_variables({
                             quantified_formula.bound_variable: constant}),
                         grammar,
-                        numeric_constants)
+                        graph=graph, numeric_constants=numeric_constants)
                     for constant in numeric_constants
                 ], SMTFormula(z3.BoolVal(False)))
             elif isinstance(quantified_formula, ForallIntFormula):
@@ -514,7 +583,12 @@ def eliminate_quantifiers(
                     quantified_formula,
                     ForallIntFormula(
                         quantified_formula.bound_variable,
-                        eliminate_quantifiers(quantified_formula.inner_formula, grammar, numeric_constants)))
+                        eliminate_quantifiers(
+                            quantified_formula.inner_formula,
+                            grammar,
+                            graph=graph,
+                            numeric_constants=numeric_constants,
+                            keep_existential_quantifiers=keep_existential_quantifiers)))
 
     return formula
 
