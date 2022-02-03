@@ -6,10 +6,10 @@ version mostly conforms to the state as documented in the ISLa paper.
 
 ## [Unreleased]
 
+## [0.2a2] - 2022-02-03
+
 ### Added
 
-- Added forgotten mention of the renaming of `isla.isla` to `isla.language` to
-  the changelog (this file), section 0.2a1.
 - Both the evaluator and the solver are passed default sets of predicates. Thus, unless some
   user-defined special predicates should be used, one does not need to pass the predicates to
   the solver/evaluator when generating from/checking a constraint in ISLa's concrete syntax
@@ -34,6 +34,8 @@ version mostly conforms to the state as documented in the ISLa paper.
 - Constraint checking can consider preconditions. This is highly useful when eliminating existential
   quantifiers (esp. after re-insertion): They may not generally hold, but taking the already existing
   constraints into account.
+- Added forgotten mention of the renaming of `isla.isla` to `isla.language` to
+  the changelog (this file), section 0.2a1.
 
 ### Changed
 
