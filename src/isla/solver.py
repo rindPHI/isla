@@ -482,6 +482,9 @@ class ISLaSolver:
 
         formula = state.constraint
         for existential_int_formula in existential_int_formulas:
+            # The following check for validity is not only a performance measure, but required
+            # when existential integer formulas are re-inserted. Otherwise, new constants get
+            # introduced, and the solver won't terminate.
             if isla.evaluator.evaluate(
                     existential_int_formula,
                     state.tree,
@@ -1006,11 +1009,19 @@ class ISLaSolver:
 
     def eliminate_existential_formula(
             self, existential_formula: language.ExistsFormula, state: SolutionState) -> List[SolutionState]:
+        # NOTE: We're not considering assumptions here, as it constitutes a major performance
+        #       problem. On the other hand, keeping the validity check without assumptions
+        #       seems to be beneficial (as opposed to removing it). Anyway it *could* be
+        #       removed. It is a performance measure, that, however, also seems to produce
+        #       more diverse inputs quickly. Otherwise, more problems will be solved be tree
+        #       insertion, leading to more uniform results (e.g., with the same variable occurring
+        #       more times).
         if isla.evaluator.evaluate(
                 existential_formula,
                 state.tree,
                 self.grammar,
-                assumptions={f for f in split_conjunction(state.constraint) if f != existential_formula}).is_true():
+                # assumptions={f for f in split_conjunction(state.constraint) if f != existential_formula}
+        ).is_true():
             self.logger.debug("Removing existential quantifier '%.30s', already implied "
                               "by tree and existing constraints", existential_formula)
             # This should simplify the process after quantifier re-insertion.

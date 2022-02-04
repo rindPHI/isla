@@ -100,10 +100,10 @@ class TestSolver(unittest.TestCase):
         assgn = language.BoundVariable("$assgn", "<assgn>")
         var1 = language.BoundVariable("$var", "<var>")
 
-        formula = sc.forall(assgn, start, sc.exists_bind(
+        formula = sc.exists_bind(
             language.BindExpression(var1),
             rhs, start,
-            sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1)))
+            sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
         self.execute_generation_test(formula, num_solutions=1)
 
