@@ -36,19 +36,24 @@ version mostly conforms to the state as documented in the ISLa paper.
   constraints into account.
 - Added forgotten mention of the renaming of `isla.isla` to `isla.language` to
   the changelog (this file), section 0.2a1.
+- It is now possible to create infinite streams of solutions from existential formulas. Before, the
+  number of solutions was usually exactly one, unless one increased the number of free instantiations.
 
 ### Changed
 
 - Factored out functions related to ISLa evaluations from `isla.language` to `isla.evaluator`.
   The previous `isla.evaluator` file was named `isla.performance_evaluator`. This change is also
   reflected in the organization of the tests in `tests/`.
-- Corrections in README.txt
 - Checking whether existential (integer / tree) quantifiers are already satisfied, taking into account
   existing constraints (assumptions).
+- Corrections in README.txt + clarifies in README that ISLa is a grammar-aware String constraint solver.
 
 ### Removed
 
 - Removed "eval_results" folder. New evaluation scripts output SQLITE files.
+- The deprecated solver parameter "expand_after_existential_elimination" was removed. The solver now
+  always expands in parallel to existential elimination / tree insertion, thus infinite solution streams
+  for existential formulas become possible. In recent ISLa versions, this parameter was anyway ignored.
 
 ## [0.2a1] - 2022-02-01
 

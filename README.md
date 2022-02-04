@@ -1,12 +1,12 @@
 ISLa: Input Specification Language
 ==================================
 
-ISLa is a specification language for constraints on complex structured inputs conforming to a given, context-free
-grammar. It contains the language of SMT (z3) formulas as an island language, and adds the power of structural
-quantifiers over derivation trees on top. ISLa supports universal and existential quantifiers as well as structural
-predicates (e.g., "occurs before"). Its generation mechanism uses feedback from z3 to solve atomic
-"semantic" formulas, and constructive insertion for eliminating existential quantifiers. Universal quantifiers and
-structural predicates are treated by a deterministic, heuristic breath-first search.
+ISLa is a grammar-aware String constraint solver with its own specification language. The language is a superset of
+SMT-LIB for String constraints,, and adds the power of structural quantifiers over derivation trees on top. ISLa
+supports universal and existential quantifiers as well as structural (e.g., "occurs before") and semantic (e.g.,
+"is a checksum") predicates. Its generation mechanism uses feedback from Z3 to solve SMT-LIB formulas, and constructive
+insertion for eliminating existential quantifiers. Universal quantifiers and structural predicates are solved by a
+deterministic, heuristic-based search (with a configurable cost function).
 
 ## Example
 
