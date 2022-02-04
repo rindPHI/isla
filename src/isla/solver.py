@@ -189,7 +189,6 @@ class ISLaSolver:
                  max_number_free_instantiations: int = 10,
                  max_number_smt_instantiations: int = 10,
                  max_number_tree_insertion_results: int = 5,
-                 expand_after_existential_elimination: bool = False,  # Currently not used, might be removed
                  enforce_unique_trees_in_queue: bool = True,
                  precompute_reachability: bool = False,
                  debug: bool = False,
@@ -206,9 +205,6 @@ class ISLaSolver:
         :param expand_after_existential_elimination: Trees are expanded after an existential quantifier elimination
         iff this paramter is set to true. If false, only a finite (potentially small) set of inputs is generated for
         existential constraints. (CURRENTLY NOT USED, MIGHT BE REMOVED)
-        :param enforce_unique_trees_in_queue: If true, only one state in the queue containing a tree with the same
-        structure can be present at a time. Should be set to false especially if there are top-level SMT formulas
-        about numeric constants. TODO: This parameter is awkward, maybe we can find a different solution.
         :param precompute_reachability: If true, the distances between all grammar nodes are pre-computed using
         Floyd-Warshall's algorithm. This makes sense if there are many expensive distance queries, e.g., in a big
         grammar and a constraint with relatively many universal quantifiers.
@@ -267,7 +263,6 @@ class ISLaSolver:
         self.max_number_free_instantiations: int = max_number_free_instantiations
         self.max_number_smt_instantiations: int = max_number_smt_instantiations
         self.max_number_tree_insertion_results = max_number_tree_insertion_results
-        # self.expand_after_existential_elimination = expand_after_existential_elimination
         self.enforce_unique_trees_in_queue = enforce_unique_trees_in_queue
 
         self.cost_settings = cost_settings
@@ -331,7 +326,7 @@ class ISLaSolver:
                     return
 
             # import dill as pickle
-            # state_hash = 4087898962125456383
+            # state_hash = -353056312459876919
             # out_file = "/tmp/saved_debug_state"
             # if hash(self.queue[0][1]) == state_hash:
             #     with open(out_file, 'wb') as debug_state_file:
@@ -342,8 +337,6 @@ class ISLaSolver:
             cost: int
             state: SolutionState
             cost, state = heapq.heappop(self.queue)
-
-            # print(language.evaluate(state.constraint, state.tree, self.grammar))
 
             self.current_level = state.level
             self.tree_hashes_in_queue.discard(state.tree.structural_hash())
@@ -395,7 +388,6 @@ class ISLaSolver:
                 yield from self.process_new_states(result_states)
                 continue
 
-            # TODO: Consider negation scope! Otherwise, will never satisfy negated semantic pred. formulas
             # Eliminate all ready semantic predicate formulas
             result_state = self.eliminate_all_ready_semantic_predicate_formulas(state)
             if result_state is not None:
@@ -406,10 +398,11 @@ class ISLaSolver:
             result_states = self.eliminate_first_match_all_existential_formulas(state)
             if result_states is not None:
                 yield from self.process_new_states(result_states)
+                # Also add some expansions of the original state, to create a larger
+                # solution stream (otherwise, it might be possible that only a small
+                # finite number of solutiosn are generated for existential formulas).
+                yield from self.process_new_states(self.expand_tree(state, limit=2, only_universal=False))
                 continue
-                # if (not self.expand_after_existential_elimination
-                #         or any(result_state.constraint == sc.true() for result_state in result_states)):
-                #     continue
 
             # semantic predicate formulas can remain if they bind lazily. In that case, we can choose a random
             # instantiation and let the predicate "fix" the resulting tree.
@@ -444,17 +437,22 @@ class ISLaSolver:
                         result = result.replace_path(path, leaf_inst)
                     yield from self.process_new_states([SolutionState(state.constraint, result)])
             else:
-                for _ in range(self.max_number_free_instantiations):
-                    substitutions: Dict[DerivationTree, DerivationTree] = {
-                        subtree: fuzzer.expand_tree(DerivationTree(subtree.value, None))
-                        for path, subtree in state.tree.open_leaves()
-                    }
+                yield from self.process_new_states(self.expand_state(state, fuzzer))
 
-                    if substitutions:
-                        yield from self.process_new_states([
-                            SolutionState(
-                                state.constraint.substitute_expressions(substitutions),
-                                state.tree.substitute(substitutions))])
+    def expand_state(self, state: SolutionState, fuzzer: GrammarCoverageFuzzer) -> List[SolutionState]:
+        result: List[SolutionState] = []
+        for _ in range(self.max_number_free_instantiations):
+            substitutions: Dict[DerivationTree, DerivationTree] = {
+                subtree: fuzzer.expand_tree(DerivationTree(subtree.value, None))
+                for path, subtree in state.tree.open_leaves()
+            }
+
+            if substitutions:
+                result.append(SolutionState(
+                    state.constraint.substitute_expressions(substitutions),
+                    state.tree.substitute(substitutions)))
+
+        return result
 
     def instantiate_structural_predicates(self, state: SolutionState) -> SolutionState:
         predicate_formulas = [
@@ -908,12 +906,19 @@ class ISLaSolver:
 
         return result or None
 
-    def expand_tree(self, state: SolutionState) -> List[SolutionState]:
+    def expand_tree(
+            self,
+            state: SolutionState,
+            only_universal: bool = True,
+            limit: Optional[int] = None) -> List[SolutionState]:
         """
         Expands the given tree, but not at nonterminals that can be freely instantiated of those that directly
         correspond to the assignment constant.
 
         :param state: The current state.
+        :param only_universal: If set to True, only nonterminals that might match universal quantifiers are
+        expanded. If set to false, also nonterminals matching to existential quantifiers are expanded.
+        :param limit: If set to a value, this will return only up to limit expansions.
         :return: A (possibly empty) list of expanded trees.
         """
 
@@ -927,7 +932,9 @@ class ISLaSolver:
             if any(
                 self.quantified_formula_might_match(formula, leaf_path, state.tree)
                 for formula in get_conjuncts(state.constraint)
-                if isinstance(formula, language.ForallFormula))}
+                if (only_universal and isinstance(formula, language.ForallFormula))
+                or (not only_universal and isinstance(formula, language.QuantifiedFormula))
+            )}
 
         possible_expansions: List[Dict[Path, List[DerivationTree]]] = \
             dict_of_lists_to_list_of_dicts(nonterminal_expansions)
@@ -937,8 +944,10 @@ class ISLaSolver:
         if len(possible_expansions) == 1 and not possible_expansions[0]:
             return []
 
-        result: List[SolutionState] = []
+        if limit:
+            possible_expansions = possible_expansions[:limit]
 
+        result: List[SolutionState] = []
         for possible_expansion in possible_expansions:
             expanded_tree = state.tree
             for path, new_children in possible_expansion.items():
@@ -958,6 +967,7 @@ class ISLaSolver:
 
             result.append(SolutionState(updated_constraint, expanded_tree))
 
+        assert not limit or len(result) <= limit
         return result
 
     def match_universal_formulas(
@@ -1009,26 +1019,6 @@ class ISLaSolver:
 
     def eliminate_existential_formula(
             self, existential_formula: language.ExistsFormula, state: SolutionState) -> List[SolutionState]:
-        # NOTE: We're not considering assumptions here, as it constitutes a major performance
-        #       problem. On the other hand, keeping the validity check without assumptions
-        #       seems to be beneficial (as opposed to removing it). Anyway it *could* be
-        #       removed. It is a performance measure, that, however, also seems to produce
-        #       more diverse inputs quickly. Otherwise, more problems will be solved be tree
-        #       insertion, leading to more uniform results (e.g., with the same variable occurring
-        #       more times).
-        if isla.evaluator.evaluate(
-                existential_formula,
-                state.tree,
-                self.grammar,
-                # assumptions={f for f in split_conjunction(state.constraint) if f != existential_formula}
-        ).is_true():
-            self.logger.debug("Removing existential quantifier '%.30s', already implied "
-                              "by tree and existing constraints", existential_formula)
-            # This should simplify the process after quantifier re-insertion.
-            return [SolutionState(
-                language.replace_formula(state.constraint, existential_formula, sc.true()),
-                state.tree)]
-
         if existential_formula.bind_expression is not None:
             inserted_trees_and_bind_paths = existential_formula.bind_expression.to_tree_prefix(
                 existential_formula.bound_variable.n_type, self.grammar)
@@ -1067,9 +1057,8 @@ class ISLaSolver:
                     original_tree: resulting_tree.get_subtree(original_path)
                     for original_path, original_tree in state.tree.paths()
                     if (resulting_tree.is_valid_path(original_path) and
-                        original_tree.value == resulting_tree.get_subtree(original_path).value and
-                        not resulting_tree.get_subtree(original_path).structurally_equal(original_tree))
-                }
+                        original_tree.value == resulting_tree.get_subtree(original_path).value
+                        and resulting_tree.get_subtree(original_path) != original_tree)}
 
                 assert insertion_result.find_node(inserted_tree) is not None
                 variable_substitutions = {existential_formula.bound_variable: inserted_tree}
@@ -1110,6 +1099,12 @@ class ISLaSolver:
                         instantiated_original_constraint)
 
                 new_state = SolutionState(new_formula, new_tree)
+
+                assert all(
+                    new_state.tree.find_node(tree) is not None
+                    for quantified_formula in split_conjunction(new_state.constraint)
+                    if isinstance(quantified_formula, language.QuantifiedFormula)
+                    for _, tree in quantified_formula.in_variable.filter(lambda t: True))
 
                 if assertions_activated() or self.debug:
                     lost_tree_predicate_arguments: List[DerivationTree] = [
@@ -1398,6 +1393,13 @@ class ISLaSolver:
         new_states = self.establish_invariant(new_state)
         new_states = [self.remove_nonmatching_universal_quantifiers(new_state) for new_state in new_states]
         new_states = [self.remove_infeasible_universal_quantifiers(new_state) for new_state in new_states]
+
+        assert all(
+            state.tree.find_node(tree) is not None
+            for state in new_states
+            for quantified_formula in split_conjunction(state.constraint)
+            if isinstance(quantified_formula, language.QuantifiedFormula)
+            for _, tree in quantified_formula.in_variable.filter(lambda t: True))
 
         return [new_state.tree for new_state in new_states if self.state_is_valid_or_enqueue(new_state)]
 

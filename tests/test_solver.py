@@ -89,15 +89,13 @@ class TestSolver(unittest.TestCase):
 
         self.execute_generation_test(
             formula,
-            num_solutions=2,
+            num_solutions=50,
             max_number_free_instantiations=1,
-            enforce_unique_trees_in_queue=False
         )
 
     def test_simple_existential_formula_with_bind(self):
         start = language.Constant("$start", "<start>")
         rhs = language.BoundVariable("$rhs", "<rhs>")
-        assgn = language.BoundVariable("$assgn", "<assgn>")
         var1 = language.BoundVariable("$var", "<var>")
 
         formula = sc.exists_bind(
@@ -105,7 +103,7 @@ class TestSolver(unittest.TestCase):
             rhs, start,
             sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
 
-        self.execute_generation_test(formula, num_solutions=1)
+        self.execute_generation_test(formula, num_solutions=50)
 
     def test_conjunction_of_qfd_formulas(self):
         start = language.Constant("$start", "<start>")
@@ -200,8 +198,8 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
         self.execute_generation_test(
             formula,
             max_number_free_instantiations=1,
-            max_number_smt_instantiations=3,
-            num_solutions=20
+            max_number_smt_instantiations=1,
+            num_solutions=40,
         )
 
     def test_declared_before_used_concrete_syntax(self):
@@ -327,8 +325,8 @@ forall int colno:
             property,
             grammar=CSV_GRAMMAR,
             custom_test_func=lambda t: isinstance(csv_lint(t), str),
-            num_solutions=4,
-            max_number_free_instantiations=5,
+            num_solutions=40,
+            max_number_free_instantiations=1,
             max_number_smt_instantiations=1,
             enforce_unique_trees_in_queue=False,
             global_fuzzer=True,
@@ -345,7 +343,6 @@ forall int colno:
             max_number_free_instantiations=1,
             max_number_smt_instantiations=1,
             num_solutions=50,
-            expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False)
 
     def test_scriptsize_c_def_before_use(self):
@@ -354,7 +351,6 @@ forall int colno:
             grammar=scriptsizec.SCRIPTSIZE_C_GRAMMAR,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=2,
-            expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=True,
             custom_test_func=scriptsizec.compile_scriptsizec_clang,
             num_solutions=50,
@@ -374,7 +370,6 @@ forall int colno:
             grammar=scriptsizec.SCRIPTSIZE_C_GRAMMAR,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=2,
-            expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=True,
             # custom_test_func=scriptsizec.compile_scriptsizec_clang,
             num_solutions=50,
@@ -395,7 +390,6 @@ forall int colno:
             grammar=tar.TAR_GRAMMAR,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=1,
-            expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
             # debug=True,
             num_solutions=60,
@@ -427,7 +421,6 @@ forall int colno:
             grammar=simple_tar.SIMPLE_TAR_GRAMMAR,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=1,
-            expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=False,
             debug=True,
             num_solutions=10,
@@ -445,7 +438,6 @@ forall int colno:
             print_solutions=False,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=1,
-            expand_after_existential_elimination=False,
             enforce_unique_trees_in_queue=True,
             precompute_reachability=False,
             debug=False,
@@ -470,7 +462,6 @@ forall int colno:
             semantic_predicates=semantic_predicates,
             max_number_free_instantiations=max_number_free_instantiations,
             max_number_smt_instantiations=max_number_smt_instantiations,
-            expand_after_existential_elimination=expand_after_existential_elimination,
             enforce_unique_trees_in_queue=enforce_unique_trees_in_queue,
             precompute_reachability=precompute_reachability,
             debug=debug,
