@@ -244,21 +244,26 @@ class DerivationTree:
     def is_complete(self):
         return not self.is_open()
 
+    @lru_cache(maxsize=20)
     def get_subtree(self, path: Path) -> 'DerivationTree':
         """Access a subtree based on `path` (a list of children numbers)"""
-        if not path:
-            return self
+        curr_node = self
+        while path:
+            curr_node = curr_node.children[path[0]]
+            path = path[1:]
 
-        return self.children[path[0]].get_subtree(path[1:])
+        return curr_node
 
     def is_valid_path(self, path: Path) -> bool:
-        if not path:
-            return True
+        curr_node = self
+        while path:
+            if not curr_node.children or len(curr_node.children) <= path[0]:
+                return False
 
-        if not self.children or len(self.children) <= path[0]:
-            return False
+            curr_node = curr_node.children[path[0]]
+            path = path[1:]
 
-        return self.children[path[0]].is_valid_path(path[1:])
+        return True
 
     def paths(self) -> List[Tuple[Path, 'DerivationTree']]:
         def action(path, node):

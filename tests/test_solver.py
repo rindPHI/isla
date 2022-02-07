@@ -162,7 +162,7 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             XML_NAMESPACE_CONSTRAINT & XML_WELLFORMEDNESS_CONSTRAINT & XML_NO_ATTR_REDEF_CONSTRAINT,
             grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
             max_number_free_instantiations=1,
-            num_solutions=60,
+            num_solutions=50,
             enforce_unique_trees_in_queue=False,
             custom_test_func=validate_xml,
             cost_settings=CostSettings(
@@ -173,7 +173,7 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
                 ),
                 cost_phase_lengths=(200,),
                 k=3
-            )
+            ),
         )
 
     def test_declared_before_used(self):
@@ -252,11 +252,11 @@ forall <csv-header> hline in start:
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR,
             custom_test_func=csv_lint,
-            num_solutions=40,
+            num_solutions=30,
             max_number_free_instantiations=2,
             max_number_smt_instantiations=2,
             enforce_unique_trees_in_queue=False,
-            global_fuzzer=True
+            global_fuzzer=False,
         )
 
     def test_csv_rows_equal_length_more_complex(self):

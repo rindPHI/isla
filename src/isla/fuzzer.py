@@ -377,6 +377,7 @@ class GrammarCoverageFuzzer(GrammarFuzzer):
         # invoke superclass __init__(), passing all arguments
         super().__init__(*args, **kwargs)
         self.covered_expansions: Set[str] = set()
+        self._symbols_seen: Set[str] = set()
 
     def expansion_coverage(self) -> Set[str]:
         """Return the set of covered expansions as strings SYMBOL -> EXPANSION"""
@@ -396,6 +397,7 @@ class GrammarCoverageFuzzer(GrammarFuzzer):
         expansions = set()
         for expansion in self.grammar[symbol]:
             expansions.add(expansion_key(symbol, expansion))
+
             for nonterminal in nonterminals(expansion):
                 if nonterminal not in self._symbols_seen:
                     expansions |= self._max_expansion_coverage(
@@ -404,8 +406,7 @@ class GrammarCoverageFuzzer(GrammarFuzzer):
         return expansions
 
     def max_expansion_coverage(self, symbol: Optional[str] = None,
-                               max_depth: int | float = float('inf')) \
-            -> Set[str]:
+                               max_depth: int | float = float('inf')) -> Set[str]:
         """Return set of all expansions in a grammar
            starting with `symbol` (default: start symbol).
            If `max_depth` is given, expand only to that depth."""

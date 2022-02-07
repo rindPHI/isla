@@ -3,6 +3,7 @@ import logging
 import math
 import random
 import re
+from functools import lru_cache
 from typing import Optional, Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast, Callable
 
 import z3
@@ -380,5 +381,5 @@ def is_nonterminal(s):
     return RE_NONTERMINAL.match(s)
 
 
-def nonterminals(expansion):
+def nonterminals(expansion: str) -> List[str]:
     return RE_NONTERMINAL.findall(expansion)
