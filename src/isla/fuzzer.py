@@ -56,14 +56,12 @@ def expansion_key(symbol: str, expansion: Expansion | DerivationTree | List[Deri
 
     if isinstance(expansion, DerivationTree):
         expansion = expansion.value
-
-    if not isinstance(expansion, str):
-        assert isinstance(expansion, list)
+    elif isinstance(expansion, list):
         # List of derivation trees
+        assert all(isinstance(elem, DerivationTree) for elem in expansion)
         expansion = "".join(map(all_terminals, expansion))
-        # expansion = all_terminals(DerivationTree(symbol, expansion))
-
-    assert isinstance(expansion, str)
+    else:
+        assert isinstance(expansion, str)
 
     return symbol + " -> " + expansion
 
