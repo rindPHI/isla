@@ -17,7 +17,7 @@ g_colno = lambda timeout: ISLaSolver(
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
     cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k),
-    global_fuzzer=True
+    global_fuzzer=False
 )
 
 if __name__ == '__main__':

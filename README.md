@@ -8,6 +8,8 @@ supports universal and existential quantifiers as well as structural (e.g., "occ
 insertion for eliminating existential quantifiers. Universal quantifiers and structural predicates are solved by a
 deterministic, heuristic-based search (with a configurable cost function).
 
+You find our paper on ISLa in [this repository](ISLa.pdf) ([ISLa.pdf](ISLa.pdf)).
+
 ## Example
 
 Consider a grammar of a simple assignment programming language (e.g., "x := 1 ; y := x"):

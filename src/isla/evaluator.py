@@ -8,7 +8,7 @@ import z3
 from grammar_graph import gg
 from orderedset import OrderedSet
 
-from isla.helpers import z3_and, is_nonterminal, z3_or
+from isla.helpers import z3_and, is_nonterminal, z3_or, assertions_activated
 from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES
 from isla.language import Formula, DerivationTree, StructuralPredicate, SemanticPredicate, parse_isla, \
     VariablesCollector, Constant, FilterVisitor, NumericQuantifiedFormula, StructuralPredicateFormula, SMTFormula, \
@@ -135,8 +135,9 @@ def evaluate(
         assert reference_tree is not None
         formula = formula.substitute_expressions({next(iter(top_level_constants)): reference_tree})
 
-    res, msg = well_formed(formula, grammar)
-    assert res, msg
+    if assertions_activated():
+        res, msg = well_formed(formula, grammar)
+        assert res, msg
 
     if not assumptions and not FilterVisitor(lambda f: isinstance(f, NumericQuantifiedFormula)).collect(formula):
         # The legacy evaluation performs better, but only works w/o NumericQuantifiedFormulas / assumptions.
