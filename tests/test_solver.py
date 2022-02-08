@@ -1,3 +1,4 @@
+import functools
 import logging
 import os
 import random
@@ -12,11 +13,13 @@ import z3
 import isla.evaluator
 from isla import isla_shortcuts as sc
 from isla import language
+from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, STANDARD_SEMANTIC_PREDICATES, \
     STANDARD_STRUCTURAL_PREDICATES
 from isla.language import VariablesCollector, parse_isla
 from isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
     get_quantifier_chains
+from isla.type_defs import Grammar
 from isla_formalizations import rest, tar, simple_tar, scriptsizec
 from isla_formalizations.csv import csv_lint, CSV_GRAMMAR, CSV_HEADERBODY_GRAMMAR
 from isla_formalizations.tar import extract_tar
@@ -252,11 +255,12 @@ forall <csv-header> hline in start:
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR,
             custom_test_func=csv_lint,
-            num_solutions=30,
+            num_solutions=50,
             max_number_free_instantiations=2,
             max_number_smt_instantiations=2,
             enforce_unique_trees_in_queue=False,
             global_fuzzer=False,
+            fuzzer_factory=functools.partial(GrammarFuzzer, min_nonterminals=0, max_nonterminals=30),
         )
 
     def test_csv_rows_equal_length_more_complex(self):
@@ -447,7 +451,8 @@ forall int colno:
             cost_settings=STD_COST_SETTINGS,
             print_only: bool = False,
             timeout_seconds: Optional[int] = None,
-            global_fuzzer: bool = False
+            global_fuzzer: bool = False,
+            fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = lambda grammar: GrammarCoverageFuzzer(grammar)
     ):
         logger = logging.getLogger(type(self).__name__)
 
@@ -467,7 +472,8 @@ forall int colno:
             debug=debug,
             cost_settings=cost_settings,
             timeout_seconds=timeout_seconds,
-            global_fuzzer=global_fuzzer
+            global_fuzzer=global_fuzzer,
+            fuzzer_factory=fuzzer_factory
         )
 
         if debug:

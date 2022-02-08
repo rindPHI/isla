@@ -195,7 +195,8 @@ class ISLaSolver:
                  cost_settings: CostSettings = STD_COST_SETTINGS,
                  timeout_seconds: Optional[int] = None,
                  global_fuzzer: bool = False,
-                 predicates_unique_in_int_arg: Tuple[language.SemanticPredicate, ...] = (COUNT_PREDICATE,)):
+                 predicates_unique_in_int_arg: Tuple[language.SemanticPredicate, ...] = (COUNT_PREDICATE,),
+                 fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = lambda grammar: GrammarCoverageFuzzer(grammar)):
         """
         :param grammar: The underlying grammar.
         :param formula: The formula to solve.
@@ -218,6 +219,7 @@ class ISLaSolver:
         :param predicates_unique_in_int_arg: This is needed in certain cases for instantiating universal
         integer quantifiers. The supplied predicates should have exactly one integer argument, and hold
         for exactly one integer value once all other parameters are fixed.
+        :param fuzzer_factory: Constructor of the fuzzer to use for instantiating "free" nonterminals.
         """
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -243,6 +245,8 @@ class ISLaSolver:
         self.symbol_costs: Dict[str, int] = self.compute_symbol_costs()
         self.timeout_seconds = timeout_seconds
         self.global_fuzzer = global_fuzzer
+        self.fuzzer_factory = fuzzer_factory
+        self.predicates_unique_in_int_arg: Set[language.SemanticPredicate] = set(predicates_unique_in_int_arg)
 
         if isinstance(formula, str):
             formula = parse_isla(formula, grammar, structural_predicates, semantic_predicates)
@@ -300,8 +304,6 @@ class ISLaSolver:
             heapq.heappush(self.queue, (self.compute_cost(state), state))
         self.current_level = 0
 
-        self.predicates_unique_in_int_arg: Set[language.SemanticPredicate] = set(predicates_unique_in_int_arg)
-
         # Debugging stuff
         self.debug = debug
         self.state_tree: Dict[SolutionState, List[SolutionState]] = {}  # is only filled if self.debug
@@ -318,7 +320,7 @@ class ISLaSolver:
 
     def solve(self) -> Generator[DerivationTree, None, None]:
         start_time = int(time.time())
-        fuzzer = GrammarCoverageFuzzer(self.grammar)
+        fuzzer = self.fuzzer_factory(self.grammar)
 
         while self.queue:
             if self.timeout_seconds is not None:
@@ -428,7 +430,7 @@ class ISLaSolver:
                 f"{state.constraint}, leaves: {', '.join(list(map(str, [leaf for _, leaf in state.tree.open_leaves()])))}"
 
             if not self.global_fuzzer:
-                fuzzer = GrammarCoverageFuzzer(self.grammar)
+                fuzzer = self.fuzzer_factory(self.grammar)
             if state.constraint == sc.true():
                 for _ in range(self.max_number_free_instantiations):
                     result = state.tree
@@ -1141,8 +1143,8 @@ class ISLaSolver:
 
         return result
 
-    def eliminate_semantic_formula(self, semantic_formula: language.Formula, state: SolutionState) -> List[
-        SolutionState]:
+    def eliminate_semantic_formula(
+            self, semantic_formula: language.Formula, state: SolutionState) -> List[SolutionState]:
         """
         Solves a semantic formula and, for each solution, substitutes the solution for the respective
         constant in each assignment of the state. Also instantiates all "free" constants in the given

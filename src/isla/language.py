@@ -678,8 +678,7 @@ class DerivationTree:
 
                 continue
 
-            for child in reversed(children):
-                stack.insert(0, child)
+            stack = list(children) + stack
 
         return ''.join(result)
 

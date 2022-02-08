@@ -50,7 +50,7 @@ def all_terminals(tree: DerivationTree) -> str:
     return str(tree)
 
 
-def expansion_key(symbol: str, expansion: Expansion | DerivationTree | List[DerivationTree]) -> str:
+def expansion_key(symbol: str, expansion: Expansion | DerivationTree | Tuple[DerivationTree]) -> str:
     """Convert (symbol, `expansion`) into a key "SYMBOL -> EXPRESSION".
     `expansion` can be an expansion string, a derivation tree, or a list of derivation trees."""
 
