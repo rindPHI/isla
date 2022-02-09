@@ -2613,32 +2613,61 @@ def parse_isla(
     return isla_emitter.result
 
 
-def _unparse_constraint(formula: Formula, indent="  ") -> List[str]:
-    if isinstance(formula, QuantifiedFormula):
+class ISLaUnparser:
+    def __init__(self, formula: Formula, indent="  "):
+        assert isinstance(formula, Formula)
+        self.formula = formula
+        self.indent = indent
+
+    def unparse(self) -> str:
+        result: str = ""
+
+        try:
+            constant = next(
+                (c for c in VariablesCollector.collect(self.formula)
+                 if isinstance(c, Constant) and not c.is_numeric()))
+
+            if constant != Constant("start", "<start>"):
+                result += f"const {constant.name}: {constant.n_type};\n\n"
+        except StopIteration:
+            pass
+
+        result += "\n".join(self._unparse_constraint(self.formula))
+
+        return result
+
+    def _unparse_constraint(self, formula: Formula) -> List[str]:
+        if isinstance(formula, QuantifiedFormula):
+            return self._unparse_quantified_formula(formula)
+        elif isinstance(formula, ExistsIntFormula):
+            return self._unparse_exists_int_formula(formula)
+        elif isinstance(formula, ForallIntFormula):
+            return self._unparse_forall_int_formula(formula)
+        elif isinstance(formula, ConjunctiveFormula) or isinstance(formula, DisjunctiveFormula):
+            return self._unparse_propositional_combination(formula)
+        elif isinstance(formula, NegatedFormula):
+            return self._unparse_negated_formula(formula)
+        elif isinstance(formula, StructuralPredicateFormula) or isinstance(formula, SemanticPredicateFormula):
+            return self._unparse_predicate_formula(formula)
+        elif isinstance(formula, SMTFormula):
+            return self._unparse_smt_formula(formula)
+        else:
+            raise NotImplementedError(f"Unparsing of formulas of type {type(formula).__name__} not implemented.")
+
+    def _unparse_quantified_formula(self, formula: QuantifiedFormula) -> List[str]:
         bind_expr_str = "" if formula.bind_expression is None else f'="{formula.bind_expression}"'
 
         qfr = "forall" if isinstance(formula, ForallFormula) else "exists"
         result = [
             f"{qfr} {formula.bound_variable.n_type} {formula.bound_variable.name}{bind_expr_str} in {formula.in_variable}:"]
-        child_result = _unparse_constraint(formula.inner_formula)
-        result += [indent + line for line in child_result]
+        child_result = self._unparse_constraint(formula.inner_formula)
+        result += [self.indent + line for line in child_result]
+
         return result
 
-    if isinstance(formula, ExistsIntFormula):
-        result = [f"exists int {formula.bound_variable.name}:"]
-        child_result = _unparse_constraint(formula.inner_formula)
-        result += [indent + line for line in child_result]
-        return result
-
-    if isinstance(formula, ForallIntFormula):
-        result = [f"forall int {formula.bound_variable.name}:"]
-        child_result = _unparse_constraint(formula.inner_formula)
-        result += [indent + line for line in child_result]
-        return result
-
-    if isinstance(formula, ConjunctiveFormula) or isinstance(formula, DisjunctiveFormula):
+    def _unparse_propositional_combination(self, formula: ConjunctiveFormula | DisjunctiveFormula):
         combinator = "and" if isinstance(formula, ConjunctiveFormula) else "or"
-        child_results = [_unparse_constraint(child) for child in formula.args]
+        child_results = [self._unparse_constraint(child) for child in formula.args]
 
         for idx, child_result in enumerate(child_results[:-1]):
             child_results[idx][-1] = child_results[idx][-1] + f" {combinator}"
@@ -2651,39 +2680,30 @@ def _unparse_constraint(formula: Formula, indent="  ") -> List[str]:
 
         return [line for child_result in child_results for line in child_result]
 
-    if isinstance(formula, NegatedFormula):
-        child_results = [_unparse_constraint(child) for child in formula.args]
+    def _unparse_predicate_formula(self, formula: StructuralPredicateFormula | SemanticPredicateFormula):
+        return [str(formula)]
+
+    def _unparse_smt_formula(self, formula):
+        return [formula.formula.sexpr()]
+
+    def _unparse_negated_formula(self, formula):
+        child_results = [self._unparse_constraint(child) for child in formula.args]
         result = [line for child_result in child_results for line in child_result]
         result[0] = "not(" + result[0]
         result[-1] += ")"
         return result
 
-    if isinstance(formula, StructuralPredicateFormula) or isinstance(formula, SemanticPredicateFormula):
-        return [str(formula)]
+    def _unparse_forall_int_formula(self, formula):
+        result = [f"forall int {formula.bound_variable.name}:"]
+        child_result = self._unparse_constraint(formula.inner_formula)
+        result += [self.indent + line for line in child_result]
+        return result
 
-    if isinstance(formula, SMTFormula):
-        return [formula.formula.sexpr()]
-
-    raise NotImplementedError(f"Unparsing of formulas of type {type(formula).__name__} not implemented.")
-
-
-def unparse_isla(formula: Formula) -> str:
-    assert isinstance(formula, Formula)
-    result: str = ""
-
-    try:
-        constant = next(
-            (c for c in VariablesCollector.collect(formula)
-             if isinstance(c, Constant) and not c.is_numeric()))
-
-        if constant != Constant("start", "<start>"):
-            result += f"const {constant.name}: {constant.n_type};\n\n"
-    except StopIteration:
-        pass
-
-    result += "\n".join(_unparse_constraint(formula))
-
-    return result
+    def _unparse_exists_int_formula(self, formula):
+        result = [f"exists int {formula.bound_variable.name}:"]
+        child_result = self._unparse_constraint(formula.inner_formula)
+        result += [self.indent + line for line in child_result]
+        return result
 
 
 def get_conjuncts(formula: Formula) -> List[Formula]:

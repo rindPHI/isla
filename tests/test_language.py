@@ -16,7 +16,7 @@ from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, SAME_POSITIO
 from isla.isla_predicates import count, COUNT_PREDICATE
 from isla.language import Constant, BoundVariable, Formula, BindExpression, \
     DerivationTree, convert_to_dnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
-    DummyVariable, unparse_isla, parse_isla
+    DummyVariable, parse_isla, ISLaUnparser
 from isla_formalizations import rest, scriptsizec, tar
 from isla_formalizations.csv import CSV_GRAMMAR, CSV_COLNO_PROPERTY
 from isla_formalizations.scriptsizec import SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT, SCRIPTSIZE_C_NO_REDEF_TEXT
@@ -446,7 +446,7 @@ class TestLanguage(unittest.TestCase):
         print(graph.k_path_coverage(tree, 3))
 
     def test_unparse_isla(self):
-        unparsed = unparse_isla(CSV_COLNO_PROPERTY)
+        unparsed = ISLaUnparser(CSV_COLNO_PROPERTY).unparse()
         self.assertEqual(CSV_COLNO_PROPERTY, parse_isla(unparsed, CSV_GRAMMAR, semantic_predicates={COUNT_PREDICATE}))
 
         DummyVariable.cnt = 0
@@ -454,7 +454,7 @@ class TestLanguage(unittest.TestCase):
             SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT,
             scriptsizec.SCRIPTSIZE_C_GRAMMAR,
             structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
-        unparsed = unparse_isla(scriptsize_c_def_use_constr)
+        unparsed = ISLaUnparser(scriptsize_c_def_use_constr).unparse()
 
         DummyVariable.cnt = 0
         self.assertEqual(
@@ -468,7 +468,7 @@ class TestLanguage(unittest.TestCase):
         scriptsize_c_no_redef_constr = parse_isla(
             SCRIPTSIZE_C_NO_REDEF_TEXT, scriptsizec.SCRIPTSIZE_C_GRAMMAR,
             structural_predicates={SAME_POSITION_PREDICATE})
-        unparsed = unparse_isla(scriptsize_c_no_redef_constr)
+        unparsed = ISLaUnparser(scriptsize_c_no_redef_constr).unparse()
         DummyVariable.cnt = 0
         self.assertEqual(
             scriptsize_c_no_redef_constr,

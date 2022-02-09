@@ -20,16 +20,16 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.ERROR)
     logging.getLogger("evaluator").setLevel(logging.INFO)
 
-    random.seed(1564651321684654)
+    random.seed(13468432149)
 
     tune_result = auto_tune_weight_vector(
         XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
         XML_WELLFORMEDNESS_CONSTRAINT & XML_NAMESPACE_CONSTRAINT & XML_NO_ATTR_REDEF_CONSTRAINT,
         validator=validate_xml,
-        timeout=30,  # How long should a single configuration be evaluated
-        population_size=10,  # How many configurations should be produced at the beginning
+        timeout=40,  # How long should a single configuration be evaluated
+        population_size=20,  # How many configurations should be produced at the beginning
         generations=3,  # Evolutionary tuning: How many generations should I produce using crossover / mutation
-        cpu_count=2,  # Run in parallel: Use all cores (cpu_count == 1 implies single-threaded)
+        cpu_count=4,  # Run in parallel: Use all cores (cpu_count == 1 implies single-threaded)
         k=4
     )
 
