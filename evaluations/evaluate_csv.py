@@ -1,5 +1,8 @@
+import functools
+
 from grammar_graph.gg import GrammarGraph
 
+from isla.fuzzer import GrammarFuzzer
 from isla.performance_evaluator import Evaluator
 from isla.solver import ISLaSolver, CostSettings, STD_COST_SETTINGS
 from isla_formalizations import csv
@@ -17,7 +20,8 @@ g_colno = lambda timeout: ISLaSolver(
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
     cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k),
-    global_fuzzer=False
+    global_fuzzer=False,
+    fuzzer_factory=functools.partial(GrammarFuzzer, min_nonterminals=0, max_nonterminals=30),
 )
 
 if __name__ == '__main__':

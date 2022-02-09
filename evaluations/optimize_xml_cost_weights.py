@@ -18,7 +18,7 @@ def validate_xml(inp: DerivationTree) -> bool:
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.ERROR)
-    logging.getLogger("evaluator").setLevel(logging.DEBUG)
+    logging.getLogger("evaluator").setLevel(logging.INFO)
 
     random.seed(1564651321684654)
 
@@ -29,7 +29,8 @@ if __name__ == '__main__':
         timeout=120,  # How long should a single configuration be evaluated
         population_size=40,  # How many configurations should be produced at the beginning
         generations=5,  # Evolutionary tuning: How many generations should I produce using crossover / mutation
-        cpu_count=32  # Run in parallel: Use all cores (cpu_count == 1 implies single-threaded)
+        cpu_count=32,  # Run in parallel: Use all cores (cpu_count == 1 implies single-threaded)
+        k=4
     )
 
     print(f"Optimal cost vector: {tune_result[1]}")

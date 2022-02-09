@@ -248,6 +248,9 @@ class ISLaSolver:
         self.fuzzer_factory = fuzzer_factory
         self.predicates_unique_in_int_arg: Set[language.SemanticPredicate] = set(predicates_unique_in_int_arg)
 
+        self.rounds_with_no_new_coverage = 0
+        self.reset_coverage_after_n_round_with_no_coverage = 100
+
         if isinstance(formula, str):
             formula = parse_isla(formula, grammar, structural_predicates, semantic_predicates)
 
@@ -1377,16 +1380,34 @@ class ISLaSolver:
     def process_new_states(self, new_states: List[SolutionState]) -> List[DerivationTree]:
         result = [tree for new_state in new_states for tree in self.process_new_state(new_state)]
 
+        old_covered_k_paths = copy.copy(self.covered_k_paths)
+
         for tree in [state.tree for state in new_states]:
             self.covered_k_paths.update(tree.k_paths(self.graph, self.cost_settings.k))
 
-        if self.covered_k_paths == self.graph.k_paths(self.cost_settings.k):
+        if old_covered_k_paths == self.covered_k_paths:
+            self.rounds_with_no_new_coverage += 1
+
+        graph_paths = self.graph.k_paths(self.cost_settings.k)
+        if (self.rounds_with_no_new_coverage >= self.reset_coverage_after_n_round_with_no_coverage or
+                self.covered_k_paths == graph_paths):
+            if self.covered_k_paths == graph_paths:
+                self.logger.debug("ALL PATHS COVERED")
+            else:
+                self.logger.debug(
+                    "COVERAGE RESET SINCE NO CHANGE IN COVERED PATHS SINCE %d ROUNDS (%d path(s) uncovered)",
+                    self.reset_coverage_after_n_round_with_no_coverage,
+                    len(graph_paths) - len(self.covered_k_paths)
+                )
+
             self.covered_k_paths = set()
-            # self.logger.info("ALL COVERED")
         else:
             pass
             # uncovered_paths = self.graph.k_paths(self.cost_settings.k) - self.covered_k_paths
             # self.logger.info("\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]))
+
+        if self.rounds_with_no_new_coverage >= self.reset_coverage_after_n_round_with_no_coverage:
+            self.rounds_with_no_new_coverage = 0
 
         return result
 

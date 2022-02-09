@@ -166,7 +166,7 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
             max_number_free_instantiations=1,
             num_solutions=50,
-            enforce_unique_trees_in_queue=False,
+            enforce_unique_trees_in_queue=True,
             custom_test_func=validate_xml,
             cost_settings=CostSettings(
                 weight_vectors=(
@@ -177,6 +177,7 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
                 cost_phase_lengths=(200,),
                 k=3
             ),
+            print_only=True
         )
 
     def test_declared_before_used(self):
