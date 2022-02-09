@@ -170,14 +170,13 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             custom_test_func=validate_xml,
             cost_settings=CostSettings(
                 weight_vectors=(
-                    CostWeightVector(tree_closing_cost=15, vacuous_penalty=0, constraint_cost=0,
-                                     derivation_depth_penalty=0, low_k_coverage_penalty=5,
-                                     low_global_k_path_coverage_penalty=17),
+                    CostWeightVector(tree_closing_cost=22, vacuous_penalty=0, constraint_cost=5,
+                                     derivation_depth_penalty=20, low_k_coverage_penalty=20,
+                                     low_global_k_path_coverage_penalty=30),
                 ),
                 cost_phase_lengths=(200,),
-                k=3
+                k=4
             ),
-            print_only=True
         )
 
     def test_declared_before_used(self):

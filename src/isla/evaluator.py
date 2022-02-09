@@ -188,7 +188,8 @@ def evaluate(
         # Replace the assumptions by True in the formula
         assumptions_instantiated = qfr_free
         for assumption in qfr_free_assumptions:
-            assumptions_instantiated = replace_formula(assumptions_instantiated, assumption, SMTFormula(z3.BoolVal(True)))
+            assumptions_instantiated = replace_formula(assumptions_instantiated, assumption,
+                                                       SMTFormula(z3.BoolVal(True)))
 
         # Evaluate predicates
         def evaluate_predicates_action(formula: Formula) -> bool | Formula:
@@ -626,7 +627,8 @@ def matches_for_quantified_formula(
 
                     # The assignment is correct if there is not any non-matched leaf
                     if all(any(len(match_path) <= len(leaf_path) and match_path == leaf_path[:len(match_path)]
-                               for match_path, _ in maybe_match.values()) for leaf_path, _ in tree.leaves()):
+                               for match_path, _ in maybe_match.values())
+                           for leaf_path, _ in tree.leaves()):
                         new_assignments.append(new_assignment)
             else:
                 new_assignment = copy.copy(initial_assignments)

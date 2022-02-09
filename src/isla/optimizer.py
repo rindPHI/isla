@@ -449,7 +449,8 @@ def evaluate_isla_generator(
         graph=gg.GrammarGraph.from_grammar(grammar),
         validator=validator,
         timeout_seconds=timeout,
-        k=k)
+        k=k,
+        jobname=str(v))
 
 
 def evaluate_producer(

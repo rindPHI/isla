@@ -331,7 +331,7 @@ class ISLaSolver:
                     return
 
             # import dill as pickle
-            # state_hash = -353056312459876919
+            # state_hash = 6182494393073796919
             # out_file = "/tmp/saved_debug_state"
             # if hash(self.queue[0][1]) == state_hash:
             #     with open(out_file, 'wb') as debug_state_file:
@@ -405,7 +405,7 @@ class ISLaSolver:
                 yield from self.process_new_states(result_states)
                 # Also add some expansions of the original state, to create a larger
                 # solution stream (otherwise, it might be possible that only a small
-                # finite number of solutiosn are generated for existential formulas).
+                # finite number of solutions are generated for existential formulas).
                 yield from self.process_new_states(self.expand_tree(state, limit=2, only_universal=False))
                 continue
 

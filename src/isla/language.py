@@ -801,7 +801,16 @@ class BindExpression:
 
             maybe_result = self.match_with_backtracking(list(tree.paths()), list(combination))
             if maybe_result is not None:
-                return dict(maybe_result)
+                maybe_result = dict(maybe_result)
+
+                # NOTE: We also have to check if the match was complete; the current
+                #       combination could not have been adequate (containing nonexisting
+                #       input elements), such that they got matched to wrong elements, but
+                #       there remain tree elements that were not matched.
+                if all(any(len(match_path) <= len(leaf_path) and match_path == leaf_path[:len(match_path)]
+                           for match_path, _ in maybe_result.values())
+                       for leaf_path, _ in tree.leaves()):
+                    return maybe_result
 
         return None
 
@@ -2604,10 +2613,63 @@ def parse_isla(
     return isla_emitter.result
 
 
+def _unparse_constraint(formula: Formula, indent="  ") -> List[str]:
+    if isinstance(formula, QuantifiedFormula):
+        bind_expr_str = "" if formula.bind_expression is None else f'="{formula.bind_expression}"'
+
+        qfr = "forall" if isinstance(formula, ForallFormula) else "exists"
+        result = [
+            f"{qfr} {formula.bound_variable.n_type} {formula.bound_variable.name}{bind_expr_str} in {formula.in_variable}:"]
+        child_result = _unparse_constraint(formula.inner_formula)
+        result += [indent + line for line in child_result]
+        return result
+
+    if isinstance(formula, ExistsIntFormula):
+        result = [f"exists int {formula.bound_variable.name}:"]
+        child_result = _unparse_constraint(formula.inner_formula)
+        result += [indent + line for line in child_result]
+        return result
+
+    if isinstance(formula, ForallIntFormula):
+        result = [f"forall int {formula.bound_variable.name}:"]
+        child_result = _unparse_constraint(formula.inner_formula)
+        result += [indent + line for line in child_result]
+        return result
+
+    if isinstance(formula, ConjunctiveFormula) or isinstance(formula, DisjunctiveFormula):
+        combinator = "and" if isinstance(formula, ConjunctiveFormula) else "or"
+        child_results = [_unparse_constraint(child) for child in formula.args]
+
+        for idx, child_result in enumerate(child_results[:-1]):
+            child_results[idx][-1] = child_results[idx][-1] + f" {combinator}"
+
+        for idx, child_result in enumerate(child_results[1:]):
+            child_results[idx] = [" " + line for line in child_results[idx]]
+
+        child_results[0][0] = "(" + child_results[0][0][1:]
+        child_results[-1][-1] += ")"
+
+        return [line for child_result in child_results for line in child_result]
+
+    if isinstance(formula, NegatedFormula):
+        child_results = [_unparse_constraint(child) for child in formula.args]
+        result = [line for child_result in child_results for line in child_result]
+        result[0] = "not(" + result[0]
+        result[-1] += ")"
+        return result
+
+    if isinstance(formula, StructuralPredicateFormula) or isinstance(formula, SemanticPredicateFormula):
+        return [str(formula)]
+
+    if isinstance(formula, SMTFormula):
+        return [formula.formula.sexpr()]
+
+    raise NotImplementedError(f"Unparsing of formulas of type {type(formula).__name__} not implemented.")
+
+
 def unparse_isla(formula: Formula) -> str:
     assert isinstance(formula, Formula)
     result: str = ""
-    indent: str = "  "
 
     try:
         constant = next(
@@ -2619,60 +2681,7 @@ def unparse_isla(formula: Formula) -> str:
     except StopIteration:
         pass
 
-    def unparse_constraint(formula: Formula) -> List[str]:
-        if isinstance(formula, QuantifiedFormula):
-            bind_expr_str = "" if formula.bind_expression is None else f'="{formula.bind_expression}"'
-
-            qfr = "forall" if isinstance(formula, ForallFormula) else "exists"
-            result = [
-                f"{qfr} {formula.bound_variable.n_type} {formula.bound_variable.name}{bind_expr_str} in {formula.in_variable}:"]
-            child_result = unparse_constraint(formula.inner_formula)
-            result += [indent + line for line in child_result]
-            return result
-
-        if isinstance(formula, ExistsIntFormula):
-            result = [f"exists int {formula.bound_variable.name}:"]
-            child_result = unparse_constraint(formula.inner_formula)
-            result += [indent + line for line in child_result]
-            return result
-
-        if isinstance(formula, ForallIntFormula):
-            result = [f"forall int {formula.bound_variable.name}:"]
-            child_result = unparse_constraint(formula.inner_formula)
-            result += [indent + line for line in child_result]
-            return result
-
-        if isinstance(formula, ConjunctiveFormula) or isinstance(formula, DisjunctiveFormula):
-            combinator = "and" if isinstance(formula, ConjunctiveFormula) else "or"
-            child_results = [unparse_constraint(child) for child in formula.args]
-
-            for idx, child_result in enumerate(child_results[:-1]):
-                child_results[idx][-1] = child_results[idx][-1] + f" {combinator}"
-
-            for idx, child_result in enumerate(child_results[1:]):
-                child_results[idx] = [" " + line for line in child_results[idx]]
-
-            child_results[0][0] = "(" + child_results[0][0][1:]
-            child_results[-1][-1] += ")"
-
-            return [line for child_result in child_results for line in child_result]
-
-        if isinstance(formula, NegatedFormula):
-            child_results = [unparse_constraint(child) for child in formula.args]
-            result = [line for child_result in child_results for line in child_result]
-            result[0] = "not(" + result[0]
-            result[-1] += ")"
-            return result
-
-        if isinstance(formula, StructuralPredicateFormula) or isinstance(formula, SemanticPredicateFormula):
-            return [str(formula)]
-
-        if isinstance(formula, SMTFormula):
-            return [formula.formula.sexpr()]
-
-        raise NotImplementedError(f"Unparsing of formulas of type {type(formula).__name__} not implemented.")
-
-    result += "\n".join(unparse_constraint(formula))
+    result += "\n".join(_unparse_constraint(formula))
 
     return result
 

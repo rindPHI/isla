@@ -26,10 +26,10 @@ if __name__ == '__main__':
         XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
         XML_WELLFORMEDNESS_CONSTRAINT & XML_NAMESPACE_CONSTRAINT & XML_NO_ATTR_REDEF_CONSTRAINT,
         validator=validate_xml,
-        timeout=120,  # How long should a single configuration be evaluated
-        population_size=40,  # How many configurations should be produced at the beginning
-        generations=5,  # Evolutionary tuning: How many generations should I produce using crossover / mutation
-        cpu_count=32,  # Run in parallel: Use all cores (cpu_count == 1 implies single-threaded)
+        timeout=30,  # How long should a single configuration be evaluated
+        population_size=10,  # How many configurations should be produced at the beginning
+        generations=3,  # Evolutionary tuning: How many generations should I produce using crossover / mutation
+        cpu_count=2,  # Run in parallel: Use all cores (cpu_count == 1 implies single-threaded)
         k=4
     )
 

@@ -20,7 +20,7 @@ from isla.language import Constant, BoundVariable, Formula, BindExpression, \
 from isla_formalizations import rest, scriptsizec, tar
 from isla_formalizations.csv import CSV_GRAMMAR, CSV_COLNO_PROPERTY
 from isla_formalizations.scriptsizec import SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT, SCRIPTSIZE_C_NO_REDEF_TEXT
-from isla_formalizations.xml_lang import XML_GRAMMAR
+from isla_formalizations.xml_lang import XML_GRAMMAR, XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 from test_data import LANG_GRAMMAR
 from test_helpers import parse
 
@@ -287,6 +287,66 @@ class TestLanguage(unittest.TestCase):
 
         tree = DerivationTree.from_parse_tree(list(EarleyParser(attr_grammar).parse('a="..." b="..."'))[0][1][0])
         self.assertTrue(bind_expression.match(tree, XML_GRAMMAR))
+
+    def test_match_expr_match_xml(self):
+        match_expression = BindExpression(
+            "<",
+            BoundVariable("prefix_use", "<id-no-prefix>"),
+            ":",
+            "<id-no-prefix>",
+            [" ", "<xml-attribute>"],
+            ["/"],
+            ">",
+            ["<inner-xml-tree>", "<xml-close-tag>"])
+
+        tree = DerivationTree(
+            '<xml-tree>', (
+                DerivationTree('<xml-open-tag>', (
+                    DerivationTree('<', (), id=2091),
+                    DerivationTree('<id>', (
+                        DerivationTree('<id-with-prefix>', (
+                            DerivationTree('<id-no-prefix>', None, id=13531),
+                            DerivationTree(':', (), id=13532),
+                            DerivationTree('<id-no-prefix>', None, id=13533)), id=5800),), id=2092),
+                    DerivationTree('>', (), id=2093)), id=1085),
+                DerivationTree('<inner-xml-tree>', (
+                    DerivationTree('<xml-tree>', (
+                        DerivationTree('<xml-open-tag>', (
+                            DerivationTree('<', (), id=13581),
+                            DerivationTree('<id>', None, id=13582),
+                            DerivationTree(' ', (), id=13583),
+                            DerivationTree('<xml-attribute>', None, id=13584),
+                            DerivationTree('>', (), id=13585)), id=5801),
+                        DerivationTree('<inner-xml-tree>', (
+                            DerivationTree('<text>', None, id=13586),), id=5802),
+                        DerivationTree('<xml-close-tag>', (
+                            DerivationTree('</', (), id=13634),
+                            DerivationTree('<id>', None, id=13635),
+                            DerivationTree('>', (), id=13636)), id=5803)), id=2100),), id=1086),
+                DerivationTree('<xml-close-tag>', (
+                    DerivationTree('</', (), id=2147),
+                    DerivationTree('<id>', None, id=2148),
+                    DerivationTree('>', (), id=2149)), id=1087)), id=1084)
+
+        maybe_match = match_expression.match(tree, XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
+
+        self.assertTrue(maybe_match)
+        match_paths = [path for path, _ in maybe_match.values()]
+
+        # "<"
+        self.assertIn(tree.find_node(2091), match_paths)
+        # BoundVariable("prefix_use", "<id-no-prefix>")
+        self.assertIn(tree.find_node(13531), match_paths)
+        # ":"
+        self.assertIn(tree.find_node(13532), match_paths)
+        # "<id-no-prefix>"
+        self.assertIn(tree.find_node(13533), match_paths)
+        # ">"
+        self.assertIn(tree.find_node(2093), match_paths)
+        # "<inner-xml-tree>"
+        self.assertIn(tree.find_node(1086), match_paths)
+        # "<xml-close-tag>"
+        self.assertIn(tree.find_node(1087), match_paths)
 
     def test_tree_k_paths(self):
         graph = gg.GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR)
