@@ -211,7 +211,7 @@ def evaluate(
                 assert isinstance(substs, dict)
                 assert all(isinstance(key, Variable) and key.n_type == Variable.NUMERIC_NTYPE for key in substs)
                 return SMTFormula(z3_and([
-                    cast(z3.BoolRef, const.to_smt() == substs[const].value)
+                    cast(z3.BoolRef, const.to_smt() == str(substs[const]))
                     for const in substs]), *substs.keys())
 
             return False
