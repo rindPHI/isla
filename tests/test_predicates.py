@@ -1,12 +1,17 @@
 import unittest
 
+import z3
 from fuzzingbook.Parser import EarleyParser
+from orderedset import OrderedSet
 
+from isla import language
+from isla.evaluator import evaluate
 from isla.helpers import delete_unreachable
-from isla.isla_predicates import embed_tree, mk_parser, level_check
+from isla.isla_predicates import embed_tree, mk_parser, level_check, OCTAL_TO_DEC_PREDICATE
 from isla.language import DerivationTree
 from isla.type_defs import Path
 from isla_formalizations import tar, rest, scriptsizec
+from isla_formalizations.tar import TAR_GRAMMAR, octal_conv_grammar
 
 
 class TestPredicates(unittest.TestCase):
@@ -153,6 +158,53 @@ class TestPredicates(unittest.TestCase):
             self.assertFalse(level_check(t, "GT", "<block>", x, a))
 
         # TODO wrong_input_*
+
+    def test_octal_to_decimal(self):
+        decimal = language.BoundVariable("decimal", "NUM")
+        tree = DerivationTree('<octal_digits>', (
+            DerivationTree('<octal_digit>', (
+                DerivationTree('0', ()),)),
+            DerivationTree('<octal_digits>', (
+                DerivationTree('<octal_digit>', (
+                    DerivationTree('0', (), ),), ),
+                DerivationTree('<octal_digits>', (
+                    DerivationTree('<octal_digit>', (
+                        DerivationTree('0', ()),)),
+                    DerivationTree('<octal_digits>', (
+                        DerivationTree('<octal_digit>', (
+                            DerivationTree('0', ()),)),
+                        DerivationTree('<octal_digits>', (
+                            DerivationTree('<octal_digit>', (
+                                DerivationTree('0', ()),)),
+                            DerivationTree('<octal_digits>', (
+                                DerivationTree('<octal_digit>', (
+                                    DerivationTree('0', ()),)),
+                                DerivationTree('<octal_digits>', (
+                                    DerivationTree('<octal_digit>', (
+                                        DerivationTree('0', ()),)),
+                                    DerivationTree('<octal_digits>', (
+                                        DerivationTree('<octal_digit>', (
+                                            DerivationTree('0', ()),)),
+                                        DerivationTree('<octal_digits>', (
+                                            DerivationTree('<octal_digit>', (
+                                                DerivationTree('0', ()),)),
+                                            DerivationTree('<octal_digits>', (
+                                                DerivationTree('<octal_digit>', (
+                                                    DerivationTree('1', ()),)),
+                                                DerivationTree('<octal_digits>', (
+                                                    DerivationTree('<octal_digit>', (
+                                                        DerivationTree('4', ()),)),))), )))))))))))))))))))
+
+        formula = language.ExistsIntFormula(
+            decimal,
+            language.SMTFormula(z3.StrToInt(decimal.to_smt()) >= z3.IntVal(10), decimal) &
+            language.SMTFormula(z3.StrToInt(decimal.to_smt()) <= z3.IntVal(100), decimal, ) &
+            language.SemanticPredicateFormula(
+                OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"),
+                tree, decimal),
+        )
+
+        self.assertTrue(evaluate(formula, tree, TAR_GRAMMAR))
 
 
 if __name__ == '__main__':
