@@ -173,7 +173,12 @@ def evaluate(
             split_disjunction(conjunct)
             for assumption in assumptions
             for conjunct in split_conjunction(eliminate_quantifiers(
-                assumption, grammar=grammar, keep_existential_quantifiers=True))])
+                assumption, grammar=grammar, keep_existential_quantifiers=True))
+            # By quantifier elimination, we might obtain the original formula the same way
+            # it was derived before. This has to be excluded, to ensure that the formula
+            # is not trivially satisfied
+            if conjunct != formula
+        ])
         # if not propositionally_unsatisfiable(
         #     reduce(Formula.__and__, assumptions, SMTFormula(z3.BoolVal(True))))  # <- See comment above
     }
@@ -188,8 +193,8 @@ def evaluate(
         # Replace the assumptions by True in the formula
         assumptions_instantiated = qfr_free
         for assumption in qfr_free_assumptions:
-            assumptions_instantiated = replace_formula(assumptions_instantiated, assumption,
-                                                       SMTFormula(z3.BoolVal(True)))
+            assumptions_instantiated = replace_formula(
+                assumptions_instantiated, assumption, SMTFormula(z3.BoolVal(True)))
 
         # Evaluate predicates
         def evaluate_predicates_action(formula: Formula) -> bool | Formula:
