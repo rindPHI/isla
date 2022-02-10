@@ -1,0 +1,1 @@
+{int b;if(b = 92) ; else {}}

@@ -1,0 +1,1 @@
+{int h;int b;while(6 - b - h) {}}

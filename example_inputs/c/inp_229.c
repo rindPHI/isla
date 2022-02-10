@@ -1,0 +1,1 @@
+{int p;while(9 - p + p) {}}

@@ -1,0 +1,1 @@
+{int p;if(p + 26 - p) ; else {}}

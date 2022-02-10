@@ -1,0 +1,1 @@
+{int d;do {} while(3 + d - d);}

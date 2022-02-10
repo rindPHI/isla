@@ -1,0 +1,1 @@
+{int p;if(p = 7 + p - p) {} else ;}

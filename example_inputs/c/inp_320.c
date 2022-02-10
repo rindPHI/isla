@@ -1,0 +1,1 @@
+{int d;int p;while(p + 816 - d) {}}

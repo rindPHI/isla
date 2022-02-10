@@ -1,0 +1,1 @@
+{int p;{int d;if(d - p + d) ; else ;}}

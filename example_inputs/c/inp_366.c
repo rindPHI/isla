@@ -1,0 +1,1 @@
+{int h;int a;do ; while(4 + a + h);}

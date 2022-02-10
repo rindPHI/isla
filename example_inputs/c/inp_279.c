@@ -1,0 +1,1 @@
+{int d;int p;while(d = p = p) ;}

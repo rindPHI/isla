@@ -1,0 +1,1 @@
+{int a;if(8 < a) ; else {}}

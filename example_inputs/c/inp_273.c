@@ -1,0 +1,1 @@
+{int h;int p;do {} while(p + 0 - h);}

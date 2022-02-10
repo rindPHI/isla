@@ -1,0 +1,1 @@
+{int a;int p;a = p = p;}

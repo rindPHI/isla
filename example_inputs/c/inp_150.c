@@ -1,0 +1,1 @@
+{int h;{int p;while(h = p = p) {}}}

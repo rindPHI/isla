@@ -1,0 +1,1 @@
+{int b;if(b = b = 4) ; else ;}

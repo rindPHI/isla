@@ -1,0 +1,1 @@
+{int d;int p;if(d = p = p) ; else {}}

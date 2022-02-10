@@ -1,0 +1,1 @@
+{int t;int p;while(p - t - t) {}int d;}

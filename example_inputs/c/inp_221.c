@@ -1,0 +1,1 @@
+{int d;int p;if(42 - p - d) {}}

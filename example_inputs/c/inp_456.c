@@ -1,0 +1,1 @@
+{int h;if(h = h + 7 - h) {} else ;}

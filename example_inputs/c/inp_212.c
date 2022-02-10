@@ -1,0 +1,1 @@
+{int d;int h;if(63 - h + d) ; else {}}

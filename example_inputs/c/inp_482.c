@@ -1,0 +1,1 @@
+{int p;if(p = 6 + p) ; else {}}

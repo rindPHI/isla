@@ -1,0 +1,1 @@
+{int a;while(a = a) ;}

@@ -1,0 +1,1 @@
+{int a;do ; while(604 + a + a);}

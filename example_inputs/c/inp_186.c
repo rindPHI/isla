@@ -1,0 +1,1 @@
+{int p;if(96 - p - p) ; else {}}

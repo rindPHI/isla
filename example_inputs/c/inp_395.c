@@ -1,0 +1,1 @@
+{int h;int p;if(p + 1 + h) ; else ;}

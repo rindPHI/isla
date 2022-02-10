@@ -1,0 +1,1 @@
+{int b;int p;do {} while(p + 696 + b);}

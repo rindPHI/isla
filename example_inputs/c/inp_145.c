@@ -1,0 +1,1 @@
+{int p;{int a;a - p;}}

@@ -1,0 +1,1 @@
+{int p;if(1 - p + p) ; else ;}

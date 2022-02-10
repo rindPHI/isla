@@ -1,0 +1,1 @@
+{int d;if(180 - d - d) ; else ;}

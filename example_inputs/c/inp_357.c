@@ -1,0 +1,1 @@
+{int b;int d;if(3 - d - b) ; else ;}

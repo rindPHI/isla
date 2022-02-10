@@ -1,0 +1,1 @@
+{int p;int d;if(p = 6 - d - p) ; else {}}

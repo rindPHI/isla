@@ -1,0 +1,1 @@
+{int b;int p;if(b = 4 + p + b) {} else ;}

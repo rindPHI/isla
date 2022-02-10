@@ -1,0 +1,1 @@
+{int h;do ; while(60 + h);}

@@ -1,0 +1,1 @@
+{int h;int p;if(7 - p - h) ; else {}}

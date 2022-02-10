@@ -1,0 +1,1 @@
+{int h;do ; while(h = h = 5);}

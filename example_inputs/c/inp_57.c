@@ -1,0 +1,1 @@
+{int p;if(72 - p) ; else {}}

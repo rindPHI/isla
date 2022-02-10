@@ -1,0 +1,1 @@
+{int a;{int p;if(p + a) ; else ;}}
