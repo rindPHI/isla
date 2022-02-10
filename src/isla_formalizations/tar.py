@@ -544,6 +544,9 @@ class TarParser:
 
         file_name_first_char = inp[0]
 
+        if len(inp) == 1:
+            return "<file_name_str>", [("<file_name_first_char>", [(file_name_first_char, [])])]
+
         file_name_chars = self.parse_characters(
             inp[1:],
             characters_nonterminal="<file_name_chars>",
