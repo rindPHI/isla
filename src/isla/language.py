@@ -1130,12 +1130,13 @@ class StructuralPredicateFormula(Formula):
         return self.predicate.eval_fun(
             context_tree, *[arg if isinstance(arg, str) else arg[0] for arg in args_with_paths])
 
-    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> 'StructuralPredicateFormula':
         return StructuralPredicateFormula(
             self.predicate,
             *[arg if arg not in subst_map else subst_map[arg] for arg in self.args])
 
-    def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
+    def substitute_expressions(
+            self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> 'StructuralPredicateFormula':
         new_args = []
         for arg in self.args:
             if isinstance(arg, Variable):
@@ -1302,12 +1303,13 @@ class SemanticPredicateFormula(Formula):
     def binds_tree(self, tree: DerivationTree) -> bool:
         return self.predicate.binds_tree(tree, self.args)
 
-    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> 'SemanticPredicateFormula':
         return SemanticPredicateFormula(self.predicate,
                                         *[arg if arg not in subst_map
                                           else subst_map[arg] for arg in self.args], order=self.order)
 
-    def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
+    def substitute_expressions(
+            self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> 'SemanticPredicateFormula':
         tree_id_subst_map = {
             tree.id: repl
             for tree, repl in subst_map.items()
@@ -1407,10 +1409,11 @@ class NegatedFormula(PropositionalCombinator):
             for formula in self.args:
                 formula.accept(visitor)
 
-    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> 'NegatedFormula':
         return NegatedFormula(*[arg.substitute_variables(subst_map) for arg in self.args])
 
-    def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
+    def substitute_expressions(
+            self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> 'NegatedFormula':
         return NegatedFormula(*[arg.substitute_expressions(subst_map) for arg in self.args])
 
     def __hash__(self):
@@ -1519,7 +1522,7 @@ class SMTFormula(Formula):
         self.__dict__ = inst
         self.formula = z3_constr
 
-    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+    def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> 'SMTFormula':
         new_smt_formula = z3_subst(self.formula, {v1.to_smt(): v2.to_smt() for v1, v2 in subst_map.items()})
 
         new_free_variables = [variable if variable not in subst_map
@@ -1535,7 +1538,8 @@ class SMTFormula(Formula):
                           substitutions=self.substitutions,
                           auto_eval=self.auto_eval)
 
-    def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> Formula:
+    def substitute_expressions(
+            self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> 'SMTFormula':
         tree_subst_map = {k: v for k, v in subst_map.items()
                           if isinstance(k, DerivationTree)
                           and (k in self.substitutions.values()
@@ -1569,7 +1573,7 @@ class SMTFormula(Formula):
 
         if self.auto_eval and len(new_free_variables) + len(new_instantiated_variables) == 0:
             # Formula is ground, we can evaluate it!
-            return SMTFormula(z3.BoolVal(is_valid(new_smt_formula)))
+            return SMTFormula(z3.BoolVal(is_valid(new_smt_formula).to_bool()))
 
         return SMTFormula(cast(z3.BoolRef, new_smt_formula), *new_free_variables,
                           instantiated_variables=new_instantiated_variables,

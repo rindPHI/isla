@@ -3,8 +3,7 @@ import logging
 import math
 import random
 import re
-from functools import lru_cache
-from typing import Optional, Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast, Callable
+from typing import Optional, Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast, Callable, Iterable
 
 import z3
 from fuzzingbook.Grammars import unreachable_nonterminals, is_nonterminal, RE_NONTERMINAL
@@ -13,6 +12,88 @@ from isla.type_defs import Path, Grammar, ParseTree, ImmutableGrammar
 
 S = TypeVar('S')
 T = TypeVar('T')
+
+
+class ThreeValuedTruth:
+    FALSE = 0
+    TRUE = 1
+    UNKNOWN = 2
+
+    def __init__(self, val: int):
+        assert 0 <= val <= 2
+        self.val = val
+
+    def __eq__(self, other):
+        return self.val == other.val
+
+    def __hash__(self):
+        return self.val
+
+    def to_bool(self) -> bool:
+        assert self.val != ThreeValuedTruth.UNKNOWN
+        return bool(self.val)
+
+    def __bool__(self):
+        return self.to_bool()
+
+    def is_false(self):
+        return self.val == ThreeValuedTruth.FALSE
+
+    def is_true(self):
+        return self.val == ThreeValuedTruth.TRUE
+
+    def is_unknown(self):
+        return self.val == ThreeValuedTruth.UNKNOWN
+
+    @staticmethod
+    def from_bool(b: bool) -> 'ThreeValuedTruth':
+        return ThreeValuedTruth(int(b))
+
+    @staticmethod
+    def all(args: Iterable['ThreeValuedTruth']) -> 'ThreeValuedTruth':
+        args = list(args)
+        if any(elem.is_false() for elem in args):
+            return ThreeValuedTruth.false()
+        if any(elem.is_unknown() for elem in args):
+            return ThreeValuedTruth.unknown()
+        return ThreeValuedTruth.true()
+
+    @staticmethod
+    def any(args: Iterable['ThreeValuedTruth']) -> 'ThreeValuedTruth':
+        args = list(args)
+        if any(elem.is_true() for elem in args):
+            return ThreeValuedTruth.true()
+        if any(elem.is_unknown() for elem in args):
+            return ThreeValuedTruth.unknown()
+        return ThreeValuedTruth.false()
+
+    @staticmethod
+    def not_(arg: 'ThreeValuedTruth') -> 'ThreeValuedTruth':
+        if arg.is_true():
+            return ThreeValuedTruth.false()
+        if arg.is_false():
+            return ThreeValuedTruth.true()
+        return ThreeValuedTruth.unknown()
+
+    @staticmethod
+    def true():
+        return ThreeValuedTruth(ThreeValuedTruth.TRUE)
+
+    @staticmethod
+    def false():
+        return ThreeValuedTruth(ThreeValuedTruth.FALSE)
+
+    @staticmethod
+    def unknown():
+        return ThreeValuedTruth(ThreeValuedTruth.UNKNOWN)
+
+    def __repr__(self):
+        return f"ThreeValuedTruth({self.val})"
+
+    def __str__(self):
+        return ("TRUE" if self.is_true() else
+                "FALSE" if self.is_false() else
+                "UNKNOWN")
 
 
 def pop(l: List[S], default: T = None, index=0) -> Union[S, T]:
@@ -183,17 +264,28 @@ def z3_push_in_negations(formula: z3.BoolRef, negate=False) -> z3.BoolRef:
     return z3.simplify(z3.Not(formula) if negate else formula)
 
 
-def is_valid(formula: z3.BoolRef, timeout: int = 500) -> bool:
+def is_valid(formula: z3.BoolRef, timeout: int = 500) -> ThreeValuedTruth:
     if z3.is_true(formula):
-        return True
+        return ThreeValuedTruth.true()
 
     if z3.is_false(formula):
-        return False
+        return ThreeValuedTruth.false()
+
+    # Special case: Equality comparison between String literals
+    if z3.is_eq(formula) and all(z3.is_string_value(child) for child in formula.children()):
+        str_children: List[str] = [child.as_string() for child in formula.children()]
+        return ThreeValuedTruth.from_bool(str_children[0] == str_children[1])
 
     solver = z3.Solver()
     solver.set("timeout", timeout)
     solver.add(z3.Not(formula))
-    return solver.check() == z3.unsat
+
+    if solver.check() == z3.unsat:
+        return ThreeValuedTruth.true()
+    elif solver.check() == z3.sat:
+        return ThreeValuedTruth.false()
+    else:
+        return ThreeValuedTruth.unknown()
 
 
 def z3_solve(formulas: List[z3.BoolRef], timeout_ms=500) -> Tuple[z3.CheckSatResult, Optional[z3.ModelRef]]:
@@ -275,7 +367,7 @@ def tree_size(tree: ParseTree) -> int:
     return 1 + sum(tree_depth(child) for child in tree[1])
 
 
-def dict_of_lists_to_list_of_dicts(dict_of_lists: Dict[S, List[T]]) -> List[Dict[S, T]]:
+def dict_of_lists_to_list_of_dicts(dict_of_lists: Dict[S, Iterable[T]]) -> List[Dict[S, T]]:
     keys = list(dict_of_lists.keys())
     list_of_values = [dict_of_lists[key] for key in keys]
     product = list(itertools.product(*list_of_values))

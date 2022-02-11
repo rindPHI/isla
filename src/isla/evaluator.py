@@ -2,13 +2,13 @@ import copy
 import itertools
 import logging
 from functools import reduce
-from typing import Union, Optional, Set, Dict, cast, Tuple, List, Iterable
+from typing import Union, Optional, Set, Dict, cast, Tuple, List
 
 import z3
 from grammar_graph import gg
 from orderedset import OrderedSet
 
-from isla.helpers import z3_and, is_nonterminal, z3_or, assertions_activated
+from isla.helpers import z3_and, is_nonterminal, z3_or, assertions_activated, ThreeValuedTruth, is_valid
 from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES
 from isla.language import Formula, DerivationTree, StructuralPredicate, SemanticPredicate, parse_isla, \
     VariablesCollector, Constant, FilterVisitor, NumericQuantifiedFormula, StructuralPredicateFormula, SMTFormula, \
@@ -21,88 +21,6 @@ from isla.type_defs import Grammar, Path
 logger = logging.getLogger("evaluator")
 
 
-class ThreeValuedTruth:
-    FALSE = 0
-    TRUE = 1
-    UNKNOWN = 2
-
-    def __init__(self, val: int):
-        assert 0 <= val <= 2
-        self.val = val
-
-    def __eq__(self, other):
-        return self.val == other.val
-
-    def __hash__(self):
-        return self.val
-
-    def to_bool(self) -> bool:
-        assert self.val != ThreeValuedTruth.UNKNOWN
-        return bool(self.val)
-
-    def __bool__(self):
-        return self.to_bool()
-
-    def is_false(self):
-        return self.val == ThreeValuedTruth.FALSE
-
-    def is_true(self):
-        return self.val == ThreeValuedTruth.TRUE
-
-    def is_unknown(self):
-        return self.val == ThreeValuedTruth.UNKNOWN
-
-    @staticmethod
-    def from_bool(b: bool) -> 'ThreeValuedTruth':
-        return ThreeValuedTruth(int(b))
-
-    @staticmethod
-    def all(args: Iterable['ThreeValuedTruth']) -> 'ThreeValuedTruth':
-        args = list(args)
-        if any(elem.is_false() for elem in args):
-            return ThreeValuedTruth.false()
-        if any(elem.is_unknown() for elem in args):
-            return ThreeValuedTruth.unknown()
-        return ThreeValuedTruth.true()
-
-    @staticmethod
-    def any(args: Iterable['ThreeValuedTruth']) -> 'ThreeValuedTruth':
-        args = list(args)
-        if any(elem.is_true() for elem in args):
-            return ThreeValuedTruth.true()
-        if any(elem.is_unknown() for elem in args):
-            return ThreeValuedTruth.unknown()
-        return ThreeValuedTruth.false()
-
-    @staticmethod
-    def not_(arg: 'ThreeValuedTruth') -> 'ThreeValuedTruth':
-        if arg.is_true():
-            return ThreeValuedTruth.false()
-        if arg.is_false():
-            return ThreeValuedTruth.true()
-        return ThreeValuedTruth.unknown()
-
-    @staticmethod
-    def true():
-        return ThreeValuedTruth(ThreeValuedTruth.TRUE)
-
-    @staticmethod
-    def false():
-        return ThreeValuedTruth(ThreeValuedTruth.FALSE)
-
-    @staticmethod
-    def unknown():
-        return ThreeValuedTruth(ThreeValuedTruth.UNKNOWN)
-
-    def __repr__(self):
-        return f"ThreeValuedTruth({self.val})"
-
-    def __str__(self):
-        return ("TRUE" if self.is_true() else
-                "FALSE" if self.is_false() else
-                "UNKNOWN")
-
-
 def propositionally_unsatisfiable(formula: Formula) -> bool:
     if formula == SMTFormula(z3.BoolVal(True)):
         return False
@@ -110,9 +28,8 @@ def propositionally_unsatisfiable(formula: Formula) -> bool:
         return True
 
     z3_formula = isla_to_smt_formula(formula, replace_untranslatable_with_predicate=True)
-    solver = z3.Solver()
-    solver.add(z3_formula)
-    return solver.check() == z3.unsat
+
+    return is_valid(z3_formula).is_true()
 
 
 def evaluate(
@@ -228,19 +145,17 @@ def evaluate(
         # all quantifiers with fresh predicates, which still allows us to perform an evaluation.
         smt_formula: z3.BoolRef = isla_to_smt_formula(without_predicates, replace_untranslatable_with_predicate=True)
 
-        solver = z3.Solver()
-        solver.add(z3.Not(smt_formula))
-        z3_result = solver.check()
+        smt_result = is_valid(smt_formula)
 
         # We return unknown / false directly if the result is unknown / false for any assumption.
-        if z3_result == z3.unknown:
+        if smt_result.is_unknown():
             return ThreeValuedTruth.unknown()
-        elif z3_result == z3.sat:
+        elif smt_result.is_false():
             if not propositionally_unsatisfiable(
                     reduce(Formula.__and__, qfr_free_assumptions, SMTFormula(z3.BoolVal(True)))):
                 return ThreeValuedTruth.false()
         else:
-            assert z3_result == z3.unsat
+            assert smt_result.is_true()
 
     # We have proven the formula true for all assumptions: Return True
     return ThreeValuedTruth.true()
@@ -407,9 +322,7 @@ def evaluate_legacy(
                     for symbol, symbol_assignment
                     in assignments.items()}.items()))
 
-        solver = z3.Solver()
-        solver.add(z3.Not(instantiation))
-        return ThreeValuedTruth.from_bool(solver.check() == z3.unsat)  # Set timeout?
+        return is_valid(instantiation)
     elif isinstance(formula, QuantifiedFormula):
         if isinstance(formula.in_variable, DerivationTree):
             in_inst = formula.in_variable

@@ -19,6 +19,7 @@ from orderedset import OrderedSet
 from packaging import version
 
 import isla.evaluator
+import isla.helpers
 from isla import language
 import isla.isla_shortcuts as sc
 from isla.existential_helpers import insert_tree
@@ -40,10 +41,10 @@ class SolutionState:
         self.level = level
         self.__hash = None
 
-    def formula_satisfied(self, grammar: Grammar) -> isla.evaluator.ThreeValuedTruth:
+    def formula_satisfied(self, grammar: Grammar) -> isla.helpers.ThreeValuedTruth:
         if self.tree.is_open():
             # Have to instantiate variables first
-            return isla.evaluator.ThreeValuedTruth.unknown()
+            return isla.helpers.ThreeValuedTruth.unknown()
 
         return isla.evaluator.evaluate(self.constraint, self.tree, grammar)
 

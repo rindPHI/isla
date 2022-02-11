@@ -239,6 +239,26 @@ forall <csv-header> hline in start:
             enforce_unique_trees_in_queue=False,
             num_solutions=20)
 
+    def test_csv_rows_equal_length_simpler(self):
+        property = """
+exists int num:
+   forall <csv-record> elem in start:
+     ((>= (str.to.int num) 1) and
+      count(elem, "<raw-field>", num))"""
+
+        self.execute_generation_test(
+            property,
+            semantic_predicates={COUNT_PREDICATE},
+            grammar=CSV_GRAMMAR,
+            custom_test_func=csv_lint,
+            num_solutions=50,
+            max_number_free_instantiations=10,
+            max_number_smt_instantiations=10,
+            enforce_unique_trees_in_queue=False,
+            global_fuzzer=False,
+            fuzzer_factory=functools.partial(GrammarFuzzer, min_nonterminals=0, max_nonterminals=30),
+        )
+
     def test_csv_rows_equal_length(self):
         property = """
 forall <csv-header> hline in start:
