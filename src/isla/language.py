@@ -2688,7 +2688,12 @@ class ISLaUnparser:
         return [str(formula)]
 
     def _unparse_smt_formula(self, formula):
-        return [formula.formula.sexpr()]
+        result = formula.formula.sexpr()
+
+        # str.to_int is str.to.int in Z3; use this to preserve idempotency of parsing/unparsing
+        result = result.replace("str.to_int", "str.to.int")
+
+        return [result]
 
     def _unparse_negated_formula(self, formula):
         child_results = [self._unparse_constraint(child) for child in formula.args]
