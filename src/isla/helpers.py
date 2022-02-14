@@ -1,8 +1,10 @@
 import itertools
 import logging
 import math
+import operator
 import random
 import re
+from functools import reduce
 from typing import Optional, Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast, Callable, Iterable
 
 import z3
@@ -271,10 +273,10 @@ def is_valid(formula: z3.BoolRef, timeout: int = 500) -> ThreeValuedTruth:
     if z3.is_false(formula):
         return ThreeValuedTruth.false()
 
-    # Special case: Equality comparison between String literals
-    if z3.is_eq(formula) and all(z3.is_string_value(child) for child in formula.children()):
-        str_children: List[str] = [child.as_string() for child in formula.children()]
-        return ThreeValuedTruth.from_bool(str_children[0] == str_children[1])
+    try:
+        return ThreeValuedTruth.from_bool(evaluate_z3_expression(formula))
+    except NotImplementedError:
+        pass
 
     solver = z3.Solver()
     solver.set("timeout", timeout)
@@ -286,6 +288,88 @@ def is_valid(formula: z3.BoolRef, timeout: int = 500) -> ThreeValuedTruth:
         return ThreeValuedTruth.false()
     else:
         return ThreeValuedTruth.unknown()
+
+
+def evaluate_z3_expression(expr: z3.ExprRef) -> bool | int | str:
+    # This can only evaluate concrete expressions: No variables / constants
+    if z3.is_var(expr) or is_z3_var(expr):
+        raise NotImplementedError("Cannot evaluate expression with variables.")
+
+    if z3.is_quantifier(expr):
+        raise NotImplementedError("Cannot evaluate expressions with quantifiers.")
+
+    children = list(map(evaluate_z3_expression, expr.children()))
+
+    # Literals
+    if z3.is_string_value(expr):
+        expr: z3.StringVal
+        return expr.as_string()
+
+    if z3.is_int_value(expr):
+        expr: z3.IntVal
+        return expr.as_long()
+
+    if z3.is_false(expr):
+        return False
+
+    if z3.is_true(expr):
+        return True
+
+    # Boolean Combinations
+    if z3.is_not(expr):
+        return not children[0]
+
+    if z3.is_and(expr):
+        return reduce(operator.and_, children)
+
+    if z3.is_or(expr):
+        return reduce(operator.or_, children)
+
+    # Comparisons
+    if z3.is_eq(expr):
+        return children[0] == children[1]
+
+    if z3.is_lt(expr):
+        return children[0] < children[1]
+
+    if z3.is_le(expr):
+        return children[0] <= children[1]
+
+    if z3.is_gt(expr):
+        return children[0] > children[1]
+
+    if z3.is_ge(expr):
+        return children[0] >= children[1]
+
+    # Arithmetic Operations
+    if z3.is_add(expr):
+        return children[0] + children[1]
+
+    if z3.is_sub(expr):
+        return children[0] - children[1]
+
+    if z3.is_mul(expr):
+        return children[0] * children[1]
+
+    if z3.is_div(expr):
+        return int(children[0] / children[1])
+
+    # String Operations
+    if expr.decl().kind() == z3.Z3_OP_STR_TO_INT:
+        return int(children[0])
+
+    if expr.decl().kind() == z3.Z3_OP_SEQ_LENGTH:
+        return len(children[1])
+
+    if expr.decl().kind() == z3.Z3_OP_SEQ_CONCAT:
+        return cast(str, children[0]) + cast(str, children[1])
+
+    if expr.decl().kind() == z3.Z3_OP_SEQ_AT:
+        return cast(str, children[0])[cast(int, children[1])]
+
+    logger = logging.getLogger("Z3 evaluation")
+    logger.warning("Evaluation of expression %s not implemented.", expr)
+    raise NotImplementedError(f"Evaluation of expression {expr} not implemented.")
 
 
 def z3_solve(formulas: List[z3.BoolRef], timeout_ms=500) -> Tuple[z3.CheckSatResult, Optional[z3.ModelRef]]:
