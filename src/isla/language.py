@@ -130,7 +130,8 @@ class DerivationTree:
                  k_paths: Optional[Dict[int, Set[Tuple[gg.Node, ...]]]] = None,
                  hash: Optional[int] = None,
                  structural_hash: Optional[int] = None,
-                 is_open: Optional[bool] = None):
+                 is_open: Optional[bool] = None,
+                 precompute_is_open: bool = False):
         assert isinstance(value, str)
         assert children is None or all(isinstance(child, DerivationTree) for child in children)
 
@@ -153,15 +154,14 @@ class DerivationTree:
         self.__k_paths: Dict[int, Set[Tuple[gg.Node, ...]]] = k_paths or {}
 
         self.__is_open = is_open
-        if children is None:
-            self.__is_open = True
-        else:
-            if any(child.__is_open is True for child in children):
+        if precompute_is_open:
+            if children is None:
                 self.__is_open = True
-            if all(child.__is_open is False for child in children):
-                self.__is_open = False
-
-        # assert self.__is_open is None or self.__is_open == self.__compute_is_open()
+            else:
+                if any(child.__is_open is True for child in children):
+                    self.__is_open = True
+                if all(child.__is_open is False for child in children):
+                    self.__is_open = False
 
     def __setstate__(self, state):
         # To ensure that when resuming from a checkpoint during debugging,
