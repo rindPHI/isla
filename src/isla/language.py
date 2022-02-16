@@ -8,8 +8,7 @@ import re
 from abc import ABC
 from functools import reduce, lru_cache
 from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable, Sequence, Protocol, \
-    TypeVar, AbstractSet, MutableSet
-from zipfile import crc32
+    TypeVar, MutableSet
 
 import antlr4
 import z3
@@ -605,12 +604,11 @@ class DerivationTree:
         if self.__hash is not None:
             return self.__hash
 
-        self.__hash = crc32(pickle.dumps(self))
+        self.__hash = self.compute_hash_iteratively(structural=False)
         return self.__hash
 
     def structural_hash(self):
         if self.__structural_hash is not None:
-            # assert self.__structural_hash == self.compute_hash_iteratively(structural=True)
             return self.__structural_hash
 
         self.__structural_hash = self.compute_hash_iteratively(structural=True)
@@ -639,7 +637,6 @@ class DerivationTree:
         Equality takes the randomly assigned ID into account!
         So trees with the same structure might not be equal.
         """
-
         stack: List[Tuple[DerivationTree, DerivationTree]] = [(self, other)]
 
         while stack:

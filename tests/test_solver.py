@@ -170,12 +170,12 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             custom_test_func=validate_xml,
             cost_settings=CostSettings(
                 weight_vectors=(
-                    CostWeightVector(tree_closing_cost=10, vacuous_penalty=0, constraint_cost=5,
-                                     derivation_depth_penalty=20, low_k_coverage_penalty=20,
-                                     low_global_k_path_coverage_penalty=30),
+                    CostWeightVector(tree_closing_cost=10, vacuous_penalty=0, constraint_cost=4,
+                                     derivation_depth_penalty=10, low_k_coverage_penalty=23,
+                                     low_global_k_path_coverage_penalty=25),
                 ),
                 cost_phase_lengths=(200,),
-                k=4
+                k=3
             ),
         )
 
