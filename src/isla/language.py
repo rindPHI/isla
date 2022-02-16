@@ -2375,20 +2375,6 @@ class MExprEmitter(MexprParserListener.MexprParserListener):
         self.result.append(self.mgr.bv(parse_tree_text(ctx.ID()), parse_tree_text(ctx.varType())))
 
 
-def parse_mexpr(inp: str, mgr: VariableManager) -> BindExpression:
-    class BailPrintErrorStrategy(antlr4.BailErrorStrategy):
-        def recover(self, recognizer: antlr4.Parser, e: antlr4.RecognitionException):
-            recognizer._errHandler.reportError(recognizer, e)
-            super().recover(recognizer, e)
-
-    lexer = MexprLexer(InputStream(inp))
-    parser = MexprParser(antlr4.CommonTokenStream(lexer))
-    parser._errHandler = BailPrintErrorStrategy()
-    mexpr_emitter = MExprEmitter(mgr)
-    antlr4.ParseTreeWalker().walk(mexpr_emitter, parser.matchExpr())
-    return BindExpression(*mexpr_emitter.result)
-
-
 class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
     def __init__(
             self,
@@ -2404,6 +2390,19 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.predicate_args = {}
 
         self.mgr = VariableManager(grammar)
+
+    def parse_mexpr(self, inp: str, mgr: VariableManager) -> BindExpression:
+        class BailPrintErrorStrategy(antlr4.BailErrorStrategy):
+            def recover(self, recognizer: antlr4.Parser, e: antlr4.RecognitionException):
+                recognizer._errHandler.reportError(recognizer, e)
+                super().recover(recognizer, e)
+
+        lexer = MexprLexer(InputStream(inp))
+        parser = MexprParser(antlr4.CommonTokenStream(lexer))
+        parser._errHandler = BailPrintErrorStrategy()
+        mexpr_emitter = MExprEmitter(mgr)
+        antlr4.ParseTreeWalker().walk(mexpr_emitter, parser.matchExpr())
+        return BindExpression(*mexpr_emitter.result)
 
     def exitStart(self, ctx: IslaLanguageParser.StartContext):
         try:
@@ -2454,7 +2453,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             self.formulas[ctx.formula()])
 
     def exitForallMexpr(self, ctx: IslaLanguageParser.ForallMexprContext):
-        mexpr = parse_mexpr(
+        mexpr = self.parse_mexpr(
             antlr_get_text_with_whitespace(ctx.STRING())[1:-1],
             self.mgr)
 
@@ -2475,7 +2474,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         )
 
     def exitExistsMexpr(self, ctx: IslaLanguageParser.ExistsMexprContext):
-        mexpr = parse_mexpr(
+        mexpr = self.parse_mexpr(
             antlr_get_text_with_whitespace(ctx.STRING())[1:-1],
             self.mgr)
 
