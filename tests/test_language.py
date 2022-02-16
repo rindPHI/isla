@@ -232,24 +232,24 @@ class TestLanguage(unittest.TestCase):
         self.assertEqual(expected, ensure_unique_bound_variables(expected))
 
     def test_count(self):
-        prog = "x := 1 ; x := 1 ; x := 1"
-        tree = DerivationTree.from_parse_tree(parse(prog, LANG_GRAMMAR))
-
-        result = count(LANG_GRAMMAR, tree, "<assgn>", Constant("n", "NUM"))
-        self.assertEqual("{n: 3}", str(result))
-
-        result = count(LANG_GRAMMAR, tree, "<assgn>", DerivationTree("3", None))
-        self.assertEqual(SemPredEvalResult(True), result)
-
-        result = count(LANG_GRAMMAR, tree, "<assgn>", DerivationTree("4", None))
-        self.assertEqual(SemPredEvalResult(False), result)
+        # prog = "x := 1 ; x := 1 ; x := 1"
+        # tree = DerivationTree.from_parse_tree(parse(prog, LANG_GRAMMAR))
+        #
+        # result = count(LANG_GRAMMAR, tree, "<assgn>", Constant("n", "NUM"))
+        # self.assertEqual("{n: 3}", str(result))
+        #
+        # result = count(LANG_GRAMMAR, tree, "<assgn>", DerivationTree("3", None))
+        # self.assertEqual(SemPredEvalResult(True), result)
+        #
+        # result = count(LANG_GRAMMAR, tree, "<assgn>", DerivationTree("4", None))
+        # self.assertEqual(SemPredEvalResult(False), result)
 
         tree = DerivationTree("<start>", [DerivationTree("<stmt>", None)])
         result = count(LANG_GRAMMAR, tree, "<assgn>", DerivationTree("4", None))
         self.assertEqual("{<stmt>: <assgn> ; <assgn> ; <assgn> ; <assgn>}", str(result))
-
-        result = count(LANG_GRAMMAR, tree, "<start>", DerivationTree("2", None))
-        self.assertEqual(SemPredEvalResult(False), result)
+        #
+        # result = count(LANG_GRAMMAR, tree, "<start>", DerivationTree("2", None))
+        # self.assertEqual(SemPredEvalResult(False), result)
 
     def test_to_tree_prefix_tar_file_name(self):
         mgr = VariableManager(tar.TAR_GRAMMAR)
@@ -427,6 +427,9 @@ class TestLanguage(unittest.TestCase):
             (),
             DerivationTree("<start>", [DerivationTree("<statement>", None)]),
         )
+
+        self.assertTrue(graph.tree_is_valid(tree_1.to_parse_tree()))
+
         for k in range(1, 6):
             self.assertEqual(
                 {path_to_string(p) for p in graph.k_paths_in_tree(tree_1.to_parse_tree(), k)},
@@ -438,12 +441,12 @@ class TestLanguage(unittest.TestCase):
                 ('<statement>', [('if', []), ('<paren_expr>', None), (' ', []), ('<statement>', None)])),
         )
 
+        self.assertTrue(graph.tree_is_valid(tree_2.to_parse_tree()))
+
         for k in range(1, 6):
             self.assertEqual(
                 {path_to_string(p) for p in graph.k_paths_in_tree(tree_2.to_parse_tree(), k)},
                 {path_to_string(p) for p in tree_2.k_paths(graph, k)})
-
-        print(graph.k_path_coverage(tree, 3))
 
     def test_unparse_isla(self):
         unparsed = ISLaUnparser(CSV_COLNO_PROPERTY).unparse()

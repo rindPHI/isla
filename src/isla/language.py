@@ -401,41 +401,48 @@ class DerivationTree:
             replacement_tree: 'DerivationTree',
             retain_id=False) -> 'DerivationTree':
         """Returns tree where replacement_tree has been inserted at `path` instead of the original subtree"""
-        node, children = self
+        stack: List[DerivationTree] = [self]
+        for idx in path:
+            stack.append(stack[-1].children[idx])
 
-        assert isinstance(replacement_tree, DerivationTree)
+        if retain_id:
+            replacement_tree = DerivationTree(
+                replacement_tree.value,
+                replacement_tree.children,
+                id=stack[-1].id,
+                is_open=replacement_tree.is_open(),
+                precompute_is_open=stack[-1].precompute_is_open
+            )
 
-        if replacement_tree.__is_open is True:
-            is_open = True
-        elif replacement_tree.__is_open is False and self.__is_open is False:
-            is_open = False
-        else:
-            is_open = None
+        stack[-1] = replacement_tree
 
-        if not path:
-            if retain_id:
-                return DerivationTree(
-                    replacement_tree.value,
-                    replacement_tree.children,
-                    id=self.id,
-                    is_open=is_open,
-                    precompute_is_open=self.precompute_is_open
-                )
+        for idx in reversed(path):
+            assert len(stack) > 1
+            replacement = stack.pop()
+            parent = stack.pop()
 
-            return replacement_tree
+            children = parent.children
+            new_children = (
+                    children[:idx] +
+                    (replacement,) +
+                    children[idx + 1:])
 
-        head = path[0]
-        new_children = (
-                children[:head] +
-                (children[head].replace_path(path[1:], replacement_tree, retain_id),) +
-                children[head + 1:])
+            if replacement.__is_open is True:
+                is_open = True
+            elif replacement.__is_open is False and parent.__is_open is False:
+                is_open = False
+            else:
+                is_open = None
 
-        return DerivationTree(
-            node,
-            new_children,
-            id=self.id,
-            is_open=is_open,
-            precompute_is_open=self.precompute_is_open)
+            stack.append(DerivationTree(
+                parent.value,
+                new_children,
+                id=parent.id,
+                is_open=is_open,
+                precompute_is_open=parent.precompute_is_open))
+
+        assert len(stack) == 1
+        return stack[0]
 
     def leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
         return ((path, sub_tree)
