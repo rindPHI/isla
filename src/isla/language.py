@@ -154,14 +154,14 @@ class DerivationTree:
         self.__k_paths: Dict[int, Set[Tuple[gg.Node, ...]]] = k_paths or {}
 
         self.__is_open = is_open
-        if precompute_is_open:
-            if children is None:
+        self.precompute_is_open = precompute_is_open
+        if children is None:
+            self.__is_open = True
+        elif precompute_is_open:
+            if any(child.__is_open is True for child in children):
                 self.__is_open = True
-            else:
-                if any(child.__is_open is True for child in children):
-                    self.__is_open = True
-                if all(child.__is_open is False for child in children):
-                    self.__is_open = False
+            if all(child.__is_open is False for child in children):
+                self.__is_open = False
 
     def __setstate__(self, state):
         # To ensure that when resuming from a checkpoint during debugging,
@@ -414,7 +414,13 @@ class DerivationTree:
 
         if not path:
             if retain_id:
-                return DerivationTree(replacement_tree.value, replacement_tree.children, id=self.id, is_open=is_open)
+                return DerivationTree(
+                    replacement_tree.value,
+                    replacement_tree.children,
+                    id=self.id,
+                    is_open=is_open,
+                    precompute_is_open=self.precompute_is_open
+                )
 
             return replacement_tree
 
@@ -424,7 +430,12 @@ class DerivationTree:
                 (children[head].replace_path(path[1:], replacement_tree, retain_id),) +
                 children[head + 1:])
 
-        return DerivationTree(node, new_children, id=self.id, is_open=is_open)
+        return DerivationTree(
+            node,
+            new_children,
+            id=self.id,
+            is_open=is_open,
+            precompute_is_open=self.precompute_is_open)
 
     def leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
         return ((path, sub_tree)
