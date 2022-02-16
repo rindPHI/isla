@@ -11,6 +11,10 @@ version mostly conforms to the state as documented in the ISLa paper.
 - Evaluation routine for concrete Z3 expressions without solver calls. Speedups of 50 % to
   100 % in calls to `helpers.is_valid(Formula)`.
 
+### Changed
+
+- Improved hashing for DerivationTree objects.
+
 ## [0.2a2] - 2022-02-03
 
 ### Added

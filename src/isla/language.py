@@ -9,6 +9,7 @@ from abc import ABC
 from functools import reduce, lru_cache
 from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable, Sequence, Protocol, \
     TypeVar, AbstractSet, MutableSet
+from zipfile import crc32
 
 import antlr4
 import z3
@@ -602,15 +603,14 @@ class DerivationTree:
 
     def __hash__(self):
         if self.__hash is not None:
-            assert self.__hash == self.compute_hash_iteratively()
             return self.__hash
 
-        self.__hash = self.compute_hash_iteratively()
+        self.__hash = crc32(pickle.dumps(self))
         return self.__hash
 
     def structural_hash(self):
         if self.__structural_hash is not None:
-            assert self.__structural_hash == self.compute_hash_iteratively(structural=True)
+            # assert self.__structural_hash == self.compute_hash_iteratively(structural=True)
             return self.__structural_hash
 
         self.__structural_hash = self.compute_hash_iteratively(structural=True)
