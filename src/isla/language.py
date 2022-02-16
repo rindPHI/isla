@@ -2657,12 +2657,14 @@ class ISLaUnparser:
         else:
             raise NotImplementedError(f"Unparsing of formulas of type {type(formula).__name__} not implemented.")
 
-    def _unparse_quantified_formula(self, formula: QuantifiedFormula) -> List[str]:
-        bind_expr_str = "" if formula.bind_expression is None else f'="{formula.bind_expression}"'
+    def _unparse_match_expr(self, match_expr: BindExpression | None) -> str:
+        return "" if match_expr is None else f'="{match_expr}"'
 
+    def _unparse_quantified_formula(self, formula: QuantifiedFormula) -> List[str]:
         qfr = "forall" if isinstance(formula, ForallFormula) else "exists"
         result = [
-            f"{qfr} {formula.bound_variable.n_type} {formula.bound_variable.name}{bind_expr_str} in {formula.in_variable}:"]
+            f"{qfr} {formula.bound_variable.n_type} {formula.bound_variable.name}"
+            f"{self._unparse_match_expr(formula.bind_expression)} in {formula.in_variable}:"]
         child_result = self._unparse_constraint(formula.inner_formula)
         result += [self.indent + line for line in child_result]
 
