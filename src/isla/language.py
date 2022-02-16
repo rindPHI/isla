@@ -130,11 +130,7 @@ class DerivationTree:
                  k_paths: Optional[Dict[int, Set[Tuple[gg.Node, ...]]]] = None,
                  hash: Optional[int] = None,
                  structural_hash: Optional[int] = None,
-                 is_open: Optional[bool] = None,
-                 precompute_is_open: bool = False):
-        assert isinstance(value, str)
-        assert children is None or all(isinstance(child, DerivationTree) for child in children)
-
+                 is_open: Optional[bool] = None):
         self.__value = value
         self.__children = None if children is None else tuple(children)
 
@@ -144,24 +140,14 @@ class DerivationTree:
             self._id = DerivationTree.next_id
             DerivationTree.next_id += 1
 
-        if not children:
-            self.__len = 1
-        else:
-            self.__len = sum([child.__len for child in children]) + 1
-
+        self.__len = 1 if not children else None
         self.__hash = hash
         self.__structural_hash = structural_hash
         self.__k_paths: Dict[int, Set[Tuple[gg.Node, ...]]] = k_paths or {}
 
         self.__is_open = is_open
-        self.precompute_is_open = precompute_is_open
         if children is None:
             self.__is_open = True
-        elif precompute_is_open:
-            if any(child.__is_open is True for child in children):
-                self.__is_open = True
-            if all(child.__is_open is False for child in children):
-                self.__is_open = False
 
     def __setstate__(self, state):
         # To ensure that when resuming from a checkpoint during debugging,
@@ -411,7 +397,6 @@ class DerivationTree:
                 replacement_tree.children,
                 id=stack[-1].id,
                 is_open=replacement_tree.is_open(),
-                precompute_is_open=stack[-1].precompute_is_open
             )
 
         stack[-1] = replacement_tree
@@ -438,8 +423,7 @@ class DerivationTree:
                 parent.value,
                 new_children,
                 id=parent.id,
-                is_open=is_open,
-                precompute_is_open=parent.precompute_is_open))
+                is_open=is_open))
 
         assert len(stack) == 1
         return stack[0]
@@ -466,8 +450,9 @@ class DerivationTree:
             else [child.new_ids() for child in self.children])
 
     def __len__(self):
-        # if self.__len is None:
-        #     self.__len = len(list(self.path_iterator()))
+        if self.__len is None:
+            self.__len = sum([len(child) for child in (self.children or [])]) + 1
+
         return self.__len
 
     def __lt__(self, other):
