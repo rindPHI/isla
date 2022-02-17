@@ -116,12 +116,6 @@ class DummyVariable(BoundVariable):
     def __str__(self):
         return self.n_type
 
-    def __eq__(self, other: 'DummyVariable') -> bool:
-        return isinstance(other, DummyVariable) and self.n_type == other.n_type
-
-    def __hash__(self):
-        return hash(self.n_type)
-
 
 class DerivationTree:
     """Derivation trees are immutable!"""
@@ -707,7 +701,7 @@ class DerivationTree:
 
 class BindExpression:
     def __init__(self, *bound_elements: Union[str, BoundVariable, List[str]]):
-        self.bound_elements: List[Union[BoundVariable, List[Union[BoundVariable]]]] = []
+        self.bound_elements: List[BoundVariable | List[BoundVariable]] = []
         for bound_elem in bound_elements:
             if isinstance(bound_elem, BoundVariable):
                 self.bound_elements.append(bound_elem)
@@ -916,11 +910,26 @@ class BindExpression:
             else (f"{{{e.n_type} {str(e)}}}" if not isinstance(e, DummyVariable)
                   else str(e)), self.bound_elements))
 
+    @staticmethod
+    def __dummy_vars_to_str(
+            elem: BoundVariable | List[BoundVariable]) -> str | BoundVariable | List[str | BoundVariable]:
+        if isinstance(elem, DummyVariable):
+            return elem.n_type
+
+        if isinstance(elem, list):
+            return list(map(BindExpression.__dummy_vars_to_str, elem))
+
+        return elem
+
     def __hash__(self):
-        return hash(tuple([tuple(e) if isinstance(e, list) else e for e in self.bound_elements]))
+        return hash(tuple([
+            tuple(e) if isinstance(e, list) else e
+            for e in map(BindExpression.__dummy_vars_to_str, self.bound_elements)]))
 
     def __eq__(self, other):
-        return isinstance(other, BindExpression) and self.bound_elements == other.bound_elements
+        return (isinstance(other, BindExpression) and
+                list(map(BindExpression.__dummy_vars_to_str, self.bound_elements)) ==
+                list(map(BindExpression.__dummy_vars_to_str, other.bound_elements)))
 
 
 class FormulaVisitor:
