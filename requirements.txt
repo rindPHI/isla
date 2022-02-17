@@ -151,3 +151,4 @@ zipp==3.6.0
 proxyorderedset @ git+https://github.com/rindPHI/proxyorderedset
 grammargraph @ git+https://github.com/rindPHI/GrammarGraph
 grammar2regex @ git+https://github.com/rindPHI/grammar2regex
+pytest-rerunfailures>=10.2

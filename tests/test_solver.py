@@ -357,6 +357,7 @@ forall int colno:
             debug=True
         )
 
+    @pytest.mark.flaky(reruns=3, reruns_delay=2)
     def test_rest(self):
         random.seed(1234)
         self.execute_generation_test(
