@@ -116,6 +116,12 @@ class DummyVariable(BoundVariable):
     def __str__(self):
         return self.n_type
 
+    def __eq__(self, other: 'DummyVariable') -> bool:
+        return isinstance(other, DummyVariable) and self.n_type == other.n_type
+
+    def __hash__(self):
+        return hash(self.n_type)
+
 
 class DerivationTree:
     """Derivation trees are immutable!"""
