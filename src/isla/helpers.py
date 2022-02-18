@@ -355,8 +355,14 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> bool | int | str:
         return int(children[0] / children[1])
 
     # String Operations
+    # NOTE: We convert a float string to int by rounding! This differs from the standard
+    #       SMT-LIB/Z3 semantics, where str.to.int returns -1 for all strings that don't
+    #       represent positive integers.
     if expr.decl().kind() == z3.Z3_OP_STR_TO_INT:
-        return int(children[0])
+        try:
+            return int(children[0])
+        except ValueError:
+            return int(float(children[0]))
 
     if expr.decl().kind() == z3.Z3_OP_SEQ_LENGTH:
         return len(children[1])

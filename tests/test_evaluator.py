@@ -1,8 +1,10 @@
+import string
 import unittest
 from typing import cast, Callable
 
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
+from fuzzingbook.Grammars import srange
 from fuzzingbook.Parser import EarleyParser
 from orderedset import OrderedSet
 
@@ -662,6 +664,35 @@ forall <expr> expr in start:
                     BoundVariable("colno", "NUM"))))
 
         self.assertTrue(evaluate(to_prove_3, tree, CSV_GRAMMAR, assumptions={precondition_one, precondition_two}))
+
+    def test_evaluate_negative_square_root(self):
+        # TODO: Add corresponding solver test
+        property = """
+        forall <arith_expr> container in start:
+          exists <number> elem in container:
+            (<= (str.to.int elem) (str.to.int "-1")))"""
+
+        grammar = {
+            "<start>": ["<arith_expr>"],
+            "<arith_expr>": ["<function>(<number>)"],
+            "<function>": ["sqrt", "sin", "cos", "tan"],
+            "<number>": ["<maybe_minus><onenine><maybe_digits><maybe_frac>"],
+            "<maybe_minus>": ["", "-"],
+            "<onenine>": [str(num) for num in range(1, 10)],
+            "<digit>": srange(string.digits),
+            "<maybe_digits>": ["", "<digits>"],
+            "<digits>": ["<digit>", "<digit><digits>"],
+            "<maybe_frac>": ["", ".<digits>"]
+        }
+
+        inp = DerivationTree.from_parse_tree(next(EarleyParser(grammar).parse("sqrt(-2)")))
+        self.assertTrue(evaluate(property, inp, grammar))
+
+        inp = DerivationTree.from_parse_tree(next(EarleyParser(grammar).parse("sqrt(2)")))
+        self.assertFalse(evaluate(property, inp, grammar))
+
+        inp = DerivationTree.from_parse_tree(next(EarleyParser(grammar).parse("sqrt(-2.0)")))
+        self.assertTrue(evaluate(property, inp, grammar))
 
 
 if __name__ == '__main__':
