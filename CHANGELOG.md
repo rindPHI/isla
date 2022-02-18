@@ -14,6 +14,10 @@ version mostly conforms to the state as documented in the ISLa paper.
 ### Changed
 
 - More efficient DerivationTree.replaceTree method.
+- The evaluator for *concrete* SMT-LIB expressions handles `(str.to.int float_str)` for strings representing floating
+  point numbers by rounding them to Integers. This differs from the standard SMT-LIB/Z3 semantics, where the result is
+  -1 for all strings that are not positive Integers. It is planned to also integrate this into the more general Z3-based
+  evaluation and into the solver.
 
 ## [0.2a2] - 2022-02-03
 
