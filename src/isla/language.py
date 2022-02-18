@@ -2819,6 +2819,10 @@ def flatten_bound_elements(
 
     # Consider all possible on/off combinations for optional elements
     optionals = [elem for elem in orig_bound_elements if isinstance(elem, tuple)]
+
+    if not optionals:
+        return orig_bound_elements,
+
     for combination in powerset(optionals):
         # Inline all chosen, remove all not chosen optionals
         raw_bound_elements: List[BoundVariable, ...] = []
