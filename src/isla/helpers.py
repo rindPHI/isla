@@ -89,6 +89,24 @@ class ThreeValuedTruth:
     def unknown():
         return ThreeValuedTruth(ThreeValuedTruth.UNKNOWN)
 
+    def __neg__(self):
+        if self.is_unknown():
+            return self
+
+        return ThreeValuedTruth(bool(self))
+
+    def __and__(self, other: 'ThreeValuedTruth') -> 'ThreeValuedTruth':
+        if self.is_unknown() or other.is_unknown():
+            return ThreeValuedTruth.unknown()
+
+        return ThreeValuedTruth.from_bool(bool(self) and bool(other))
+
+    def __or__(self, other: 'ThreeValuedTruth') -> 'ThreeValuedTruth':
+        if self.is_unknown() or other.is_unknown():
+            return ThreeValuedTruth.unknown()
+
+        return ThreeValuedTruth.from_bool(bool(self) or bool(other))
+
     def __repr__(self):
         return f"ThreeValuedTruth({self.val})"
 
