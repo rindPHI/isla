@@ -1664,8 +1664,11 @@ class SMTFormula(Formula):
             return f"({self.formula}, {subst_string})"
 
     def __eq__(self, other):
-        return (type(self) == type(other)
-                and z3.is_true(z3.simplify(self.formula == other.formula))
+        # NOTE: Previous solution `z3.is_true(z3.simplify(self.formula == other.formula))` cannot be used
+        #       since then, the hash diverges from the equality value for formulas like
+        #       `str.to.int(x) <= str.to.int("01")` and `str.to.int(x) <= str.to.int("1")`
+        return (isinstance(other, SMTFormula)
+                and self.formula.sexpr() == other.formula.sexpr()
                 and self.substitutions == other.substitutions)
 
     def __hash__(self):

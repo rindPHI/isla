@@ -16,7 +16,7 @@ from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, SAME_POSITIO
 from isla.isla_predicates import count, COUNT_PREDICATE
 from isla.language import Constant, BoundVariable, Formula, BindExpression, \
     DerivationTree, convert_to_dnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
-    DummyVariable, parse_isla, ISLaUnparser
+    DummyVariable, parse_isla, ISLaUnparser, ForallFormula, ExistsFormula, SMTFormula
 from isla_formalizations import rest, scriptsizec, tar
 from isla_formalizations.csv import CSV_GRAMMAR, CSV_COLNO_PROPERTY
 from isla_formalizations.scriptsizec import SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT, SCRIPTSIZE_C_NO_REDEF_TEXT
@@ -143,6 +143,15 @@ class TestLanguage(unittest.TestCase):
         )
 
         self.assertFalse(well_formed(bad_formula_7, LANG_GRAMMAR)[0])
+
+    def test_equality_hash_smt_formulas(self):
+        elem = BoundVariable("elem", "<digits>")
+
+        f_1 = SMTFormula(z3.StrToInt(elem.to_smt()) <= z3.StrToInt(z3.StringVal("092")), elem)
+        f_2 = SMTFormula(z3.StrToInt(elem.to_smt()) <= z3.StrToInt(z3.StringVal("92")), elem)
+
+        self.assertNotEqual(hash(f_1), hash(f_2))
+        self.assertNotEqual(f_1, f_2)
 
     def test_bind_expression_to_tree(self):
         lhs = BoundVariable("$lhs", "<var>")

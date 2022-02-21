@@ -71,12 +71,12 @@ XML_WELLFORMEDNESS_CONSTRAINT = parse_isla(xml_wellformedness_constraint, XML_GR
 
 xml_attribute_namespace_constraint = """
 forall <xml-attribute> attribute in start:
-    forall <id-with-prefix> prefix_id="{<id-no-prefix> prefix_use}:<id-no-prefix>" in attribute:
-        ((= prefix_use "xmlns") or
-            exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}>{<inner-xml-tree> contained_tree}</<id>>" in start:
-                (inside(attribute, contained_tree) and 
-                 exists <xml-attribute> def_attribute="xmlns:{<id-no-prefix> prefix_def}=\\\"<text>\\\"" in cont_attribute:
-                     (= prefix_use prefix_def)))"""
+  forall <id-with-prefix> prefix_id="{<id-no-prefix> prefix_use}:<id-no-prefix>" in attribute:
+    ((= prefix_use "xmlns") or
+      exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}>{<inner-xml-tree> contained_tree}</<id>>" in start:
+        (inside(attribute, contained_tree) and 
+         exists <xml-attribute> def_attribute="xmlns:{<id-no-prefix> prefix_def}=\\\"<text>\\\"" in cont_attribute:
+           (= prefix_use prefix_def)))"""
 
 XML_ATTRIBUTE_NAMESPACE_CONSTRAINT = parse_isla(
     xml_attribute_namespace_constraint,
@@ -85,10 +85,10 @@ XML_ATTRIBUTE_NAMESPACE_CONSTRAINT = parse_isla(
 
 xml_tag_namespace_constraint = """
 forall <xml-tree> xml_tree="<{<id-no-prefix> prefix_use}:<id-no-prefix>[ <xml-attribute>][/]>[<inner-xml-tree><xml-close-tag>]" in start:
-    exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}>{<inner-xml-tree> contained_tree}</<id>>" in start:
-        (inside(xml_tree, contained_tree) and 
-         exists <xml-attribute> def_attribute="xmlns:{<id-no-prefix> prefix_def}=\\\"<text>\\\"" in cont_attribute:
-             (= prefix_use prefix_def))"""
+  exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}>{<inner-xml-tree> contained_tree}</<id>>" in start:
+    (inside(xml_tree, contained_tree) and 
+     exists <xml-attribute> def_attribute="xmlns:{<id-no-prefix> prefix_def}=\\\"<text>\\\"" in cont_attribute:
+       (= prefix_use prefix_def))"""
 
 XML_TAG_NAMESPACE_CONSTRAINT = parse_isla(
     xml_tag_namespace_constraint,
