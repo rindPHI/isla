@@ -8,7 +8,7 @@ import z3
 from grammar_graph import gg
 from orderedset import OrderedSet
 
-from isla.helpers import z3_and, is_nonterminal, z3_or, assertions_activated, ThreeValuedTruth, is_valid
+from isla.helpers import z3_and, is_nonterminal, z3_or, assertions_activated, ThreeValuedTruth, is_valid, DomainError
 from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES
 from isla.language import Formula, DerivationTree, StructuralPredicate, SemanticPredicate, parse_isla, \
     VariablesCollector, Constant, FilterVisitor, NumericQuantifiedFormula, StructuralPredicateFormula, SMTFormula, \
@@ -321,8 +321,10 @@ def evaluate_legacy(
             *tuple({z3.String(symbol.name): z3.StringVal(str(symbol_assignment[1]))
                     for symbol, symbol_assignment
                     in assignments.items()}.items()))
-
-        return is_valid(instantiation)
+        try:
+            return is_valid(instantiation)
+        except DomainError:
+            return ThreeValuedTruth.false()
     elif isinstance(formula, QuantifiedFormula):
         if isinstance(formula.in_variable, DerivationTree):
             in_inst = formula.in_variable

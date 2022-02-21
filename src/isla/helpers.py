@@ -290,6 +290,15 @@ def is_valid(formula: z3.BoolRef, timeout: int = 500) -> ThreeValuedTruth:
         return ThreeValuedTruth.unknown()
 
 
+class DomainError(RuntimeError):
+    def __init__(self, msg: str, *args):
+        super().__init__(msg, *args)
+        self.msg = msg
+
+    def __str__(self):
+        return f"DomainError({self.msg})"
+
+
 def evaluate_z3_expression(expr: z3.ExprRef) -> bool | int | str:
     # This can only evaluate concrete expressions: No variables / constants
     if z3.is_var(expr) or is_z3_var(expr):
@@ -308,6 +317,20 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> bool | int | str:
     if z3.is_int_value(expr):
         expr: z3.IntVal
         return expr.as_long()
+
+    # NOTE: We convert a float string to int by rounding! This differs from the standard
+    #       SMT-LIB/Z3 semantics, where str.to.int returns -1 for all strings that don't
+    #       represent positive integers.
+    if expr.decl().kind() == z3.Z3_OP_STR_TO_INT:
+        if not children[0]:
+            raise DomainError("Empty string cannot be converted to int.")
+        try:
+            return int(children[0])
+        except ValueError:
+            try:
+                return int(float(children[0]))
+            except ValueError:
+                raise DomainError(f"Expression {children[0]} cannot be converted to int.")
 
     if z3.is_false(expr):
         return False
@@ -355,15 +378,6 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> bool | int | str:
         return int(children[0] / children[1])
 
     # String Operations
-    # NOTE: We convert a float string to int by rounding! This differs from the standard
-    #       SMT-LIB/Z3 semantics, where str.to.int returns -1 for all strings that don't
-    #       represent positive integers.
-    if expr.decl().kind() == z3.Z3_OP_STR_TO_INT:
-        try:
-            return int(children[0])
-        except ValueError:
-            return int(float(children[0]))
-
     if expr.decl().kind() == z3.Z3_OP_SEQ_LENGTH:
         return len(children[1])
 
