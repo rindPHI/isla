@@ -1848,7 +1848,7 @@ class ForallFormula(QuantifiedFormula):
                  already_matched: Optional[Set[int]] = None,
                  id: Optional[int] = None):
         super().__init__(bound_variable, in_variable, inner_formula, bind_expression)
-        self.already_matched: Set[int] = copy.deepcopy(already_matched) or set()
+        self.already_matched: Set[int] = set() if not already_matched else set(already_matched)
 
         # The id field is used by eliminate_quantifiers to avoid counting universal
         # formulas twice when checking for vacuous satisfaction.
