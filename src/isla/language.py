@@ -272,7 +272,6 @@ class DerivationTree:
 
         return result
 
-    @lru_cache(maxsize=None)
     def find_node(self, node_or_id: Union['DerivationTree', int]) -> Optional[Path]:
         """Finds a node by its (assumed unique) ID. Returns the path relative to this node."""
         if isinstance(node_or_id, DerivationTree):
@@ -1007,16 +1006,16 @@ class Formula(ABC):
         if self == other:
             return self
 
-        if isinstance(self, SMTFormula) and z3.is_false(self.formula):
+        if isinstance(self, SMTFormula) and self.is_false:
             return self
 
-        if isinstance(other, SMTFormula) and z3.is_false(other.formula):
+        if isinstance(other, SMTFormula) and other.is_false:
             return other
 
-        if isinstance(self, SMTFormula) and z3.is_true(self.formula):
+        if isinstance(self, SMTFormula) and self.is_true:
             return other
 
-        if isinstance(other, SMTFormula) and z3.is_true(other.formula):
+        if isinstance(other, SMTFormula) and other.is_true:
             return self
 
         if isinstance(self, NegatedFormula) and self.args[0] == other:
@@ -1506,6 +1505,9 @@ class SMTFormula(Formula):
         :param free_variables: Free variables in this formula.
         """
         self.formula = formula
+        self.is_false = z3.is_false(formula)
+        self.is_true = z3.is_true(formula)
+
         self.free_variables_ = OrderedSet(free_variables)
         self.instantiated_variables = instantiated_variables or OrderedSet([])
         self.substitutions: Dict[Variable, DerivationTree] = substitutions or {}
