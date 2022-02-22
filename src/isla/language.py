@@ -272,6 +272,7 @@ class DerivationTree:
 
         return result
 
+    @lru_cache(maxsize=None)
     def find_node(self, node_or_id: Union['DerivationTree', int]) -> Optional[Path]:
         """Finds a node by its (assumed unique) ID. Returns the path relative to this node."""
         if isinstance(node_or_id, DerivationTree):
