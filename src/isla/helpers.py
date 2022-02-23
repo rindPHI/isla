@@ -397,7 +397,7 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> bool | int | str:
 
     # String Operations
     if expr.decl().kind() == z3.Z3_OP_SEQ_LENGTH:
-        return len(children[1])
+        return len(children[0])
 
     if expr.decl().kind() == z3.Z3_OP_SEQ_CONCAT:
         return cast(str, children[0]) + cast(str, children[1])
