@@ -19,6 +19,7 @@ from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
 from graphviz import Digraph
 from orderedset import OrderedSet
+from z3 import Z3Exception
 
 import isla.mexpr_parser.MexprParserListener as MexprParserListener
 from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, z3_push_in_negations
@@ -2574,6 +2575,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             self.predicate_args[ctx] = parse_tree_text(ctx)[1:-1]
 
     def exitSMTFormula(self, ctx: IslaLanguageParser.SMTFormulaContext):
+        formula_text = "<N/A>"
         try:
             formula_text = antlr_get_text_with_whitespace(ctx)
             z3_constr = z3.parse_smt2_string(
@@ -2613,10 +2615,20 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             self.formulas[ctx.formula()])
 
     def exitSexprId(self, ctx: IslaLanguageParser.SexprIdContext):
-        self.get_var(parse_tree_text(ctx.ID()))  # Simply register variable
+        id_text = parse_tree_text(ctx.ID())
+        if not ISLaEmitter.is_smtlib_function(id_text):
+            self.get_var(id_text)  # Simply register variable
 
     def exitParFormula(self, ctx: IslaLanguageParser.ParFormulaContext):
         self.formulas[ctx] = self.formulas[ctx.formula()]
+
+    @staticmethod
+    def is_smtlib_function(symbol: str) -> bool:
+        try:
+            z3.parse_smt2_string(f"(assert ({symbol} 1))")
+            return True
+        except Z3Exception as exc:
+            return "unknown constant" not in str(exc)
 
 
 def parse_isla(

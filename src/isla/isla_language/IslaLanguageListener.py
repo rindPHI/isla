@@ -215,6 +215,15 @@ class IslaLanguageListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by IslaLanguageParser#SexprOp.
+    def enterSexprOp(self, ctx:IslaLanguageParser.SexprOpContext):
+        pass
+
+    # Exit a parse tree produced by IslaLanguageParser#SexprOp.
+    def exitSexprOp(self, ctx:IslaLanguageParser.SexprOpContext):
+        pass
+
+
     # Enter a parse tree produced by IslaLanguageParser#SepxrApp.
     def enterSepxrApp(self, ctx:IslaLanguageParser.SepxrAppContext):
         pass

@@ -25,12 +25,14 @@ formula:
 varType : LT ID GT ;
 
 sexpr:
-    'true'                                                                          # SexprTrue
-  | 'false'                                                                         # SexprFalse
-  | INT                                                                             # SexprNum
-  | ID                                                                              # SexprId
-  | STRING                                                                          # SexprStr
-  | '(' op=(ID | '=' | DIV | MUL | PLUS | MINUS | GEQ | LEQ | GT | LT)  sexpr + ')' # SepxrApp
+    'true'          # SexprTrue
+  | 'false'         # SexprFalse
+  | INT             # SexprNum
+  | ID              # SexprId
+  | STRING          # SexprStr
+  | ('re.++' | 'str.++' | '=' | DIV | MUL | PLUS | MINUS | GEQ | LEQ | GT | LT)
+                    # SexprOp
+  | '(' op=sexpr sexpr + ')' # SepxrApp
   ;
 
 predicateArg: ID | INT | STRING ;
@@ -52,6 +54,6 @@ LT: '<' ;
 WS : [ \t\n\r]+ -> skip ;
 LINE_COMMENT : '#' .*? '\n' -> skip ;
 
-fragment ID_LETTER : 'a'..'z'|'A'..'Z' | [_\-.] ;
+fragment ID_LETTER : 'a'..'z'|'A'..'Z' | [_\-.^] ;
 fragment DIGIT : '0'..'9' ;
 
