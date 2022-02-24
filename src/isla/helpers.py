@@ -379,6 +379,9 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> bool | int | str:
     if expr.decl().kind() == z3.Z3_OP_RE_PLUS:
         return f"({evaluate_z3_expression(expr.children()[0])})+"
 
+    if expr.decl().kind() == z3.Z3_OP_RE_UNION:
+        return f"(({evaluate_z3_expression(expr.children()[0])}) | ({evaluate_z3_expression(expr.children()[0])}))"
+
     if expr.decl().kind() == z3.Z3_OP_RE_FULL_SET:
         return ".*?"
 
