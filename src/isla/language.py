@@ -22,7 +22,8 @@ from orderedset import OrderedSet
 from z3 import Z3Exception
 
 import isla.mexpr_parser.MexprParserListener as MexprParserListener
-from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, z3_push_in_negations
+from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, z3_push_in_negations, \
+    smt_expr_to_str
 from isla.helpers import get_symbols, z3_subst, is_valid, \
     replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, immutable_to_grammar, \
     nested_list_to_tuple
@@ -1526,7 +1527,8 @@ class SMTFormula(Formula):
 
     def __getstate__(self) -> Dict[str, bytes]:
         result: Dict[str, bytes] = {f: pickle.dumps(v) for f, v in self.__dict__.items() if f != "formula"}
-        result["formula"] = self.formula.sexpr().encode("utf-8")
+        # result["formula"] = self.formula.sexpr().encode("utf-8")
+        result["formula"] = smt_expr_to_str(self.formula).encode("utf-8")
         return result
 
     def __setstate__(self, state: Dict[str, bytes]) -> None:
@@ -2722,12 +2724,12 @@ class ISLaUnparser:
         return [str(formula)]
 
     def _unparse_smt_formula(self, formula):
-        result = formula.formula.sexpr()
+        return [smt_expr_to_str(formula.formula)]
 
-        # str.to_int is str.to.int in Z3; use this to preserve idempotency of parsing/unparsing
-        result = result.replace("str.to_int", "str.to.int")
-
-        return [result]
+        # result = formula.formula.sexpr()
+        # # str.to_int is str.to.int in Z3; use this to preserve idempotency of parsing/unparsing
+        # result = result.replace("str.to_int", "str.to.int")
+        # return [result]
 
     def _unparse_negated_formula(self, formula):
         child_results = [self._unparse_constraint(child) for child in formula.args]

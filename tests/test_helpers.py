@@ -1,13 +1,14 @@
 import copy
 import unittest
-from typing import Optional
+from typing import Optional, cast
 
+import z3
 from fuzzingbook.Parser import EarleyParser, canonical
 from grammar_graph.gg import GrammarGraph
 
 from isla.existential_helpers import path_to_tree, paths_between
 from isla.helpers import is_prefix, path_iterator, delete_unreachable, \
-    dict_of_lists_to_list_of_dicts, weighted_geometric_mean
+    dict_of_lists_to_list_of_dicts, weighted_geometric_mean, smt_expr_to_str
 from isla.isla_predicates import is_before
 from isla.type_defs import Grammar, ParseTree
 from test_data import LANG_GRAMMAR
@@ -109,6 +110,10 @@ class TestHelpers(unittest.TestCase):
 
         self.assertAlmostEqual(1.449, weighted_geometric_mean([0, 1, 2], [0, 1, 1]), 3)
         self.assertAlmostEqual(0.817, weighted_geometric_mean([0, 1, 2], [1, 1, 1]), 3)
+
+    def test_strtoint_translation(self):
+        f = cast(z3.BoolRef, z3.StrToInt(z3.StringVal("42")) == z3.IntVal(42))
+        self.assertEqual(z3.parse_smt2_string(f"(assert {smt_expr_to_str(f)})")[0], f)
 
 
 if __name__ == '__main__':

@@ -130,6 +130,43 @@ forall <key_value> container="{<key> key} = {<value> value}" in start:
 
         self.assertEqual(parse_isla(formula, grammar), expected)
 
+    def test_smt_formula_to_sexpr(self):
+        def strip_ws(inp: str) -> str:
+            inp = inp.strip()
+            inp = inp.replace("\n", " ")
+            while True:
+                new_inp = inp.replace("  ", " ")
+                if new_inp == inp:
+                    break
+                inp = new_inp
+            return inp
+
+        formula = """
+(str.in_re 
+  start 
+  (re.++ 
+    (re.++ 
+      (re.++ 
+        (re.++ 
+          ((_ re.loop 4 4) (re.range "0" "9")) 
+          (str.to_re "-")) 
+        ((_ re.loop 2 2) (re.range "0" "9")))
+      (str.to_re "-")) 
+    ((_ re.loop 2 2) (re.range "0" "9"))))"""
+
+        grammar = {
+            "<start>": ["<key_value>"],
+            "<key_value>": ["<key> = <value>"],
+            "<key>": ["<chars>"],
+            "<chars>": ["", "<char><chars>"],
+            "<char>": srange(string.ascii_letters + string.digits + "_-"),
+            "<value>": ["<chars>"]
+        }
+
+        self.assertEqual(
+            strip_ws(ISLaUnparser(parse_isla(formula, grammar)).unparse()),
+            strip_ws(formula))
+
 
 if __name__ == '__main__':
     unittest.main()

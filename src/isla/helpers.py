@@ -597,3 +597,35 @@ def is_nonterminal(s):
 
 def nonterminals(expansion: str) -> List[str]:
     return RE_NONTERMINAL.findall(expansion)
+
+
+def smt_expr_to_str(f: z3.ExprRef) -> str:
+    op_strings = {
+        z3.Z3_OP_SEQ_IN_RE: "str.in_re",
+        z3.Z3_OP_SEQ_CONCAT: "str.++",
+        z3.Z3_OP_RE_CONCAT: "re.++",
+        z3.Z3_OP_STR_TO_INT: "str.to.int",  # <- Different from standard SMT-LIB (Z3 version)
+    }
+
+    if z3.is_string_value(f):
+        return f'"{f.as_string()}"'
+    if z3.is_int_value(f):
+        return str(f.as_long())
+    if is_z3_var(f):
+        return str(f)
+
+    if z3.is_app(f):
+        kind = f.decl().kind()
+
+        if kind == z3.Z3_OP_RE_LOOP:
+            op = f"(_ re.loop {f.params()[0]} {f.params()[1]})"
+        elif kind == z3.Z3_OP_RE_POWER:
+            op = f"(_ re.^ {f.params()[0]})"
+        elif f.decl().kind() in op_strings:
+            op = op_strings[kind]
+        else:
+            op = f.decl().name()
+
+        return f"({op} {' '.join(map(smt_expr_to_str, f.children()))}".strip() + ")"
+
+    raise NotImplementedError()
