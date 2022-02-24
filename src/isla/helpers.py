@@ -629,3 +629,14 @@ def smt_expr_to_str(f: z3.ExprRef) -> str:
         return f"({op} {' '.join(map(smt_expr_to_str, f.children()))}".strip() + ")"
 
     raise NotImplementedError()
+
+
+def strip_ws(inp: str) -> str:
+    inp = inp.strip()
+    inp = inp.replace("\n", " ")
+    while True:
+        new_inp = inp.replace("  ", " ")
+        if new_inp == inp:
+            break
+        inp = new_inp
+    return inp

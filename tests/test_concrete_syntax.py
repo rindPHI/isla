@@ -5,7 +5,7 @@ from typing import cast
 import z3
 from fuzzingbook.Grammars import srange
 
-import isla.isla_shortcuts as sc
+from isla.helpers import strip_ws
 from isla import language
 from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManager
 from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
@@ -131,16 +131,6 @@ forall <key_value> container="{<key> key} = {<value> value}" in start:
         self.assertEqual(parse_isla(formula, grammar), expected)
 
     def test_smt_formula_to_sexpr(self):
-        def strip_ws(inp: str) -> str:
-            inp = inp.strip()
-            inp = inp.replace("\n", " ")
-            while True:
-                new_inp = inp.replace("  ", " ")
-                if new_inp == inp:
-                    break
-                inp = new_inp
-            return inp
-
         formula = """
 (str.in_re 
   start 
