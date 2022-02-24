@@ -608,7 +608,7 @@ def smt_expr_to_str(f: z3.ExprRef) -> str:
     }
 
     if z3.is_string_value(f):
-        return f'"{f.as_string()}"'
+        return '"' + cast(str, f.as_string()).replace('"', '""') + '"'
     if z3.is_int_value(f):
         return str(f.as_long())
     if is_z3_var(f):

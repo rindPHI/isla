@@ -663,6 +663,7 @@ class DerivationTree:
     def __repr__(self):
         return f"DerivationTree({repr(self.value)}, {repr(self.children)}, id={self.id})"
 
+    @lru_cache(maxsize=100)
     def to_string(self, show_open_leaves: bool = False) -> str:
         result = []
         stack = [self]
