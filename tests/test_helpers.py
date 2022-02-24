@@ -8,7 +8,7 @@ from grammar_graph.gg import GrammarGraph
 
 from isla.existential_helpers import path_to_tree, paths_between
 from isla.helpers import is_prefix, path_iterator, delete_unreachable, \
-    dict_of_lists_to_list_of_dicts, weighted_geometric_mean, smt_expr_to_str
+    dict_of_lists_to_list_of_dicts, weighted_geometric_mean, smt_expr_to_str, evaluate_z3_expression
 from isla.isla_predicates import is_before
 from isla.type_defs import Grammar, ParseTree
 from test_data import LANG_GRAMMAR
@@ -114,6 +114,26 @@ class TestHelpers(unittest.TestCase):
     def test_strtoint_translation(self):
         f = cast(z3.BoolRef, z3.StrToInt(z3.StringVal("42")) == z3.IntVal(42))
         self.assertEqual(z3.parse_smt2_string(f"(assert {smt_expr_to_str(f)})")[0], f)
+
+    def test_evaluate_z3_regexp(self):
+        formula = """
+(str.in_re 
+  "<DATE>" 
+  (re.++ 
+    (re.++ 
+      (re.++ 
+        (re.++ 
+          ((_ re.loop 4 4) (re.range "0" "9")) 
+          (str.to_re "-")) 
+        ((_ re.loop 2 2) (re.range "0" "9")))
+      (str.to_re "-")) 
+    ((_ re.loop 2 2) (re.range "0" "9"))))"""
+
+        parsed_formula = z3.parse_smt2_string(f"(assert {formula.replace('<DATE>', '2022-02-24')})")[0]
+        self.assertTrue(evaluate_z3_expression(parsed_formula))
+        parsed_formula = z3.parse_smt2_string(f"(assert {formula.replace('<DATE>', '24-02-2022')})")[0]
+        self.assertFalse(evaluate_z3_expression(parsed_formula))
+
 
 
 if __name__ == '__main__':

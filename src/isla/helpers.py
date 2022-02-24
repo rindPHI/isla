@@ -356,6 +356,23 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> bool | int | str:
     if z3.is_true(expr):
         return True
 
+    # Regular Expressions
+    if expr.decl().name() == "re.range":
+        return f"[{expr.children()[0].as_string()}-{expr.children()[1].as_string()}]"
+
+    if expr.decl().kind() == z3.Z3_OP_RE_LOOP:
+        return f"{evaluate_z3_expression(expr.children()[0])}{{{expr.params()[0]},{expr.params()[1]}}}"
+
+    if expr.decl().kind() == z3.Z3_OP_SEQ_TO_RE:
+        return re.escape(expr.children()[0].as_string())
+
+    if expr.decl().kind() == z3.Z3_OP_RE_CONCAT:
+        return "".join(map(evaluate_z3_expression, expr.children()))
+
+    if expr.decl().kind() == z3.Z3_OP_SEQ_IN_RE:
+        return re.match(f"^{evaluate_z3_expression(expr.children()[1])}$",
+                        evaluate_z3_expression(expr.children()[0])) is not None
+
     # Boolean Combinations
     if z3.is_not(expr):
         return not children[0]
