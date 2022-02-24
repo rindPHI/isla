@@ -373,6 +373,13 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> bool | int | str:
         return re.match(f"^{evaluate_z3_expression(expr.children()[1])}$",
                         evaluate_z3_expression(expr.children()[0])) is not None
 
+    if expr.decl().kind() == z3.Z3_OP_RE_STAR:
+        return f"({evaluate_z3_expression(expr.children()[0])})*"
+
+    if expr.decl().kind() == z3.Z3_OP_RE_PLUS:
+        return f"({evaluate_z3_expression(expr.children()[0])})+"
+
+
     # Boolean Combinations
     if z3.is_not(expr):
         return not children[0]
