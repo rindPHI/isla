@@ -6,10 +6,14 @@ version mostly conforms to the state as documented in the ISLa paper.
 
 ## [Unreleased]
 
+## [0.2b1] - 2022-02-25
+
 ### Added
 
 - Evaluation routine for concrete Z3 expressions without solver calls. Speedups of 50 % to
   100 % in calls to `helpers.is_valid(Formula)`.
+- Added a structural predicate `nth(idx, tree, in_tree)` which holds if `tree` is the `idx`-th
+  occurrence of a tree with its nonterminal within `in_tree`. This is useful, e.g., in CSV files.
 
 ### Changed
 
