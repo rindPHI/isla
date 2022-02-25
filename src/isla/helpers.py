@@ -364,7 +364,12 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> bool | int | str:
         return f"{evaluate_z3_expression(expr.children()[0])}{{{expr.params()[0]},{expr.params()[1]}}}"
 
     if expr.decl().kind() == z3.Z3_OP_SEQ_TO_RE:
-        return re.escape(expr.children()[0].as_string())
+        child_string = expr.children()[0].as_string()
+
+        for symbol, ctrl_character in zip("tnrvf", "\t\n\r\v\f"):
+            child_string = child_string.replace("\\" + symbol, ctrl_character)
+
+        return re.escape(child_string)
 
     if expr.decl().kind() == z3.Z3_OP_RE_CONCAT:
         return "".join(map(evaluate_z3_expression, expr.children()))
