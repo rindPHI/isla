@@ -999,6 +999,9 @@ class Formula(ABC):
     def accept(self, visitor: FormulaVisitor):
         raise NotImplementedError()
 
+    def __len__(self):
+        raise NotImplementedError()
+
     def __hash__(self):
         raise NotImplementedError()
 
@@ -1190,6 +1193,9 @@ class StructuralPredicateFormula(Formula):
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_predicate_formula(self)
 
+    def __len__(self):
+        return 1
+
     def __hash__(self):
         return hash((type(self).__name__, self.predicate, tuple(self.args)))
 
@@ -1368,6 +1374,9 @@ class SemanticPredicateFormula(Formula):
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_semantic_predicate_formula(self)
 
+    def __len__(self):
+        return 1
+
     def __hash__(self):
         return hash((type(self).__name__, self.predicate, self.args))
 
@@ -1406,6 +1415,9 @@ class PropositionalCombinator(Formula, ABC):
         for arg in self.args:
             result |= arg.tree_arguments()
         return result
+
+    def __len__(self):
+        return 1 + len(self.args)
 
     def __repr__(self):
         return f"{type(self).__name__}({', '.join(map(repr, self.args))})"
@@ -1649,6 +1661,9 @@ class SMTFormula(Formula):
             auto_eval=self.auto_eval and other.auto_eval
         )
 
+    def __len__(self):
+        return 1
+
     def __neg__(self) -> 'SMTFormula':
         return SMTFormula(
             z3_push_in_negations(self.formula, negate=True),
@@ -1683,10 +1698,6 @@ class SMTFormula(Formula):
 
 
 class NumericQuantifiedFormula(Formula, ABC):
-    pass
-
-
-class ExistsIntFormula(NumericQuantifiedFormula):
     def __init__(self, bound_variable: BoundVariable, inner_formula: Formula):
         self.bound_variable = bound_variable
         self.inner_formula = inner_formula
@@ -1701,6 +1712,14 @@ class ExistsIntFormula(NumericQuantifiedFormula):
 
     def tree_arguments(self) -> OrderedSet[DerivationTree]:
         return self.inner_formula.tree_arguments()
+
+    def __len__(self):
+        return 1 + len(self.inner_formula)
+
+
+class ExistsIntFormula(NumericQuantifiedFormula):
+    def __init__(self, bound_variable: BoundVariable, inner_formula: Formula):
+        super().__init__(bound_variable, inner_formula)
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> 'Formula':
         return ExistsIntFormula(
@@ -1735,19 +1754,7 @@ class ExistsIntFormula(NumericQuantifiedFormula):
 
 class ForallIntFormula(NumericQuantifiedFormula):
     def __init__(self, bound_variable: BoundVariable, inner_formula: Formula):
-        self.bound_variable = bound_variable
-        self.inner_formula = inner_formula
-
-    def bound_variables(self) -> OrderedSet[BoundVariable]:
-        """Non-recursive: Only non-empty for quantified formulas"""
-        return OrderedSet([self.bound_variable])
-
-    def free_variables(self) -> OrderedSet[Variable]:
-        """Recursive."""
-        return self.inner_formula.free_variables().difference(self.bound_variables())
-
-    def tree_arguments(self) -> OrderedSet[DerivationTree]:
-        return self.inner_formula.tree_arguments()
+        super().__init__(bound_variable, inner_formula)
 
     def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> 'Formula':
         return ForallIntFormula(
@@ -1821,6 +1828,12 @@ class QuantifiedFormula(Formula, ABC):
 
     def is_already_matched(self, tree: DerivationTree) -> bool:
         return False
+
+    def __len__(self):
+        result = 1 + len(self.inner_formula)
+        if self.bind_expression:
+            result += len(self.bind_expression.bound_elements)
+        return result
 
     def __repr__(self):
         return f'{type(self).__name__}({repr(self.bound_variable)}, {repr(self.in_variable)}, ' \
