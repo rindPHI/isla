@@ -2574,7 +2574,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             raise SyntaxError(
                 f"Unexpected number {len(args)} for predicate {predicate_name} "
                 f"({predicate.arity} expected) in {parse_tree_text(ctx)} "
-                f"(line {ctx.ID().line}, column {ctx.ID().column}"
+                f"(line {ctx.ID().symbol.line}, column {ctx.ID().symbol.column}"
             )
 
         if is_structural:

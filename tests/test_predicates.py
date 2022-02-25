@@ -7,10 +7,11 @@ from orderedset import OrderedSet
 from isla import language
 from isla.evaluator import evaluate
 from isla.helpers import delete_unreachable
-from isla.isla_predicates import embed_tree, mk_parser, level_check, OCTAL_TO_DEC_PREDICATE
-from isla.language import DerivationTree
+from isla.isla_predicates import embed_tree, mk_parser, level_check, OCTAL_TO_DEC_PREDICATE, is_nth, NTH_PREDICATE
+from isla.language import DerivationTree, parse_isla, Constant
 from isla.type_defs import Path
 from isla_formalizations import tar, rest, scriptsizec
+from isla_formalizations.csv import CSV_GRAMMAR
 from isla_formalizations.tar import TAR_GRAMMAR, octal_conv_grammar
 
 
@@ -206,6 +207,37 @@ class TestPredicates(unittest.TestCase):
 
         self.assertTrue(evaluate(formula, tree, TAR_GRAMMAR))
 
+    def test_nth_predicate(self):
+        csv_doc = DerivationTree.from_parse_tree(next(EarleyParser(CSV_GRAMMAR).parse("a;b;c;d\n")))
 
-if __name__ == '__main__':
-    unittest.main()
+        csv_row = csv_doc.get_subtree((0, 0, 0, 0))
+        self.assertEqual("a;b;c;d", str(csv_row))
+        self.assertEqual("<csv-string-list>", csv_row.value)
+
+        c_column = csv_doc.get_subtree((0, 0, 0, 0, 2, 2, 0))
+        self.assertEqual("c", str(c_column))
+        self.assertEqual("<raw-field>", c_column.value)
+
+        self.assertTrue(is_nth(csv_doc, "3", (0, 0, 0, 0, 2, 2, 0), (0, 0, 0, 0)))
+        self.assertFalse(is_nth(csv_doc, "2", (0, 0, 0, 0, 2, 2, 0), (0, 0, 0, 0)))
+
+        formula = parse_isla("""
+        forall <csv-record> row in start:
+          forall <raw-field> column in row:
+            (nth("3", column, row) implies (= column "c"))""", CSV_GRAMMAR, structural_predicates={NTH_PREDICATE})
+        self.assertTrue(evaluate(formula, csv_doc, CSV_GRAMMAR))
+
+        formula = parse_isla("""
+        forall <csv-record> row in start:
+          forall <raw-field> column in row:
+            (nth("2", column, row) implies (= column "c"))""", CSV_GRAMMAR, structural_predicates={NTH_PREDICATE})
+        self.assertFalse(evaluate(formula, csv_doc, CSV_GRAMMAR))
+
+        formula = parse_isla("""
+forall <csv-record> row in start:
+  forall <csv-string-list> column in row:
+    (nth("3", column, row) implies (= column "c"))""", CSV_GRAMMAR, structural_predicates={NTH_PREDICATE})
+        self.assertFalse(evaluate(formula, csv_doc, CSV_GRAMMAR))
+
+        if __name__ == '__main__':
+            unittest.main()

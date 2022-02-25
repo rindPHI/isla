@@ -7,7 +7,7 @@ from grammar_graph.gg import GrammarGraph
 
 from isla import language
 from isla.existential_helpers import insert_tree
-from isla.helpers import delete_unreachable, parent_reflexive, parent_or_child
+from isla.helpers import delete_unreachable, parent_reflexive, parent_or_child, assertions_activated, is_nonterminal
 from isla.language import DerivationTree, SemPredEvalResult, StructuralPredicate, SemanticPredicate, Variable
 from isla.type_defs import Grammar, Path, ParseTree
 
@@ -52,6 +52,31 @@ def is_different_position(_: Optional[DerivationTree], path_1: Path, path_2: Pat
 DIFFERENT_POSITION_PREDICATE = StructuralPredicate("different_position", 2, is_different_position)
 
 SAME_POSITION_PREDICATE = StructuralPredicate("same_position", 2, is_same_position)
+
+
+def is_nth(tree: DerivationTree, n: int | str, path_1: Path, path_2: Path) -> bool:
+    # The tree at path_1 is the `n`-th occurrence of nonterminal `nonterminal`
+    # within the tree at path_2.
+    if not in_tree(None, path_1, path_2):
+        return False
+
+    assert isinstance(n, int) or n.isnumeric()
+
+    nonterminal = tree.get_subtree(path_1).value
+    assert is_nonterminal(nonterminal)
+
+    match_idx = 0
+    for path, subtree in tree.get_subtree(path_2).paths():
+        if subtree.value == nonterminal:
+            match_idx += 1
+
+        if path_2 + path == path_1:
+            return match_idx == int(n)
+
+    return False
+
+
+NTH_PREDICATE = StructuralPredicate("nth", 3, is_nth)
 
 
 def in_tree(_: Optional[DerivationTree], path_1: Path, path_2: Path) -> bool:
