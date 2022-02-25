@@ -382,6 +382,15 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> bool | int | str:
     if expr.decl().kind() == z3.Z3_OP_RE_UNION:
         return f"(({evaluate_z3_expression(expr.children()[0])}) | ({evaluate_z3_expression(expr.children()[0])}))"
 
+    if expr.decl().name() == "re.comp":
+        # The argument must be a union of strings or a range.
+        child = expr.children()[0]
+        if (child.decl().kind() == z3.Z3_OP_RE_UNION
+                and all(grandchild.decl().kind() == z3.Z3_OP_SEQ_TO_RE for grandchild in child.children()) or
+                child.decl().name() == "re.range"):
+            set_elements = list(map(evaluate_z3_expression, child.children()))
+            return "[^" + "".join(set_elements) + "]"
+
     if expr.decl().kind() == z3.Z3_OP_RE_FULL_SET:
         return ".*?"
 
