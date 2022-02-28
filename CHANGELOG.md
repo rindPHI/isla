@@ -6,6 +6,10 @@ version mostly conforms to the state as documented in the ISLa paper.
 
 ## [Unreleased]
 
+### Changed
+
+- Bugfixes in translation of Z3 regexes to Python
+
 ## [0.2b1] - 2022-02-25
 
 ### Added
