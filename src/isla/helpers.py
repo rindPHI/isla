@@ -388,7 +388,7 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> bool | int | str:
         return f"({evaluate_z3_expression(expr.children()[0])})?"
 
     if expr.decl().kind() == z3.Z3_OP_RE_UNION:
-        return f"(({evaluate_z3_expression(expr.children()[0])}) | ({evaluate_z3_expression(expr.children()[0])}))"
+        return f"(({evaluate_z3_expression(expr.children()[0])})|({evaluate_z3_expression(expr.children()[1])}))"
 
     if expr.decl().name() == "re.comp":
         # The argument must be a union of strings or a range.
