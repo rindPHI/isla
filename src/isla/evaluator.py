@@ -34,17 +34,18 @@ def propositionally_unsatisfiable(formula: Formula) -> bool:
 
 def evaluate(
         formula: Union[Formula, str],
-        reference_tree: DerivationTree | Dict[Path, DerivationTree],
+        reference_tree: DerivationTree,
         grammar: Grammar,
         structural_predicates: Set[StructuralPredicate] = STANDARD_STRUCTURAL_PREDICATES,
         semantic_predicates: Set[SemanticPredicate] = STANDARD_SEMANTIC_PREDICATES,
-        assumptions: Optional[Set[Formula]] = None) -> ThreeValuedTruth:
+        assumptions: Optional[Set[Formula]] = None,
+        paths: Optional[Dict[Path, DerivationTree]] = None) -> ThreeValuedTruth:
     assumptions = assumptions or set()
 
     assert reference_tree is not None
-    assert isinstance(reference_tree, DerivationTree) or isinstance(reference_tree, dict)
-    if isinstance(reference_tree, DerivationTree):
-        reference_tree = dict(reference_tree.paths())
+    assert isinstance(reference_tree, DerivationTree)
+    if paths is None:
+        paths = dict(reference_tree.paths())
 
     if isinstance(formula, str):
         formula = parse_isla(formula, grammar, structural_predicates, semantic_predicates)
@@ -54,7 +55,7 @@ def evaluate(
         if isinstance(c, Constant) and not c.is_numeric()}
     assert len(top_level_constants) <= 1
     if len(top_level_constants) > 0:
-        formula = formula.substitute_expressions({next(iter(top_level_constants)): reference_tree[()]})
+        formula = formula.substitute_expressions({next(iter(top_level_constants)): reference_tree})
 
     if assertions_activated():
         res, msg = well_formed(formula, grammar)
@@ -64,7 +65,7 @@ def evaluate(
         # The legacy evaluation performs better, but only works w/o NumericQuantifiedFormulas / assumptions.
         # It might be possible to consider assumptions, but the implemented method works and we would
         # rather not invest that work to gain some seconds of performance.
-        return evaluate_legacy(formula, grammar, {}, reference_tree)
+        return evaluate_legacy(formula, grammar, {}, reference_tree, paths=paths)
 
     qfr_free: Formula = eliminate_quantifiers(
         formula,
@@ -293,7 +294,8 @@ def evaluate_legacy(
         grammar: Grammar,
         assignments: Dict[Variable, Tuple[Path, DerivationTree]],
         reference_tree: DerivationTree | Dict[Path, DerivationTree],
-        vacuously_satisfied: Optional[Set[Formula]] = None) -> ThreeValuedTruth:
+        vacuously_satisfied: Optional[Set[Formula]] = None,
+        paths: Optional[Dict[Path, DerivationTree]] = None) -> ThreeValuedTruth:
     """
     An evaluation method which is based on tracking assignments in a dictionary.
     This does not work with formulas containing numeric constant introductions,
@@ -303,11 +305,10 @@ def evaluate_legacy(
     :param assignments: The assignments recorded so far.
     :return: A (three-valued) truth value.
     """
-
     assert reference_tree is not None
-    assert isinstance(reference_tree, DerivationTree) or isinstance(reference_tree, dict)
-    if isinstance(reference_tree, DerivationTree):
-        reference_tree = dict(reference_tree.paths())
+    assert isinstance(reference_tree, DerivationTree)
+    if paths is None:
+        paths = dict(reference_tree.paths())
 
     if vacuously_satisfied is None:
         vacuously_satisfied = set()
@@ -328,34 +329,33 @@ def evaluate_legacy(
         if isinstance(formula.in_variable, DerivationTree):
             in_path, in_inst = next(
                 (path, subtree)
-                for path, subtree in reference_tree.items()
+                for path, subtree in paths.items()
                 if subtree.id == formula.in_variable.id)
         else:
             assert formula.in_variable in assignments
             in_path, in_inst = assignments[formula.in_variable]
 
-        new_assignments = matches_for_quantified_formula(formula, grammar, dict(
-            [(path, subtree) for path, subtree in reference_tree.items() if
-             len(path) >= len(in_path) and path[:len(in_path)] == in_path]), {})
+        subtrees = {in_path: in_inst}
+        skip = True
+        for opath, otree in list(paths.items()):
+            if opath == in_path:
+                skip = False
+                continue
 
-        # assert all(
-        #     in_inst.is_valid_path(path) and
-        #     in_inst.find_node(tree) is not None and
-        #     in_inst.get_subtree(path) == tree
-        #     for assignment in new_assignments
-        #     for path, tree in assignment.values())
+            if not skip:
+                if len(opath) <= len(in_path):
+                    break
 
-        # new_assignments = [
-        #     {var: (in_path + path, tree) for var, (path, tree) in assignment.items()} | assignments
-        #     for assignment in new_assignments]
+                subtrees[opath] = otree
+
         new_assignments = [
-            {var: (path, tree) for var, (path, tree) in assignment.items()} | assignments
-            for assignment in new_assignments]
+            new_assignment | assignments
+            for new_assignment in matches_for_quantified_formula(formula, grammar, dict(subtrees), {})]
 
         assert all(
-            reference_tree[()].is_valid_path(path) and
-            reference_tree[()].find_node(tree) is not None and
-            reference_tree[()].get_subtree(path) == tree
+            reference_tree.is_valid_path(path) and
+            reference_tree.find_node(tree) is not None and
+            reference_tree.get_subtree(path) == tree
             for assignment in new_assignments
             for path, tree in assignment.values())
 
@@ -363,21 +363,21 @@ def evaluate_legacy(
             if not new_assignments:
                 vacuously_satisfied.add(formula)
 
-            return ThreeValuedTruth.all(
-                evaluate_legacy(formula.inner_formula, grammar, new_assignment, reference_tree, vacuously_satisfied)
-                for new_assignment in new_assignments)
+            return ThreeValuedTruth.all(evaluate_legacy(
+                formula.inner_formula, grammar, new_assignment, reference_tree, vacuously_satisfied, paths)
+                                        for new_assignment in new_assignments)
         elif isinstance(formula, ExistsFormula):
-            return ThreeValuedTruth.any(
-                evaluate_legacy(formula.inner_formula, grammar, new_assignment, reference_tree, vacuously_satisfied)
-                for new_assignment in new_assignments)
+            return ThreeValuedTruth.any(evaluate_legacy(
+                formula.inner_formula, grammar, new_assignment, reference_tree, vacuously_satisfied, paths)
+                                        for new_assignment in new_assignments)
     elif isinstance(formula, StructuralPredicateFormula):
         arg_insts = [
             arg if isinstance(arg, str)
-            else next(path for path, subtree in reference_tree.items() if subtree.id == arg.id)
+            else next(path for path, subtree in paths.items() if subtree.id == arg.id)
             if isinstance(arg, DerivationTree)
             else assignments[arg][0]
             for arg in formula.args]
-        return ThreeValuedTruth.from_bool(formula.predicate.evaluate(reference_tree[()], *arg_insts))
+        return ThreeValuedTruth.from_bool(formula.predicate.evaluate(reference_tree, *arg_insts))
     elif isinstance(formula, SemanticPredicateFormula):
         arg_insts = [arg if isinstance(arg, DerivationTree) or arg not in assignments
                      else assignments[arg][1]
@@ -399,14 +399,14 @@ def evaluate_legacy(
         return ThreeValuedTruth.true()
     elif isinstance(formula, NegatedFormula):
         return ThreeValuedTruth.not_(evaluate_legacy(
-            formula.args[0], grammar, assignments, reference_tree, vacuously_satisfied))
+            formula.args[0], grammar, assignments, reference_tree, vacuously_satisfied, paths))
     elif isinstance(formula, ConjunctiveFormula):
         return ThreeValuedTruth.all(
-            evaluate_legacy(sub_formula, grammar, assignments, reference_tree, vacuously_satisfied)
+            evaluate_legacy(sub_formula, grammar, assignments, reference_tree, vacuously_satisfied, paths)
             for sub_formula in formula.args)
     elif isinstance(formula, DisjunctiveFormula):
         return ThreeValuedTruth.any(
-            evaluate_legacy(sub_formula, grammar, assignments, reference_tree, vacuously_satisfied)
+            evaluate_legacy(sub_formula, grammar, assignments, reference_tree, vacuously_satisfied, paths)
             for sub_formula in formula.args)
     else:
         raise NotImplementedError()
@@ -418,6 +418,7 @@ def eliminate_quantifiers(
         graph: Optional[gg.GrammarGraph] = None,
         numeric_constants: Optional[Set[Constant]] = None,
         keep_existential_quantifiers=False) -> Formula:
+    # TODO: Use pre-computed paths
     if numeric_constants is None:
         numeric_constants = {
             var for var in VariablesCollector().collect(formula)
@@ -517,14 +518,17 @@ def eliminate_quantifiers(
 def matches_for_quantified_formula(
         formula: QuantifiedFormula,
         grammar: Grammar,
-        in_tree: Optional[DerivationTree | Dict[Path, DerivationTree]] = None,
-        initial_assignments: Optional[Dict[Variable, Tuple[Path, DerivationTree]]] = None) -> \
+        in_tree: Optional[DerivationTree] = None,
+        initial_assignments: Optional[Dict[Variable, Tuple[Path, DerivationTree]]] = None,
+        paths: Optional[Dict[Path, DerivationTree]] = None) -> \
         List[Dict[Variable, Tuple[Path, DerivationTree]]]:
+    assert in_tree is None or isinstance(in_tree, DerivationTree)
     if in_tree is None:
         in_tree = formula.in_variable
         assert isinstance(in_tree, DerivationTree)
-    if isinstance(in_tree, DerivationTree):
-        in_tree = dict(in_tree.paths())
+
+    if paths is None:
+        paths = dict(in_tree.paths())
 
     qfd_var: BoundVariable = formula.bound_variable
     bind_expr: Optional[BindExpression] = formula.bind_expression
@@ -557,11 +561,16 @@ def matches_for_quantified_formula(
                 new_assignment[qfd_var] = path, tree
                 new_assignments.append(new_assignment)
 
-    for path, tree in in_tree.items():
-        search_action(path, tree, dict([
-            (subpath, subtree) for subpath, subtree in in_tree.items()
-            if len(subpath) >= len(path) and subpath[:len(path)] == path
-        ]))
+    # NOTE: This implementation depends on the elements in in_tree being stored in pre-order!!!
+    tree_paths: List[Tuple[Path, DerivationTree]] = cast(List[Tuple[Path, DerivationTree]], list(paths.items()))
+    for idx, (path, tree) in enumerate(tree_paths):
+        subtrees = {path: tree}
+        for opath, otree in tree_paths[idx + 1:]:
+            if len(opath) <= len(path):
+                break
+            subtrees[opath] = otree
+
+        search_action(path, tree, subtrees)
 
     return new_assignments
 
