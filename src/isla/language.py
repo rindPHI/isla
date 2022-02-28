@@ -795,14 +795,25 @@ class BindExpression:
         self.prefixes[in_nonterminal] = result
         return result
 
-    def match(self, tree: DerivationTree, grammar: Grammar) -> \
+    def match(
+            self,
+            tree: DerivationTree,
+            grammar: Grammar,
+            paths: Optional[Dict[Path, DerivationTree]] = None) -> \
             Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
+        if not paths:
+            paths = dict(tree.paths())
+
+        leaves = [(path, subtree) for path, subtree in paths.items() if not subtree.children]
+
         for combination in reversed(flatten_bound_elements(
                 nested_list_to_tuple(self.bound_elements),
                 grammar_to_immutable(grammar),
                 in_nonterminal=tree.value)):
 
-            maybe_result = self.match_with_backtracking(list(tree.paths()), list(combination))
+            maybe_result = self.match_with_backtracking(
+                cast(List[Tuple[Path, DerivationTree]], list(paths.items())),
+                list(combination))
             if maybe_result is not None:
                 maybe_result = dict(maybe_result)
 
@@ -812,7 +823,7 @@ class BindExpression:
                 #       there remain tree elements that were not matched.
                 if all(any(len(match_path) <= len(leaf_path) and match_path == leaf_path[:len(match_path)]
                            for match_path, _ in maybe_result.values())
-                       for leaf_path, _ in tree.leaves()):
+                       for leaf_path, _ in leaves):
                     return maybe_result
 
         return None
