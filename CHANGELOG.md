@@ -9,6 +9,8 @@ version mostly conforms to the state as documented in the ISLa paper.
 ### Changed
 
 - Bugfixes in translation of Z3 regexes to Python
+- Z3 translation method `evaluate_z3_expression` can handle open variables and returns closures.
+  Better caching opportunities.
 
 ## [0.2b1] - 2022-02-25
 

@@ -8,7 +8,8 @@ import z3
 from grammar_graph import gg
 from orderedset import OrderedSet
 
-from isla.helpers import z3_and, is_nonterminal, z3_or, assertions_activated, ThreeValuedTruth, is_valid, DomainError
+from isla.helpers import z3_and, is_nonterminal, z3_or, assertions_activated, ThreeValuedTruth, is_valid, DomainError, \
+    evaluate_z3_expression
 from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES
 from isla.language import Formula, DerivationTree, StructuralPredicate, SemanticPredicate, parse_isla, \
     VariablesCollector, Constant, FilterVisitor, NumericQuantifiedFormula, StructuralPredicateFormula, SMTFormula, \
@@ -316,15 +317,31 @@ def evaluate_legacy(
     if isinstance(formula, ExistsIntFormula):
         raise NotImplementedError("This method cannot evaluate IntroduceNumericConstantFormula formulas.")
     elif isinstance(formula, SMTFormula):
-        instantiation = z3.substitute(
-            formula.formula,
-            *tuple({z3.String(symbol.name): z3.StringVal(str(symbol_assignment[1]))
-                    for symbol, symbol_assignment
-                    in assignments.items()}.items()))
         try:
-            return is_valid(instantiation)
-        except DomainError:
-            return ThreeValuedTruth.false()
+            translation = evaluate_z3_expression(formula.formula)
+
+            try:
+                var_map: Dict[z3.ExprRef, Variable] = {
+                    var.to_smt(): var
+                    for var in assignments
+                }
+
+                args_instantiation = tuple([
+                    str(assignments[var_map[arg]][1])
+                    for arg in translation[0]])
+
+                return ThreeValuedTruth.from_bool(
+                    translation[1](args_instantiation) if args_instantiation
+                    else translation[1]
+                )
+            except DomainError:
+                return ThreeValuedTruth.false()
+        except NotImplementedError:
+            return is_valid(z3.substitute(
+                formula.formula,
+                *tuple({z3.String(symbol.name): z3.StringVal(str(symbol_assignment[1]))
+                        for symbol, symbol_assignment
+                        in assignments.items()}.items())))
     elif isinstance(formula, QuantifiedFormula):
         if isinstance(formula.in_variable, DerivationTree):
             in_path, in_inst = next(

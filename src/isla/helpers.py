@@ -4,7 +4,7 @@ import math
 import operator
 import random
 import re
-from functools import reduce
+from functools import reduce, lru_cache
 from typing import Optional, Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast, Callable, Iterable
 
 import z3
@@ -292,7 +292,14 @@ def is_valid(formula: z3.BoolRef, timeout: int = 500) -> ThreeValuedTruth:
         return ThreeValuedTruth.false()
 
     try:
-        return ThreeValuedTruth.from_bool(evaluate_z3_expression(formula))
+        eval_result = evaluate_z3_expression(formula)
+        if eval_result[0]:
+            # There must not be any uninstantiated variables left
+            return ThreeValuedTruth.false()
+
+        assert isinstance(eval_result[1], bool)
+
+        return ThreeValuedTruth.from_bool(eval_result[1])
     except NotImplementedError:
         pass
 
@@ -317,78 +324,121 @@ class DomainError(RuntimeError):
         return f"DomainError({self.msg})"
 
 
-def evaluate_z3_expression(expr: z3.ExprRef) -> bool | int | str:
+Z3EvalResult = Tuple[Tuple[z3.ExprRef, ...], bool | int | str | Callable[[Tuple[str, ...]], bool | int | str]]
+
+
+@lru_cache
+def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
     # This can only evaluate concrete expressions: No variables / constants
     if z3.is_var(expr) or is_z3_var(expr):
-        raise NotImplementedError("Cannot evaluate expression with variables.")
+        return (expr,), lambda args: args[0]
 
     if z3.is_quantifier(expr):
         raise NotImplementedError("Cannot evaluate expressions with quantifiers.")
 
-    children = list(map(evaluate_z3_expression, expr.children()))
+    def construct_result(
+            constructor: Callable[[Tuple[bool | int | str, ...]], bool | int | str],
+            children_results: Tuple[Z3EvalResult, ...]) -> Z3EvalResult:
+        params: Tuple[z3.ExprRef, ...] = tuple(set([
+            param for child_params, _ in children_results for param in child_params]))
+
+        if not params:
+            return (), constructor(tuple([child_result for _, child_result in children_results]))
+
+        def closure(var_insts: Tuple[str, ...]) -> bool | int | str:
+            assert len(var_insts) == len(params)
+            instantiated_children_results: Tuple[bool | int | str, ...] = ()
+            for child_params, child_result in children_results:
+                if not child_params:
+                    assert type(child_result) in {bool, int, str}
+                    instantiated_children_results += (cast(bool | int | str, child_result),)
+                    continue
+
+                instantiated_child_params: Tuple[str] = cast(Tuple[str], ())
+                for child_param in child_params:
+                    instantiated_child_params += (var_insts[params.index(child_param)],)
+
+                eval_child_result = child_result(instantiated_child_params)
+                assert type(eval_child_result) in {bool, int, str}
+                instantiated_children_results += (eval_child_result,)
+
+            return constructor(instantiated_children_results)
+
+        return params, closure
+
+    children_results = tuple(map(evaluate_z3_expression, expr.children()))
 
     # Literals
     if z3.is_string_value(expr):
         expr: z3.StringVal
-        return expr.as_string()
+        return (), expr.as_string()
 
     if z3.is_int_value(expr):
         expr: z3.IntVal
-        return expr.as_long()
+        return (), expr.as_long()
 
     # NOTE: We convert a float string to int by rounding! This differs from the standard
     #       SMT-LIB/Z3 semantics, where str.to.int returns -1 for all strings that don't
     #       represent positive integers.
     if expr.decl().kind() == z3.Z3_OP_STR_TO_INT:
-        if not children[0]:
+        if isinstance(children_results[0], str) and not children_results[0]:
             raise DomainError("Empty string cannot be converted to int.")
-        try:
-            return int(children[0])
-        except ValueError:
+
+        def constructor(args):
+            assert len(args) == 1
+            c = args[0]
             try:
-                return int(float(children[0]))
+                return int(c)
             except ValueError:
-                raise DomainError(f"Expression {children[0]} cannot be converted to int.")
+                try:
+                    return int(float(c))
+                except ValueError:
+                    raise DomainError(f"Expression {children_results[0]} cannot be converted to int.")
+
+        return construct_result(constructor, children_results)
 
     if z3.is_false(expr):
-        return False
+        return (), False
 
     if z3.is_true(expr):
-        return True
+        return (), True
 
     # Regular Expressions
     if expr.decl().name() == "re.range":
-        return f"[{expr.children()[0].as_string()}-{expr.children()[1].as_string()}]"
+        return construct_result(lambda args: f"[{args[0]}-{args[1]}]", children_results)
 
     if expr.decl().kind() == z3.Z3_OP_RE_LOOP:
-        return f"{evaluate_z3_expression(expr.children()[0])}{{{expr.params()[0]},{expr.params()[1]}}}"
+        return construct_result(lambda args: f"{args[0]}{{{expr.params()[0]},{expr.params()[1]}}}", children_results)
 
     if expr.decl().kind() == z3.Z3_OP_SEQ_TO_RE:
-        child_string = expr.children()[0].as_string()
+        def constructor(args):
+            assert len(args) == 1
 
-        for symbol, ctrl_character in zip("tnrvf", "\t\n\r\v\f"):
-            child_string = child_string.replace("\\" + symbol, ctrl_character)
+            child_string = args[0]
+            for symbol, ctrl_character in zip("tnrvf", "\t\n\r\v\f"):
+                child_string = child_string.replace("\\" + symbol, ctrl_character)
 
-        return re.escape(child_string)
+            return re.escape(child_string)
+
+        return construct_result(constructor, children_results)
 
     if expr.decl().kind() == z3.Z3_OP_RE_CONCAT:
-        return "".join(map(evaluate_z3_expression, expr.children()))
+        return construct_result(lambda args: "".join(args), children_results)
 
     if expr.decl().kind() == z3.Z3_OP_SEQ_IN_RE:
-        return re.match(f"^{evaluate_z3_expression(expr.children()[1])}$",
-                        evaluate_z3_expression(expr.children()[0])) is not None
+        return construct_result(lambda args: re.match(f"^{args[1]}$", args[0]) is not None, children_results)
 
     if expr.decl().kind() == z3.Z3_OP_RE_STAR:
-        return f"({evaluate_z3_expression(expr.children()[0])})*"
+        return construct_result(lambda args: f"({args[0]})*", children_results)
 
     if expr.decl().kind() == z3.Z3_OP_RE_PLUS:
-        return f"({evaluate_z3_expression(expr.children()[0])})+"
+        return construct_result(lambda args: f"({args[0]})+", children_results)
 
     if expr.decl().kind() == z3.Z3_OP_RE_OPTION:
-        return f"({evaluate_z3_expression(expr.children()[0])})?"
+        return construct_result(lambda args: f"({args[0]})?", children_results)
 
     if expr.decl().kind() == z3.Z3_OP_RE_UNION:
-        return f"(({evaluate_z3_expression(expr.children()[0])})|({evaluate_z3_expression(expr.children()[1])}))"
+        return construct_result(lambda args: f"(({args[0]})|({args[1]}))", children_results)
 
     if expr.decl().name() == "re.comp":
         # The argument must be a union of strings or a range.
@@ -396,60 +446,61 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> bool | int | str:
         if (child.decl().kind() == z3.Z3_OP_RE_UNION
                 and all(grandchild.decl().kind() == z3.Z3_OP_SEQ_TO_RE for grandchild in child.children()) or
                 child.decl().name() == "re.range"):
-            set_elements = list(map(evaluate_z3_expression, child.children()))
-            return "[^" + "".join(set_elements) + "]"
+            return construct_result(
+                lambda args: "[^" + "".join(args) + "]",
+                tuple(map(evaluate_z3_expression, child.children())))
 
     if expr.decl().kind() == z3.Z3_OP_RE_FULL_SET:
-        return ".*?"
+        return (), ".*?"
 
     # Boolean Combinations
     if z3.is_not(expr):
-        return not children[0]
+        return construct_result(lambda args: not args[0], children_results)
 
     if z3.is_and(expr):
-        return reduce(operator.and_, children)
+        return construct_result(lambda args: reduce(operator.and_, args), children_results)
 
     if z3.is_or(expr):
-        return reduce(operator.or_, children)
+        return construct_result(lambda args: reduce(operator.or_, args), children_results)
 
     # Comparisons
     if z3.is_eq(expr):
-        return children[0] == children[1]
+        return construct_result(lambda args: args[0] == args[1], children_results)
 
     if z3.is_lt(expr):
-        return children[0] < children[1]
+        return construct_result(lambda args: args[0] < args[1], children_results)
 
     if z3.is_le(expr):
-        return children[0] <= children[1]
+        return construct_result(lambda args: args[0] <= args[1], children_results)
 
     if z3.is_gt(expr):
-        return children[0] > children[1]
+        return construct_result(lambda args: args[0] > args[1], children_results)
 
     if z3.is_ge(expr):
-        return children[0] >= children[1]
+        return construct_result(lambda args: args[0] >= args[1], children_results)
 
     # Arithmetic Operations
     if z3.is_add(expr):
-        return children[0] + children[1]
+        return construct_result(lambda args: args[0] + args[1], children_results)
 
     if z3.is_sub(expr):
-        return children[0] - children[1]
+        return construct_result(lambda args: args[0] - args[1], children_results)
 
     if z3.is_mul(expr):
-        return children[0] * children[1]
+        return construct_result(lambda args: args[0] * args[1], children_results)
 
     if z3.is_div(expr):
-        return int(children[0] / children[1])
+        return construct_result(lambda args: int(args[0] / args[1]), children_results)
 
     # String Operations
     if expr.decl().kind() == z3.Z3_OP_SEQ_LENGTH:
-        return len(children[0])
+        return construct_result(lambda args: len(args[0]), children_results)
 
     if expr.decl().kind() == z3.Z3_OP_SEQ_CONCAT:
-        return cast(str, children[0]) + cast(str, children[1])
+        return construct_result(lambda args: cast(str, args[0]) + cast(str, args[1]), children_results)
 
     if expr.decl().kind() == z3.Z3_OP_SEQ_AT:
-        return cast(str, children[0])[cast(int, children[1])]
+        return construct_result(lambda args: cast(str, args[0])[cast(int, args[1])], children_results)
 
     logger = logging.getLogger("Z3 evaluation")
     logger.warning("Evaluation of expression %s not implemented.", expr)
