@@ -321,8 +321,8 @@ def evaluate_legacy(
             translation = evaluate_z3_expression(formula.formula)
 
             try:
-                var_map: Dict[z3.ExprRef, Variable] = {
-                    var.to_smt(): var
+                var_map: Dict[str, Variable] = {
+                    var.name: var
                     for var in assignments
                 }
 
@@ -332,8 +332,7 @@ def evaluate_legacy(
 
                 return ThreeValuedTruth.from_bool(
                     translation[1](args_instantiation) if args_instantiation
-                    else translation[1]
-                )
+                    else translation[1])
             except DomainError:
                 return ThreeValuedTruth.false()
         except NotImplementedError:

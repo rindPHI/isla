@@ -324,14 +324,13 @@ class DomainError(RuntimeError):
         return f"DomainError({self.msg})"
 
 
-Z3EvalResult = Tuple[Tuple[z3.ExprRef, ...], bool | int | str | Callable[[Tuple[str, ...]], bool | int | str]]
+Z3EvalResult = Tuple[Tuple[str, ...], bool | int | str | Callable[[Tuple[str, ...]], bool | int | str]]
 
 
 @lru_cache
 def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
-    # This can only evaluate concrete expressions: No variables / constants
     if z3.is_var(expr) or is_z3_var(expr):
-        return (expr,), lambda args: args[0]
+        return (str(expr),), lambda args: args[0]
 
     if z3.is_quantifier(expr):
         raise NotImplementedError("Cannot evaluate expressions with quantifiers.")
@@ -339,7 +338,7 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
     def construct_result(
             constructor: Callable[[Tuple[bool | int | str, ...]], bool | int | str],
             children_results: Tuple[Z3EvalResult, ...]) -> Z3EvalResult:
-        params: Tuple[z3.ExprRef, ...] = tuple(set([
+        params: Tuple[str, ...] = tuple(set([
             param for child_params, _ in children_results for param in child_params]))
 
         if not params:
@@ -356,7 +355,7 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
 
                 instantiated_child_params: Tuple[str] = cast(Tuple[str], ())
                 for child_param in child_params:
-                    instantiated_child_params += (var_insts[params.index(child_param)],)
+                    instantiated_child_params += (var_insts[params.index(str(child_param))],)
 
                 eval_child_result = child_result(instantiated_child_params)
                 assert type(eval_child_result) in {bool, int, str}

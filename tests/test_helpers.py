@@ -149,10 +149,12 @@ class TestHelpers(unittest.TestCase):
 
         var = z3.String("var")
         parsed_formula = z3.parse_smt2_string(f"(assert {formula})", decls={"var": var})[0]
-        self.assertEqual((var,), evaluate_z3_expression(parsed_formula)[0])
-        self.assertTrue(callable(evaluate_z3_expression(parsed_formula)[1]))
-        self.assertTrue(evaluate_z3_expression(parsed_formula)[1](("2022-02-24",)))
-        self.assertFalse(evaluate_z3_expression(parsed_formula)[1](("24-02-2022",)))
+        eval_result = evaluate_z3_expression(parsed_formula)
+
+        self.assertEqual(("var",), eval_result[0])
+        self.assertTrue(callable(eval_result[1]))
+        self.assertTrue(eval_result[1](("2022-02-24",)))
+        self.assertFalse(eval_result[1](("24-02-2022",)))
 
     def test_evaluate_z3_multivar_expr(self):
         formula = "(or (= a b) (= a c))"
@@ -163,16 +165,13 @@ class TestHelpers(unittest.TestCase):
         eval_result = evaluate_z3_expression(parsed_formula)
 
         self.assertEqual(3, len(eval_result[0]))
-        self.assertIn(a, eval_result[0])
-        self.assertIn(b, eval_result[0])
-        self.assertIn(c, eval_result[0])
+        self.assertEqual(("a", "b", "c"), eval_result[0])
 
         self.assertTrue(callable(eval_result[1]))
-        self.assertEqual(['b', 'a', 'c'], list(map(str, eval_result[0])))
         self.assertTrue(eval_result[1](("a", "a", "c")))
-        self.assertTrue(eval_result[1](("b", "a", "a")))
+        self.assertTrue(eval_result[1](("a", "b", "a")))
         self.assertTrue(eval_result[1](("a", "a", "a")))
-        self.assertFalse(eval_result[1](("b", "a", "c")))
+        self.assertFalse(eval_result[1](("a", "b", "c")))
 
 
 if __name__ == '__main__':
