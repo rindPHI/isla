@@ -350,7 +350,8 @@ def evaluate_legacy(
 
         new_assignments = [
             new_assignment | assignments
-            for new_assignment in matches_for_quantified_formula(formula, grammar, dict(subtrees), {})]
+            for new_assignment in matches_for_quantified_formula(
+                formula, grammar, reference_tree, {}, paths=dict(subtrees))]
 
         assert all(
             reference_tree.is_valid_path(path) and
