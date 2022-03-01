@@ -3,7 +3,7 @@ import operator
 import random
 import re
 from functools import lru_cache, reduce
-from typing import Callable, Tuple, cast, List, Optional, Dict, Union, Generator
+from typing import Callable, Tuple, cast, List, Optional, Dict, Union, Generator, Set
 
 import z3
 from z3.z3 import _coerce_exprs
@@ -336,3 +336,55 @@ def visit_z3_expr(e: z3.ExprRef | z3.QuantifierRef,
         for e in visit_z3_expr(e.body(), seen):
             yield e
         return
+
+
+def get_symbols(formula: z3.BoolRef) -> Set[z3.SeqRef]:
+    result: Set[z3.SeqRef] = set()
+
+    def recurse(elem: z3.ExprRef):
+        op = elem.decl()
+        if z3.is_const(elem) and op.kind() == z3.Z3_OP_UNINTERPRETED:
+            if op.range() != z3.StringSort():
+                raise NotImplementedError(
+                    f"This class was developed for String symbols only, found {op.range()}")
+
+            assert isinstance(elem, z3.SeqRef)
+            result.add(cast(z3.SeqRef, elem))
+
+        for child in elem.children():
+            recurse(child)
+
+    recurse(formula)
+    return result
+
+
+def smt_expr_to_str(f: z3.ExprRef) -> str:
+    op_strings = {
+        z3.Z3_OP_SEQ_IN_RE: "str.in_re",
+        z3.Z3_OP_SEQ_CONCAT: "str.++",
+        z3.Z3_OP_RE_CONCAT: "re.++",
+        z3.Z3_OP_STR_TO_INT: "str.to.int",  # <- Different from standard SMT-LIB (Z3 version)
+    }
+
+    if z3.is_string_value(f):
+        return '"' + cast(str, f.as_string()).replace('"', '""') + '"'
+    if z3.is_int_value(f):
+        return str(f.as_long())
+    if is_z3_var(f):
+        return str(f)
+
+    if z3.is_app(f):
+        kind = f.decl().kind()
+
+        if kind == z3.Z3_OP_RE_LOOP:
+            op = f"(_ re.loop {f.params()[0]} {f.params()[1]})"
+        elif kind == z3.Z3_OP_RE_POWER:
+            op = f"(_ re.^ {f.params()[0]})"
+        elif f.decl().kind() in op_strings:
+            op = op_strings[kind]
+        else:
+            op = f.decl().name()
+
+        return f"({op} {' '.join(map(smt_expr_to_str, f.children()))}".strip() + ")"
+
+    raise NotImplementedError()

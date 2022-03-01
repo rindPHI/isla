@@ -22,23 +22,28 @@ from orderedset import OrderedSet
 from z3 import Z3Exception
 
 import isla.mexpr_parser.MexprParserListener as MexprParserListener
-from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, smt_expr_to_str
-from isla.helpers import get_symbols, replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, \
+from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER
+from isla.helpers import replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, \
     immutable_to_grammar, \
     nested_list_to_tuple
-from isla.z3_helpers import is_valid, z3_push_in_negations, z3_subst
 from isla.isla_language import IslaLanguageListener
 from isla.isla_language.IslaLanguageLexer import IslaLanguageLexer
 from isla.isla_language.IslaLanguageParser import IslaLanguageParser
 from isla.mexpr_lexer.MexprLexer import MexprLexer
 from isla.mexpr_parser.MexprParser import MexprParser
 from isla.type_defs import ParseTree, Path, Grammar, ImmutableGrammar
+from isla.z3_helpers import is_valid, z3_push_in_negations, z3_subst, get_symbols, smt_expr_to_str
 
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
 Assignment = Tuple['Constant', 'Formula', 'DerivationTree']
 
 language_core_logger = logging.getLogger("isla-language-core")
 
+# The below is an important optimization: In Z3's ExprRef, __eq__ is overloaded
+# to return a *formula* (an equation). This is quite costly, and automatically
+# called when putting ExprRefs into hash tables. To resort to a structural
+# comparison, we replace the __eq__ method by AstRef's __eq__, which does perform
+# a structural comparison.
 z3.ExprRef.__eq__ = z3.AstRef.__eq__
 
 
