@@ -22,11 +22,11 @@ from orderedset import OrderedSet
 from z3 import Z3Exception
 
 import isla.mexpr_parser.MexprParserListener as MexprParserListener
-from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, z3_push_in_negations, \
-    smt_expr_to_str
-from isla.helpers import get_symbols, z3_subst, is_valid, \
-    replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, immutable_to_grammar, \
+from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, smt_expr_to_str
+from isla.helpers import get_symbols, replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, \
+    immutable_to_grammar, \
     nested_list_to_tuple
+from isla.z3_helpers import is_valid, z3_push_in_negations, z3_subst
 from isla.isla_language import IslaLanguageListener
 from isla.isla_language.IslaLanguageLexer import IslaLanguageLexer
 from isla.isla_language.IslaLanguageParser import IslaLanguageParser
@@ -38,6 +38,8 @@ SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
 Assignment = Tuple['Constant', 'Formula', 'DerivationTree']
 
 language_core_logger = logging.getLogger("isla-language-core")
+
+z3.ExprRef.__eq__ = z3.AstRef.__eq__
 
 
 class Variable:
@@ -1697,11 +1699,8 @@ class SMTFormula(Formula):
             return f"({self.formula}, {subst_string})"
 
     def __eq__(self, other):
-        # NOTE: Previous solution `z3.is_true(z3.simplify(self.formula == other.formula))` cannot be used
-        #       since then, the hash diverges from the equality value for formulas like
-        #       `str.to.int(x) <= str.to.int("01")` and `str.to.int(x) <= str.to.int("1")`
         return (isinstance(other, SMTFormula)
-                and self.formula.sexpr() == other.formula.sexpr()
+                and self.formula == other.formula
                 and self.substitutions == other.substitutions)
 
     def __hash__(self):

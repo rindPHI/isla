@@ -8,8 +8,9 @@ import z3
 from grammar_graph import gg
 from orderedset import OrderedSet
 
-from isla.helpers import z3_and, is_nonterminal, z3_or, assertions_activated, ThreeValuedTruth, is_valid, DomainError, \
-    evaluate_z3_expression
+from isla.helpers import is_nonterminal, assertions_activated
+from isla.three_valued_truth import ThreeValuedTruth
+from isla.z3_helpers import evaluate_z3_expression, DomainError, is_valid, z3_and, z3_or, z3_eq
 from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES
 from isla.language import Formula, DerivationTree, StructuralPredicate, SemanticPredicate, parse_isla, \
     VariablesCollector, Constant, FilterVisitor, NumericQuantifiedFormula, StructuralPredicateFormula, SMTFormula, \
@@ -139,7 +140,7 @@ def evaluate(
                 assert isinstance(substs, dict)
                 assert all(isinstance(key, Variable) and key.n_type == Variable.NUMERIC_NTYPE for key in substs)
                 return SMTFormula(z3_and([
-                    cast(z3.BoolRef, const.to_smt() == str(substs[const]))
+                    cast(z3.BoolRef, z3_eq(const.to_smt(), str(substs[const])))
                     for const in substs]), *substs.keys())
 
             return False

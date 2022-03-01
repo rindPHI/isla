@@ -11,6 +11,11 @@ version mostly conforms to the state as documented in the ISLa paper.
 - Bugfixes in translation of Z3 regexes to Python
 - Z3 translation method `evaluate_z3_expression` can handle open variables and returns closures.
   Better caching opportunities.
+- Factored out Z3 helpers from `isla.helpers` to `isla.z3_helpers`.
+- `z3.ExprRef.__eq__` is pointed to `z3.AstRef.__eq__` when loading `isla.language`. The reason is
+  that `__eq__` is called, e.g., when requesting elements from hash maps, but the `z3.ExprRef`
+  implementation creates a new `z3.BoolRef` instead of returning a bool. We perform a structural
+  comparison instead. To construct `z3.BoolRef` equations, use `isla.z3_helpers.z3_eq` instead.
 
 ## [0.2b1] - 2022-02-25
 

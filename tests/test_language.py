@@ -1,7 +1,6 @@
 import copy
 import random
 import unittest
-from typing import cast
 
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
@@ -15,14 +14,14 @@ from isla.helpers import delete_unreachable
 from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, SAME_POSITION_PREDICATE
 from isla.isla_predicates import count, COUNT_PREDICATE
 from isla.language import Constant, BoundVariable, Formula, BindExpression, \
-    DerivationTree, convert_to_dnf, ensure_unique_bound_variables, SemPredEvalResult, VariableManager, \
-    DummyVariable, parse_isla, ISLaUnparser, ForallFormula, ExistsFormula, SMTFormula
+    DerivationTree, convert_to_dnf, ensure_unique_bound_variables, VariableManager, \
+    DummyVariable, parse_isla, ISLaUnparser, SMTFormula
+from isla.z3_helpers import z3_eq
 from isla_formalizations import rest, scriptsizec, tar
 from isla_formalizations.csv import CSV_GRAMMAR, CSV_COLNO_PROPERTY
 from isla_formalizations.scriptsizec import SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT, SCRIPTSIZE_C_NO_REDEF_TEXT
 from isla_formalizations.xml_lang import XML_GRAMMAR, XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 from test_data import LANG_GRAMMAR
-from test_helpers import parse
 
 
 def path_to_string(p) -> str:
@@ -52,7 +51,7 @@ class TestLanguage(unittest.TestCase):
                     assgn_2,
                     prog,
                     sc.before(assgn_2, assgn_1) &
-                    sc.smt_for(cast(z3.BoolRef, lhs_2.to_smt() == var.to_smt()), lhs_2, var)
+                    sc.smt_for(z3_eq(lhs_2.to_smt(), var.to_smt()), lhs_2, var)
                 )
             )
         )
@@ -68,7 +67,7 @@ class TestLanguage(unittest.TestCase):
                 assgn_2,
                 prog,
                 sc.before(assgn_2, assgn_1) &
-                sc.smt_for(cast(z3.BoolRef, lhs_2.to_smt() == var.to_smt()), lhs_2, var)
+                sc.smt_for(z3_eq(lhs_2.to_smt(), var.to_smt()), lhs_2, var)
             )
         )
 
@@ -106,7 +105,7 @@ class TestLanguage(unittest.TestCase):
         bad_formula_4: Formula = sc.forall(
             assgn_1,
             prog,
-            sc.SMTFormula(cast(z3.BoolRef, prog.to_smt() == z3.StringVal("")), prog)
+            sc.SMTFormula(z3_eq(prog.to_smt(), z3.StringVal("")), prog)
         )
 
         self.assertFalse(well_formed(bad_formula_4, LANG_GRAMMAR)[0])
@@ -114,7 +113,7 @@ class TestLanguage(unittest.TestCase):
         bad_formula_5: Formula = sc.forall(
             assgn_1,
             prog,
-            sc.SMTFormula(cast(z3.BoolRef, assgn_1.to_smt() == z3.StringVal("")), assgn_1) &
+            sc.SMTFormula(z3_eq(assgn_1.to_smt(), z3.StringVal("")), assgn_1) &
             sc.forall(
                 var,
                 assgn_1,
@@ -127,7 +126,7 @@ class TestLanguage(unittest.TestCase):
         bad_formula_6: Formula = sc.forall(
             assgn_1,
             prog,
-            sc.SMTFormula(cast(z3.BoolRef, prog.to_smt() == z3.StringVal("x := x")), prog)
+            sc.SMTFormula(z3_eq(prog.to_smt(), z3.StringVal("x := x")), prog)
         )
 
         self.assertFalse(well_formed(bad_formula_6, LANG_GRAMMAR)[0])
@@ -138,7 +137,7 @@ class TestLanguage(unittest.TestCase):
             sc.forall(
                 assgn_2,
                 assgn_1,
-                sc.SMTFormula(cast(z3.BoolRef, assgn_1.to_smt() == z3.StringVal("x := x")), assgn_1)
+                sc.SMTFormula(z3_eq(assgn_1.to_smt(), z3.StringVal("x := x")), assgn_1)
             )
         )
 
@@ -198,8 +197,8 @@ class TestLanguage(unittest.TestCase):
 
     def test_push_in_negation(self):
         a = Constant("$a", "<var>")
-        w = sc.smt_for(a.to_smt() == z3.StringVal("1"), a)
-        x = sc.smt_for(a.to_smt() == z3.StringVal("2"), a)
+        w = sc.smt_for(z3_eq(a.to_smt(), z3.StringVal("1")), a)
+        x = sc.smt_for(z3_eq(a.to_smt(), z3.StringVal("2")), a)
         y = sc.smt_for(a.to_smt() > z3.StringVal("0"), a)
         z = sc.smt_for(a.to_smt() < z3.StringVal("3"), a)
 
@@ -217,11 +216,11 @@ class TestLanguage(unittest.TestCase):
             sc.forall_bind(
                 BindExpression(var_1),
                 rhs_1, start,
-                sc.smt_for(cast(z3.BoolRef, var_1.to_smt() == z3.StringVal("x")), var_1)) & \
+                sc.smt_for(z3_eq(var_1.to_smt(), z3.StringVal("x")), var_1)) & \
             sc.forall_bind(
                 var_1 + " := " + rhs_1,
                 assgn, start,
-                sc.smt_for(cast(z3.BoolRef, var_1.to_smt() == z3.StringVal("y")), var_1))
+                sc.smt_for(z3_eq(var_1.to_smt(), z3.StringVal("y")), var_1))
 
         rhs_1_0 = BoundVariable("$rhs_1_0", "<rhs>")
         var_1_0 = BoundVariable("$var1_0", "<var>")
@@ -231,11 +230,11 @@ class TestLanguage(unittest.TestCase):
             sc.forall_bind(
                 BindExpression(var_1),
                 rhs_1, start,
-                sc.smt_for(cast(z3.BoolRef, var_1.to_smt() == z3.StringVal("x")), var_1)) & \
+                sc.smt_for(z3_eq(var_1.to_smt(), z3.StringVal("x")), var_1)) & \
             sc.forall_bind(
                 var_1_0 + " := " + rhs_1_0,
                 assgn, start,
-                sc.smt_for(cast(z3.BoolRef, var_1_0.to_smt() == z3.StringVal("y")), var_1_0))
+                sc.smt_for(z3_eq(var_1_0.to_smt(), z3.StringVal("y")), var_1_0))
 
         self.assertEqual(expected, ensure_unique_bound_variables(formula))
         self.assertEqual(expected, ensure_unique_bound_variables(expected))

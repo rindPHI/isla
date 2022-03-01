@@ -20,13 +20,15 @@ from packaging import version
 
 import isla.evaluator
 import isla.helpers
+import isla.three_valued_truth
 from isla import language
 import isla.isla_shortcuts as sc
 from isla.existential_helpers import insert_tree
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
-    replace_line_breaks, z3_subst, z3_solve, weighted_geometric_mean, assertions_activated, \
+    replace_line_breaks, weighted_geometric_mean, assertions_activated, \
     split_str_with_nonterminals, cluster_by_common_elements, is_nonterminal
+from isla.z3_helpers import z3_solve, z3_subst, z3_eq
 from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES, COUNT_PREDICATE
 from isla.language import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
     convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, QuantifiedFormula, \
@@ -41,10 +43,10 @@ class SolutionState:
         self.level = level
         self.__hash = None
 
-    def formula_satisfied(self, grammar: Grammar) -> isla.helpers.ThreeValuedTruth:
+    def formula_satisfied(self, grammar: Grammar) -> isla.three_valued_truth.ThreeValuedTruth:
         if self.tree.is_open():
             # Have to instantiate variables first
-            return isla.helpers.ThreeValuedTruth.unknown()
+            return isla.three_valued_truth.ThreeValuedTruth.unknown()
 
         return isla.evaluator.evaluate(self.constraint, self.tree, grammar)
 
@@ -1307,7 +1309,7 @@ class ISLaSolver:
                     # solvable than "x == '17'"---fewer timeouts!
                     z3.Not(z3.StrToInt(constant.to_smt()) == z3.IntVal(int(string_val.as_string())))
                     if constant.is_numeric()
-                    else z3.Not(constant.to_smt() == string_val)
+                    else z3.Not(z3_eq(constant.to_smt(), string_val))
                     for constant, string_val in prev_solution.items()])
 
             for smt_formula in smt_formulas:

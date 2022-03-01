@@ -19,6 +19,7 @@ from isla.language import BoundVariable
 from isla.language import Constant, Formula, BindExpression, \
     DerivationTree, VariableManager, \
     QuantifiedFormula, parse_isla
+from isla.z3_helpers import z3_eq
 from isla_formalizations import rest, scriptsizec
 from isla_formalizations.csv import CSV_GRAMMAR, CSV_HEADERBODY_GRAMMAR
 from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, validate_xml, \
@@ -48,7 +49,7 @@ class TestEvaluator(unittest.TestCase):
                     assgn_2,
                     tree,
                     sc.before(assgn_2, assgn_1) &
-                    sc.smt_for(cast(z3.BoolRef, lhs_2.to_smt() == var.to_smt()), lhs_2, var)
+                    sc.smt_for(z3_eq(lhs_2.to_smt(), var.to_smt()), lhs_2, var)
                 )
             )
         )
@@ -80,14 +81,14 @@ class TestEvaluator(unittest.TestCase):
         tree = DerivationTree.from_parse_tree(next(parser.parse(prog)))
         var = BoundVariable("$var", "<var>")
 
-        formula = sc.forall(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("x")), var))
+        formula = sc.forall(var, tree, sc.smt_for(cast(z3.BoolRef, z3_eq(var.to_smt(), z3.StringVal("x"))), var))
         self.assertTrue(evaluate(formula, tree, LANG_GRAMMAR))
-        formula = sc.forall(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("y")), var))
+        formula = sc.forall(var, tree, sc.smt_for(cast(z3.BoolRef, z3_eq(var.to_smt(), z3.StringVal("y"))), var))
         self.assertFalse(evaluate(formula, tree, LANG_GRAMMAR))
 
-        formula = sc.exists(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("x")), var))
+        formula = sc.exists(var, tree, sc.smt_for(cast(z3.BoolRef, z3_eq(var.to_smt(), z3.StringVal("x"))), var))
         self.assertTrue(evaluate(formula, tree, LANG_GRAMMAR))
-        formula = sc.exists(var, tree, sc.smt_for(cast(z3.BoolRef, var.to_smt() == z3.StringVal("y")), var))
+        formula = sc.exists(var, tree, sc.smt_for(cast(z3.BoolRef, z3_eq(var.to_smt(), z3.StringVal("y"))), var))
         self.assertFalse(evaluate(formula, tree, LANG_GRAMMAR))
 
     def test_match(self):
@@ -141,7 +142,7 @@ class TestEvaluator(unittest.TestCase):
                     assgn_2,
                     tree,
                     sc.before(assgn_2, assgn_1) &
-                    sc.smt_for(cast(z3.BoolRef, lhs_2.to_smt() == var.to_smt()), lhs_2, var)
+                    sc.smt_for(z3_eq(lhs_2.to_smt(), var.to_smt()), lhs_2, var)
                 )
             )
         )
@@ -150,7 +151,7 @@ class TestEvaluator(unittest.TestCase):
 
         success = 0
         fail = 0
-        for _ in range(100):
+        for _ in range(500):
             tree = DerivationTree.from_parse_tree(fuzzer.expand_tree(("<start>", None)))
             if evaluate(formula(tree), tree, LANG_GRAMMAR):
                 inp = tree_to_string(tree)
@@ -177,7 +178,7 @@ class TestEvaluator(unittest.TestCase):
             "</" + mgr.bv("$cid", "<id>") + ">",
             "<xml-tree>",
             start,
-            mgr.smt(mgr.bv("$oid").to_smt() == mgr.bv("$cid").to_smt())
+            mgr.smt(z3_eq(mgr.bv("$oid").to_smt(), mgr.bv("$cid").to_smt()))
         )))
 
         matches = matches_for_quantified_formula(formula, XML_GRAMMAR, tree, {start: tree})
@@ -241,7 +242,7 @@ class TestEvaluator(unittest.TestCase):
                         in_inst.get_subtree(in_inst.find_node(2222))
                     )),
                 language.SMTFormula(
-                    Constant("use_id", "<id>").to_smt() == BoundVariable("def_id", "<id>").to_smt(),
+                    z3_eq(Constant("use_id", "<id>").to_smt(), BoundVariable("def_id", "<id>").to_smt()),
                     BoundVariable("def_id", "<id>"),
                     instantiated_variables=OrderedSet([BoundVariable("use_id", "<id>")]),
                     substitutions={Constant("use_id", "<id>"): in_inst.get_subtree(in_inst.find_node(41940))})),
@@ -273,7 +274,7 @@ class TestEvaluator(unittest.TestCase):
             "</" + mgr.bv("$cid", "<id>") + ">",
             "<xml-tree>",
             start,
-            mgr.smt(mgr.bv("$oid").to_smt() == mgr.bv("$cid").to_smt())
+            mgr.smt(z3_eq(mgr.bv("$oid").to_smt(), mgr.bv("$cid").to_smt()))
         ))
 
         correct_tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse("<b>k</b>"))[0])

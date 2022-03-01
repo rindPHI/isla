@@ -20,6 +20,7 @@ from isla.language import VariablesCollector, parse_isla
 from isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
     get_quantifier_chains
 from isla.type_defs import Grammar
+from isla.z3_helpers import z3_eq
 from isla_formalizations import rest, tar, simple_tar, scriptsizec
 from isla_formalizations.csv import csv_lint, CSV_GRAMMAR, CSV_HEADERBODY_GRAMMAR
 from isla_formalizations.tar import extract_tar
@@ -31,7 +32,7 @@ from test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR
 class TestSolver(unittest.TestCase):
     def test_qfd_formula_might_match(self):
         mgr = language.VariableManager(LANG_GRAMMAR)
-        solver = ISLaSolver(LANG_GRAMMAR, mgr.smt(mgr.const("$DUMMY", "<start>").to_smt() == z3.StringVal("")))
+        solver = ISLaSolver(LANG_GRAMMAR, mgr.smt(z3_eq(mgr.const("$DUMMY", "<start>").to_smt(), z3.StringVal(""))))
 
         tree = language.DerivationTree.from_parse_tree(
             ('<start>', [
@@ -46,7 +47,7 @@ class TestSolver(unittest.TestCase):
             language.BindExpression(mgr.bv("$var1", "<var>")),
             mgr.bv("$rhs1", "<rhs>"),
             tree,
-            mgr.smt(mgr.bv("$var1").to_smt() == z3.StringVal("x"))
+            mgr.smt(z3_eq(mgr.bv("$var1").to_smt(), z3.StringVal("x")))
         )))
 
         assert tree.get_subtree((0, 0, 2, 0)).value == "<var>"
@@ -56,7 +57,7 @@ class TestSolver(unittest.TestCase):
 
     def test_atomic_smt_formula(self):
         assgn = language.Constant("$assgn", "<assgn>")
-        formula = language.SMTFormula(cast(z3.BoolRef, assgn.to_smt() == z3.StringVal("x := x")), assgn)
+        formula = language.SMTFormula(z3_eq(assgn.to_smt(), z3.StringVal("x := x")), assgn)
         self.execute_generation_test(formula, num_solutions=1)
 
     def test_simple_universal_formula(self):
@@ -65,7 +66,7 @@ class TestSolver(unittest.TestCase):
 
         formula = sc.forall(
             var1, start,
-            sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
+            sc.smt_for(cast(z3.BoolRef, z3_eq(var1.to_smt(), z3.StringVal("x"))), var1))
 
         self.execute_generation_test(formula, max_number_free_instantiations=1)
 
@@ -75,7 +76,7 @@ class TestSolver(unittest.TestCase):
             sc.forall_bind(
                 language.BindExpression(mgr.bv("$var1", "<var>")),
                 mgr.bv("$rhs", "<rhs>"), mgr.const("$start", "<start>"),
-                mgr.smt(cast(z3.BoolRef, mgr.bv("$var1").to_smt() == z3.StringVal("x"))))
+                mgr.smt(cast(z3.BoolRef, z3_eq(mgr.bv("$var1").to_smt(), z3.StringVal("x")))))
         )
 
         self.execute_generation_test(formula)
@@ -87,7 +88,7 @@ class TestSolver(unittest.TestCase):
         formula = mgr.create(
             sc.exists(
                 mgr.bv("$var", "<var>"), start,
-                mgr.smt(mgr.bv("$var").to_smt() == z3.StringVal("x")))
+                mgr.smt(z3_eq(mgr.bv("$var").to_smt(), z3.StringVal("x"))))
         )
 
         self.execute_generation_test(
@@ -104,7 +105,7 @@ class TestSolver(unittest.TestCase):
         formula = sc.exists_bind(
             language.BindExpression(var1),
             rhs, start,
-            sc.smt_for(cast(z3.BoolRef, var1.to_smt() == z3.StringVal("x")), var1))
+            sc.smt_for(z3_eq(var1.to_smt(), z3.StringVal("x")), var1))
 
         self.execute_generation_test(formula, num_solutions=50)
 
@@ -120,11 +121,11 @@ class TestSolver(unittest.TestCase):
             sc.forall_bind(
                 language.BindExpression(var_1),
                 rhs_1, start,
-                sc.smt_for(cast(z3.BoolRef, var_1.to_smt() == z3.StringVal("x")), var_1)) & \
+                sc.smt_for(z3_eq(var_1.to_smt(), z3.StringVal("x")), var_1)) & \
             sc.forall_bind(
                 var_2 + " := " + rhs_2,
                 assgn, start,
-                sc.smt_for(cast(z3.BoolRef, var_2.to_smt() == z3.StringVal("y")), var_2))
+                sc.smt_for(z3_eq(var_2.to_smt(), z3.StringVal("y")), var_2))
 
         self.execute_generation_test(formula)
 
@@ -193,7 +194,7 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
                     mgr.bv("$assgn_2", "<assgn>"),
                     mgr.const("$start"),
                     sc.before(mgr.bv("$assgn_2"), mgr.bv("$assgn_1")) &
-                    mgr.smt(cast(z3.BoolRef, mgr.bv("$lhs_2").to_smt() == mgr.bv("$var").to_smt()))
+                    mgr.smt(z3_eq(mgr.bv("$lhs_2").to_smt(), mgr.bv("$var").to_smt()))
                 )
             )
         ))

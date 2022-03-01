@@ -11,6 +11,7 @@ import isla.isla_shortcuts as sc
 from isla import language
 from isla.helpers import delete_unreachable
 from isla.type_defs import Grammar
+from isla.z3_helpers import z3_eq
 from .tar import ljust_crop_tar, rjust_crop_tar
 
 SIMPLE_TAR_GRAMMAR = {
@@ -53,7 +54,8 @@ SIMPLE_TAR_GRAMMAR = {
 
 
 def tar_checksum(
-        grammar: Grammar, header: language.DerivationTree, checksum_tree: language.DerivationTree) -> language.SemPredEvalResult:
+        grammar: Grammar, header: language.DerivationTree,
+        checksum_tree: language.DerivationTree) -> language.SemPredEvalResult:
     if not header.is_complete():
         return language.SemPredEvalResult(None)
 
@@ -67,7 +69,8 @@ def tar_checksum(
     delete_unreachable(checksum_grammar)
     checksum_parser = EarleyParser(checksum_grammar)
 
-    space_checksum = language.DerivationTree.from_parse_tree(list(checksum_parser.parse("        "))[0]).get_subtree((0,))
+    space_checksum = language.DerivationTree.from_parse_tree(list(checksum_parser.parse("        "))[0]).get_subtree(
+        (0,))
     header_wo_checksum = header.replace_path(current_checksum_path, space_checksum)
 
     header_bytes: List[int] = list(str(header_wo_checksum).encode("ascii"))
@@ -129,8 +132,8 @@ TAR_CONSTRAINTS = mgr.create(
         sc.forall(
             mgr.bv("$typeflag", "<typeflag>"),
             mgr.bv("$entry"),
-            mgr.smt(cast(z3.BoolRef, mgr.bv("$typeflag").to_smt() == z3.StringVal("0")))
-            | (mgr.smt(mgr.bv("$typeflag").to_smt() == z3.StringVal("2")) &
+            mgr.smt(cast(z3.BoolRef, z3_eq(mgr.bv("$typeflag").to_smt(), z3.StringVal("0"))))
+            | (mgr.smt(z3_eq(mgr.bv("$typeflag").to_smt(), z3.StringVal("2"))) &
                sc.forall_bind(
                    mgr.bv("$linked_file_name_chars", "<characters>") + "<maybe_nuls>",
                    mgr.bv("$linked_file_name", "<linked_file_name>"),
@@ -144,7 +147,9 @@ TAR_CONSTRAINTS = mgr.create(
                            mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>",
                            mgr.bv("$file_name"),
                            mgr.bv("$linked_entry"),
-                           mgr.smt(mgr.bv("$file_name_chars").to_smt() == mgr.bv("$linked_file_name_chars").to_smt())
+                           mgr.smt(
+                               z3_eq(mgr.bv("$file_name_chars").to_smt(),
+                                     mgr.bv("$linked_file_name_chars").to_smt()))
                        )
                    )))
         ))

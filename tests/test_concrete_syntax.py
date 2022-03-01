@@ -9,6 +9,7 @@ from isla.helpers import strip_ws
 from isla import language
 from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManager
 from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
+from isla.z3_helpers import z3_eq
 from isla_formalizations import scriptsizec
 from test_data import LANG_GRAMMAR
 import isla.isla_shortcuts as sc
@@ -25,7 +26,7 @@ class TestConcreteSyntax(unittest.TestCase):
             sc.forall(
                 mgr.bv("var_2", "<var>"),
                 mgr.bv("start"),
-                mgr.smt(cast(z3.BoolRef, mgr.bv("var_1").to_smt() == mgr.bv("var_2").to_smt()))
+                mgr.smt(z3_eq(mgr.bv("var_1").to_smt(), mgr.bv("var_2").to_smt()))
             )))
 
         DummyVariable.cnt = 0
@@ -56,7 +57,7 @@ forall <var> var_1 in start:
                     mgr.bv("assgn_2", "<assgn>"),
                     mgr.const("start"),
                     sc.before(mgr.bv("assgn_2"), mgr.bv("assgn_1")) &
-                    mgr.smt(cast(z3.BoolRef, mgr.bv("lhs_2").to_smt() == mgr.bv("var").to_smt()))
+                    mgr.smt(z3_eq(mgr.bv("lhs_2").to_smt(), mgr.bv("var").to_smt()))
                 )
             )
         ))
@@ -117,7 +118,7 @@ forall <key_value> container="{<key> key} = {<value> value}" in start:
             mgr.bv("key", "<key>") + " = " + mgr.bv("value", "<value>"),
             mgr.bv("container", "<key_value>"),
             mgr.const("start", "<start>"),
-            -mgr.smt(mgr.bv("key").to_smt() == z3.StringVal("date")) |
+            -mgr.smt(z3_eq(mgr.bv("key").to_smt(), z3.StringVal("date"))) |
             mgr.smt(
                 z3.InRe(mgr.bv("value").to_smt(),
                         z3.Concat(
