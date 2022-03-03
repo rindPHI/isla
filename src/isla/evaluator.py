@@ -59,9 +59,11 @@ def evaluate(
     if len(top_level_constants) > 0:
         formula = formula.substitute_expressions({next(iter(top_level_constants)): reference_tree})
 
-    if assertions_activated():
-        res, msg = well_formed(formula, grammar)
-        assert res, msg
+    # NOTE: Deactivated, might be too strict for evaluation (though maybe
+    #       necessary for solving). See comment in well_formed.
+    # if assertions_activated():
+    #     res, msg = well_formed(formula, grammar)
+    #     assert res, msg
 
     if not assumptions and not FilterVisitor(lambda f: isinstance(f, NumericQuantifiedFormula)).collect(formula):
         # The legacy evaluation performs better, but only works w/o NumericQuantifiedFormulas / assumptions.
@@ -173,6 +175,19 @@ def well_formed(formula: Formula,
                 bound_vars: Optional[OrderedSet[BoundVariable]] = None,
                 in_expr_vars: Optional[OrderedSet[Variable]] = None,
                 bound_by_smt: Optional[OrderedSet[Variable]] = None) -> Tuple[bool, str]:
+    # TODO Problem: The formula
+    #   ```
+    #   forall <?NONTERMINAL> container in start:
+    #     exists <?NONTERMINAL> length_field in container:
+    #       exists int decimal:
+    #         (hex_to_decimal(length_field, decimal) and
+    #          (= (div (str.len (str.replace_all container " " "")) 2) (str.to.int decimal)))
+    #   ```
+    #  is reported as ill-formed since `container`, the in-expression of the existential qfr,
+    #  is reported to be bound by the SMT formula. This could be an actual problem, but not when
+    #  evaluating, only when generating. With two symbols for the SMT formula, I simply received
+    #  a timeout. Can we defer the Z3 call in the solver until `container` is fixed?
+
     if bound_vars is None:
         bound_vars = OrderedSet([])
     if in_expr_vars is None:

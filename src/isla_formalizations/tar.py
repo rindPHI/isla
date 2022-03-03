@@ -117,12 +117,6 @@ def tar_checksum(
 TAR_CHECKSUM_PREDICATE = language.SemanticPredicate("tar_checksum", 2, tar_checksum, binds_tree=False)
 
 
-def tar_checksum(
-        header: Union[language.Variable, language.DerivationTree],
-        checksum: Union[language.Variable, language.DerivationTree]) -> language.SemanticPredicateFormula:
-    return language.SemanticPredicateFormula(TAR_CHECKSUM_PREDICATE, header, checksum, order=100)
-
-
 def mk_tar_parser(start: str) -> Callable[[str], List[ParseTree]]:
     parser = TarParser(start_symbol=start)
     return lambda inp: parser.parse(inp)

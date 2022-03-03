@@ -22,7 +22,7 @@ from orderedset import OrderedSet
 from z3 import Z3Exception
 
 import isla.mexpr_parser.MexprParserListener as MexprParserListener
-from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER
+from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, assertions_activated
 from isla.helpers import replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, \
     immutable_to_grammar, \
     nested_list_to_tuple
@@ -613,11 +613,12 @@ class DerivationTree:
         return stack.pop()
 
     def __hash__(self):
-        if self.__hash is not None:
-            return self.__hash
-
-        self.__hash = self.compute_hash_iteratively(structural=False)
-        return self.__hash
+        return self.id  # Should be unique!
+        # if self.__hash is not None:
+        #     return self.__hash
+        #
+        # self.__hash = self.compute_hash_iteratively(structural=False)
+        # return self.__hash
 
     def structural_hash(self):
         if self.__structural_hash is not None:
@@ -1545,10 +1546,11 @@ class SMTFormula(Formula):
         self.instantiated_variables = instantiated_variables or OrderedSet([])
         self.substitutions: Dict[Variable, DerivationTree] = substitutions or {}
 
-        actual_symbols = get_symbols(formula)
-        if len(self.free_variables_) + len(self.instantiated_variables) != len(actual_symbols):
-            raise RuntimeError(f"Supplied number of {len(free_variables)} symbols does not match "
-                               f"actual number of symbols {len(actual_symbols)} in formula '{formula}'")
+        if assertions_activated():
+            actual_symbols = get_symbols(formula)
+            assert len(self.free_variables_) + len(self.instantiated_variables) == len(actual_symbols), \
+                f"Supplied number of {len(free_variables)} symbols does not match " + \
+                f"actual number of symbols {len(actual_symbols)} in formula '{formula}'"
 
         # When substituting expressions, the formula is automatically evaluated if this flag
         # is set to True and all substituted expressions are closed trees, i.e., the formula
