@@ -2,12 +2,11 @@ import copy
 import heapq
 import itertools
 import logging
-import math
 import sys
 import time
 from functools import reduce, lru_cache
-from typing import Generator, Dict, List, Set, Optional, Tuple, Union, cast, Callable
 
+import math
 import pkg_resources
 import z3
 from fuzzingbook.Parser import canonical, EarleyParser
@@ -17,23 +16,23 @@ from grammar_to_regex.cfg2regex import RegexConverter
 from grammar_to_regex.regex import regex_to_z3
 from orderedset import OrderedSet
 from packaging import version
+from typing import Generator, Dict, List, Set, Optional, Tuple, Union, cast, Callable
 
 import isla.evaluator
 import isla.helpers
+import isla.isla_shortcuts as sc
 import isla.three_valued_truth
 from isla import language
-import isla.isla_shortcuts as sc
 from isla.existential_helpers import insert_tree
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
     replace_line_breaks, weighted_geometric_mean, assertions_activated, \
     split_str_with_nonterminals, cluster_by_common_elements, is_nonterminal
-from isla.z3_helpers import z3_solve, z3_subst, z3_eq
 from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES, COUNT_PREDICATE
 from isla.language import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
-    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, QuantifiedFormula, \
-    fresh_variable
+    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, QuantifiedFormula
 from isla.type_defs import Grammar, Path
+from isla.z3_helpers import z3_solve, z3_subst, z3_eq
 
 
 class SolutionState:
