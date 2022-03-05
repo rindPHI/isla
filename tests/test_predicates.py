@@ -2,6 +2,7 @@ import unittest
 
 import z3
 from fuzzingbook.Parser import EarleyParser
+from grammar_graph import gg
 from orderedset import OrderedSet
 
 from isla import language
@@ -201,7 +202,8 @@ class TestPredicates(unittest.TestCase):
             language.SMTFormula(z3.StrToInt(decimal.to_smt()) >= z3.IntVal(10), decimal) &
             language.SMTFormula(z3.StrToInt(decimal.to_smt()) <= z3.IntVal(100), decimal, ) &
             language.SemanticPredicateFormula(
-                OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"),
+                OCTAL_TO_DEC_PREDICATE(
+                    gg.GrammarGraph.from_grammar(octal_conv_grammar), "<octal_digits>", "<decimal_digits>"),
                 tree, decimal),
         )
 

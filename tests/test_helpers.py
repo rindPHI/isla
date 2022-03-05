@@ -3,12 +3,12 @@ import unittest
 from typing import Optional, cast
 
 import z3
-from fuzzingbook.Parser import EarleyParser, canonical
+from fuzzingbook.Parser import EarleyParser
 from grammar_graph.gg import GrammarGraph
 
 from isla.existential_helpers import path_to_tree, paths_between
 from isla.helpers import is_prefix, path_iterator, delete_unreachable, \
-    dict_of_lists_to_list_of_dicts, weighted_geometric_mean
+    dict_of_lists_to_list_of_dicts, weighted_geometric_mean, canonical
 from isla.z3_helpers import evaluate_z3_expression, z3_eq, smt_expr_to_str
 from isla.isla_predicates import is_before
 from isla.type_defs import Grammar, ParseTree

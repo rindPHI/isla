@@ -5,7 +5,7 @@ from typing import Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, 
 
 from fuzzingbook.Grammars import unreachable_nonterminals
 
-from isla.type_defs import Path, Grammar, ParseTree, ImmutableGrammar
+from isla.type_defs import Path, Grammar, ParseTree, ImmutableGrammar, CanonicalGrammar
 
 S = TypeVar('S')
 T = TypeVar('T')
@@ -140,6 +140,24 @@ def tree_size(tree: ParseTree) -> int:
         return 1
 
     return 1 + sum(tree_depth(child) for child in tree[1])
+
+
+def canonical(grammar: Grammar) -> CanonicalGrammar:
+    # Slightly optimized w.r.t. Fuzzing Book version: Call to split on
+    # compiled regex instead of fresh compilation every time.
+    def split(expansion):
+        if isinstance(expansion, tuple):
+            expansion = expansion[0]
+
+        return [
+            token
+            for token in RE_NONTERMINAL.split(expansion)
+            if token]
+
+    return {
+        k: [split(expression) for expression in alternatives]
+        for k, alternatives in grammar.items()
+    }
 
 
 def dict_of_lists_to_list_of_dicts(dict_of_lists: Dict[S, Iterable[T]]) -> List[Dict[S, T]]:

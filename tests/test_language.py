@@ -253,7 +253,7 @@ class TestLanguage(unittest.TestCase):
         # self.assertEqual(SemPredEvalResult(False), result)
 
         tree = DerivationTree("<start>", [DerivationTree("<stmt>", None)])
-        result = count(LANG_GRAMMAR, tree, "<assgn>", DerivationTree("4", None))
+        result = count(gg.GrammarGraph.from_grammar(LANG_GRAMMAR), tree, "<assgn>", DerivationTree("4", None))
         self.assertEqual("{<stmt>: <assgn> ; <assgn> ; <assgn> ; <assgn>}", str(result))
         #
         # result = count(LANG_GRAMMAR, tree, "<start>", DerivationTree("2", None))

@@ -71,6 +71,8 @@ def evaluate(
         # rather not invest that work to gain some seconds of performance.
         return evaluate_legacy(formula, grammar, {}, reference_tree, paths=paths)
 
+    graph = gg.GrammarGraph.from_grammar(grammar)
+
     qfr_free: Formula = eliminate_quantifiers(
         formula,
         grammar=grammar,
@@ -128,7 +130,7 @@ def evaluate(
                 return SMTFormula(z3.BoolVal(formula.evaluate(reference_tree)))
 
             if isinstance(formula, SemanticPredicateFormula):
-                eval_result = formula.evaluate(grammar)
+                eval_result = formula.evaluate(graph)
 
                 if not eval_result.ready():
                     return False
@@ -324,6 +326,9 @@ def evaluate_legacy(
     """
     assert reference_tree is not None
     assert isinstance(reference_tree, DerivationTree)
+
+    graph = gg.GrammarGraph.from_grammar(grammar)
+
     if paths is None:
         paths = dict(reference_tree.paths())
 
@@ -415,7 +420,7 @@ def evaluate_legacy(
         arg_insts = [arg if isinstance(arg, DerivationTree) or arg not in assignments
                      else assignments[arg][1]
                      for arg in formula.args]
-        eval_res = formula.predicate.evaluate(grammar, *arg_insts)
+        eval_res = formula.predicate.evaluate(graph, *arg_insts)
 
         if eval_res.true():
             return ThreeValuedTruth.true()

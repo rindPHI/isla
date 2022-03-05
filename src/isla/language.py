@@ -14,8 +14,6 @@ import antlr4
 import z3
 from antlr4 import InputStream, RuleContext
 from antlr4.Token import CommonToken
-from cachetools import cached
-from cachetools.keys import hashkey
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
 from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
@@ -1281,7 +1279,7 @@ def binds_argument_trees(tree: DerivationTree, args: Tuple[SemPredArg, ...]) -> 
 class SemanticPredicateEvalFun(Protocol):
     def __call__(
             self,
-            grammar: Grammar,
+            graph: Optional[gg.GrammarGraph],
             *args: DerivationTree | Constant | str | int,
             negate=False) -> SemPredEvalResult: ...
 
@@ -1315,11 +1313,11 @@ class SemanticPredicate:
         else:
             self.binds_tree = binds_argument_trees
 
-    def evaluate(self, grammar: Grammar, *instantiations: SemPredArg, negate: bool = False):
+    def evaluate(self, graph: gg.GrammarGraph, *instantiations: SemPredArg, negate: bool = False):
         if negate:
-            return self.eval_fun(grammar, *instantiations, negate=True)
+            return self.eval_fun(graph, *instantiations, negate=True)
         else:
-            return self.eval_fun(grammar, *instantiations)
+            return self.eval_fun(graph, *instantiations)
 
     def __eq__(self, other):
         return isinstance(other, SemanticPredicate) and (self.name, self.arity) == (other.name, other.arity)
@@ -1341,9 +1339,8 @@ class SemanticPredicateFormula(Formula):
         self.args: Tuple[SemPredArg, ...] = args
         self.order = order
 
-    def evaluate(self, grammar: Grammar, negate: bool = False) -> SemPredEvalResult:
-        assert isinstance(grammar, dict)
-        return self.predicate.evaluate(grammar, *self.args, negate=negate)
+    def evaluate(self, graph: gg.GrammarGraph, negate: bool = False) -> SemPredEvalResult:
+        return self.predicate.evaluate(graph, *self.args, negate=negate)
 
     def binds_tree(self, tree: DerivationTree) -> bool:
         return self.predicate.binds_tree(tree, self.args)

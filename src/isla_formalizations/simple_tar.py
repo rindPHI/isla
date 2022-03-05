@@ -54,12 +54,10 @@ SIMPLE_TAR_GRAMMAR = {
 
 
 def tar_checksum(
-        grammar: Grammar, header: language.DerivationTree,
+        graph: gg.GrammarGraph, header: language.DerivationTree,
         checksum_tree: language.DerivationTree) -> language.SemPredEvalResult:
     if not header.is_complete():
         return language.SemPredEvalResult(None)
-
-    graph = gg.GrammarGraph.from_grammar(grammar)
 
     current_checksum_path = header.find_node(checksum_tree)
 

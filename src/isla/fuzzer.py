@@ -179,7 +179,7 @@ class GrammarFuzzer(Fuzzer):
         if expansion == "":  # Special case: epsilon expansion
             return [DerivationTree("", [])]
 
-        strings = re.split(RE_NONTERMINAL, expansion)
+        strings = RE_NONTERMINAL.split(expansion)
         return [DerivationTree(s, None) if is_nonterminal(s)
                 else DerivationTree(s, [])
                 for s in strings if len(s) > 0]

@@ -8,6 +8,7 @@ from typing import Union, List, Optional, Callable
 
 from fuzzingbook.GrammarFuzzer import tree_to_string
 from fuzzingbook.Grammars import srange
+from grammar_graph import gg
 
 from isla import language
 from isla.helpers import delete_unreachable, roundup
@@ -88,7 +89,7 @@ TAR_GRAMMAR = {
 
 
 def tar_checksum(
-        _: Grammar,
+        _: Optional[gg.GrammarGraph],
         header: language.DerivationTree,
         checksum_tree: language.DerivationTree) -> language.SemPredEvalResult:
     if not header.is_complete():
@@ -124,12 +125,12 @@ def mk_tar_parser(start: str) -> Callable[[str], List[ParseTree]]:
 
 LJUST_CROP_TAR_PREDICATE = language.SemanticPredicate(
     "ljust_crop_tar", 3,
-    lambda grammar, tree, width, fillchar: just(True, True, mk_tar_parser, tree, width, fillchar),
+    lambda graph, tree, width, fillchar: just(True, True, mk_tar_parser, tree, width, fillchar),
     binds_tree=False)
 
 RJUST_CROP_TAR_PREDICATE = language.SemanticPredicate(
     "rjust_crop_tar", 3,
-    lambda grammar, tree, width, fillchar: just(False, True, mk_tar_parser, tree, width, fillchar),
+    lambda graph, tree, width, fillchar: just(False, True, mk_tar_parser, tree, width, fillchar),
     binds_tree=False)
 
 

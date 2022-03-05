@@ -9,7 +9,7 @@ from functools import reduce, lru_cache
 import math
 import pkg_resources
 import z3
-from fuzzingbook.Parser import canonical, EarleyParser
+from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
 from grammar_graph.gg import GrammarGraph
 from grammar_to_regex.cfg2regex import RegexConverter
@@ -27,7 +27,7 @@ from isla.existential_helpers import insert_tree
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
     replace_line_breaks, weighted_geometric_mean, assertions_activated, \
-    split_str_with_nonterminals, cluster_by_common_elements, is_nonterminal
+    split_str_with_nonterminals, cluster_by_common_elements, is_nonterminal, canonical
 from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES, COUNT_PREDICATE
 from isla.language import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
     convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, QuantifiedFormula
@@ -622,7 +622,7 @@ class ISLaSolver:
                             eval_result = cast(
                                 language.SemanticPredicateFormula,
                                 language.substitute(semantic_predicate_formula, {constant: value})
-                            ).evaluate(self.grammar, negate=not negated)
+                            ).evaluate(self.graph, negate=not negated)
                             if eval_result.ready() and not eval_result.is_boolean():
                                 instantiation.update(eval_result.result)
                         instantiations.append(instantiation)
@@ -792,7 +792,7 @@ class ISLaSolver:
                 cast(language.NegatedFormula, possibly_negated_semantic_predicate_formula).args[0] if negated
                 else possibly_negated_semantic_predicate_formula)
 
-            evaluation_result = semantic_predicate_formula.evaluate(self.grammar, negate=negated)
+            evaluation_result = semantic_predicate_formula.evaluate(self.graph, negate=negated)
             if not evaluation_result.ready():
                 continue
 
