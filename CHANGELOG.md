@@ -16,6 +16,7 @@ version mostly conforms to the state as documented in the ISLa paper.
   that `__eq__` is called, e.g., when requesting elements from hash maps, but the `z3.ExprRef`
   implementation creates a new `z3.BoolRef` instead of returning a bool. We perform a structural
   comparison instead. To construct `z3.BoolRef` equations, use `isla.z3_helpers.z3_eq` instead.
+- Performance optimization for semantic predicates.
 
 ## [0.2b1] - 2022-02-25
 
