@@ -14,6 +14,8 @@ import antlr4
 import z3
 from antlr4 import InputStream, RuleContext
 from antlr4.Token import CommonToken
+from cachetools import cached
+from cachetools.keys import hashkey
 from fuzzingbook.GrammarFuzzer import tree_to_string, GrammarFuzzer
 from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
