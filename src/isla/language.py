@@ -613,12 +613,12 @@ class DerivationTree:
         return stack.pop()
 
     def __hash__(self):
-        return self.id  # Should be unique!
-        # if self.__hash is not None:
-        #     return self.__hash
-        #
-        # self.__hash = self.compute_hash_iteratively(structural=False)
-        # return self.__hash
+        # return self.id  # Should be unique!
+        if self.__hash is not None:
+            return self.__hash
+
+        self.__hash = self.compute_hash_iteratively(structural=False)
+        return self.__hash
 
     def structural_hash(self):
         if self.__structural_hash is not None:

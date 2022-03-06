@@ -372,7 +372,7 @@ def evaluate_legacy(
             assert formula.in_variable in assignments
             in_path, in_inst = assignments[formula.in_variable]
 
-        subtrees = {in_path: in_inst}
+        subtrees = {(): in_inst}
         skip = True
         for opath, otree in list(paths.items()):
             if opath == in_path:
@@ -383,12 +383,12 @@ def evaluate_legacy(
                 if len(opath) <= len(in_path):
                     break
 
-                subtrees[opath] = otree
+                subtrees[opath[len(in_path):]] = otree
 
         new_assignments = [
-            new_assignment | assignments
+            {var: (in_path + path, tree) for var, (path, tree) in new_assignment.items()} | assignments
             for new_assignment in matches_for_quantified_formula(
-                formula, grammar, reference_tree, {}, paths=dict(subtrees))]
+                formula, grammar, in_inst, {}, paths=dict(subtrees))]
 
         assert all(
             reference_tree.is_valid_path(path) and
@@ -574,8 +574,9 @@ def matches_for_quantified_formula(
     if initial_assignments is None:
         initial_assignments = {}
 
-    def search_action(path: Path, tree: DerivationTree, paths: Dict[Path, DerivationTree]) -> None:
+    def search_action(path: Path, tree: DerivationTree, paths: Optional[Dict[Path, DerivationTree]] = None) -> None:
         nonlocal new_assignments
+
         node, children = tree
         if node == qfd_var.n_type:
             if bind_expr is not None:
@@ -586,10 +587,14 @@ def matches_for_quantified_formula(
                     maybe_match = dict(maybe_match)
                     new_assignment = copy.copy(initial_assignments)
                     new_assignment[qfd_var] = path, tree
-                    new_assignment.update({v: (p[0], p[1]) for v, p in maybe_match.items()})
+                    new_assignment.update({v: (path + p[0], p[1]) for v, p in maybe_match.items()})
 
                     # The assignment is correct if there is not any non-matched leaf
-                    leaves = [path for path, subtree in paths.items() if not subtree.children]
+                    if paths:
+                        leaves = [path for path, subtree in paths.items() if not subtree.children]
+                    else:
+                        leaves = [leaf_path for leaf_path, _ in tree.leaves()]
+
                     if all(any(len(match_path) <= len(leaf_path) and match_path == leaf_path[:len(match_path)]
                                for match_path, _ in maybe_match.values())
                            for leaf_path in leaves):
@@ -600,15 +605,18 @@ def matches_for_quantified_formula(
                 new_assignments.append(new_assignment)
 
     # NOTE: This implementation depends on the elements in in_tree being stored in pre-order!!!
-    tree_paths: List[Tuple[Path, DerivationTree]] = cast(List[Tuple[Path, DerivationTree]], list(paths.items()))
-    for idx, (path, tree) in enumerate(tree_paths):
-        subtrees = {path: tree}
-        for opath, otree in tree_paths[idx + 1:]:
-            if len(opath) <= len(path):
-                break
-            subtrees[opath] = otree
+    # tree_paths: List[Tuple[Path, DerivationTree]] = cast(List[Tuple[Path, DerivationTree]], list(paths.items()))
+    # for idx, (path, tree) in enumerate(tree_paths):
+    #     subtrees = {(): tree}
+    #     p_length = len(path)
+    #     for opath, otree in tree_paths[idx + 1:]:
+    #         if len(opath) <= p_length:
+    #             break
+    #         subtrees[opath[p_length:]] = otree
+    #
+    #     search_action(path, tree, subtrees)
 
-        search_action(path, tree, subtrees)
+    in_tree.traverse(search_action)
 
     return new_assignments
 

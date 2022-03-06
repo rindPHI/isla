@@ -239,7 +239,8 @@ def count(graph: GrammarGraph,
 
     canonical_grammar = canonical(graph.to_grammar())
     candidates = [candidate for candidate in insert_tree(
-        canonical_grammar, DerivationTree(needle, None), in_tree, graph=graph)
+        canonical_grammar, DerivationTree(needle, None), in_tree, graph=graph,
+        methods=DIRECT_EMBEDDING | SELF_EMBEDDING)
                   if num_needles(candidate) <= target_num_needle_occurrences]
     already_seen = {candidate.structural_hash() for candidate in candidates}
     while candidates:
@@ -258,8 +259,7 @@ def count(graph: GrammarGraph,
                 new_candidate
                 for new_candidate in insert_tree(
                     canonical_grammar, DerivationTree(needle, None), candidate, graph=graph,
-                    methods=DIRECT_EMBEDDING | SELF_EMBEDDING
-                )
+                    methods=DIRECT_EMBEDDING | SELF_EMBEDDING)
                 if (num_needles(new_candidate) <= target_num_needle_occurrences
                     and not new_candidate.structural_hash() in already_seen)]
 
