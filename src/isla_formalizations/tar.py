@@ -156,12 +156,14 @@ octal_conv_grammar.update({
 })
 delete_unreachable(octal_conv_grammar)
 
+octal_conv_graph = gg.GrammarGraph.from_grammar(octal_conv_grammar)
+
 
 def octal_to_decimal_tar(
         octal: Union[language.Variable, language.DerivationTree],
         decimal: Union[language.Variable, language.DerivationTree]) -> language.SemanticPredicateFormula:
     return language.SemanticPredicateFormula(
-        OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"), octal, decimal)
+        OCTAL_TO_DEC_PREDICATE(octal_conv_graph, "<octal_digits>", "<decimal_digits>"), octal, decimal)
 
 
 file_size_constr = parse_isla("""
@@ -172,7 +174,7 @@ forall <file_size> file_size="{<octal_digits> octal_digits}<SPACE>" in start:
     (octal_to_decimal(octal_digits, decimal) and 
      rjust_crop_tar(file_size, 12, "0"))))
 """, TAR_GRAMMAR, semantic_predicates={
-    OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"),
+    OCTAL_TO_DEC_PREDICATE(octal_conv_graph, "<octal_digits>", "<decimal_digits>"),
     RJUST_CROP_TAR_PREDICATE})
 
 file_name_length_constraint = parse_isla("""
@@ -258,7 +260,7 @@ forall <entry> entry in start:
           (octal_to_decimal(octal_digits, dec_digits) and 
            ljust_crop_tar(characters, dec_digits, " "))))
 """, TAR_GRAMMAR, semantic_predicates={
-    OCTAL_TO_DEC_PREDICATE(octal_conv_grammar, "<octal_digits>", "<decimal_digits>"),
+    OCTAL_TO_DEC_PREDICATE(octal_conv_graph, "<octal_digits>", "<decimal_digits>"),
     LJUST_CROP_TAR_PREDICATE})
 
 final_entry_length_constraint = parse_isla("""

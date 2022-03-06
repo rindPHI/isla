@@ -411,7 +411,7 @@ forall int colno:
             # print_only=True
         )
 
-    @pytest.mark.skip(reason="Have to disable assertions to run this test, disabling in CI pipeline.")
+    # @pytest.mark.skip(reason="Have to disable assertions to run this test, disabling in CI pipeline.")
     def test_tar(self):
         self.execute_generation_test(
             tar.TAR_CONSTRAINTS,
