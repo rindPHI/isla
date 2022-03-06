@@ -13,6 +13,7 @@ import z3
 import isla.evaluator
 from isla import isla_shortcuts as sc
 from isla import language
+from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_ADDITION
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, STANDARD_SEMANTIC_PREDICATES, \
     STANDARD_STRUCTURAL_PREDICATES
@@ -149,7 +150,7 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
                         low_k_coverage_penalty=23,
                         low_global_k_path_coverage_penalty=5)
                     ,),
-                cost_phase_lengths=(200,))
+                cost_phase_lengths=(200,)),
         )
 
     def test_get_quantifier_chains(self):
@@ -277,8 +278,8 @@ forall <csv-header> hline in start:
             grammar=CSV_GRAMMAR,
             custom_test_func=csv_lint,
             num_solutions=50,
-            max_number_free_instantiations=2,
-            max_number_smt_instantiations=2,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=1,
             enforce_unique_trees_in_queue=False,
             global_fuzzer=False,
             fuzzer_factory=functools.partial(GrammarFuzzer, min_nonterminals=0, max_nonterminals=30),
@@ -369,7 +370,8 @@ forall int colno:
             max_number_free_instantiations=1,
             max_number_smt_instantiations=1,
             num_solutions=50,
-            enforce_unique_trees_in_queue=False)
+            enforce_unique_trees_in_queue=False,
+        )
 
     def test_scriptsize_c_def_before_use(self):
         self.execute_generation_test(
@@ -474,8 +476,8 @@ forall int colno:
             print_only: bool = False,
             timeout_seconds: Optional[int] = None,
             global_fuzzer: bool = False,
-            fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = lambda grammar: GrammarCoverageFuzzer(grammar)
-    ):
+            fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = lambda grammar: GrammarCoverageFuzzer(grammar),
+            tree_insertion_methods=DIRECT_EMBEDDING & SELF_EMBEDDING & CONTEXT_ADDITION):
         logger = logging.getLogger(type(self).__name__)
 
         if debug:
@@ -495,7 +497,8 @@ forall int colno:
             cost_settings=cost_settings,
             timeout_seconds=timeout_seconds,
             global_fuzzer=global_fuzzer,
-            fuzzer_factory=fuzzer_factory
+            fuzzer_factory=fuzzer_factory,
+            tree_insertion_methods=tree_insertion_methods
         )
 
         if debug:

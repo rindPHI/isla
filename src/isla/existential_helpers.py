@@ -12,12 +12,16 @@ from isla.helpers import is_prefix, path_iterator, dict_of_lists_to_list_of_dict
 from isla.language import DerivationTree
 from isla.type_defs import Path, CanonicalGrammar, ParseTree
 
+DIRECT_EMBEDDING = 0b001
+SELF_EMBEDDING = 0b010
+CONTEXT_ADDITION = 0b100
 
 def insert_tree(grammar: CanonicalGrammar,
                 tree: DerivationTree,
                 in_tree: DerivationTree,
                 graph: Optional[GrammarGraph] = None,
-                max_num_solutions: Optional[int] = 50) -> List[DerivationTree]:
+                max_num_solutions: Optional[int] = 50,
+                methods: int = DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION) -> List[DerivationTree]:
     result: List[DerivationTree] = []
     result_hashes: Set[int] = set()
 
@@ -49,8 +53,10 @@ def insert_tree(grammar: CanonicalGrammar,
         if num_solutions is not None and num_solutions <= 0:
             break
 
-        add_to_result(compute_direct_embeddings(tree, in_tree, grammar, graph, num_solutions))
-        add_to_result(compute_self_embeddings(current_path, tree, in_tree, grammar, graph, num_solutions))
+        if methods & DIRECT_EMBEDDING:
+            add_to_result(compute_direct_embeddings(tree, in_tree, grammar, graph, num_solutions))
+        if methods & SELF_EMBEDDING:
+            add_to_result(compute_self_embeddings(current_path, tree, in_tree, grammar, graph, num_solutions))
 
         # NOTE: "Context addition" has been deactivated, since it leads to a loss of subtrees:
         #       a compatible subtree is replaced, and the lost trees shall be re-inserted into
@@ -58,8 +64,9 @@ def insert_tree(grammar: CanonicalGrammar,
         #       i.e., it produced an output not containing the root of the tree that should be
         #       re-inserted. We could try to fix this behavior, or simply remove the context addition
         #       part. Insertion by embedding is, in any case, non-destructive.
-        # NOTE: Context addition is needed for XML, and possibly other "nested" languages.
-        add_to_result(compute_context_additions(current_path, tree, in_tree, grammar, graph, num_solutions))
+        # NOTE: Context addition is needed for XML and possibly other "nested" languages.
+        if methods & CONTEXT_ADDITION:
+            add_to_result(compute_context_additions(current_path, tree, in_tree, grammar, graph, num_solutions))
 
         current_path = in_tree.next_path(current_path)
 

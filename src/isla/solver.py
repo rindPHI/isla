@@ -23,7 +23,7 @@ import isla.helpers
 import isla.isla_shortcuts as sc
 import isla.three_valued_truth
 from isla import language
-from isla.existential_helpers import insert_tree
+from isla.existential_helpers import insert_tree, DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_ADDITION
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
     replace_line_breaks, weighted_geometric_mean, assertions_activated, \
@@ -198,7 +198,8 @@ class ISLaSolver:
                  timeout_seconds: Optional[int] = None,
                  global_fuzzer: bool = False,
                  predicates_unique_in_int_arg: Tuple[language.SemanticPredicate, ...] = (COUNT_PREDICATE,),
-                 fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = lambda grammar: GrammarCoverageFuzzer(grammar)):
+                 fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = lambda grammar: GrammarCoverageFuzzer(grammar),
+                 tree_insertion_methods=DIRECT_EMBEDDING & SELF_EMBEDDING & CONTEXT_ADDITION):
         """
         :param grammar: The underlying grammar.
         :param formula: The formula to solve.
@@ -222,6 +223,8 @@ class ISLaSolver:
         integer quantifiers. The supplied predicates should have exactly one integer argument, and hold
         for exactly one integer value once all other parameters are fixed.
         :param fuzzer_factory: Constructor of the fuzzer to use for instantiating "free" nonterminals.
+        :param tree_insertion_methods: Combination of methods to use for existential quantifier elimination by
+        tree insertion. Full selection: `DIRECT_EMBEDDING & SELF_EMBEDDING & CONTEXT_ADDITION`.
         """
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -249,6 +252,7 @@ class ISLaSolver:
         self.global_fuzzer = global_fuzzer
         self.fuzzer_factory = fuzzer_factory
         self.predicates_unique_in_int_arg: Set[language.SemanticPredicate] = set(predicates_unique_in_int_arg)
+        self.tree_insertion_methods = tree_insertion_methods
 
         self.rounds_with_no_new_coverage = 0
         self.reset_coverage_after_n_round_with_no_coverage = 100
@@ -1048,7 +1052,8 @@ class ISLaSolver:
                 inserted_tree,
                 existential_formula.in_variable,
                 graph=self.graph,
-                max_num_solutions=self.max_number_tree_insertion_results * 2
+                max_num_solutions=self.max_number_tree_insertion_results * 2,
+                methods=self.tree_insertion_methods
             )
 
             insertion_results = sorted(insertion_results, key=lambda t: compute_tree_closing_cost(t, self.symbol_costs))

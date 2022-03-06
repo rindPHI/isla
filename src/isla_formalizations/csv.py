@@ -9,41 +9,42 @@ from isla import language
 from isla.language import parse_isla
 from isla.isla_predicates import COUNT_PREDICATE
 
-CSV_EBNF_GRAMMAR = {
+CSV_GRAMMAR = {
     "<start>": ["<csv-file>"],
-    "<csv-file>": ["<csv-header><csv-record>*"],
+    "<csv-file>": ["<csv-header><csv-records>"],
     "<csv-header>": ["<csv-record>"],
+    "<csv-records>": ["<csv-record><csv-records>", ""],
     "<csv-record>": ["<csv-string-list>\n"],
     "<csv-string-list>": ["<raw-field>", "<raw-field>;<csv-string-list>"],
     "<raw-field>": ["<simple-field>", "<quoted-field>"],
-    "<simple-field>": ["<spaces>?<simple-character>+<spaces>?"],
+    "<simple-field>": ["<spaces><simple-characters><spaces>"],
+    "<simple-characters>": ["<simple-character><simple-characters>", "<simple-character>"],
     "<simple-character>": [c for c in srange(string.printable) if c not in ["\n", ";", '"', " ", "\t", "\r", '"']],
     "<quoted-field>": ['"<escaped-field>"'],
-    "<escaped-field>": ["<escaped-character>*"],
+    "<escaped-field>": ["<escaped-characters>"],
+    "<escaped-characters>": ["<escaped-character><escaped-characters>", ""],
     "<escaped-character>": [c for c in srange(string.printable) if c not in ['"']],
-    "<spaces>": [" ", " <spaces>"],
+    "<spaces>": ["", " <spaces>"],
 }
 
-CSV_GRAMMAR = convert_ebnf_grammar(CSV_EBNF_GRAMMAR)
-
-CSV_HEADERBODY_EBNF_GRAMMAR = {
+CSV_HEADERBODY_GRAMMAR = {
     "<start>": ["<csv-file>"],
     "<csv-file>": ["<csv-header><csv-body>"],
     "<csv-header>": ["<csv-record>"],
-    "<csv-body>": ["<csv-record>*"],
+    "<csv-body>": ["<csv-records>"],
+    "<csv-records>": ["<csv-record><csv-records>", ""],
     "<csv-record>": ["<csv-string-list>\n"],
     "<csv-string-list>": ["<raw-field>", "<raw-field>;<csv-string-list>"],
     "<raw-field>": ["<simple-field>", "<quoted-field>"],
-    "<simple-field>": ["<spaces>?<simple-character>+<spaces>?"],
-    "<simple-character>": [c for c in srange(string.printable) if
-                           c not in ["\n", ";", '"', " ", "\t", "\r", '"']],
+    "<simple-field>": ["<spaces><simple-characters><spaces>"],
+    "<simple-characters>": ["<simple-character><simple-characters>", "<simple-character>"],
+    "<simple-character>": [c for c in srange(string.printable) if c not in ["\n", ";", '"', " ", "\t", "\r", '"']],
     "<quoted-field>": ['"<escaped-field>"'],
-    "<escaped-field>": ["<escaped-character>*"],
+    "<escaped-field>": ["<escaped-characters>"],
+    "<escaped-characters>": ["<escaped-character><escaped-characters>", ""],
     "<escaped-character>": [c for c in srange(string.printable) if c not in ['"']],
-    "<spaces>": [" ", " <spaces>"],
+    "<spaces>": ["", " <spaces>"],
 }
-
-CSV_HEADERBODY_GRAMMAR = convert_ebnf_grammar(CSV_HEADERBODY_EBNF_GRAMMAR)
 
 
 def csv_lint(tree: language.DerivationTree) -> Union[bool, str]:

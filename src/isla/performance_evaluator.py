@@ -14,10 +14,10 @@ from datetime import datetime
 from typing import List, Generator, Dict, Callable, Set, Tuple, Optional, cast
 
 import pathos.multiprocessing as pmp
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from grammar_graph import gg
 
 from isla import language
+from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.solver import ISLaSolver
 from isla.type_defs import Grammar
 
@@ -387,8 +387,7 @@ def generate_inputs(
         def gen():
             fuzzer = GrammarCoverageFuzzer(grammar)
             while True:
-                yield language.DerivationTree.from_parse_tree(
-                    fuzzer.expand_tree(("<start>", None)))
+                yield fuzzer.expand_tree(language.DerivationTree("<start>", None))
 
         generator = gen()
 

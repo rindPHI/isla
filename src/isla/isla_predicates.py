@@ -6,8 +6,8 @@ from fuzzingbook.Parser import EarleyParser
 from grammar_graph.gg import GrammarGraph
 
 from isla import language
-from isla.existential_helpers import insert_tree
-from isla.helpers import delete_unreachable, parent_reflexive, parent_or_child, assertions_activated, is_nonterminal, \
+from isla.existential_helpers import insert_tree, DIRECT_EMBEDDING, SELF_EMBEDDING
+from isla.helpers import delete_unreachable, parent_reflexive, parent_or_child, is_nonterminal, \
     canonical
 from isla.language import DerivationTree, SemPredEvalResult, StructuralPredicate, SemanticPredicate, Variable
 from isla.type_defs import Grammar, Path, ParseTree
@@ -257,14 +257,15 @@ def count(graph: GrammarGraph,
             new_candidates = [
                 new_candidate
                 for new_candidate in insert_tree(
-                    canonical_grammar, DerivationTree(needle, None), candidate, graph=graph)
+                    canonical_grammar, DerivationTree(needle, None), candidate, graph=graph,
+                    methods=DIRECT_EMBEDDING | SELF_EMBEDDING
+                )
                 if (num_needles(new_candidate) <= target_num_needle_occurrences
                     and not new_candidate.structural_hash() in already_seen)]
 
             candidates.extend(new_candidates)
             already_seen.update({new_candidate.structural_hash() for new_candidate in new_candidates})
 
-    # TODO: Check if None would not be more appropriate. Could we have missed a better insertion opportunity?
     return SemPredEvalResult(False)
 
 
