@@ -18,7 +18,7 @@ cost_vector = CostWeightVector(
     constraint_cost=0,
     derivation_depth_penalty=1,
     low_k_coverage_penalty=0,
-    low_global_k_path_coverage_penalty=0),
+    low_global_k_path_coverage_penalty=0)
 
 g_colno = lambda timeout: ISLaSolver(
     csv.CSV_GRAMMAR,

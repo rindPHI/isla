@@ -467,7 +467,7 @@ class DerivationTree:
 
             new_parent = DerivationTree(parent.value, new_children, id=parent.id, is_open=is_open, paths=parent_paths)
             if new_parent.__paths:
-                new_parent.__paths.insert(0, ((), new_parent))
+                new_parent.__paths = [(cast(Path, ()), new_parent)] + new_parent.__paths
                 # assert new_parent.__paths == new_parent.compute_paths()
 
             stack.append(new_parent)
