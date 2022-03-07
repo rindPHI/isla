@@ -9,7 +9,7 @@ from isla_formalizations import csv
 
 max_number_free_instantiations = 10
 max_number_smt_instantiations = 2
-eval_k = 4
+eval_k = 3
 
 cost_vector = STD_COST_SETTINGS.weight_vectors[0]
 

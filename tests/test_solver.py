@@ -172,9 +172,20 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             custom_test_func=validate_xml,
             cost_settings=CostSettings(
                 weight_vectors=(
-                    CostWeightVector(tree_closing_cost=10, vacuous_penalty=0, constraint_cost=4,
-                                     derivation_depth_penalty=10, low_k_coverage_penalty=23,
-                                     low_global_k_path_coverage_penalty=25),
+                    # CostWeightVector(
+                    #     tree_closing_cost=10,
+                    #     vacuous_penalty=0,
+                    #     constraint_cost=4,
+                    #     derivation_depth_penalty=10,
+                    #     low_k_coverage_penalty=23,
+                    #     low_global_k_path_coverage_penalty=25),
+                    CostWeightVector(
+                        tree_closing_cost=10,
+                        vacuous_penalty=0,
+                        constraint_cost=0,
+                        derivation_depth_penalty=10,
+                        low_k_coverage_penalty=0,
+                        low_global_k_path_coverage_penalty=0),
                 ),
                 cost_phase_lengths=(200,),
                 k=3
@@ -411,7 +422,7 @@ forall int colno:
             # print_only=True
         )
 
-    # @pytest.mark.skip(reason="Have to disable assertions to run this test, disabling in CI pipeline.")
+    @pytest.mark.skip(reason="Have to disable assertions to run this test, disabling in CI pipeline.")
     def test_tar(self):
         self.execute_generation_test(
             tar.TAR_CONSTRAINTS,
