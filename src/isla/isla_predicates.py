@@ -225,10 +225,13 @@ def count(graph: GrammarGraph,
         return SemPredEvalResult(None)
 
     if negate:
-        target_num_needle_occurrences = random.choice([
-            i for i in range(num_needle_occurrences + 1, target_num_needle_occurrences + 1)
-            if i != target_num_needle_occurrences
-        ])
+        try:
+            target_num_needle_occurrences = random.choice([
+                i for i in range(num_needle_occurrences + 1, target_num_needle_occurrences + 1)
+                if i != target_num_needle_occurrences
+            ])
+        except IndexError:
+            return SemPredEvalResult(True)
 
     assert num_needle_occurrences < target_num_needle_occurrences
 

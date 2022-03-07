@@ -1061,16 +1061,24 @@ class ISLaSolver:
 
             for insertion_result in insertion_results:
                 # actual_inserted_tree = insertion_result.get_subtree(insertion_result.find_node(inserted_tree))
-                resulting_tree = state.tree.replace_path(
-                    state.tree.find_node(existential_formula.in_variable),
-                    insertion_result)
+                replaced_path = state.tree.find_node(existential_formula.in_variable)
+                resulting_tree = state.tree.replace_path(replaced_path, insertion_result)
 
-                tree_substitution: Dict[DerivationTree, DerivationTree] = {
-                    original_tree: resulting_tree.get_subtree(original_path)
-                    for original_path, original_tree in state.tree.paths()
+                tree_substitution: Dict[DerivationTree, DerivationTree] = {}
+                for idx in range(len(replaced_path) + 1):
+                    original_path = replaced_path[:idx - 1]
+                    original_tree = state.tree.get_subtree(original_path)
                     if (resulting_tree.is_valid_path(original_path) and
-                        original_tree.value == resulting_tree.get_subtree(original_path).value
-                        and resulting_tree.get_subtree(original_path) != original_tree)}
+                            original_tree.value == resulting_tree.get_subtree(original_path).value
+                            and resulting_tree.get_subtree(original_path) != original_tree):
+                        tree_substitution[original_tree] = resulting_tree.get_subtree(original_path)
+
+                # tree_substitution: Dict[DerivationTree, DerivationTree] = {
+                #     original_tree: resulting_tree.get_subtree(original_path)
+                #     for original_path, original_tree in state.tree.paths()
+                #     if (resulting_tree.is_valid_path(original_path) and
+                #         original_tree.value == resulting_tree.get_subtree(original_path).value
+                #         and resulting_tree.get_subtree(original_path) != original_tree)}
 
                 assert insertion_result.find_node(inserted_tree) is not None
                 variable_substitutions = {existential_formula.bound_variable: inserted_tree}
@@ -1387,34 +1395,35 @@ class ISLaSolver:
     def process_new_states(self, new_states: List[SolutionState]) -> List[DerivationTree]:
         result = [tree for new_state in new_states for tree in self.process_new_state(new_state)]
 
-        old_covered_k_paths = copy.copy(self.covered_k_paths)
+        if self.cost_settings.weight_vectors[0].low_global_k_path_coverage_penalty > 0:
+            old_covered_k_paths = copy.copy(self.covered_k_paths)
 
-        for tree in [state.tree for state in new_states]:
-            self.covered_k_paths.update(tree.k_paths(self.graph, self.cost_settings.k))
+            for tree in [state.tree for state in new_states]:
+                self.covered_k_paths.update(tree.k_paths(self.graph, self.cost_settings.k))
 
-        if old_covered_k_paths == self.covered_k_paths:
-            self.rounds_with_no_new_coverage += 1
+            if old_covered_k_paths == self.covered_k_paths:
+                self.rounds_with_no_new_coverage += 1
 
-        graph_paths = self.graph.k_paths(self.cost_settings.k)
-        if (self.rounds_with_no_new_coverage >= self.reset_coverage_after_n_round_with_no_coverage or
-                self.covered_k_paths == graph_paths):
-            if self.covered_k_paths == graph_paths:
-                self.logger.debug("ALL PATHS COVERED")
+            graph_paths = self.graph.k_paths(self.cost_settings.k)
+            if (self.rounds_with_no_new_coverage >= self.reset_coverage_after_n_round_with_no_coverage or
+                    self.covered_k_paths == graph_paths):
+                if self.covered_k_paths == graph_paths:
+                    self.logger.debug("ALL PATHS COVERED")
+                else:
+                    self.logger.debug(
+                        "COVERAGE RESET SINCE NO CHANGE IN COVERED PATHS SINCE %d ROUNDS (%d path(s) uncovered)",
+                        self.reset_coverage_after_n_round_with_no_coverage,
+                        len(graph_paths) - len(self.covered_k_paths)
+                    )
+
+                self.covered_k_paths = set()
             else:
-                self.logger.debug(
-                    "COVERAGE RESET SINCE NO CHANGE IN COVERED PATHS SINCE %d ROUNDS (%d path(s) uncovered)",
-                    self.reset_coverage_after_n_round_with_no_coverage,
-                    len(graph_paths) - len(self.covered_k_paths)
-                )
+                pass
+                # uncovered_paths = self.graph.k_paths(self.cost_settings.k) - self.covered_k_paths
+                # self.logger.info("\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]))
 
-            self.covered_k_paths = set()
-        else:
-            pass
-            # uncovered_paths = self.graph.k_paths(self.cost_settings.k) - self.covered_k_paths
-            # self.logger.info("\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]))
-
-        if self.rounds_with_no_new_coverage >= self.reset_coverage_after_n_round_with_no_coverage:
-            self.rounds_with_no_new_coverage = 0
+            if self.rounds_with_no_new_coverage >= self.reset_coverage_after_n_round_with_no_coverage:
+                self.rounds_with_no_new_coverage = 0
 
         return result
 

@@ -172,20 +172,20 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             custom_test_func=validate_xml,
             cost_settings=CostSettings(
                 weight_vectors=(
-                    # CostWeightVector(
-                    #     tree_closing_cost=10,
-                    #     vacuous_penalty=0,
-                    #     constraint_cost=4,
-                    #     derivation_depth_penalty=10,
-                    #     low_k_coverage_penalty=23,
-                    #     low_global_k_path_coverage_penalty=25),
                     CostWeightVector(
                         tree_closing_cost=10,
                         vacuous_penalty=0,
-                        constraint_cost=0,
+                        constraint_cost=4,
                         derivation_depth_penalty=10,
-                        low_k_coverage_penalty=0,
-                        low_global_k_path_coverage_penalty=0),
+                        low_k_coverage_penalty=23,
+                        low_global_k_path_coverage_penalty=25),
+                    # CostWeightVector(
+                    #     tree_closing_cost=10,
+                    #     vacuous_penalty=0,
+                    #     constraint_cost=0,
+                    #     derivation_depth_penalty=3,
+                    #     low_k_coverage_penalty=0,
+                    #     low_global_k_path_coverage_penalty=0),
                 ),
                 cost_phase_lengths=(200,),
                 k=3
@@ -294,6 +294,19 @@ forall <csv-header> hline in start:
             enforce_unique_trees_in_queue=False,
             global_fuzzer=False,
             fuzzer_factory=functools.partial(GrammarFuzzer, min_nonterminals=0, max_nonterminals=30),
+            cost_settings=CostSettings(
+                weight_vectors=(
+                    CostWeightVector(
+                        tree_closing_cost=1,
+                        vacuous_penalty=0,
+                        constraint_cost=0,
+                        derivation_depth_penalty=1,
+                        low_k_coverage_penalty=0,
+                        low_global_k_path_coverage_penalty=0),
+                ),
+                cost_phase_lengths=(200,),
+                k=3
+            ),
         )
 
     def test_csv_rows_equal_length_more_complex(self):
