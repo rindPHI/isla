@@ -199,7 +199,7 @@ class ISLaSolver:
                  global_fuzzer: bool = False,
                  predicates_unique_in_int_arg: Tuple[language.SemanticPredicate, ...] = (COUNT_PREDICATE,),
                  fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = lambda grammar: GrammarCoverageFuzzer(grammar),
-                 tree_insertion_methods=DIRECT_EMBEDDING & SELF_EMBEDDING & CONTEXT_ADDITION):
+                 tree_insertion_methods=DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION):
         """
         :param grammar: The underlying grammar.
         :param formula: The formula to solve.

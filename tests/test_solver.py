@@ -470,7 +470,7 @@ forall int colno:
             timeout_seconds: Optional[int] = None,
             global_fuzzer: bool = False,
             fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = lambda grammar: GrammarCoverageFuzzer(grammar),
-            tree_insertion_methods=DIRECT_EMBEDDING & SELF_EMBEDDING & CONTEXT_ADDITION):
+            tree_insertion_methods=DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION):
         logger = logging.getLogger(type(self).__name__)
 
         if debug:
