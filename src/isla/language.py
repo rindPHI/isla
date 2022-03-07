@@ -139,8 +139,7 @@ class DerivationTree:
                  k_paths: Optional[Dict[int, Set[Tuple[gg.Node, ...]]]] = None,
                  hash: Optional[int] = None,
                  structural_hash: Optional[int] = None,
-                 is_open: Optional[bool] = None,
-                 paths: Optional[List[Tuple[Path, 'DerivationTree']]] = None):
+                 is_open: Optional[bool] = None):
         self.__value = value
         self.__children = None if children is None else tuple(children)
 
@@ -153,7 +152,6 @@ class DerivationTree:
         self.__len = 1 if not children else None
         self.__hash = hash
         self.__structural_hash = structural_hash
-        self.__paths = paths
         self.__k_paths: Dict[int, Set[Tuple[gg.Node, ...]]] = k_paths or {}
 
         self.__is_open = is_open
@@ -262,15 +260,8 @@ class DerivationTree:
 
         return True
 
-    # @lru_cache(maxsize=None)
+    @lru_cache
     def paths(self) -> List[Tuple[Path, 'DerivationTree']]:
-        if self.__paths is not None:
-            return self.__paths
-
-        self.__paths = self.compute_paths()
-        return self.__paths
-
-    def compute_paths(self) -> List[Tuple[Path, 'DerivationTree']]:
         def action(path, node):
             result.append((path, node))
 
@@ -443,34 +434,11 @@ class DerivationTree:
             else:
                 is_open = None
 
-            parent_paths = None
-            if parent.__paths is not None:
-                replacement_paths = replacement.paths()
-                parent_paths = []
-
-                insert_pos = None
-                for pos, (subtree_path, subtree) in enumerate(parent.__paths):
-                    if not subtree_path or subtree_path[0] == idx:
-                        if subtree_path and subtree_path[0] == idx and insert_pos is None:
-                            insert_pos = pos - 1  # Don't count `()`
-                        continue
-
-                    assert subtree_path
-                    parent_paths.append((subtree_path, subtree))
-
-                if insert_pos is None:
-                    insert_pos = 0
-
-                for child_path, child_subtree in replacement_paths:
-                    parent_paths.insert(insert_pos, ((idx,) + child_path, child_subtree))
-                    insert_pos += 1
-
-            new_parent = DerivationTree(parent.value, new_children, id=parent.id, is_open=is_open, paths=parent_paths)
-            if new_parent.__paths:
-                new_parent.__paths = [(cast(Path, ()), new_parent)] + new_parent.__paths
-                # assert new_parent.__paths == new_parent.compute_paths()
-
-            stack.append(new_parent)
+            stack.append(DerivationTree(
+                parent.value,
+                new_children,
+                id=parent.id,
+                is_open=is_open))
 
         assert len(stack) == 1
         return stack[0]
@@ -525,11 +493,10 @@ class DerivationTree:
 
         id_subst_map = {
             tree.id: repl for tree, repl in subst_map.items()
-            if (isinstance(tree, DerivationTree)
-                and all(repl.id == tree.id or repl.find_node(tree.id) is None
-                        for otree, repl in subst_map.items()
-                        if isinstance(otree, DerivationTree))
-                )
+            if (isinstance(tree, DerivationTree) and
+                all(repl.id == tree.id or repl.find_node(tree.id) is None
+                    for otree, repl in subst_map.items()
+                    if isinstance(otree, DerivationTree)))
         }
 
         result = self
