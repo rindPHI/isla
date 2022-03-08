@@ -166,7 +166,7 @@ class TestHelpers(unittest.TestCase):
         eval_result = evaluate_z3_expression(parsed_formula)
 
         self.assertEqual(3, len(eval_result[0]))
-        self.assertEqual({"a", "b", "c"}, set(eval_result[0]))
+        self.assertEqual(("a", "b", "c"), eval_result[0])
 
         self.assertTrue(callable(eval_result[1]))
         self.assertTrue(eval_result[1](("a", "a", "c")))
