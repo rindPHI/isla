@@ -279,3 +279,21 @@ def strip_ws(inp: str) -> str:
             break
         inp = new_inp
     return inp
+
+
+def transitive_closure(relation: Iterable[Tuple[S, T]]) -> Set[Tuple[S, T]]:
+    closure = set(relation)
+    while True:
+        new_relations: Set[Tuple[S, T]] = {
+            (x, w)
+            for x, y in closure
+            for q, w in closure if q == y}
+
+        closure_until_now = closure | new_relations
+
+        if closure_until_now == closure:
+            break
+
+        closure = closure_until_now
+
+    return closure

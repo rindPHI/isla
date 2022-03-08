@@ -8,7 +8,7 @@ import z3
 from grammar_graph import gg
 from orderedset import OrderedSet
 
-from isla.helpers import is_nonterminal, assertions_activated
+from isla.helpers import is_nonterminal, assertions_activated, transitive_closure
 from isla.three_valued_truth import ThreeValuedTruth
 from isla.z3_helpers import evaluate_z3_expression, DomainError, is_valid, z3_and, z3_or, z3_eq
 from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES
@@ -18,7 +18,7 @@ from isla.language import Formula, DerivationTree, StructuralPredicate, Semantic
     BoundVariable, ExistsIntFormula, ForallIntFormula, QuantifiedFormula, PropositionalCombinator, \
     ConjunctiveFormula, ForallFormula, ExistsFormula, NegatedFormula, \
     DisjunctiveFormula, BindExpression, split_conjunction, split_disjunction, DummyVariable
-from isla.type_defs import Grammar, Path
+from isla.type_defs import Grammar, Path, CanonicalGrammar
 
 logger = logging.getLogger("evaluator")
 
@@ -683,7 +683,6 @@ def approximate_isla_to_smt_formula(
     return predicate_mapping[formula]
 
 
-z3_in_predicate = z3.Function("in", z3.StringSort(), z3.StringSort(), z3.BoolSort())
 z3_type_predicate = z3.Function("type", z3.StringSort(), z3.StringSort(), z3.BoolSort())
 
 
@@ -704,7 +703,7 @@ def isla_to_smt_formula(formula: Formula) -> z3.BoolRef:
         assert isinstance(formula.in_variable, Variable)
         premises = [
             z3_type_predicate(formula.bound_variable.to_smt(), z3.StringVal(formula.bound_variable.n_type)),
-            z3_in_predicate(formula.bound_variable.to_smt(), formula.in_variable.to_smt())
+            z3.Contains(formula.in_variable.to_smt(), formula.bound_variable.to_smt())
         ]
 
         if formula.bind_expression:
@@ -713,7 +712,7 @@ def isla_to_smt_formula(formula: Formula) -> z3.BoolRef:
                 assert not isinstance(bound_element, list), "Conversion of optionals not yet implemented"
                 if not isinstance(bound_element, DummyVariable):
                     elems_in_concat.append(bound_element.to_smt())
-                    premises.append(z3_in_predicate(bound_element.to_smt(), formula.bound_variable.to_smt()))
+                    premises.append(z3.Contains(formula.bound_variable.to_smt(), bound_element.to_smt()))
                     continue
 
                 elems_in_concat.append(z3.StringVal(bound_element.n_type))
@@ -742,11 +741,25 @@ def isla_to_smt_formula(formula: Formula) -> z3.BoolRef:
     raise NotImplementedError(f"Translation of formula {formula} (type {type(formula).__name__}) not implemented")
 
 
-def implies(formula_1: Formula, formula_2: Formula) -> Optional[bool]:
+def implies(formula_1: Formula, formula_2: Formula, grammar: Optional[CanonicalGrammar] = None) -> Optional[bool]:
+    sublang_relation = transitive_closure({
+        (nonterminal_1, nonterminal_2)
+        for nonterminal_1 in grammar
+        for nonterminal_2 in grammar
+        if (nonterminal_1 == nonterminal_2
+            or any(derivation == [nonterminal_1] for derivation in grammar[nonterminal_2])
+            or grammar[nonterminal_1] == [[nonterminal_2]])
+    })
+
     f_1 = isla_to_smt_formula(formula_1)
     f_2 = isla_to_smt_formula(formula_2)
 
     s = z3.Solver()
+    s.set("timeout", 500)
+    x = z3.String("x")
+    for nonterminal_1, nonterminal_2 in sublang_relation:
+        s.append(z3.ForAll([x], z3.Implies(z3_type_predicate(x, z3.StringVal(nonterminal_1)),
+                                           z3_type_predicate(x, z3.StringVal(nonterminal_2)))))
     s.append(z3.Not(z3.Implies(f_2, f_1)))
     result = s.check()
 
