@@ -2333,7 +2333,7 @@ def split_disjunction(formula: Formula) -> List[Formula]:
 
 
 class VariableManager:
-    def __init__(self, grammar: Grammar):
+    def __init__(self, grammar: Optional[Grammar] = None):
         self.placeholders: Dict[str, Variable] = {}
         self.variables: Dict[str, Variable] = {}
         self.grammar = grammar
@@ -2342,7 +2342,7 @@ class VariableManager:
              name: str,
              n_type: Optional[str],
              constr: Optional[Callable[[str, Optional[str]], Variable]] = None) -> Variable:
-        if n_type is not None:
+        if self.grammar is not None and n_type is not None:
             assert n_type == Variable.NUMERIC_NTYPE or n_type in self.grammar, \
                 f"Unknown nonterminal type {n_type} for variable {name}"
 
@@ -2438,7 +2438,7 @@ class MExprEmitter(MexprParserListener.MexprParserListener):
 class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
     def __init__(
             self,
-            grammar: Grammar,
+            grammar: Optional[Grammar] = None,
             structural_predicates: Optional[Set[StructuralPredicate]] = None,
             semantic_predicates: Optional[Set[SemanticPredicate]] = None):
         self.structural_predicates_map = {} if not structural_predicates else {p.name: p for p in structural_predicates}
@@ -2671,7 +2671,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
 def parse_isla(
         inp: str,
-        grammar: Grammar,
+        grammar: Optional[Grammar] = None,
         structural_predicates: Optional[Set[StructuralPredicate]] = None,
         semantic_predicates: Optional[Set[SemanticPredicate]] = None) -> Formula:
     class BailPrintErrorStrategy(antlr4.BailErrorStrategy):

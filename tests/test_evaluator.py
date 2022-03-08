@@ -10,7 +10,7 @@ from orderedset import OrderedSet
 
 import isla.isla_shortcuts as sc
 from isla import language
-from isla.evaluator import evaluate, matches_for_quantified_formula
+from isla.evaluator import evaluate, matches_for_quantified_formula, isla_to_smt_formula, implies
 from isla.helpers import tree_to_string
 from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, IN_TREE_PREDICATE, \
     SAME_POSITION_PREDICATE
@@ -19,7 +19,7 @@ from isla.language import BoundVariable
 from isla.language import Constant, Formula, BindExpression, \
     DerivationTree, VariableManager, \
     QuantifiedFormula, parse_isla
-from isla.z3_helpers import z3_eq
+from isla.z3_helpers import z3_eq, z3_push_in_negations
 from isla_formalizations import rest, scriptsizec
 from isla_formalizations.csv import CSV_GRAMMAR, CSV_HEADERBODY_GRAMMAR
 from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, validate_xml, \
@@ -694,6 +694,22 @@ forall <expr> expr in start:
 
         inp = DerivationTree.from_parse_tree(next(EarleyParser(grammar).parse("sqrt(-2.0)")))
         self.assertTrue(evaluate(property, inp, grammar))
+
+    def test_implication_check(self):
+        constraint_1 = parse_isla("""
+        forall <arith_expr> container="{<number> number} * <number>" in start:
+           exists <number> elem in number:
+             (<= (str.to.int elem) (str.to.int "-100"))""")
+
+        constraint_2 = parse_isla("""
+        forall <arith_expr> container="{<number> number} * <number>" in start:
+           exists <number> elem in number:
+             (<= (str.to.int elem) (str.to.int "-50"))""")
+
+        self.assertTrue(implies(constraint_2, constraint_1))
+        self.assertTrue(implies(constraint_1, -constraint_1) is False)
+
+
 
 
 if __name__ == '__main__':

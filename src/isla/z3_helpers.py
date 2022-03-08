@@ -303,6 +303,12 @@ def z3_push_in_negations(formula: z3.BoolRef, negate=False) -> z3.BoolRef:
             return z3.And(*[z3_push_in_negations(child, True) for child in formula.children()])
         else:
             return z3.Or(*[z3_push_in_negations(child, False) for child in formula.children()])
+    elif isinstance(formula, z3.QuantifierRef):
+        vars = [z3.String(formula.var_name(idx)) for idx in range(formula.num_vars())]
+        if (negate and formula.is_forall()) or (not negate and formula.is_exists()):
+            return z3.Exists(vars, z3_push_in_negations(formula.children()[0], negate))
+        else:
+            return z3.ForAll(vars, z3_push_in_negations(formula.children()[0], negate))
 
     return z3.simplify(z3.Not(formula) if negate else formula)
 

@@ -17,7 +17,7 @@ from isla.language import Formula, DerivationTree, StructuralPredicate, Semantic
     SemanticPredicateFormula, Variable, replace_formula, \
     BoundVariable, ExistsIntFormula, ForallIntFormula, QuantifiedFormula, PropositionalCombinator, \
     ConjunctiveFormula, ForallFormula, ExistsFormula, NegatedFormula, \
-    DisjunctiveFormula, BindExpression, split_conjunction, split_disjunction
+    DisjunctiveFormula, BindExpression, split_conjunction, split_disjunction, DummyVariable
 from isla.type_defs import Grammar, Path
 
 logger = logging.getLogger("evaluator")
@@ -29,7 +29,7 @@ def propositionally_unsatisfiable(formula: Formula) -> bool:
     if formula == SMTFormula(z3.BoolVal(False)):
         return True
 
-    z3_formula = isla_to_smt_formula(formula, replace_untranslatable_with_predicate=True)
+    z3_formula = approximate_isla_to_smt_formula(formula, replace_untranslatable_with_predicate=True)
 
     return is_valid(z3_formula).is_true()
 
@@ -154,7 +154,8 @@ def evaluate(
         # The remaining formula is a pure SMT formula if there were no quantifiers over open trees.
         # In the case that there *were* such quantifiers, we still convert to an SMT formula, replacing
         # all quantifiers with fresh predicates, which still allows us to perform an evaluation.
-        smt_formula: z3.BoolRef = isla_to_smt_formula(without_predicates, replace_untranslatable_with_predicate=True)
+        smt_formula: z3.BoolRef = approximate_isla_to_smt_formula(without_predicates,
+                                                                  replace_untranslatable_with_predicate=True)
 
         smt_result = is_valid(smt_formula)
 
@@ -631,49 +632,125 @@ def get_toplevel_quantified_formulas(formula: Formula) -> \
         return []
 
 
-def isla_to_smt_formula(
+def approximate_isla_to_smt_formula(
         formula: Formula,
         replace_untranslatable_with_predicate=False,
-        prog_var_mapping: Optional[Dict[Formula, z3.BoolRef]] = None) -> z3.BoolRef:
-    assert not prog_var_mapping or replace_untranslatable_with_predicate
-    if prog_var_mapping is None:
-        prog_var_mapping = {}
+        predicate_mapping: Optional[Dict[Formula, z3.BoolRef]] = None) -> z3.BoolRef:
+    assert not predicate_mapping or replace_untranslatable_with_predicate
+    if predicate_mapping is None:
+        predicate_mapping = {}
 
     if isinstance(formula, SMTFormula):
         return formula.formula
 
     if isinstance(formula, ConjunctiveFormula):
-        return z3_and([isla_to_smt_formula(child, replace_untranslatable_with_predicate, prog_var_mapping)
+        return z3_and([approximate_isla_to_smt_formula(child, replace_untranslatable_with_predicate, predicate_mapping)
                        for child in formula.args])
 
     if isinstance(formula, DisjunctiveFormula):
-        return z3_or([isla_to_smt_formula(child, replace_untranslatable_with_predicate, prog_var_mapping)
+        return z3_or([approximate_isla_to_smt_formula(child, replace_untranslatable_with_predicate, predicate_mapping)
                       for child in formula.args])
 
     if isinstance(formula, NegatedFormula):
-        return z3.Not(isla_to_smt_formula(formula.args[0], replace_untranslatable_with_predicate, prog_var_mapping))
+        return z3.Not(
+            approximate_isla_to_smt_formula(formula.args[0], replace_untranslatable_with_predicate, predicate_mapping))
 
     if isinstance(formula, ForallIntFormula):
         return z3.ForAll(
             [formula.bound_variable.to_smt()],
-            isla_to_smt_formula(formula.inner_formula, replace_untranslatable_with_predicate, prog_var_mapping))
+            approximate_isla_to_smt_formula(formula.inner_formula, replace_untranslatable_with_predicate,
+                                            predicate_mapping))
 
     if isinstance(formula, ExistsIntFormula):
         return z3.Exists(
             [formula.bound_variable.to_smt()],
-            isla_to_smt_formula(formula.inner_formula, replace_untranslatable_with_predicate, prog_var_mapping))
+            approximate_isla_to_smt_formula(formula.inner_formula, replace_untranslatable_with_predicate,
+                                            predicate_mapping))
 
     if not replace_untranslatable_with_predicate:
         raise NotImplementedError(f"Don't know how to translate formula {formula} to SMT")
 
-    if formula not in prog_var_mapping:
+    if formula not in predicate_mapping:
         name_idx = 1
         replacement = z3.Bool(f"P_{name_idx}")
-        while replacement in prog_var_mapping.values():
+        while replacement in predicate_mapping.values():
             replacement = z3.Bool(f"P_{name_idx}")
             name_idx += 1
 
-        assert replacement not in prog_var_mapping.values()
-        prog_var_mapping[formula] = replacement
+        assert replacement not in predicate_mapping.values()
+        predicate_mapping[formula] = replacement
 
-    return prog_var_mapping[formula]
+    return predicate_mapping[formula]
+
+
+z3_in_predicate = z3.Function("in", z3.StringSort(), z3.StringSort(), z3.BoolSort())
+z3_type_predicate = z3.Function("type", z3.StringSort(), z3.StringSort(), z3.BoolSort())
+
+
+def isla_to_smt_formula(formula: Formula) -> z3.BoolRef:
+    if isinstance(formula, SMTFormula):
+        return formula.formula
+
+    if isinstance(formula, ConjunctiveFormula):
+        return z3_and([isla_to_smt_formula(child) for child in formula.args])
+
+    if isinstance(formula, DisjunctiveFormula):
+        return z3_or([isla_to_smt_formula(child) for child in formula.args])
+
+    if isinstance(formula, NegatedFormula):
+        return z3.Not(isla_to_smt_formula(formula.args[0]))
+
+    if isinstance(formula, QuantifiedFormula):
+        assert isinstance(formula.in_variable, Variable)
+        premises = [
+            z3_type_predicate(formula.bound_variable.to_smt(), z3.StringVal(formula.bound_variable.n_type)),
+            z3_in_predicate(formula.bound_variable.to_smt(), formula.in_variable.to_smt())
+        ]
+
+        if formula.bind_expression:
+            elems_in_concat = []
+            for bound_element in formula.bind_expression.bound_elements:
+                assert not isinstance(bound_element, list), "Conversion of optionals not yet implemented"
+                if not isinstance(bound_element, DummyVariable):
+                    elems_in_concat.append(bound_element.to_smt())
+                    premises.append(z3_in_predicate(bound_element.to_smt(), formula.bound_variable.to_smt()))
+                    continue
+
+                elems_in_concat.append(z3.StringVal(bound_element.n_type))
+
+            premises.append(z3_eq(z3.Concat(*elems_in_concat), formula.bound_variable.to_smt()))
+
+        if isinstance(formula, ForallFormula):
+            return z3.ForAll(
+                [formula.bound_variable.to_smt()],
+                z3.Implies(z3.And(*premises), isla_to_smt_formula(formula.inner_formula)))
+        else:
+            return z3.Exists(
+                [formula.bound_variable.to_smt()],
+                z3.And(z3.And(*premises), isla_to_smt_formula(formula.inner_formula)))
+
+    if isinstance(formula, ForallIntFormula):
+        return z3.ForAll(
+            [formula.bound_variable.to_smt()],
+            isla_to_smt_formula(formula.inner_formula))
+
+    if isinstance(formula, ExistsIntFormula):
+        return z3.Exists(
+            [formula.bound_variable.to_smt()],
+            isla_to_smt_formula(formula.inner_formula))
+
+    raise NotImplementedError(f"Translation of formula {formula} (type {type(formula).__name__}) not implemented")
+
+
+def implies(formula_1: Formula, formula_2: Formula) -> Optional[bool]:
+    f_1 = isla_to_smt_formula(formula_1)
+    f_2 = isla_to_smt_formula(formula_2)
+
+    s = z3.Solver()
+    s.append(z3.Not(z3.Implies(f_2, f_1)))
+    result = s.check()
+
+    if result == z3.unknown:
+        return None
+
+    return result == z3.unsat
