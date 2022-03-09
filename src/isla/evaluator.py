@@ -719,9 +719,6 @@ def fix_str_to_int(formula: z3.BoolRef) -> z3.BoolRef:
 
 
 def isla_to_smt_formula(formula: Formula, do_fix_str_to_int: bool = True) -> z3.BoolRef:
-    # TODO:
-    #  - Translate predicates
-    #  - Maybe special translation for `before`: Total order
     if isinstance(formula, SMTFormula):
         if do_fix_str_to_int:
             return fix_str_to_int(formula.formula)
@@ -775,6 +772,12 @@ def isla_to_smt_formula(formula: Formula, do_fix_str_to_int: bool = True) -> z3.
             [formula.bound_variable.to_smt()],
             isla_to_smt_formula(formula.inner_formula))
 
+    if isinstance(formula, StructuralPredicateFormula) or isinstance(formula, SemanticPredicateFormula):
+        arg_types = [z3.IntSort() if isinstance(arg, int) else z3.StringSort() for arg in formula.args]
+        args = [arg.to_smt() if isinstance(arg, Variable) else arg for arg in formula.args]
+        predicate = z3.Function(formula.predicate.name, *(arg_types + [z3.BoolSort()]))
+        return predicate(*args)
+
     raise NotImplementedError(f"Translation of formula {formula} (type {type(formula).__name__}) not implemented")
 
 
@@ -797,20 +800,18 @@ def implies(
     f_1 = isla_to_smt_formula(formula_1, do_fix_str_to_int=do_fix_str_to_int)
     f_2 = isla_to_smt_formula(formula_2, do_fix_str_to_int=do_fix_str_to_int)
 
-    print(smt_expr_to_str(f_1))
-    print(smt_expr_to_str(f_2))
-
     premises = []
-    if grammar:
-        x = z3.String("x")
-        for nonterminal_1, nonterminal_2 in sublang_relation:
-            premises.append(z3.ForAll([x], z3.Implies(z3_type_predicate(x, z3.StringVal(nonterminal_2)),
-                                                      z3_type_predicate(x, z3.StringVal(nonterminal_1)))))
+
+    x = z3.String("x")
+    for nonterminal_1, nonterminal_2 in sublang_relation:
+        premises.append(z3.ForAll([x], z3.Implies(z3_type_predicate(x, z3.StringVal(nonterminal_2)),
+                                                  z3_type_predicate(x, z3.StringVal(nonterminal_1)))))
+
+    # TODO: Consider adding special axioms for frequently used predicates like `before`
 
     s = z3.Solver()
     s.set("timeout", 100)
     for premise in premises:
-        print(smt_expr_to_str(premise))
         s.append(premise)
     s.append(z3.Not(z3.Implies(f_1, f_2)))
     result = s.check()
