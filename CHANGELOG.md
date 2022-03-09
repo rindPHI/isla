@@ -6,6 +6,11 @@ version mostly conforms to the state as documented in the ISLa paper.
 
 ## [Unreleased]
 
+### Added
+
+- More precise translation of ISLa formulas to SMT (`evaluator.isla_to_smt_formula`),
+  implication check (`evaluator.implies`).
+
 ### Changed
 
 - Bugfixes in translation of Z3 regexes to Python
