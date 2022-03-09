@@ -810,7 +810,7 @@ def implies(
     # TODO: Consider adding special axioms for frequently used predicates like `before`
 
     s = z3.Solver()
-    s.set("timeout", 100)
+    s.set("timeout", 30)
     for premise in premises:
         s.append(premise)
     s.append(z3.Not(z3.Implies(f_1, f_2)))
