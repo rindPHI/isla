@@ -1,4 +1,5 @@
 import copy
+import random
 import unittest
 from typing import Optional, cast
 
@@ -165,14 +166,19 @@ class TestHelpers(unittest.TestCase):
 
         eval_result = evaluate_z3_expression(parsed_formula)
 
-        self.assertEqual(3, len(eval_result[0]))
-        self.assertEqual(("a", "b", "c"), eval_result[0])
+        vars = eval_result[0]
+        self.assertEqual(3, len(vars))
+        self.assertEqual({"a", "b", "c"}, set(vars))
 
         self.assertTrue(callable(eval_result[1]))
-        self.assertTrue(eval_result[1](("a", "a", "c")))
-        self.assertTrue(eval_result[1](("a", "b", "a")))
-        self.assertTrue(eval_result[1](("a", "a", "a")))
-        self.assertFalse(eval_result[1](("a", "b", "c")))
+        assgn = {"a": "a", "b": "a", "c": "c"}
+        self.assertTrue(eval_result[1](tuple([assgn[var] for var in vars])))
+        assgn = {"a": "a", "b": "b", "c": "a"}
+        self.assertTrue(eval_result[1](tuple([assgn[var] for var in vars])))
+        assgn = {"a": "a", "b": "a", "c": "a"}
+        self.assertTrue(eval_result[1](tuple([assgn[var] for var in vars])))
+        assgn = {"a": "a", "b": "b", "c": "c"}
+        self.assertFalse(eval_result[1](tuple([assgn[var] for var in vars])))
 
 
 if __name__ == '__main__':
