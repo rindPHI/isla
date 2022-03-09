@@ -2654,14 +2654,17 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
     def exitSexprId(self, ctx: IslaLanguageParser.SexprIdContext):
         id_text = parse_tree_text(ctx.ID())
-        if not ISLaEmitter.is_smtlib_function(id_text):
+        if not ISLaEmitter.is_protected_smtlib_keyword(id_text):
             self.get_var(id_text)  # Simply register variable
 
     def exitParFormula(self, ctx: IslaLanguageParser.ParFormulaContext):
         self.formulas[ctx] = self.formulas[ctx.formula()]
 
     @staticmethod
-    def is_smtlib_function(symbol: str) -> bool:
+    def is_protected_smtlib_keyword(symbol: str) -> bool:
+        if symbol in {"let", "forall", "exists", "match", "!", "ite"}:
+            return True
+
         try:
             z3.parse_smt2_string(f"(assert ({symbol} 1))")
             return True

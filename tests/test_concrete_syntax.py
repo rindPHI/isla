@@ -158,6 +158,11 @@ forall <key_value> container="{<key> key} = {<value> value}" in start:
             strip_ws(ISLaUnparser(parse_isla(formula, grammar)).unparse()),
             strip_ws(formula))
 
+    def test_ite(self):
+        result = parse_isla("(ite true true true)")
+        self.assertIsInstance(result, language.SMTFormula)
+        self.assertEqual(z3.If(True, True, True), result.formula)
+
 
 if __name__ == '__main__':
     unittest.main()

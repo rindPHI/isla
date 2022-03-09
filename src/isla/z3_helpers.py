@@ -321,6 +321,31 @@ def is_z3_var(expr: z3.ExprRef) -> bool:
     return z3.is_const(expr) and expr.decl().kind() == z3.Z3_OP_UNINTERPRETED
 
 
+def replace_in_z3_expr(
+        e: z3.ExprRef | z3.QuantifierRef,
+        replacement: Callable[[z3.ExprRef | z3.QuantifierRef], Optional[z3.ExprRef | z3.QuantifierRef]]
+) -> z3.ExprRef | z3.QuantifierRef:
+    subst_map: Dict[z3.ExprRef | z3.QuantifierRef, z3.ExprRef | z3.QuantifierRef] = {}
+
+    for sub_expr in visit_z3_expr(e):
+        repl = replacement(sub_expr)
+        if repl is not None:
+            subst_map[sub_expr] = repl
+
+    return z3_subst(e, subst_map)
+
+
+def filter_z3_expr(
+        e: z3.ExprRef | z3.QuantifierRef,
+        predicate: Callable[[z3.ExprRef | z3.QuantifierRef], bool]) -> Set[z3.ExprRef | z3.QuantifierRef]:
+    result: Set[z3.ExprRef | z3.QuantifierRef] = set([])
+    for sub_expr in visit_z3_expr(e):
+        if predicate(sub_expr):
+            result.add(sub_expr)
+
+    return result
+
+
 def visit_z3_expr(e: z3.ExprRef | z3.QuantifierRef,
                   seen: Optional[Dict[Union[z3.ExprRef, z3.QuantifierRef], bool]] = None) -> \
         Generator[z3.ExprRef | z3.QuantifierRef, None, None]:
@@ -364,7 +389,7 @@ def get_symbols(formula: z3.BoolRef) -> Set[z3.SeqRef]:
     return result
 
 
-def smt_expr_to_str(f: z3.ExprRef) -> str:
+def smt_expr_to_str(f: z3.ExprRef, qfd_var_stack: Tuple[str, ...] = ()) -> str:
     op_strings = {
         z3.Z3_OP_SEQ_IN_RE: "str.in_re",
         z3.Z3_OP_SEQ_CONCAT: "str.++",
@@ -372,6 +397,10 @@ def smt_expr_to_str(f: z3.ExprRef) -> str:
         z3.Z3_OP_STR_TO_INT: "str.to.int",  # <- Different from standard SMT-LIB (Z3 version)
     }
 
+    if z3.is_var(f):
+        idx = z3.get_var_index(f)
+        assert len(qfd_var_stack) > idx
+        return qfd_var_stack[idx]
     if z3.is_string_value(f):
         return '"' + cast(str, f.as_string()).replace('"', '""') + '"'
     if z3.is_int_value(f):
@@ -391,6 +420,16 @@ def smt_expr_to_str(f: z3.ExprRef) -> str:
         else:
             op = f.decl().name()
 
-        return f"({op} {' '.join(map(smt_expr_to_str, f.children()))}".strip() + ")"
+        return f"({op} {' '.join(map(lambda c: smt_expr_to_str(c, qfd_var_stack), f.children()))}".strip() + ")"
 
-    raise NotImplementedError()
+    if isinstance(f, z3.QuantifierRef):
+        vars = []
+        for var_idx in range(f.num_vars()):
+            vars.append(f"({f.var_name(var_idx)} {f.var_sort(var_idx)})")
+            qfd_var_stack = (f.var_name(var_idx),) + qfd_var_stack
+
+        kind = "forall" if f.is_forall() else "exists"
+
+        return f"({kind} ({' '.join(vars)}) {smt_expr_to_str(f.body(), qfd_var_stack)})"
+
+    raise NotImplementedError(f"{str(f)} ({type(f).__name__})")

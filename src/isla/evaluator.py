@@ -10,7 +10,8 @@ from orderedset import OrderedSet
 
 from isla.helpers import is_nonterminal, assertions_activated, transitive_closure
 from isla.three_valued_truth import ThreeValuedTruth
-from isla.z3_helpers import evaluate_z3_expression, DomainError, is_valid, z3_and, z3_or, z3_eq
+from isla.z3_helpers import evaluate_z3_expression, DomainError, is_valid, z3_and, z3_or, z3_eq, replace_in_z3_expr, \
+    smt_expr_to_str
 from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES
 from isla.language import Formula, DerivationTree, StructuralPredicate, SemanticPredicate, parse_isla, \
     VariablesCollector, Constant, FilterVisitor, NumericQuantifiedFormula, StructuralPredicateFormula, SMTFormula, \
@@ -686,8 +687,45 @@ def approximate_isla_to_smt_formula(
 z3_type_predicate = z3.Function("type", z3.StringSort(), z3.StringSort(), z3.BoolSort())
 
 
-def isla_to_smt_formula(formula: Formula) -> z3.BoolRef:
+def fix_str_to_int(formula: z3.BoolRef) -> z3.BoolRef:
+    """
+    The `str.to.int` / `str.to_int` function in Z3 / SMT-LIB is not behaving as
+    one would expect. Notably, it does not work for negative numbers: It always
+    outputs "-1" (default for values out of range) when called for them. This
+    function replaces all `str.to.int` expressions with a sign-aware version.
+
+    Notably, `(str.to.int x)` is replaced by
+    `(ite (= (str.at x 0) "-") (* -1 (str.to.int (str.substr x 1 (- (str.len x) 1)))) (str.to.int x))`.
+
+    When working with this formula, you should still make sure that `x` is constrained
+    to strings representing valid integers.
+
+    :param formula: Formula in which to replace `str.to.int` with optimized version.
+    :return: The "fixed" formula.
+    """
+
+    def replacement(expr: z3.ExprRef | z3.QuantifierRef) -> Optional[z3.ExprRef | z3.QuantifierRef]:
+        if expr.decl().kind() == z3.Z3_OP_STR_TO_INT:
+            var = expr.children()[0]
+            return z3.If(
+                z3_eq(var.at(0), "-"),
+                z3.IntVal(-1) * z3.StrToInt(z3.SubString(var, 1, z3.Length(var) - 1)),
+                z3.StrToInt(var)
+            )
+
+        return None
+
+    return replace_in_z3_expr(formula, replacement)
+
+
+def isla_to_smt_formula(formula: Formula, do_fix_str_to_int: bool = True) -> z3.BoolRef:
+    # TODO:
+    #  - Translate predicates
+    #  - Maybe special translation for `before`: Total order
     if isinstance(formula, SMTFormula):
+        if do_fix_str_to_int:
+            return fix_str_to_int(formula.formula)
+
         return formula.formula
 
     if isinstance(formula, ConjunctiveFormula):
@@ -705,27 +743,26 @@ def isla_to_smt_formula(formula: Formula) -> z3.BoolRef:
             z3_type_predicate(formula.bound_variable.to_smt(), z3.StringVal(formula.bound_variable.n_type)),
             z3.Contains(formula.in_variable.to_smt(), formula.bound_variable.to_smt())
         ]
+        bound_vars = []
 
         if formula.bind_expression:
-            elems_in_concat = []
+            # NOTE: Stipulating the precise shape of the match expression as a
+            #       concatenation of match expression elements can lead to
+            #       non-termination of Z3 despite a set timeout. Removed that.
             for bound_element in formula.bind_expression.bound_elements:
                 assert not isinstance(bound_element, list), "Conversion of optionals not yet implemented"
                 if not isinstance(bound_element, DummyVariable):
-                    elems_in_concat.append(bound_element.to_smt())
                     premises.append(z3.Contains(formula.bound_variable.to_smt(), bound_element.to_smt()))
+                    bound_vars.append(bound_element.to_smt())
                     continue
-
-                elems_in_concat.append(z3.StringVal(bound_element.n_type))
-
-            premises.append(z3_eq(z3.Concat(*elems_in_concat), formula.bound_variable.to_smt()))
 
         if isinstance(formula, ForallFormula):
             return z3.ForAll(
-                [formula.bound_variable.to_smt()],
+                [formula.bound_variable.to_smt()] + bound_vars,
                 z3.Implies(z3.And(*premises), isla_to_smt_formula(formula.inner_formula)))
         else:
             return z3.Exists(
-                [formula.bound_variable.to_smt()],
+                [formula.bound_variable.to_smt()] + bound_vars,
                 z3.And(z3.And(*premises), isla_to_smt_formula(formula.inner_formula)))
 
     if isinstance(formula, ForallIntFormula):
@@ -741,26 +778,41 @@ def isla_to_smt_formula(formula: Formula) -> z3.BoolRef:
     raise NotImplementedError(f"Translation of formula {formula} (type {type(formula).__name__}) not implemented")
 
 
-def implies(formula_1: Formula, formula_2: Formula, grammar: Optional[CanonicalGrammar] = None) -> Optional[bool]:
-    sublang_relation = transitive_closure({
-        (nonterminal_1, nonterminal_2)
-        for nonterminal_1 in grammar
-        for nonterminal_2 in grammar
-        if (nonterminal_1 == nonterminal_2
-            or any(derivation == [nonterminal_1] for derivation in grammar[nonterminal_2])
-            or grammar[nonterminal_1] == [[nonterminal_2]])
-    })
+def implies(
+        formula_1: Formula,
+        formula_2: Formula,
+        grammar: Optional[CanonicalGrammar] = None,
+        do_fix_str_to_int: bool = True) -> Optional[bool]:
+    sublang_relation = {}
+    if grammar:
+        sublang_relation = transitive_closure({
+            (nonterminal_1, nonterminal_2)
+            for nonterminal_1 in grammar
+            for nonterminal_2 in grammar
+            if (nonterminal_1 == nonterminal_2
+                or any(derivation == [nonterminal_1] for derivation in grammar[nonterminal_2])
+                or grammar[nonterminal_1] == [[nonterminal_2]])
+        })
 
-    f_1 = isla_to_smt_formula(formula_1)
-    f_2 = isla_to_smt_formula(formula_2)
+    f_1 = isla_to_smt_formula(formula_1, do_fix_str_to_int=do_fix_str_to_int)
+    f_2 = isla_to_smt_formula(formula_2, do_fix_str_to_int=do_fix_str_to_int)
+
+    print(smt_expr_to_str(f_1))
+    print(smt_expr_to_str(f_2))
+
+    premises = []
+    if grammar:
+        x = z3.String("x")
+        for nonterminal_1, nonterminal_2 in sublang_relation:
+            premises.append(z3.ForAll([x], z3.Implies(z3_type_predicate(x, z3.StringVal(nonterminal_2)),
+                                                      z3_type_predicate(x, z3.StringVal(nonterminal_1)))))
 
     s = z3.Solver()
-    s.set("timeout", 500)
-    x = z3.String("x")
-    for nonterminal_1, nonterminal_2 in sublang_relation:
-        s.append(z3.ForAll([x], z3.Implies(z3_type_predicate(x, z3.StringVal(nonterminal_1)),
-                                           z3_type_predicate(x, z3.StringVal(nonterminal_2)))))
-    s.append(z3.Not(z3.Implies(f_2, f_1)))
+    s.set("timeout", 100)
+    for premise in premises:
+        print(smt_expr_to_str(premise))
+        s.append(premise)
+    s.append(z3.Not(z3.Implies(f_1, f_2)))
     result = s.check()
 
     if result == z3.unknown:

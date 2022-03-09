@@ -696,17 +696,28 @@ forall <expr> expr in start:
         self.assertTrue(evaluate(property, inp, grammar))
 
     def test_implication_check_core_implied(self):
+        def my_str_to_int(var):
+            return (f'(ite (= (str.at {var} 0) "-") '
+                    f'(* -1 (str.to.int (str.substr {var} 1 (- (str.len {var}) 1)))) '
+                    f'(str.to.int {var}))')
+
+        constraint_1 = parse_isla(f"(<= {my_str_to_int('start')} -100)")
+        constraint_2 = parse_isla(f"(<= {my_str_to_int('start')} -50)")
+        self.assertTrue(implies(constraint_1, constraint_2, do_fix_str_to_int=False))
+        self.assertFalse(implies(constraint_2, constraint_1, do_fix_str_to_int=False))
+
         constraint_1 = parse_isla("""
         forall <arith_expr> container="{<number> number} * <number>" in start:
-           exists <number> elem in number:
-             (<= (str.to.int elem) (str.to.int "-100"))""")
+           exists <number> e in number:
+             (<= (str.to.int e) (str.to.int "-100"))""")
 
         constraint_2 = parse_isla("""
         forall <arith_expr> container="{<number> number} * <number>" in start:
-           exists <number> elem in number:
-             (<= (str.to.int elem) (str.to.int "-50"))""")
+           exists <number> e in number:
+             (<= (str.to.int e) (str.to.int "-50"))""")
 
-        self.assertTrue(implies(constraint_2, constraint_1))
+        self.assertTrue(implies(constraint_1, constraint_2))
+        self.assertFalse(implies(constraint_2, constraint_1))
         self.assertTrue(implies(constraint_1, -constraint_1) is False)
 
     def test_implication_check_type_implied(self):
@@ -720,6 +731,7 @@ forall <expr> expr in start:
           exists <rhs> rhs in stmt:
             (= rhs "1")""")
 
+        # This should hold since there is no <stmt> without an <assgn>!
         self.assertTrue(implies(constraint_2, constraint_1, canonical(LANG_GRAMMAR)))
         self.assertFalse(implies(constraint_1, constraint_2, canonical(LANG_GRAMMAR)))
 
@@ -730,8 +742,32 @@ forall <expr> expr in start:
 
         self.assertTrue(implies(constraint_1, constraint_3, canonical(LANG_GRAMMAR)))
         self.assertTrue(implies(constraint_3, constraint_1, canonical(LANG_GRAMMAR)))
-        self.assertFalse(implies(constraint_3, constraint_2, canonical(LANG_GRAMMAR)))
         self.assertTrue(implies(constraint_2, constraint_3, canonical(LANG_GRAMMAR)))
+        self.assertFalse(implies(constraint_3, constraint_2, canonical(LANG_GRAMMAR)))
+
+    def test_implication_check_type_implied_scriptsize_c(self):
+        constraint_1 = parse_isla("""
+        forall <statement> stmt in start:
+          exists <id> id in stmt:
+            (= id "x")""")
+
+        constraint_2 = parse_isla("""
+        forall <block> stmt in start:
+          exists <id> id in stmt:
+            (= id "1")""")
+
+        self.assertFalse(implies(constraint_2, constraint_1, canonical(scriptsizec.SCRIPTSIZE_C_GRAMMAR)))
+        self.assertFalse(implies(constraint_1, constraint_2, canonical(scriptsizec.SCRIPTSIZE_C_GRAMMAR)))
+
+        constraint_3 = parse_isla("""
+        forall <statement> stmt="if<paren_expr> <statement>" in start:
+          exists <id> id in stmt:
+            (= id "1")""")
+
+        self.assertFalse(implies(constraint_1, constraint_3, canonical(scriptsizec.SCRIPTSIZE_C_GRAMMAR)))
+        self.assertFalse(implies(constraint_3, constraint_1, canonical(scriptsizec.SCRIPTSIZE_C_GRAMMAR)))
+
+        self.assertTrue(implies(constraint_1, constraint_1, canonical(scriptsizec.SCRIPTSIZE_C_GRAMMAR)))
 
 
 if __name__ == '__main__':
