@@ -57,6 +57,10 @@ class TestDerivationTree(unittest.TestCase):
             visited_nodes.append(int(node.value))
 
         visited_nodes.clear()
+        tree.bfs(action)
+        self.assertEqual([1, 2, 3, 4, 5, 6, 7], visited_nodes)
+
+        visited_nodes.clear()
         tree.traverse(action, kind=DerivationTree.TRAVERSE_POSTORDER, reverse=True)
         self.assertEqual([6, 7, 5, 3, 4, 2, 1], visited_nodes)
 

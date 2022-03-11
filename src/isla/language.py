@@ -338,6 +338,26 @@ class DerivationTree:
             while stack_2:
                 action(*stack_2.pop())
 
+    def bfs(self,
+            action: Callable[[Path, 'DerivationTree'], None],
+            abort_condition: Callable[[Path, 'DerivationTree'], bool] = lambda p, n: False):
+        queue: List[Tuple[Path, DerivationTree]] = [((), self)]  # FIFO queue
+        explored: Set[Path] = {()}
+
+        while queue:
+            p, v = queue.pop(0)
+            action(p, v)
+            if abort_condition(p, v):
+                return
+
+            for child_idx, child in enumerate(v.children or []):
+                child_path = p + (child_idx,)
+                if child_path in explored:
+                    continue
+
+                explored.add(child_path)
+                queue.append((child_path, child))
+
     def nonterminals(self) -> Set[str]:
         result: Set[str] = set()
 
