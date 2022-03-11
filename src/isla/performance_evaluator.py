@@ -7,11 +7,12 @@ import os
 import os.path
 import re
 import sqlite3
+import statistics
 import sys
 import time
 import traceback
 from datetime import datetime
-from typing import List, Generator, Dict, Callable, Set, Tuple, Optional, cast
+from typing import List, Generator, Dict, Callable, Set, Tuple, Optional, cast, Sequence
 
 import pathos.multiprocessing as pmp
 from grammar_graph import gg
@@ -291,6 +292,8 @@ class Evaluator:
         efficiency: Dict[str, float] = {}
         precision: Dict[str, float] = {}
         diversity: Dict[str, float] = {}
+        avg_inp_length: Dict[str, float] = {}
+        median_inp_length: Dict[str, float] = {}
 
         for job in self.jobs_and_generators:
             sids = tuple(get_all_sids(job, self.db_file))
@@ -341,6 +344,24 @@ class Evaluator:
 
             diversity[job] = sum(diversity_by_sid.values()) / len(diversity_by_sid)
 
+            # Analyze average / median String length
+            cur.execute(
+                f"SELECT inp FROM inputs WHERE testId = ? AND sid IN ({sids_placeholder})",
+                (job,) + sids)
+
+            def get_input_length(row: Sequence[str]) -> int:
+                return len(str(language.DerivationTree.from_parse_tree(json.loads(row[0]))))
+
+            with pmp.ProcessingPool(processes=pmp.cpu_count()) as pool:
+                input_lengths = pool.map(get_input_length, cur.fetchall())
+
+            # input_lengths = []
+            # for row in cur:
+            #     input_lengths.append(len(str(language.DerivationTree.from_parse_tree(json.loads(row[0])))))
+
+            avg_inp_length[job] = statistics.mean(input_lengths)
+            median_inp_length[job] = statistics.median(input_lengths)
+
         con.close()
 
         def perc(inp: float) -> str:
@@ -352,8 +373,8 @@ class Evaluator:
         print("\n")
 
         col_1_len = max([len(job) for job in self.jobs_and_generators])
-        row_1 = f"| {'Job'.ljust(col_1_len)} | Efficiency | Precision  | Diversity  |"
-        sepline = f"+-{'-'.ljust(col_1_len, '-')}-+------------+------------+------------+"
+        row_1 = f"| {'Job'.ljust(col_1_len)} | Efficiency | Precision  | Diversity  | Mean/Median Input Length |"
+        sepline = f"+-{'-'.ljust(col_1_len, '-')}-+------------+------------+------------+--------------------------+"
 
         print(sepline)
         print(row_1)
@@ -361,7 +382,9 @@ class Evaluator:
 
         for job in self.jobs_and_generators:
             print(f"| {job.ljust(col_1_len)} |   {frac(efficiency[job])} | "
-                  f"{perc(precision[job])} | {perc(diversity[job])} |")
+                  f"{perc(precision[job])} | {perc(diversity[job])} | " +
+                  (frac(avg_inp_length[job]) + " / " + frac(median_inp_length[job])).rjust(
+                      len("Mean/Median Input Length")) + " |")
 
         print(sepline)
 

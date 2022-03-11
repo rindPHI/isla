@@ -74,6 +74,9 @@ def is_nth(tree: DerivationTree, n: int | str, path_1: Path, path_2: Path) -> bo
         if path_2 + path == path_1:
             return match_idx == int(n)
 
+        if match_idx >= int(n):
+            return False
+
     return False
 
 
