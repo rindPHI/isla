@@ -9,7 +9,8 @@ from grammar_graph.gg import GrammarGraph
 
 from isla.existential_helpers import path_to_tree, paths_between
 from isla.helpers import is_prefix, path_iterator, delete_unreachable, \
-    dict_of_lists_to_list_of_dicts, weighted_geometric_mean, canonical
+    dict_of_lists_to_list_of_dicts, weighted_geometric_mean, canonical, trie_key_to_path, get_subtrie
+from isla.language import DerivationTree
 from isla.z3_helpers import evaluate_z3_expression, z3_eq, smt_expr_to_str
 from isla.isla_predicates import is_before
 from isla.type_defs import Grammar, ParseTree
@@ -179,6 +180,14 @@ class TestHelpers(unittest.TestCase):
         self.assertTrue(eval_result[1](tuple([assgn[var] for var in vars])))
         assgn = {"a": "a", "b": "b", "c": "c"}
         self.assertFalse(eval_result[1](tuple([assgn[var] for var in vars])))
+
+    def test_get_subtrie(self):
+        parser = EarleyParser(LANG_GRAMMAR)
+        tree = DerivationTree.from_parse_tree(next(parser.parse("x := 1 ; y := x ; y := 2 ; z := y ; x := z")))
+
+        for path, _ in tree.paths():
+            subtree_paths = [(trie_key_to_path(p), t) for p, t in get_subtrie(tree.trie(), path).items()]
+            self.assertEqual([(p[len(path):], t) for p, t in tree.paths() if p[:len(path)] == path], subtree_paths)
 
 
 if __name__ == '__main__':

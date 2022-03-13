@@ -357,9 +357,11 @@ def trie_key_to_path(key: str) -> Path:
     return tuple([ord(c) - 2 for c in key if ord(c) != 1])
 
 
-def get_subtrie(trie: datrie.Trie, new_root_path: Path) -> datrie.Trie:
+def get_subtrie(trie: datrie.Trie, new_root_path: Path | str) -> datrie.Trie:
     subtrees_trie = mk_subtree_trie()
-    in_path_key = path_to_trie_key(new_root_path)
+    in_path_key = (
+        new_root_path if isinstance(new_root_path, str)
+        else path_to_trie_key(new_root_path))
     for suffix in trie.suffixes(in_path_key):
         subtrees_trie[suffix] = trie[in_path_key + suffix]
     return subtrees_trie

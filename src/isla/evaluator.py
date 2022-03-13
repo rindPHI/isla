@@ -44,13 +44,16 @@ def evaluate(
         structural_predicates: Set[StructuralPredicate] = STANDARD_STRUCTURAL_PREDICATES,
         semantic_predicates: Set[SemanticPredicate] = STANDARD_SEMANTIC_PREDICATES,
         assumptions: Optional[Set[Formula]] = None,
-        subtrees_trie: Optional[datrie.Trie] = None) -> ThreeValuedTruth:
+        subtrees_trie: Optional[datrie.Trie] = None,
+        graph: Optional[gg.GrammarGraph] = None) -> ThreeValuedTruth:
     assumptions = assumptions or set()
 
     assert reference_tree is not None
     assert isinstance(reference_tree, DerivationTree)
     if subtrees_trie is None:
         subtrees_trie = reference_tree.trie()
+    if graph is None:
+        graph = gg.GrammarGraph.from_grammar(grammar)
 
     if isinstance(formula, str):
         formula = parse_isla(formula, grammar, structural_predicates, semantic_predicates)
@@ -72,9 +75,7 @@ def evaluate(
         # The legacy evaluation performs better, but only works w/o NumericQuantifiedFormulas / assumptions.
         # It might be possible to consider assumptions, but the implemented method works and we would
         # rather not invest that work to gain some seconds of performance.
-        return evaluate_legacy(formula, grammar, {}, reference_tree, trie=subtrees_trie)
-
-    graph = gg.GrammarGraph.from_grammar(grammar)
+        return evaluate_legacy(formula, grammar, {}, reference_tree, trie=subtrees_trie, graph=graph)
 
     qfr_free: Formula = eliminate_quantifiers(
         formula,
@@ -316,22 +317,29 @@ def evaluate_legacy(
         formula: Formula,
         grammar: Grammar,
         assignments: Dict[Variable, Tuple[Path, DerivationTree]],
-        reference_tree: DerivationTree | Dict[Path, DerivationTree],
+        reference_tree: DerivationTree,
         vacuously_satisfied: Optional[Set[Formula]] = None,
-        trie: Optional[datrie.Trie] = None) -> ThreeValuedTruth:
+        trie: Optional[datrie.Trie] = None,
+        graph: Optional[gg.GrammarGraph] = None) -> ThreeValuedTruth:
     """
     An evaluation method which is based on tracking assignments in a dictionary.
     This does not work with formulas containing numeric constant introductions,
     but is significantly faster than the more general method based on formula manipulations.
 
     :param formula: The formula to evaluate.
+    :param grammar: The reference grammar.
     :param assignments: The assignments recorded so far.
+    :param reference_tree: The tree to which the paths in assignments refer.
+    :param vacuously_satisfied: A set into which universal formulas will be added when they're vacuously satisfied.
+    :param trie: A prefix tree (tree) mapping tree paths from `reference_tree` (in pre-order) to subtrees.
+    :param graph: The GrammarGraph for `grammar`.
     :return: A (three-valued) truth value.
     """
     assert reference_tree is not None
     assert isinstance(reference_tree, DerivationTree)
 
-    graph = gg.GrammarGraph.from_grammar(grammar)
+    if graph is None:
+        graph = gg.GrammarGraph.from_grammar(grammar)
 
     if trie is None:
         trie = reference_tree.trie()
