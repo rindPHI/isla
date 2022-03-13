@@ -939,7 +939,6 @@ class BindExpression:
                 result[curr_elem] = (path, subtree)
                 curr_elem = pop(bound_variables, default=None)
 
-                # TODO: Slow!
                 # subtrees = [(p, s) for p, s in subtrees
                 #             if not p[:len(path)] == path]
                 subtrees = remove_subtrees_for_prefix(subtrees, path)
