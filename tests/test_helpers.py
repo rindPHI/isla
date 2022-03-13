@@ -186,7 +186,7 @@ class TestHelpers(unittest.TestCase):
         tree = DerivationTree.from_parse_tree(next(parser.parse("x := 1 ; y := x ; y := 2 ; z := y ; x := z")))
 
         for path, _ in tree.paths():
-            subtree_paths = [(trie_key_to_path(p), t) for p, t in get_subtrie(tree.trie(), path).items()]
+            subtree_paths = [(p, t) for p, t in get_subtrie(tree.trie(), path).values()]
             self.assertEqual([(p[len(path):], t) for p, t in tree.paths() if p[:len(path)] == path], subtree_paths)
 
 

@@ -275,13 +275,16 @@ class DerivationTree:
 
     @lru_cache
     def trie(self) -> datrie.Trie:
-        """Mapping from Paths to subtrees, in efficient Trie structure.
+        """Mapping from Paths (encoded as unicode Strings) to pairs of a path
+        and a corresponding subtree, in efficient Trie structure. The path
+        in the value is the unencoded version of the path in the key; this
+        saves some time for decoding the path. Use `helpers.path_to_trie_key`
+        and `helpers.trie_key_to_path` for de/encoding paths for trie usage.
         Can be used like a dictionary. Keys (paths) are ordered according
         to a pre-order traversal."""
         trie = mk_subtree_trie()  # Works for up to 30 children of a node
         for path, subtree in self.paths():
-            # Zero bytes are ignored in the trie -> add 1
-            trie[path_to_trie_key(path)] = subtree
+            trie[path_to_trie_key(path)] = (path, subtree)
         return trie
 
     def filter(self, f: Callable[['DerivationTree'], bool],
@@ -926,10 +929,9 @@ class BindExpression:
         curr_elem_is_terminal = isinstance(curr_elem, DummyVariable) and not curr_elem.is_nonterminal
 
         while subtrees_trie and curr_elem:
-            key = next(iter(subtrees_trie))
-            subtree = subtrees_trie[key]
-            del subtrees_trie[key]
-            path = trie_key_to_path(key)
+            path_key = next(iter(subtrees_trie))
+            path, subtree = subtrees_trie[path_key]
+            del subtrees_trie[path_key]
 
             subtree_str = str(subtree)
 
@@ -963,8 +965,8 @@ class BindExpression:
                 if not path:
                     break
                 else:
-                    for key in subtrees_trie.keys(path_to_trie_key(path)):
-                        del subtrees_trie[key]
+                    for sub_path_key in subtrees_trie.keys(path_key):
+                        del subtrees_trie[sub_path_key]
 
         # We did only split dummy variables
         assert subtrees_trie or curr_elem or \

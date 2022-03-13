@@ -388,9 +388,9 @@ def evaluate_legacy(
             sub_trie = get_subtrie(trie, in_path)
 
             new_assignments: List[Dict[Variable, Tuple[Path, DerivationTree]]] = []
-            for path_key, subtree in sub_trie.items():
+            for path_key, (path, subtree) in sub_trie.items():
                 if subtree.value == formula.bound_variable.n_type:
-                    new_assignments.append({formula.bound_variable: (in_path + trie_key_to_path(path_key), subtree)})
+                    new_assignments.append({formula.bound_variable: (in_path + path, subtree)})
         else:
             new_assignments = [
                 {var: (in_path + path, tree) for var, (path, tree) in new_assignment.items()}
