@@ -41,6 +41,8 @@ fonttools==4.28.3
 fuzzingbook==1.0.1
 gitdb==4.0.9
 gprof2dot==2021.2.21
+grammar2regex @ git+https://github.com/rindPHI/grammar2regex
+grammargraph @ git+https://github.com/rindPHI/GrammarGraph
 graphviz==0.17
 h11==0.12.0
 idna==3.3
@@ -92,6 +94,7 @@ pox==0.3.0
 ppft==1.6.6.4
 prometheus-client==0.11.0
 prompt-toolkit==3.0.20
+proxyorderedset @ git+https://github.com/rindPHI/proxyorderedset
 ptyprocess==0.7.0
 py==1.11.0
 pyOpenSSL==21.0.0
@@ -102,10 +105,11 @@ pyflakes==2.3.1
 pyparsing==2.4.7
 pyrsistent==0.18.0
 pytest-forked==1.3.0
+pytest-html==3.1.1
 pytest-profiling==1.7.0
 pytest-pycharm==0.7.0
+pytest-rerunfailures>=10.2
 pytest-xdist==2.4.0
-pytest-html==3.1.1
 pytest==6.2.5
 python-dateutil==2.8.2
 python-magic==0.4.24
@@ -148,7 +152,3 @@ wsproto==1.0.0
 yapf==0.31.0
 z3-solver>=4.8.8.0
 zipp==3.6.0
-proxyorderedset @ git+https://github.com/rindPHI/proxyorderedset
-grammargraph @ git+https://github.com/rindPHI/GrammarGraph
-grammar2regex @ git+https://github.com/rindPHI/grammar2regex
-pytest-rerunfailures>=10.2

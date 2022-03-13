@@ -1,7 +1,8 @@
 import itertools
 import math
 import re
-from typing import Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast, Callable, Iterable
+from bisect import bisect_left
+from typing import Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast, Callable, Iterable, Any
 
 from fuzzingbook.Grammars import unreachable_nonterminals
 
@@ -297,3 +298,37 @@ def transitive_closure(relation: Iterable[Tuple[S, T]]) -> Set[Tuple[S, T]]:
         closure = closure_until_now
 
     return closure
+
+
+def remove_subtrees_for_prefix(
+        subtrees: List[Tuple[Path, Any]],
+        prefix: Path) -> List[Tuple[Path, Any]]:
+    if not prefix or not subtrees:
+        return []
+
+    keyed_subtrees = KeyList(subtrees, key=lambda t: t[0])
+    pos_start = bisect_left(keyed_subtrees, prefix)
+
+    if subtrees[pos_start][0][:len(prefix)] != prefix:
+        # Prefix does not exist in list! Thus, return the whole list
+        result = subtrees
+    else:
+        pos_end = bisect_left(keyed_subtrees, prefix[:-1] + (prefix[-1] + 1,), lo=pos_start + 1)
+        result = subtrees[:pos_start] + subtrees[pos_end:]
+
+    # assert result == [(p, s) for p, s in subtrees if not p[:len(prefix)] == prefix]
+
+    return result
+
+
+class KeyList(Sequence):
+    # bisect doesn't accept a key function, so we build the key into our sequence.
+    def __init__(self, l, key):
+        self.l = l
+        self.key = key
+
+    def __len__(self):
+        return len(self.l)
+
+    def __getitem__(self, index):
+        return self.key(self.l[index])

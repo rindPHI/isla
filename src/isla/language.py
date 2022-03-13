@@ -22,7 +22,8 @@ from orderedset import OrderedSet
 from z3 import Z3Exception
 
 import isla.mexpr_parser.MexprParserListener as MexprParserListener
-from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, assertions_activated
+from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, assertions_activated, \
+    remove_subtrees_for_prefix
 from isla.helpers import replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, \
     immutable_to_grammar, \
     nested_list_to_tuple
@@ -855,7 +856,7 @@ class BindExpression:
                 #       combination could not have been adequate (containing nonexisting
                 #       input elements), such that they got matched to wrong elements, but
                 #       there remain tree elements that were not matched.
-                if all(any(len(match_path) <= len(leaf_path) and match_path == leaf_path[:len(match_path)]
+                if all(any(match_path == leaf_path[:len(match_path)]
                            for match_path, _ in maybe_result.values())
                        for leaf_path, _ in leaves):
                     return maybe_result
@@ -937,8 +938,11 @@ class BindExpression:
                      subtree_str == curr_elem.n_type)):
                 result[curr_elem] = (path, subtree)
                 curr_elem = pop(bound_variables, default=None)
-                subtrees = [(p, s) for p, s in subtrees
-                            if not p[:len(path)] == path]
+
+                # TODO: Slow!
+                # subtrees = [(p, s) for p, s in subtrees
+                #             if not p[:len(path)] == path]
+                subtrees = remove_subtrees_for_prefix(subtrees, path)
 
         # We did only split dummy variables
         assert subtrees or curr_elem or \

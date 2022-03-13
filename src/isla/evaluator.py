@@ -597,7 +597,7 @@ def matches_for_quantified_formula(
                     else:
                         leaves = [leaf_path for leaf_path, _ in tree.leaves()]
 
-                    if all(any(len(match_path) <= len(leaf_path) and match_path == leaf_path[:len(match_path)]
+                    if all(any(match_path == leaf_path[:len(match_path)]
                                for match_path, _ in maybe_match.values())
                            for leaf_path in leaves):
                         new_assignments.append(new_assignment)
