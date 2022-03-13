@@ -384,10 +384,22 @@ def evaluate_legacy(
             assert formula.in_variable in assignments
             in_path, in_inst = assignments[formula.in_variable]
 
+        if formula.bind_expression is None:
+            sub_trie = get_subtrie(trie, in_path)
+
+            new_assignments: List[Dict[Variable, Tuple[Path, DerivationTree]]] = []
+            for path_key, subtree in sub_trie.items():
+                if subtree.value == formula.bound_variable.n_type:
+                    new_assignments.append({formula.bound_variable: (in_path + trie_key_to_path(path_key), subtree)})
+        else:
+            new_assignments = [
+                {var: (in_path + path, tree) for var, (path, tree) in new_assignment.items()}
+                for new_assignment in matches_for_quantified_formula(
+                    formula, grammar, in_inst, {}, trie=get_subtrie(trie, in_path))]
+
         new_assignments = [
-            {var: (in_path + path, tree) for var, (path, tree) in new_assignment.items()} | assignments
-            for new_assignment in matches_for_quantified_formula(
-                formula, grammar, in_inst, {}, trie=get_subtrie(trie, in_path))]
+            new_assignment | assignments
+            for new_assignment in new_assignments]
 
         assert all(
             reference_tree.is_valid_path(path) and
