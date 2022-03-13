@@ -347,14 +347,14 @@ def path_to_trie_key(path: Path) -> str:
     if not path:
         return chr(1)
 
-    return "".join([chr(i + 2) for i in path])
+    return chr(1) + "".join([chr(i + 2) for i in path])
 
 
 def trie_key_to_path(key: str) -> Path:
     if key == chr(1):
         return ()
 
-    return tuple([ord(c) - 2 for c in key])
+    return tuple([ord(c) - 2 for c in key if ord(c) != 1])
 
 
 def get_subtrie(trie: datrie.Trie, new_root_path: Path) -> datrie.Trie:
