@@ -2,6 +2,7 @@ import itertools
 import math
 import re
 from bisect import bisect_left
+from functools import lru_cache
 from typing import Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast, Callable, Iterable, Any
 
 from fuzzingbook.Grammars import unreachable_nonterminals
@@ -263,6 +264,7 @@ def cluster_by_common_elements(l: Sequence[T], f: Callable[[T], Set[S]]) -> List
 RE_NONTERMINAL = re.compile(r'(<[^<> ]*>)')
 
 
+@lru_cache(maxsize=None)
 def is_nonterminal(s):
     return RE_NONTERMINAL.match(s)
 

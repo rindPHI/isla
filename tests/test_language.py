@@ -274,6 +274,19 @@ class TestLanguage(unittest.TestCase):
         tree_prefix = mexpr.to_tree_prefix('<labeled_paragraph>', rest.REST_GRAMMAR)
         self.assertTrue(tree_prefix)
 
+    def test_to_tree_prefix_rest_ref_2(self):
+        mexpr = BindExpression(
+            DummyVariable(".. _"),
+            BoundVariable("def_id", "<id>"),
+            DummyVariable(":\n\n"),
+            DummyVariable("<paragraph>"))
+        in_nonterminal = "<labeled_paragraph>"
+
+        result = mexpr.to_tree_prefix(in_nonterminal, rest.REST_GRAMMAR)
+        self.assertEqual(1, len(result))
+        tree_prefix, bind_paths = result[0]
+        self.assertEqual(".. _<id>:\n\n<paragraph>", str(tree_prefix))
+
     def test_bind_epxr_to_tree_prefix_recursive_nonterminal(self):
         bind_expression = BindExpression("<xml-attribute> <xml-attribute>")
 

@@ -16,6 +16,7 @@ DIRECT_EMBEDDING = 0b001
 SELF_EMBEDDING = 0b010
 CONTEXT_ADDITION = 0b100
 
+
 def insert_tree(grammar: CanonicalGrammar,
                 tree: DerivationTree,
                 in_tree: DerivationTree,

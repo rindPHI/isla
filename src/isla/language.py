@@ -121,6 +121,7 @@ class DummyVariable(BoundVariable):
 
     def __init__(self, n_type: str):
         super().__init__(f"DUMMY_{DummyVariable.cnt}", n_type)
+        self.is_nonterminal = is_nonterminal(n_type)
         DummyVariable.cnt += 1
 
     def __str__(self):
@@ -904,17 +905,17 @@ class BindExpression:
             result: Dict[BoundVariable, Tuple[Path, DerivationTree]],
             excluded_matches: Tuple[Tuple[Path, BoundVariable], ...] = ()) -> bool:
         orig_bound_variables = list(bound_variables)
-        split_variables: Dict[BoundVariable, List[BoundVariable]] = {}
 
         curr_elem = bound_variables.pop(0)
+        curr_elem_is_terminal = isinstance(curr_elem, DummyVariable) and not curr_elem.is_nonterminal
 
         while subtrees and curr_elem:
             path, subtree = pop(subtrees)
 
             subtree_str = str(subtree)
-            if (isinstance(curr_elem, DummyVariable) and
-                    not is_nonterminal(curr_elem.n_type) and
-                    len(subtree_str) < len(curr_elem.n_type) and
+
+            if (curr_elem_is_terminal and
+                    curr_elem.n_type != subtree_str and
                     curr_elem.n_type.startswith(subtree_str)):
                 # Divide terminal dummy variables if they only can be unified with *different*
                 # subtrees; e.g., we have a dummy variable with n_type "xmlns:" for an XML grammar,
@@ -926,21 +927,20 @@ class BindExpression:
                 remainder_var = DummyVariable(curr_elem.n_type[len(subtree_str):])
                 next_var = DummyVariable(subtree_str)
 
-                split_variables[curr_elem] = [next_var, remainder_var]
                 bound_variables.insert(0, remainder_var)
 
                 curr_elem = next_var
+                curr_elem_is_terminal = isinstance(curr_elem, DummyVariable) and not curr_elem.is_nonterminal
+                # Don't `continue` here! The next `if` has to be entered before we pop a new subtree.
 
             if ((path, curr_elem) not in excluded_matches and
-                    (subtree.value == curr_elem.n_type or
-                     isinstance(curr_elem, DummyVariable) and
-                     not is_nonterminal(curr_elem.n_type) and
-                     subtree_str == curr_elem.n_type)):
+                    ((curr_elem_is_terminal and
+                      subtree_str == curr_elem.n_type) or
+                     subtree.value == curr_elem.n_type)):
                 result[curr_elem] = (path, subtree)
                 curr_elem = pop(bound_variables, default=None)
+                curr_elem_is_terminal = isinstance(curr_elem, DummyVariable) and not curr_elem.is_nonterminal
 
-                # subtrees = [(p, s) for p, s in subtrees
-                #             if not p[:len(path)] == path]
                 subtrees = remove_subtrees_for_prefix(subtrees, path)
 
         # We did only split dummy variables
