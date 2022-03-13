@@ -23,6 +23,7 @@ cffi==1.14.6
 cryptography==36.0.0
 cssselect2==0.4.1
 cycler==0.11.0
+datrie>=0.8.2
 debugpy==1.4.3
 decorator==5.1.0
 defusedxml==0.7.1

@@ -12,6 +12,7 @@ from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator
     TypeVar, MutableSet
 
 import antlr4
+import datrie
 import z3
 from antlr4 import InputStream, RuleContext
 from antlr4.Token import CommonToken
@@ -24,7 +25,7 @@ from z3 import Z3Exception
 
 import isla.mexpr_parser.MexprParserListener as MexprParserListener
 from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, assertions_activated, \
-    remove_subtrees_for_prefix, KeyList
+    remove_subtrees_for_prefix, KeyList, path_to_trie_key, trie_key_to_path, mk_subtree_trie, copy_trie
 from isla.helpers import replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, \
     immutable_to_grammar, \
     nested_list_to_tuple
@@ -271,6 +272,17 @@ class DerivationTree:
         result: List[Tuple[Path, 'DerivationTree']] = []
         self.traverse(action, kind=DerivationTree.TRAVERSE_PREORDER)
         return result
+
+    @lru_cache
+    def trie(self) -> datrie.Trie:
+        """Mapping from Paths to subtrees, in efficient Trie structure.
+        Can be used like a dictionary. Keys (paths) are ordered according
+        to a pre-order traversal."""
+        trie = mk_subtree_trie()  # Works for up to 30 children of a node
+        for path, subtree in self.paths():
+            # Zero bytes are ignored in the trie -> add 1
+            trie[path_to_trie_key(path)] = subtree
+        return trie
 
     def filter(self, f: Callable[['DerivationTree'], bool],
                enforce_unique: bool = False) -> List[Tuple[Path, 'DerivationTree']]:
@@ -810,7 +822,7 @@ class BindExpression:
                 in_nonterminal=in_nonterminal):
             tree = bound_elements_to_tree(bound_elements, grammar_to_immutable(grammar), in_nonterminal)
 
-            match_result = self.match_with_backtracking(tree.paths(), list(bound_elements))
+            match_result = self.match_with_backtracking(tree.trie(), list(bound_elements))
             if match_result:
                 positions: Dict[BoundVariable, Path] = {}
                 for bound_element in bound_elements:
@@ -836,21 +848,21 @@ class BindExpression:
             self,
             tree: DerivationTree,
             grammar: Grammar,
-            paths: Optional[Dict[Path, DerivationTree]] = None) -> \
-            Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
-        if not paths:
-            paths = dict(tree.paths())
+            subtrees_trie: Optional[datrie.Trie] = None) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
+        if not subtrees_trie:
+            subtrees_trie = tree.trie()
 
-        leaves = [(path, subtree) for path, subtree in paths.items() if not subtree.children]
+        leaves = [
+            (path, subtree)
+            for path, subtree in tree.paths()
+            if not subtree.children]
 
         for combination in reversed(flatten_bound_elements(
                 nested_list_to_tuple(self.bound_elements),
                 grammar_to_immutable(grammar),
                 in_nonterminal=tree.value)):
 
-            maybe_result = self.match_with_backtracking(
-                cast(List[Tuple[Path, DerivationTree]], list(paths.items())),
-                list(combination))
+            maybe_result = self.match_with_backtracking(subtrees_trie, list(combination))
             if maybe_result is not None:
                 maybe_result = dict(maybe_result)
 
@@ -867,7 +879,7 @@ class BindExpression:
 
     @staticmethod
     def match_with_backtracking(
-            subtrees: List[Tuple[Path, DerivationTree]],
+            subtrees_trie: datrie.Trie,
             bound_variables: List[BoundVariable],
             excluded_matches: Tuple[Tuple[Path, BoundVariable], ...] = ()
     ) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
@@ -877,7 +889,10 @@ class BindExpression:
         result: Dict[BoundVariable, Tuple[Path, DerivationTree]] = {}
 
         if BindExpression.match_without_backtracking(
-                list(subtrees), list(bound_variables), result, excluded_matches):
+                copy_trie(subtrees_trie),
+                list(bound_variables),
+                result,
+                excluded_matches):
             return result
 
         # In the case of nested structures with recursive nonterminals, we might have matched
@@ -889,7 +904,7 @@ class BindExpression:
                     for k in range(1, len(result) + 1)):
                 curr_elem: BoundVariable
                 backtrack_result = BindExpression.match_with_backtracking(
-                    subtrees,
+                    subtrees_trie,
                     bound_variables,
                     excluded_matches
                 )
@@ -901,7 +916,7 @@ class BindExpression:
 
     @staticmethod
     def match_without_backtracking(
-            subtrees: List[Tuple[Path, DerivationTree]],
+            subtrees_trie: datrie.Trie,
             bound_variables: List[BoundVariable],
             result: Dict[BoundVariable, Tuple[Path, DerivationTree]],
             excluded_matches: Tuple[Tuple[Path, BoundVariable], ...] = ()) -> bool:
@@ -910,8 +925,11 @@ class BindExpression:
         curr_elem = bound_variables.pop(0)
         curr_elem_is_terminal = isinstance(curr_elem, DummyVariable) and not curr_elem.is_nonterminal
 
-        while subtrees and curr_elem:
-            path, subtree = pop(subtrees)
+        while subtrees_trie and curr_elem:
+            key = next(iter(subtrees_trie))
+            subtree = subtrees_trie[key]
+            del subtrees_trie[key]
+            path = trie_key_to_path(key)
 
             subtree_str = str(subtree)
 
@@ -943,19 +961,17 @@ class BindExpression:
                 curr_elem_is_terminal = isinstance(curr_elem, DummyVariable) and not curr_elem.is_nonterminal
 
                 if not path:
-                    subtrees = []
+                    break
                 else:
-                    next_subtree_idx = bisect_left(
-                        KeyList(subtrees, key=lambda t: t[0]),
-                        path[:-1] + (path[-1] + 1,))
-                    subtrees = subtrees[next_subtree_idx:]
+                    for key in subtrees_trie.keys(path_to_trie_key(path)):
+                        del subtrees_trie[key]
 
         # We did only split dummy variables
-        assert subtrees or curr_elem or \
+        assert subtrees_trie or curr_elem or \
                {v for v in orig_bound_variables if type(v) is BoundVariable} == \
                {v for v in result.keys() if type(v) is BoundVariable}
 
-        return not subtrees and not curr_elem
+        return not subtrees_trie and not curr_elem
 
     def __repr__(self):
         return f'BindExpression({", ".join(map(repr, self.bound_elements))})'

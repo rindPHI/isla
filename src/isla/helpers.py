@@ -5,6 +5,7 @@ from bisect import bisect_left
 from functools import lru_cache
 from typing import Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast, Callable, Iterable, Any
 
+import datrie
 from fuzzingbook.Grammars import unreachable_nonterminals
 
 from isla.type_defs import Path, Grammar, ParseTree, ImmutableGrammar, CanonicalGrammar
@@ -334,3 +335,38 @@ class KeyList(Sequence):
 
     def __getitem__(self, index):
         return self.key(self.l[index])
+
+
+def mk_subtree_trie() -> datrie.Trie:
+    return datrie.Trie([chr(i) for i in range(30)])
+
+
+def path_to_trie_key(path: Path) -> str:
+    # 0-bytes are ignored by the trie ==> +1
+    # To represent the empty part, reserve chr(1) ==> +2
+    if not path:
+        return chr(1)
+
+    return "".join([chr(i + 2) for i in path])
+
+
+def trie_key_to_path(key: str) -> Path:
+    if key == chr(1):
+        return ()
+
+    return tuple([ord(c) - 2 for c in key])
+
+
+def get_subtrie(trie: datrie.Trie, new_root_path: Path) -> datrie.Trie:
+    subtrees_trie = mk_subtree_trie()
+    in_path_key = path_to_trie_key(new_root_path)
+    for suffix in trie.suffixes(in_path_key):
+        subtrees_trie[suffix] = trie[in_path_key + suffix]
+    return subtrees_trie
+
+
+def copy_trie(trie: datrie.Trie) -> datrie.Trie:
+    result = mk_subtree_trie()
+    for key, value in trie.items():
+        result[key] = value
+    return result
