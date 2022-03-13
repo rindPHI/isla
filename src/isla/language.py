@@ -6,6 +6,7 @@ import operator
 import pickle
 import re
 from abc import ABC
+from bisect import bisect_left
 from functools import reduce, lru_cache
 from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable, Sequence, Protocol, \
     TypeVar, MutableSet
@@ -23,7 +24,7 @@ from z3 import Z3Exception
 
 import isla.mexpr_parser.MexprParserListener as MexprParserListener
 from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, assertions_activated, \
-    remove_subtrees_for_prefix
+    remove_subtrees_for_prefix, KeyList
 from isla.helpers import replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, \
     immutable_to_grammar, \
     nested_list_to_tuple
@@ -941,7 +942,13 @@ class BindExpression:
                 curr_elem = pop(bound_variables, default=None)
                 curr_elem_is_terminal = isinstance(curr_elem, DummyVariable) and not curr_elem.is_nonterminal
 
-                subtrees = remove_subtrees_for_prefix(subtrees, path)
+                if not path:
+                    subtrees = []
+                else:
+                    next_subtree_idx = bisect_left(
+                        KeyList(subtrees, key=lambda t: t[0]),
+                        path[:-1] + (path[-1] + 1,))
+                    subtrees = subtrees[next_subtree_idx:]
 
         # We did only split dummy variables
         assert subtrees or curr_elem or \
