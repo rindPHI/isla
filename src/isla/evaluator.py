@@ -9,11 +9,7 @@ import z3
 from grammar_graph import gg
 from orderedset import OrderedSet
 
-from isla.helpers import is_nonterminal, assertions_activated, transitive_closure, path_to_trie_key, trie_key_to_path, \
-    get_subtrie
-from isla.three_valued_truth import ThreeValuedTruth
-from isla.z3_helpers import evaluate_z3_expression, DomainError, is_valid, z3_and, z3_or, z3_eq, replace_in_z3_expr, \
-    smt_expr_to_str
+from isla.helpers import is_nonterminal, transitive_closure, path_to_trie_key, get_subtrie
 from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES
 from isla.language import Formula, DerivationTree, StructuralPredicate, SemanticPredicate, parse_isla, \
     VariablesCollector, Constant, FilterVisitor, NumericQuantifiedFormula, StructuralPredicateFormula, SMTFormula, \
@@ -21,7 +17,9 @@ from isla.language import Formula, DerivationTree, StructuralPredicate, Semantic
     BoundVariable, ExistsIntFormula, ForallIntFormula, QuantifiedFormula, PropositionalCombinator, \
     ConjunctiveFormula, ForallFormula, ExistsFormula, NegatedFormula, \
     DisjunctiveFormula, BindExpression, split_conjunction, split_disjunction, DummyVariable
+from isla.three_valued_truth import ThreeValuedTruth
 from isla.type_defs import Grammar, Path, CanonicalGrammar
+from isla.z3_helpers import evaluate_z3_expression, DomainError, is_valid, z3_and, z3_or, z3_eq, replace_in_z3_expr
 
 logger = logging.getLogger("evaluator")
 

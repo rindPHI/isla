@@ -362,14 +362,11 @@ def get_subtrie(trie: datrie.Trie, new_root_path: Path | str) -> datrie.Trie:
 
     if isinstance(new_root_path, str):
         root_key = new_root_path
-        root_path = trie_key_to_path(root_key)
+        root_path_len = len(root_key) - 1
     else:
-        root_path = new_root_path
-        root_key = path_to_trie_key(root_path)
-
-    assert isinstance(root_path, tuple)
-    assert isinstance(root_key, str)
-    root_path_len = len(root_path)
+        assert isinstance(new_root_path, tuple)
+        root_key = path_to_trie_key(new_root_path)
+        root_path_len = len(new_root_path)
 
     for suffix in trie.suffixes(root_key):
         path, tree = trie[root_key + suffix]
