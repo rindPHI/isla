@@ -411,11 +411,11 @@ def evaluate_legacy(
                 vacuously_satisfied.add(formula)
 
             return ThreeValuedTruth.all(evaluate_legacy(
-                formula.inner_formula, grammar, new_assignment, reference_tree, vacuously_satisfied, trie)
+                formula.inner_formula, grammar, new_assignment, reference_tree, vacuously_satisfied, trie, graph=graph)
                                         for new_assignment in new_assignments)
         elif isinstance(formula, ExistsFormula):
             return ThreeValuedTruth.any(evaluate_legacy(
-                formula.inner_formula, grammar, new_assignment, reference_tree, vacuously_satisfied, trie)
+                formula.inner_formula, grammar, new_assignment, reference_tree, vacuously_satisfied, trie, graph=graph)
                                         for new_assignment in new_assignments)
     elif isinstance(formula, StructuralPredicateFormula):
         arg_insts = [
@@ -446,14 +446,14 @@ def evaluate_legacy(
         return ThreeValuedTruth.true()
     elif isinstance(formula, NegatedFormula):
         return ThreeValuedTruth.not_(evaluate_legacy(
-            formula.args[0], grammar, assignments, reference_tree, vacuously_satisfied, trie))
+            formula.args[0], grammar, assignments, reference_tree, vacuously_satisfied, trie, graph=graph))
     elif isinstance(formula, ConjunctiveFormula):
         return ThreeValuedTruth.all(
-            evaluate_legacy(sub_formula, grammar, assignments, reference_tree, vacuously_satisfied, trie)
+            evaluate_legacy(sub_formula, grammar, assignments, reference_tree, vacuously_satisfied, trie, graph=graph)
             for sub_formula in formula.args)
     elif isinstance(formula, DisjunctiveFormula):
         return ThreeValuedTruth.any(
-            evaluate_legacy(sub_formula, grammar, assignments, reference_tree, vacuously_satisfied, trie)
+            evaluate_legacy(sub_formula, grammar, assignments, reference_tree, vacuously_satisfied, trie, graph=graph)
             for sub_formula in formula.args)
     else:
         raise NotImplementedError()
