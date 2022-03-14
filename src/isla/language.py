@@ -6,7 +6,6 @@ import operator
 import pickle
 import re
 from abc import ABC
-from bisect import bisect_left
 from functools import reduce, lru_cache
 from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Generator, Set, Iterable, Sequence, Protocol, \
     TypeVar, MutableSet
@@ -25,7 +24,7 @@ from z3 import Z3Exception
 
 import isla.mexpr_parser.MexprParserListener as MexprParserListener
 from isla.helpers import RE_NONTERMINAL, is_nonterminal, traverse, TRAVERSE_POSTORDER, assertions_activated, \
-    remove_subtrees_for_prefix, KeyList, path_to_trie_key, trie_key_to_path, mk_subtree_trie, copy_trie
+    path_to_trie_key, mk_subtree_trie, copy_trie
 from isla.helpers import replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, \
     immutable_to_grammar, \
     nested_list_to_tuple
@@ -902,14 +901,15 @@ class BindExpression:
         # to greedily in the first place; e.g., an XML <attribute> might contain other XML
         # <attribute>s that we should rather match. Thus, we might have to backtrack.
         if not excluded_matches:
-            for excluded_matches in itertools.chain.from_iterable(
-                    itertools.combinations({p: v for v, (p, t) in result.items()}.items(), k)
-                    for k in range(1, len(result) + 1)):
+            # for excluded_matches in itertools.chain.from_iterable(
+            #         itertools.combinations({p: v for v, (p, t) in result.items()}.items(), k)
+            #         for k in range(1, len(result) + 1)):
+            for excluded_matches in [tuple(result.items())[:i + 1] for i in range(len(result))]:
                 curr_elem: BoundVariable
                 backtrack_result = BindExpression.match_with_backtracking(
                     subtrees_trie,
                     bound_variables,
-                    excluded_matches
+                    cast(Tuple[Tuple[Path, BoundVariable], ...], excluded_matches)
                 )
 
                 if backtrack_result is not None:
@@ -927,12 +927,22 @@ class BindExpression:
 
         curr_elem = bound_variables.pop(0)
         curr_elem_is_terminal = isinstance(curr_elem, DummyVariable) and not curr_elem.is_nonterminal
+        elem_matched = False
+        path_key = None
 
         while subtrees_trie and curr_elem:
+            if (path_key is not None
+                    and not elem_matched
+                    and len(subtrees_trie.suffixes(path_key)) == 1):
+                # The last subtree was a leaf and was not matched.
+                # This means that the current result is only partial. Fail early.
+                return False
+
             path_key = next(iter(subtrees_trie))
             path, subtree = subtrees_trie[path_key]
             del subtrees_trie[path_key]
 
+            elem_matched = False
             subtree_str = str(subtree)
 
             if (curr_elem_is_terminal and
@@ -958,6 +968,7 @@ class BindExpression:
                     ((curr_elem_is_terminal and
                       subtree_str == curr_elem.n_type) or
                      subtree.value == curr_elem.n_type)):
+                elem_matched = True
                 result[curr_elem] = (path, subtree)
                 curr_elem = pop(bound_variables, default=None)
                 curr_elem_is_terminal = isinstance(curr_elem, DummyVariable) and not curr_elem.is_nonterminal
