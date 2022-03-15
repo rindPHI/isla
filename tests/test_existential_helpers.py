@@ -209,7 +209,9 @@ class TestExistentialHelpers(unittest.TestCase):
         # print("\n\n".join(str_results))
         self.assertIn("<a><b>asdf</b><xml-close-tag>", str_results)
         self.assertIn("<b><a>asdf<xml-close-tag></b>", str_results)
-        self.assertIn("<b>asd<a>f<xml-close-tag></b>", str_results)
+        self.assertIn(
+            "<xml-open-tag><b>asdf</b><a><inner-xml-tree><xml-close-tag><inner-xml-tree><xml-close-tag>",
+            str_results)
 
     def test_insert_xml_2(self):
         tree = DerivationTree('<start>', (

@@ -296,6 +296,32 @@ class TestEvaluator(unittest.TestCase):
             reference_tree=tree,
             structural_predicates={IN_TREE_PREDICATE}))
 
+        inp = (
+            '<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
+            'xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd"> '
+            '</project>')
+        tree = language.DerivationTree.from_parse_tree(
+            list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
+        assert validate_xml(tree)
+
+        self.assertTrue(evaluate(
+            XML_NAMESPACE_CONSTRAINT.substitute_expressions({Constant("start", "<start>"): tree}),
+            grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
+            reference_tree=tree,
+            structural_predicates={IN_TREE_PREDICATE}))
+
+        inp = (
+            '<view:view xmlns:view="http://www.view.org/view/repository/1.0"> </view:view>')
+        tree = language.DerivationTree.from_parse_tree(
+            list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
+        assert validate_xml(tree)
+
+        self.assertTrue(evaluate(
+            XML_NAMESPACE_CONSTRAINT.substitute_expressions({Constant("start", "<start>"): tree}),
+            grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
+            reference_tree=tree,
+            structural_predicates={IN_TREE_PREDICATE}))
+
         inp = '<a xmlns:ns="salami" xmlns:ns1="toast"><ns:asdf ns1:asdf="asdf">asdf</ns:asdf></a>'
         tree = language.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])

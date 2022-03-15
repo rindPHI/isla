@@ -1,10 +1,12 @@
 import copy
 import string
+import sys
 import xml.etree.ElementTree as ET
 from html import escape
 from typing import Optional, List
 
 from fuzzingbook.Grammars import srange
+from fuzzingbook.Parser import EarleyParser
 
 from isla.language import parse_isla, DerivationTree
 from isla.isla_predicates import IN_TREE_PREDICATE, SAME_POSITION_PREDICATE
@@ -16,7 +18,7 @@ XML_GRAMMAR = {
         "<xml-openclose-tag>",
     ],
     "<inner-xml-tree>": [
-        "<inner-xml-tree><inner-xml-tree>",
+        "<xml-tree><inner-xml-tree>",
         "<xml-tree>",
         "<text>",
     ],
@@ -32,7 +34,7 @@ XML_GRAMMAR = {
     "<id-start-char>": srange("_" + string.ascii_letters),
     "<id-chars>": ["<id-char><id-chars>", "<id-char>"],
     "<id-char>": ["<id-start-char>"] + srange("-." + string.digits),
-    "<text>": ["<text-char>", "<text-char><text>"],
+    "<text>": ["<text-char><text>", "<text-char>"],
     "<text-char>": [
         escape(c)
         for c in srange(string.ascii_letters + string.digits + "\"'. \t/?-,=:+")],
@@ -73,16 +75,16 @@ XML_WELLFORMEDNESS_CONSTRAINT = parse_isla(xml_wellformedness_constraint, XML_GR
 # forall <xml-attribute> attribute in start:
 #   forall <id-with-prefix> prefix_id="{<id-no-prefix> prefix_use}:<id-no-prefix>" in attribute:
 #     ((= prefix_use "xmlns") or
-#       exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}>{<inner-xml-tree> contained_tree}</<id>>" in start:
-#         (inside(attribute, contained_tree) and
+#       exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}><inner-xml-tree></<id>>" in start:
+#         (inside(attribute, outer_tag) and
 #          exists <xml-attribute> def_attribute="xmlns:{<id-no-prefix> prefix_def}=\\\"<text>\\\"" in cont_attribute:
 #            (= prefix_use prefix_def)))"""
 
 xml_attribute_namespace_constraint = """
 forall <xml-attribute> attribute="{<id-no-prefix> prefix_use}:<id-no-prefix>=\\\"<text>\\\"" in start:
   ((= prefix_use "xmlns") or
-    exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}>{<inner-xml-tree> contained_tree}</<id>>" in start:
-      (inside(attribute, contained_tree) and
+    exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}><inner-xml-tree></<id>>" in start:
+      (inside(attribute, outer_tag) and
        exists <xml-attribute> def_attribute="xmlns:{<id-no-prefix> prefix_def}=\\\"<text>\\\"" in cont_attribute:
          (= prefix_use prefix_def)))"""
 
@@ -93,8 +95,8 @@ XML_ATTRIBUTE_NAMESPACE_CONSTRAINT = parse_isla(
 
 xml_tag_namespace_constraint = """
 forall <xml-tree> xml_tree="<{<id-no-prefix> prefix_use}:<id-no-prefix>[ <xml-attribute>][/]>[<inner-xml-tree><xml-close-tag>]" in start:
-  exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}>{<inner-xml-tree> contained_tree}</<id>>" in start:
-    (inside(xml_tree, contained_tree) and 
+  exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}><inner-xml-tree></<id>>" in start:
+    (inside(xml_tree, outer_tag) and 
      exists <xml-attribute> def_attribute="xmlns:{<id-no-prefix> prefix_def}=\\\"<text>\\\"" in cont_attribute:
        (= prefix_use prefix_def))"""
 

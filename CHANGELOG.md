@@ -1,15 +1,14 @@
 # Changelog
 
 This file contains the notable changes in the ISLa project since version 0.2a1
-(February 2022). Changes prior to this date are not documented; the prior
-version mostly conforms to the state as documented in the ISLa paper.
+(February 2022). Changes prior to this date are not documented.
 
 ## [Unreleased]
 
 ### Added
 
 - More precise translation of ISLa formulas to SMT (`evaluator.isla_to_smt_formula`),
-  implication check (`evaluator.implies`).
+  implication (`evaluator.implies`) and equivalence (`evaluator.equivalent`) checks.
 
 ### Changed
 
@@ -22,6 +21,7 @@ version mostly conforms to the state as documented in the ISLa paper.
   implementation creates a new `z3.BoolRef` instead of returning a bool. We perform a structural
   comparison instead. To construct `z3.BoolRef` equations, use `isla.z3_helpers.z3_eq` instead.
 - Performance optimization for semantic predicates.
+- Performance optimizations in match expression matching.
 
 ## [0.2b1] - 2022-02-25
 
