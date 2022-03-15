@@ -774,6 +774,20 @@ def isla_to_smt_formula(formula: Formula, do_fix_str_to_int: bool = True) -> z3.
     raise NotImplementedError(f"Translation of formula {formula} (type {type(formula).__name__}) not implemented")
 
 
+def equivalent(
+        formula_1: Formula,
+        formula_2: Formula,
+        grammar: Optional[CanonicalGrammar] = None,
+        do_fix_str_to_int: bool = True) -> Optional[bool]:
+    dir_1 = implies(formula_1, formula_2, grammar, do_fix_str_to_int)
+    dir_2 = implies(formula_2, formula_1, grammar, do_fix_str_to_int)
+
+    if dir_1 is None or dir_2 is None:
+        return None
+
+    return dir_1 and dir_2
+
+
 def implies(
         formula_1: Formula,
         formula_2: Formula,

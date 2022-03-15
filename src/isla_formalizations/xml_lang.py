@@ -16,23 +16,23 @@ XML_GRAMMAR = {
         "<xml-openclose-tag>",
     ],
     "<inner-xml-tree>": [
-        "<text>",
+        "<inner-xml-tree><inner-xml-tree>",
         "<xml-tree>",
-        "<inner-xml-tree><inner-xml-tree>"
+        "<text>",
     ],
-    "<xml-open-tag>": ["<<id>>", "<<id> <xml-attribute>>"],
-    "<xml-openclose-tag>": ["<<id>/>", "<<id> <xml-attribute>/>"],
+    "<xml-open-tag>": ["<<id> <xml-attribute>>", "<<id>>"],
+    "<xml-openclose-tag>": ["<<id> <xml-attribute>/>", "<<id>/>"],
     "<xml-close-tag>": ["</<id>>"],
-    "<xml-attribute>": ["<id>=\"<text>\"", "<xml-attribute> <xml-attribute>"],
+    "<xml-attribute>": ["<xml-attribute> <xml-attribute>", "<id>=\"<text>\""],
 
     "<id>": [
-        "<id-start-char>",
         "<id-start-char><id-chars>",
+        "<id-start-char>",
     ],
     "<id-start-char>": srange("_" + string.ascii_letters),
-    "<id-chars>": ["<id-char>", "<id-char><id-chars>"],
+    "<id-chars>": ["<id-char><id-chars>", "<id-char>"],
     "<id-char>": ["<id-start-char>"] + srange("-." + string.digits),
-    "<text>": ["<text-char><text>", "<text-char>"],
+    "<text>": ["<text-char>", "<text-char><text>"],
     "<text-char>": [
         escape(c)
         for c in srange(string.ascii_letters + string.digits + "\"'. \t/?-,=:+")],
@@ -41,12 +41,12 @@ XML_GRAMMAR = {
 XML_GRAMMAR_WITH_NAMESPACE_PREFIXES = copy.deepcopy(XML_GRAMMAR)
 XML_GRAMMAR_WITH_NAMESPACE_PREFIXES.update({
     "<id>": [
+        "<id-with-prefix>",
         "<id-no-prefix>",
-        "<id-with-prefix>"
     ],
     "<id-no-prefix>": [
-        "<id-start-char>",
         "<id-start-char><id-chars>",
+        "<id-start-char>",
     ],
     "<id-with-prefix>": ["<id-no-prefix>:<id-no-prefix>"]
 })
@@ -69,14 +69,22 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
 
 XML_WELLFORMEDNESS_CONSTRAINT = parse_isla(xml_wellformedness_constraint, XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
 
+# xml_attribute_namespace_constraint = """
+# forall <xml-attribute> attribute in start:
+#   forall <id-with-prefix> prefix_id="{<id-no-prefix> prefix_use}:<id-no-prefix>" in attribute:
+#     ((= prefix_use "xmlns") or
+#       exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}>{<inner-xml-tree> contained_tree}</<id>>" in start:
+#         (inside(attribute, contained_tree) and
+#          exists <xml-attribute> def_attribute="xmlns:{<id-no-prefix> prefix_def}=\\\"<text>\\\"" in cont_attribute:
+#            (= prefix_use prefix_def)))"""
+
 xml_attribute_namespace_constraint = """
-forall <xml-attribute> attribute in start:
-  forall <id-with-prefix> prefix_id="{<id-no-prefix> prefix_use}:<id-no-prefix>" in attribute:
-    ((= prefix_use "xmlns") or
-      exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}>{<inner-xml-tree> contained_tree}</<id>>" in start:
-        (inside(attribute, contained_tree) and 
-         exists <xml-attribute> def_attribute="xmlns:{<id-no-prefix> prefix_def}=\\\"<text>\\\"" in cont_attribute:
-           (= prefix_use prefix_def)))"""
+forall <xml-attribute> attribute="{<id-no-prefix> prefix_use}:<id-no-prefix>=\\\"<text>\\\"" in start:
+  ((= prefix_use "xmlns") or
+    exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}>{<inner-xml-tree> contained_tree}</<id>>" in start:
+      (inside(attribute, contained_tree) and
+       exists <xml-attribute> def_attribute="xmlns:{<id-no-prefix> prefix_def}=\\\"<text>\\\"" in cont_attribute:
+         (= prefix_use prefix_def)))"""
 
 XML_ATTRIBUTE_NAMESPACE_CONSTRAINT = parse_isla(
     xml_attribute_namespace_constraint,

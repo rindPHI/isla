@@ -351,6 +351,7 @@ def path_to_trie_key(path: Path) -> str:
 
 
 def trie_key_to_path(key: str) -> Path:
+    assert key
     if key == chr(1):
         return ()
 
