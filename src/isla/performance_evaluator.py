@@ -346,7 +346,7 @@ class Evaluator:
 
             # Analyze average / median String length
             cur.execute(
-                f"SELECT inp FROM inputs WHERE testId = ? AND sid IN ({sids_placeholder})",
+                f"SELECT inp FROM inputs NATURAL JOIN valid WHERE testId = ? AND sid IN ({sids_placeholder})",
                 (job,) + sids)
 
             def get_input_length(row: Sequence[str]) -> int:
