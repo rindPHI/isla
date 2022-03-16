@@ -351,7 +351,9 @@ def path_to_trie_key(path: Path) -> str:
 
 
 def trie_key_to_path(key: str) -> Path:
-    assert key
+    if not key or key[0] != chr(1):
+        raise RuntimeError(f"Invalid trie key '{key}' ({[ord(c) for c in key]}), should start with 1")
+
     if key == chr(1):
         return ()
 
@@ -371,7 +373,7 @@ def get_subtrie(trie: datrie.Trie, new_root_path: Path | str) -> datrie.Trie:
 
     for suffix in trie.suffixes(root_key):
         path, tree = trie[root_key + suffix]
-        subtrees_trie[suffix] = (path[root_path_len:], tree)
+        subtrees_trie[chr(1) + suffix] = (path[root_path_len:], tree)
 
     return subtrees_trie
 

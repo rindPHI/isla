@@ -585,9 +585,7 @@ def matches_for_quantified_formula(
 
         subtrees_trie = None
         if trie is not None:
-            subtrees_trie = datrie.Trie([chr(i) for i in range(30)])
-            for suffix in trie.suffixes(path_to_trie_key(path)):
-                subtrees_trie[suffix] = trie[path_to_trie_key(path) + suffix]
+            subtrees_trie = get_subtrie(trie, path)
 
         node, children = tree
         if node == qfd_var.n_type:
