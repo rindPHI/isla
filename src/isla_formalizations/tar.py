@@ -479,10 +479,12 @@ class TarParser:
         if "\00" in inp:
             nuls_offset = inp.index("\x00")
             uname_str = self.parse_uname_str(inp[:nuls_offset])
+            assert not uname_str[1][1][0] == "<uname_chars>" or uname_str[1][1][1]
             nuls = ("<maybe_nuls>", [self.parse_nuls(inp[nuls_offset:])])
             children = [uname_str, nuls]
         else:
             uname_str = self.parse_uname_str(inp)
+            assert not uname_str[1][1][0] == "<uname_chars>" or uname_str[1][1][1]
             children = [uname_str, ("<maybe_nuls>", [])]
 
         return "<gname>", children
@@ -493,10 +495,12 @@ class TarParser:
         if "\00" in inp:
             nuls_offset = inp.index("\x00")
             uname_str = self.parse_uname_str(inp[:nuls_offset])
+            assert not uname_str[1][1][0] == "<uname_chars>" or uname_str[1][1][1]
             nuls = ("<maybe_nuls>", [self.parse_nuls(inp[nuls_offset:])])
             children = [uname_str, nuls]
         else:
             uname_str = self.parse_uname_str(inp)
+            assert not uname_str[1][1][0] == "<uname_chars>" or uname_str[1][1][1]
             children = [uname_str, ("<maybe_nuls>", [])]
 
         return "<uname>", children
@@ -514,6 +518,12 @@ class TarParser:
             characters_nonterminal="<uname_chars>",
             character_nonterminal="<uname_char>",
         )
+
+        if not uname_chars[1]:
+            return "<uname_str>", [
+                ("<uname_first_char>", [(uname_first_char, [])]),
+                ("<maybe_dollar>", [("$", [])] if dollar_index < len(inp) else [])
+            ]
 
         return "<uname_str>", [
             ("<uname_first_char>", [(uname_first_char, [])]),

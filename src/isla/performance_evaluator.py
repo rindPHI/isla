@@ -348,19 +348,24 @@ class Evaluator:
             cur.execute(
                 f"SELECT inp FROM inputs NATURAL JOIN valid WHERE testId = ? AND sid IN ({sids_placeholder})",
                 (job,) + sids)
+            valid_inputs: List[str] = cast(List[str], cur.fetchall())
 
-            def get_input_length(row: Sequence[str]) -> int:
-                return len(str(language.DerivationTree.from_parse_tree(json.loads(row[0]))))
+            if valid_inputs:
+                def get_input_length(row: Sequence[str]) -> int:
+                    return len(str(language.DerivationTree.from_parse_tree(json.loads(row[0]))))
 
-            with pmp.ProcessingPool(processes=pmp.cpu_count()) as pool:
-                input_lengths = pool.map(get_input_length, cur.fetchall())
+                with pmp.ProcessingPool(processes=pmp.cpu_count()) as pool:
+                    input_lengths = pool.map(get_input_length, valid_inputs)
 
-            # input_lengths = []
-            # for row in cur:
-            #     input_lengths.append(len(str(language.DerivationTree.from_parse_tree(json.loads(row[0])))))
+                # input_lengths = []
+                # for row in cur:
+                #     input_lengths.append(len(str(language.DerivationTree.from_parse_tree(json.loads(row[0])))))
 
-            avg_inp_length[job] = statistics.mean(input_lengths)
-            median_inp_length[job] = statistics.median(input_lengths)
+                avg_inp_length[job] = statistics.mean(input_lengths)
+                median_inp_length[job] = statistics.median(input_lengths)
+            else:
+                avg_inp_length[job] = 0
+                median_inp_length[job] = 0
 
         con.close()
 
@@ -692,7 +697,11 @@ def evaluate_kpaths(
     inputs = {inp_id: inp for inp_id, inp in inputs.items() if not kpaths_already_computed(inp_id)}
 
     def compute_k_paths(inp: language.DerivationTree) -> List[int]:
-        return [hash(path) for path in graph.k_paths_in_tree(inp.to_parse_tree(), k)]
+        try:
+            return [hash(path) for path in graph.k_paths_in_tree(inp.to_parse_tree(), k)]
+        except SyntaxError as err:
+            print(f"Could not compute {k}-paths, error: {err}")
+            return []
 
     # Insert into DB
     con = sqlite3.connect(db_file)
