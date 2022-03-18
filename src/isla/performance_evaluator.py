@@ -20,7 +20,7 @@ from grammar_graph import gg
 from isla import language
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.solver import ISLaSolver
-from isla.type_defs import Grammar
+from isla.type_defs import Grammar, ParseTree
 
 logger = logging.getLogger("evaluator")
 
@@ -61,6 +61,9 @@ class Evaluator:
             jobname_prefix: str,
             generators: List[Callable[[int], ISLaSolver] | Grammar],
             jobnames: List[str],
+            # TODO: Make validators accept ParseTrees instead of DerivationTrees;
+            #       there are ParseTrees in the database, and the conversion to
+            #       DerivationTrees is expensive.
             validator: Callable[[language.DerivationTree], bool],
             graph: gg.GrammarGraph,
             db_file: str = std_db_file(),
@@ -346,21 +349,26 @@ class Evaluator:
 
             # Analyze average / median String length
             cur.execute(
-                f"SELECT inp FROM inputs WHERE testId = ? AND sid IN ({sids_placeholder})",
+                f"SELECT inp FROM inputs NATURAL JOIN valid WHERE testId = ? AND sid IN ({sids_placeholder})",
                 (job,) + sids)
+            valid_inputs: List[str] = cast(List[str], cur.fetchall())
 
-            def get_input_length(row: Sequence[str]) -> int:
-                return len(str(language.DerivationTree.from_parse_tree(json.loads(row[0]))))
+            if valid_inputs:
+                def get_input_length(row: Sequence[str]) -> int:
+                    return len(str(language.DerivationTree.from_parse_tree(json.loads(row[0]))))
 
-            with pmp.ProcessingPool(processes=pmp.cpu_count()) as pool:
-                input_lengths = pool.map(get_input_length, cur.fetchall())
+                with pmp.ProcessingPool(processes=pmp.cpu_count()) as pool:
+                    input_lengths = pool.map(get_input_length, valid_inputs)
 
-            # input_lengths = []
-            # for row in cur:
-            #     input_lengths.append(len(str(language.DerivationTree.from_parse_tree(json.loads(row[0])))))
+                # input_lengths = []
+                # for row in cur:
+                #     input_lengths.append(len(str(language.DerivationTree.from_parse_tree(json.loads(row[0])))))
 
-            avg_inp_length[job] = statistics.mean(input_lengths)
-            median_inp_length[job] = statistics.median(input_lengths)
+                avg_inp_length[job] = statistics.mean(input_lengths)
+                median_inp_length[job] = statistics.median(input_lengths)
+            else:
+                avg_inp_length[job] = 0
+                median_inp_length[job] = 0
 
         con.close()
 
@@ -570,7 +578,8 @@ def get_inputs_from_db(
         sid: Optional[int] = None,
         db_file: str = std_db_file(),
         only_valid: bool = False,
-        only_unkown_validity: bool = False
+        only_unkown_validity: bool = False,
+        convert_to_derivation_tree: bool = True,
 ) -> Dict[int, language.DerivationTree]:
     all_inputs_query = \
         """
@@ -607,9 +616,14 @@ def get_inputs_from_db(
     rows = cur.fetchall()
     con.close()
 
-    inputs: Dict[int, language.DerivationTree] = {
-        row[0]: language.DerivationTree.from_parse_tree(json.loads(row[1]))
-        for row in rows}
+    if convert_to_derivation_tree:
+        inputs: Dict[int, language.DerivationTree] = {
+            row[0]: language.DerivationTree.from_parse_tree(json.loads(row[1]))
+            for row in rows}
+    else:
+        inputs: Dict[int, language.DerivationTree] = {
+            row[0]: json.loads(row[1])
+            for row in rows}
 
     return inputs
 
@@ -679,7 +693,12 @@ def evaluate_kpaths(
     print(f"[{strtime()}] Evaluating {k}-paths for session {sid} of {test_id}")
 
     # Obtain inputs from session
-    inputs = get_inputs_from_db(test_id, sid, db_file, only_valid=True)
+    inputs: Dict[int, ParseTree] = get_inputs_from_db(
+        test_id,
+        sid,
+        db_file,
+        only_valid=True,
+        convert_to_derivation_tree=False)
 
     def kpaths_already_computed(inp_id: int) -> bool:
         con = sqlite3.connect(db_file)
@@ -692,7 +711,11 @@ def evaluate_kpaths(
     inputs = {inp_id: inp for inp_id, inp in inputs.items() if not kpaths_already_computed(inp_id)}
 
     def compute_k_paths(inp: language.DerivationTree) -> List[int]:
-        return [hash(path) for path in graph.k_paths_in_tree(inp.to_parse_tree(), k)]
+        try:
+            return [hash(path) for path in graph.k_paths_in_tree(inp.to_parse_tree(), k)]
+        except SyntaxError as err:
+            print(f"Could not compute {k}-paths, error: {err}")
+            return []
 
     # Insert into DB
     con = sqlite3.connect(db_file)
