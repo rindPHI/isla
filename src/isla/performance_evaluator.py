@@ -20,7 +20,7 @@ from grammar_graph import gg
 from isla import language
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.solver import ISLaSolver
-from isla.type_defs import Grammar
+from isla.type_defs import Grammar, ParseTree
 
 logger = logging.getLogger("evaluator")
 
@@ -61,6 +61,9 @@ class Evaluator:
             jobname_prefix: str,
             generators: List[Callable[[int], ISLaSolver] | Grammar],
             jobnames: List[str],
+            # TODO: Make validators accept ParseTrees instead of DerivationTrees;
+            #       there are ParseTrees in the database, and the conversion to
+            #       DerivationTrees is expensive.
             validator: Callable[[language.DerivationTree], bool],
             graph: gg.GrammarGraph,
             db_file: str = std_db_file(),
@@ -575,7 +578,8 @@ def get_inputs_from_db(
         sid: Optional[int] = None,
         db_file: str = std_db_file(),
         only_valid: bool = False,
-        only_unkown_validity: bool = False
+        only_unkown_validity: bool = False,
+        convert_to_derivation_tree: bool = True,
 ) -> Dict[int, language.DerivationTree]:
     all_inputs_query = \
         """
@@ -612,9 +616,14 @@ def get_inputs_from_db(
     rows = cur.fetchall()
     con.close()
 
-    inputs: Dict[int, language.DerivationTree] = {
-        row[0]: language.DerivationTree.from_parse_tree(json.loads(row[1]))
-        for row in rows}
+    if convert_to_derivation_tree:
+        inputs: Dict[int, language.DerivationTree] = {
+            row[0]: language.DerivationTree.from_parse_tree(json.loads(row[1]))
+            for row in rows}
+    else:
+        inputs: Dict[int, language.DerivationTree] = {
+            row[0]: json.loads(row[1])
+            for row in rows}
 
     return inputs
 
@@ -684,7 +693,12 @@ def evaluate_kpaths(
     print(f"[{strtime()}] Evaluating {k}-paths for session {sid} of {test_id}")
 
     # Obtain inputs from session
-    inputs = get_inputs_from_db(test_id, sid, db_file, only_valid=True)
+    inputs: Dict[int, ParseTree] = get_inputs_from_db(
+        test_id,
+        sid,
+        db_file,
+        only_valid=True,
+        convert_to_derivation_tree=False)
 
     def kpaths_already_computed(inp_id: int) -> bool:
         con = sqlite3.connect(db_file)
