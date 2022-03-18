@@ -19,6 +19,7 @@ from grammar_graph import gg
 
 from isla import language
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
+from isla.helpers import tree_to_string
 from isla.solver import ISLaSolver
 from isla.type_defs import Grammar, ParseTree
 
@@ -307,7 +308,7 @@ class Evaluator:
 
             print(f"Analyzing sessions {', '.join(map(str, sids))} for {job}")
 
-            # Analyze efficiency: Inputs / s
+            # Analyze efficiency: Inputs / min
             cur.execute(
                 f"SELECT COUNT(*) FROM inputs WHERE testId = ? AND sid IN ({sids_placeholder})",
                 (job,) + sids)
@@ -316,7 +317,7 @@ class Evaluator:
                 f"SELECT SUM(seconds) FROM session_lengths WHERE testId = ? AND sid IN ({sids_placeholder})",
                 (job,) + sids)
             time: int = cur.fetchone()[0]
-            efficiency[job] = total_inputs / time
+            efficiency[job] = 60 * total_inputs / time
 
             # Analyze precision: Fraction of valid inputs
             cur.execute(
@@ -355,7 +356,7 @@ class Evaluator:
 
             if valid_inputs:
                 def get_input_length(row: Sequence[str]) -> int:
-                    return len(str(language.DerivationTree.from_parse_tree(json.loads(row[0]))))
+                    return len(tree_to_string(json.loads(row[0])))
 
                 with pmp.ProcessingPool(processes=pmp.cpu_count()) as pool:
                     input_lengths = pool.map(get_input_length, valid_inputs)
@@ -373,24 +374,24 @@ class Evaluator:
         con.close()
 
         def perc(inp: float) -> str:
-            return frac(inp * 100) + " %"
+            return frac(inp * 100) + "%"
 
         def frac(inp: float) -> str:
-            return "{:8.2f}".format(inp)
+            return "{:6.2f}".format(inp)
 
         print("\n")
 
         col_1_len = max([len(job) for job in self.jobs_and_generators])
-        row_1 = f"| {'Job'.ljust(col_1_len)} | Efficiency | Precision  | Diversity  | Mean/Median Input Length |"
-        sepline = f"+-{'-'.ljust(col_1_len, '-')}-+------------+------------+------------+--------------------------+"
+        row_1 = f"| {'Job'.ljust(col_1_len)} | Efficiency |    Precision     | Diversity  | Mean/Median Input Length |"
+        sepline = f"+-{'-'.ljust(col_1_len, '-')}-+------------+------------------+------------+--------------------------+"
 
         print(sepline)
         print(row_1)
         print(sepline)
 
         for job in self.jobs_and_generators:
-            print(f"| {job.ljust(col_1_len)} |   {frac(efficiency[job])} | "
-                  f"{perc(precision[job])} | {perc(diversity[job])} | " +
+            print(f"| {job.ljust(col_1_len)} |     {frac(efficiency[job])} | "
+                  f"{frac(precision[job] * efficiency[job])} ({perc(precision[job])}) |    {perc(diversity[job])} | " +
                   (frac(avg_inp_length[job]) + " / " + frac(median_inp_length[job])).rjust(
                       len("Mean/Median Input Length")) + " |")
 
