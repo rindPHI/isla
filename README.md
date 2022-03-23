@@ -33,10 +33,9 @@ An interesting, context-sensitive property for this language is that all right-h
 somewhere before. In ISLa's concrete syntax, this can be expressed as a constraint
 
 ```
-forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
-  forall <var> var in rhs_1:
-    exists <assgn> assgn_2="{<var> lhs_2} := {<rhs> rhs_2}" in start:
-      (before(assgn_2, assgn_1) and (= lhs_2 var))
+forall <assgn> assgn_1="{<var> lhs_1} := {<var> var}" in start:
+  exists <assgn> assgn_2="{<var> lhs_2} := {<rhs> rhs_2}" in start:
+    (before(assgn_2, assgn_1) and (= lhs_2 var))
 ```
 
 or, using the Python API,

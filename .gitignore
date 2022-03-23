@@ -11,3 +11,4 @@ isla/*.tokens
 gen/
 venv/
 isla_evaluation.sqlite
+.coverage

@@ -32,20 +32,21 @@ before_script:
   - virtualenv venv
   - source venv/bin/activate
   - pip install docutils
-  - pip install --no-deps -r requirements.txt
-  - pip install z3-solver==4.8.13
+    #- pip install --no-deps -r requirements.txt
+  - pip install -e .[tests]
+  - pip install z3-solver==4.8.14
 
 test:
   script:
-    #- python setup.py test
-    - pip install tox
-    - tox -e py310
+    #- pip install tox
+    #- tox -e py310
+    - pytest -n 16 --html=report.html --self-contained-html --cov=isla tests/ --cov-config=.coveragerc
   artifacts:
     when: always
     paths:
       - report.html
 
-run:
+build:
   script:
     - python setup.py bdist_wheel
     # an alternative approach is to install and run:

@@ -1,0 +1,6 @@
+[run]
+omit =
+    src/isla/optimizer.py
+    src/isla/performance_evaluator.py
+    src/isla/performance_evaluator_2.py
+    src/isla/scriptsizec-ll1.py
