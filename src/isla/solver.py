@@ -154,7 +154,7 @@ class CostSettings:
     def __init__(
             self,
             weight_vectors: Tuple[CostWeightVector, ...],
-            cost_phase_lengths: Tuple[int, ...],
+            cost_phase_lengths: Tuple[int, ...] = (1000,),  # TODO: Remove this parameter
             k: int = 3):
         assert len(weight_vectors) == len(cost_phase_lengths)
         self.weight_vectors = weight_vectors

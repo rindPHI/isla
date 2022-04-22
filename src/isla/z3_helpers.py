@@ -187,6 +187,13 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
     if expr.decl().kind() == z3.Z3_OP_SEQ_AT:
         return construct_result(lambda args: cast(str, args[0])[cast(int, args[1])], children_results)
 
+    if expr.decl().kind() == z3.Z3_OP_SEQ_EXTRACT:
+        return construct_result(
+            lambda args:
+            cast(str, args[0])[
+            cast(int, args[1]):cast(int, args[1]) + cast(int, args[2])
+            ], children_results)
+
     logger = logging.getLogger("Z3 evaluation")
     logger.warning("Evaluation of expression %s not implemented.", expr)
     raise NotImplementedError(f"Evaluation of expression {expr} not implemented.")

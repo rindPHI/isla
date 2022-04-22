@@ -1,15 +1,13 @@
 import copy
 import string
-import sys
 import xml.etree.ElementTree as ET
 from html import escape
 from typing import Optional, List
 
 from fuzzingbook.Grammars import srange
-from fuzzingbook.Parser import EarleyParser
 
-from isla.language import parse_isla, DerivationTree
 from isla.isla_predicates import IN_TREE_PREDICATE, SAME_POSITION_PREDICATE
+from isla.language import parse_isla, DerivationTree
 
 XML_GRAMMAR = {
     "<start>": ["<xml-tree>"],

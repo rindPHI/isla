@@ -11,6 +11,7 @@ from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManag
 from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
 from isla.z3_helpers import z3_eq
 from isla_formalizations import scriptsizec
+from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 from test_data import LANG_GRAMMAR
 import isla.isla_shortcuts as sc
 
@@ -162,6 +163,11 @@ forall <key_value> container="{<key> key} = {<value> value}" in start:
         result = parse_isla("(ite true true true)")
         self.assertIsInstance(result, language.SMTFormula)
         self.assertEqual(z3.If(True, True, True), result.formula)
+
+    def test_quotes_in_mexpr(self):
+        result = parse_isla('''
+exists <xml-attribute> attr="<id>=\\"{<text> text}\\"" in start:
+  (= text "")''', XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
 
 
 if __name__ == '__main__':
