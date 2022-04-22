@@ -1232,7 +1232,7 @@ class ISLaSolver:
                     solution_with_subtrees[orig] = subst
                     continue
 
-                assert isinstance(orig, DerivationTree)
+                assert isinstance(orig, DerivationTree), f'Expected a DerivationTree, given: {type(orig).__name__}'
                 for path, tree in [(p, t) for p, t in orig.paths() if t not in solution_with_subtrees]:
                     assert subst.is_valid_path(path), \
                         f"SMT Solution {subst} does not have " \
