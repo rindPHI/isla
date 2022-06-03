@@ -1,1 +1,0 @@
-This projects needs z3 >= 4.8.13.0, but the requirements only list 4.8.8.0 due to a strict requirement in the fuzzingbook package. After installing from requirements, you have to manually install a new z3 version (e.g., `pip install z3-solver=4.8.14.0`) and simply ignore the upcoming warning.
