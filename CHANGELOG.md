@@ -5,6 +5,8 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [Unreleased]
 
+## [0.2b2]
+
 ### Added
 
 - More precise translation of ISLa formulas to SMT (`evaluator.isla_to_smt_formula`),
@@ -22,6 +24,7 @@ This file contains the notable changes in the ISLa project since version 0.2a1
   comparison instead. To construct `z3.BoolRef` equations, use `isla.z3_helpers.z3_eq` instead.
 - Performance optimization for semantic predicates.
 - Performance optimizations in match expression matching.
+- Cleaned up and relaxed requirements.
 
 ## [0.2b1] - 2022-02-25
 

@@ -590,7 +590,7 @@ class ISLaSolver:
                                   int | language.Constant | DerivationTree]] = []
 
         if isinstance(universal_int_formula.inner_formula, language.DisjunctiveFormula):
-            # In the disjunctive case, we attempt falsify all SMT formulas in the inner formula
+            # In the disjunctive case, we attempt to falsify all SMT formulas in the inner formula
             # (on top level) that contain the bound variable as argument.
             smt_disjuncts = [
                 formula for formula in language.split_disjunction(inner_formula)
