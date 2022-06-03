@@ -141,7 +141,7 @@ For development and testing, we recommend to use ISLa inside a virtual environme
 By thing the following steps in a standard shell (bash), one can run the ISLa tests:
 
 ```shell
-git clone git@github.com:rindPHI/isla.git
+git clone https://github.com/rindPHI/isla.git
 cd isla/
 
 python3.10 -m venv venv
@@ -149,26 +149,19 @@ source venv/bin/activate
 
 pip3 install --upgrade pip
 pip3 install -r requirements.txt
-pip3 install z3-solver=4.8.14.0
 
 # Run tests
 tox
 ```
 
-NOTE: This projects needs z3 >= 4.8.13.0, but the requirements only list
-4.8.8.0 due to a strict requirement in the fuzzingbook package. After
-installing from requirements, you have to manually install a new z3 version
-(e.g., `pip install z3-solver=4.8.14.0`) and simply ignore the upcoming
-warning.
-
-For running scripts without tox, you have to add the path to the ISLa folder to the PYTHONPATH environment
+For running scripts without tox, you have to add the path to the `src` folder to the PYTHONPATH environment
 variable; this is done by typing (in bash)
 
 ```shell
-export PYTHONPATH=$PYTHONPATH:`pwd`
+export PYTHONPATH=$PYTHONPATH:`pwd`/src
 ```
 
-inside the ISLa top-level directory. Then you can, for instance, run `python3 input_constraints/xml_demo.py` (after
+inside the ISLa top-level directory. Then you can, for instance, run `python3 tests/xml_demo.py` (after
 entering the virtual environment as described above). For using ISLa in Visual Studio, you might have to set
 the value of the environment variable in the launch.json file; in Pycharm, we did not have to apply any special 
 settings.
@@ -179,7 +172,7 @@ To install ISLa globally (not recommended, less well tested), run
 
 ```shell
 python3 -m build
-pip3 install dist/isla-0.2a1-py3-none-any.whl
+pip3 install dist/isla-0.2b2-py3-none-any.whl
 ```
 
 ## Changelog
