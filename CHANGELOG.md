@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [Unreleased]
 
+## [0.2b3]
+
+### Changed
+
+- Simplification in assignment language example in README.
+- Added README section about the new ISLa Docker image.
+
 ## [0.2b2]
 
 ### Added
@@ -14,7 +21,7 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ### Changed
 
-- Bugfixes in translation of Z3 regexes to Python
+- Bugfixes in translation of Z3 regexes to Python.
 - Z3 translation method `evaluate_z3_expression` can handle open variables and returns closures.
   Better caching opportunities.
 - Factored out Z3 helpers from `isla.helpers` to `isla.z3_helpers`.

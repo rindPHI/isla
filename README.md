@@ -33,9 +33,9 @@ An interesting, context-sensitive property for this language is that all right-h
 somewhere before. In ISLa's concrete syntax, this can be expressed as a constraint
 
 ```
-forall <assgn> assgn_1="{<var> lhs_1} := {<var> var}" in start:
-  exists <assgn> assgn_2="{<var> lhs_2} := {<rhs> rhs_2}" in start:
-    (before(assgn_2, assgn_1) and (= lhs_2 var))
+forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
+  exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
+    (before(assgn_2, assgn_1) and (= rhs lhs))
 ```
 
 or, using the Python API,
@@ -126,19 +126,51 @@ though, the stream of solutions will be infinite (given that the grammar contain
 
 ## Build, Run, Install
 
-ISLa depends on Python 3.10 and the Python header files (from package python3.10-dev in Ubuntu Linux). Furthermore, 
-python3.10-venv is required to run ISLa in a virtual environment.
+ISLa depends on Python 3.10 and the Python header files. Furthermore, the virtualenv library is required to run
+ISLa in a virtual environment. To compile all of ISLa's dependencies, the following further requirements have to
+be satisfied:
 
-On Ubuntu Linux, the dependencies can be installed using
+* gcc, g++, make, cmake
+* glibc or musl
+* Fortran
+* freetype, lapack, libffi
+
+On *Alpine Linux*, all dependencies can be installed using
 
 ```shell
-sudo apt-get update
-sudo apt-get upgrade
-sudo apt-get install python3.10 python3.10-dev python3.10-venv
+apk add python3 python3-dev py3-virtualenv git bash gcc g++ libgcc py3-scipy gfortran libgfortran musl musl-dev lapack lapack-dev freetype-dev libffi-dev make cmake clang
 ```
 
-For development and testing, we recommend to use ISLa inside a virtual environment (virtualenv).
-By thing the following steps in a standard shell (bash), one can run the ISLa tests:
+### Docker
+
+For testing ISLa, we recommend using our provided Docker container, which already contains all dependencies.
+
+First, pull and run the Docker container:
+
+```shell
+docker pull dsteinhoefel/isla:latest
+docker run -it --name isla dsteinhoefel/isla
+```
+
+You should now have entered the container. Next, check out the ISLa repository, and update the requirements:
+
+```shell
+git clone https://github.com/rindPHI/isla.git
+cd isla/
+pip3 install -r requirements.txt
+```
+
+Now, you can perform an editable installation of ISLa and run the ISLa tests:
+
+```shell
+pip3 install -e .
+python3.10 -m pytest -n 16
+```
+
+### Virtual Environment
+
+For development, we recommend using ISLa inside a virtual environment (virtualenv). By thing the following steps in a
+standard shell (bash), one can run the ISLa tests:
 
 ```shell
 git clone https://github.com/rindPHI/isla.git
@@ -151,28 +183,25 @@ pip3 install --upgrade pip
 pip3 install -r requirements.txt
 
 # Run tests
-tox
+python3.10 -m tox
 ```
 
-For running scripts without tox, you have to add the path to the `src` folder to the PYTHONPATH environment
-variable; this is done by typing (in bash)
+For running scripts without tox, you have to install ISLa in "editable" mode first (inside the virtual environment), as
+follows:
 
 ```shell
-export PYTHONPATH=$PYTHONPATH:`pwd`/src
+pip3 install -e .
 ```
 
-inside the ISLa top-level directory. Then you can, for instance, run `python3 tests/xml_demo.py` (after
-entering the virtual environment as described above). For using ISLa in Visual Studio, you might have to set
-the value of the environment variable in the launch.json file; in Pycharm, we did not have to apply any special 
-settings.
+Then you can, for instance, run `python3 tests/xml_demo.py` inside the virtual environment.
 
----
+### Global Installation
 
 To install ISLa globally (not recommended, less well tested), run
 
 ```shell
 python3 -m build
-pip3 install dist/isla-0.2b2-py3-none-any.whl
+pip3 install dist/isla-0.2b3-py3-none-any.whl
 ```
 
 ## Changelog
