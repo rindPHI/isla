@@ -4,6 +4,7 @@ import itertools
 import logging
 import sys
 import time
+from abc import ABC
 from dataclasses import dataclass
 from functools import reduce, lru_cache
 
@@ -1524,68 +1525,8 @@ class ISLaSolver:
             self.graph)
 
     def compute_symbol_costs(self) -> Dict[str, int]:
-        self.logger.info("Computing symbol costs")
-        result: Dict[str, int] = {}
-
-        for nonterminal in self.grammar:
-            fuzzer = GrammarFuzzer(self.grammar)
-            tree = fuzzer.expand_tree_with_strategy(DerivationTree(nonterminal, None), fuzzer.expand_node_max_cost, 1)
-            tree = fuzzer.expand_tree_with_strategy(tree, fuzzer.expand_node_min_cost)
-            result[nonterminal] = sum([
-                len([expansion for expansion in self.canonical_grammar[tree.value]
-                     if any(is_nonterminal(symbol) for symbol in expansion)])
-                for _, tree in tree.paths()
-                if is_nonterminal(tree.value)
-            ])
-
-        def all_paths(
-                from_node: gg.NonterminalNode,
-                to_node: gg.NonterminalNode, cycles_allowed: int = 1) -> List[List[gg.NonterminalNode]]:
-            """Compute all paths between two nodes. Note: We allow to visit each nonterminal twice.
-            This is not really allowing up to `cycles_allowed` cycles (which was the original intention
-            of the parameter), since then we would have to check per path; yet, the number of paths would
-            explode then and the current implementation provides reasonably good results."""
-            result: List[List[gg.NonterminalNode]] = []
-            visited: Dict[gg.NonterminalNode, int] = {n: 0 for n in self.graph.all_nodes}
-
-            queue: List[List[gg.NonterminalNode]] = [[from_node]]
-            while queue:
-                p = queue.pop(0)
-                if p[-1] == to_node:
-                    result.append(p)
-                    continue
-
-                for child in p[-1].children:
-                    if not isinstance(child, gg.NonterminalNode) or visited[child] > cycles_allowed + 1:
-                        continue
-
-                    visited[child] += 1
-                    queue.append(p + [child])
-
-            return [[n for n in p if not isinstance(n, gg.ChoiceNode)] for p in result]
-
-        nonterminal_parents = [
-            nonterminal for nonterminal in self.canonical_grammar
-            if any(
-                is_nonterminal(symbol)
-                for expansion in self.canonical_grammar[nonterminal]
-                for symbol in expansion)]
-
-        # Sometimes this computation results in some nonterminals having lower cost values
-        # than nonterminals that are reachable from those (but not vice versa), which is
-        # undesired. We counteract this by assuring that on paths with at most one cycle
-        # from the root to any nonterminal parent, the costs are strictly monotonically
-        # decreasing.
-        for nonterminal_parent in nonterminal_parents:
-            for path in all_paths(self.graph.root, self.graph.get_node(nonterminal_parent)):
-                for idx in reversed(range(1, len(path))):
-                    source: gg.Node = path[idx - 1]
-                    target: gg.Node = path[idx]
-
-                    if result[source.symbol] <= result[target.symbol]:
-                        result[source.symbol] = result[target.symbol] + 1
-
-        return result
+        # TODO: Remove
+        return compute_symbol_costs(self.graph)
 
     def remove_nonmatching_universal_quantifiers(self, state: SolutionState) -> SolutionState:
         result = state
@@ -1700,6 +1641,103 @@ class ISLaSolver:
         return DerivationTree.from_parse_tree(list(parser.parse(input))[0][1][0])
 
 
+class CostComputer(ABC):
+    def compute_cost(self, state: SolutionState) -> float:
+        """
+        Computes a cost value for the given state. States with lower cost
+        will be preferred in the analysis.
+
+        :param state: The state for which to compute a cost.
+        :return: The cost value.
+        """
+        raise NotImplementedError()
+
+
+class GrammarBasedBlackboxCostComputer(CostComputer):
+    def __init__(
+            self,
+            cost_settings: CostSettings,
+            graph: gg.GrammarGraph,
+            reset_coverage_after_n_round_with_no_coverage: bool = True):
+        self.cost_settings = cost_settings
+        self.graph = graph
+
+        self.covered_k_paths: Set[Tuple[gg.Node, ...]] = set()
+        self.rounds_with_no_new_coverage = 0
+        self.reset_coverage_after_n_round_with_no_coverage = reset_coverage_after_n_round_with_no_coverage
+        self.symbol_costs: Optional[Dict[str, int]] = None
+
+        self.logger = logging.getLogger(type(self).__name__)
+
+    def _symbol_costs(self):
+        if self.symbol_costs is None:
+            self.symbol_costs = compute_symbol_costs(self.graph)
+        return self.symbol_costs
+
+    def _update_covered_k_paths(self, tree: DerivationTree):
+        if self.cost_settings.weight_vector.low_global_k_path_coverage_penalty > 0:
+            old_covered_k_paths = copy.copy(self.covered_k_paths)
+
+            self.covered_k_paths.update(tree.k_paths(self.graph, self.cost_settings.k))
+
+            if old_covered_k_paths == self.covered_k_paths:
+                self.rounds_with_no_new_coverage += 1
+
+            graph_paths = self.graph.k_paths(self.cost_settings.k)
+            if (self.rounds_with_no_new_coverage >= self.reset_coverage_after_n_round_with_no_coverage or
+                    self.covered_k_paths == graph_paths):
+                if self.covered_k_paths == graph_paths:
+                    self.logger.debug("ALL PATHS COVERED")
+                else:
+                    self.logger.debug(
+                        "COVERAGE RESET SINCE NO CHANGE IN COVERED PATHS SINCE %d ROUNDS (%d path(s) uncovered)",
+                        self.reset_coverage_after_n_round_with_no_coverage,
+                        len(graph_paths) - len(self.covered_k_paths)
+                    )
+
+                self.covered_k_paths = set()
+            else:
+                pass
+                # uncovered_paths = self.graph.k_paths(self.cost_settings.k) - self.covered_k_paths
+                # self.logger.info("\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]))
+
+            if self.rounds_with_no_new_coverage >= self.reset_coverage_after_n_round_with_no_coverage:
+                self.rounds_with_no_new_coverage = 0
+
+    def compute_cost(self, state: SolutionState) -> float:
+        # How costly is it to finish the tree?
+        tree_closing_cost = compute_tree_closing_cost(state.tree, self._symbol_costs())
+
+        # Quantifiers are expensive (universal formulas have to be matched, tree insertion for existential
+        # formulas is even more costly). TODO: Penalize nested quantifiers more.
+        constraint_cost = sum(
+            [idx * (2 if isinstance(f, language.ExistsFormula) else 1) + 1
+             for c in get_quantifier_chains(state.constraint)
+             for idx, f in enumerate(c)])
+
+        # k-Path coverage: Fewer covered -> higher penalty
+        k_cov_cost = compute_k_coverage_cost(self.graph, self.cost_settings.k, state)
+
+        # Covered k-paths: Fewer contributed -> higher penalty
+        global_k_path_cost = compute_global_k_coverage_cost(
+            self.covered_k_paths, self.graph, self.cost_settings.k, state)
+
+        costs = [tree_closing_cost, constraint_cost, state.level, k_cov_cost, global_k_path_cost]
+        assert all(c >= 0 for c in costs)
+
+        # Compute geometric mean
+        result = weighted_geometric_mean(costs, list(self.cost_settings.weight_vector))
+
+        self.logger.debug(
+            "Computed cost for state %s:\n%f, individual costs: %s, weights: %s",
+            f"({(str(state.constraint)[:50] + '...') if len(str(state.constraint)) > 53 else str(state.constraint)}, "
+            f"{state.tree})", result, costs, self.cost_settings.weight_vector)
+
+        self._update_covered_k_paths(state.tree)
+
+        return result
+
+
 def compute_cost(
         state: SolutionState,
         symbol_costs: Dict[str, int],
@@ -1811,3 +1849,71 @@ def quantified_formula_might_match(
                     return True
 
     return False
+
+
+@lru_cache()
+def compute_symbol_costs(graph: GrammarGraph) -> Dict[str, int]:
+    grammar = graph.to_grammar()
+    canonical_grammar = canonical(grammar)
+
+    result: Dict[str, int] = {}
+
+    for nonterminal in grammar:
+        fuzzer = GrammarFuzzer(grammar)
+        tree = fuzzer.expand_tree_with_strategy(DerivationTree(nonterminal, None), fuzzer.expand_node_max_cost, 1)
+        tree = fuzzer.expand_tree_with_strategy(tree, fuzzer.expand_node_min_cost)
+        result[nonterminal] = sum([
+            len([expansion for expansion in canonical_grammar[tree.value]
+                 if any(is_nonterminal(symbol) for symbol in expansion)])
+            for _, tree in tree.paths()
+            if is_nonterminal(tree.value)
+        ])
+
+    def all_paths(
+            from_node: gg.NonterminalNode,
+            to_node: gg.NonterminalNode, cycles_allowed: int = 1) -> List[List[gg.NonterminalNode]]:
+        """Compute all paths between two nodes. Note: We allow to visit each nonterminal twice.
+        This is not really allowing up to `cycles_allowed` cycles (which was the original intention
+        of the parameter), since then we would have to check per path; yet, the number of paths would
+        explode then and the current implementation provides reasonably good results."""
+        result: List[List[gg.NonterminalNode]] = []
+        visited: Dict[gg.NonterminalNode, int] = {n: 0 for n in graph.all_nodes}
+
+        queue: List[List[gg.NonterminalNode]] = [[from_node]]
+        while queue:
+            p = queue.pop(0)
+            if p[-1] == to_node:
+                result.append(p)
+                continue
+
+            for child in p[-1].children:
+                if not isinstance(child, gg.NonterminalNode) or visited[child] > cycles_allowed + 1:
+                    continue
+
+                visited[child] += 1
+                queue.append(p + [child])
+
+        return [[n for n in p if not isinstance(n, gg.ChoiceNode)] for p in result]
+
+    nonterminal_parents = [
+        nonterminal for nonterminal in canonical_grammar
+        if any(
+            is_nonterminal(symbol)
+            for expansion in canonical_grammar[nonterminal]
+            for symbol in expansion)]
+
+    # Sometimes this computation results in some nonterminals having lower cost values
+    # than nonterminals that are reachable from those (but not vice versa), which is
+    # undesired. We counteract this by assuring that on paths with at most one cycle
+    # from the root to any nonterminal parent, the costs are strictly monotonically
+    # decreasing.
+    for nonterminal_parent in nonterminal_parents:
+        for path in all_paths(graph.root, graph.get_node(nonterminal_parent)):
+            for idx in reversed(range(1, len(path))):
+                source: gg.Node = path[idx - 1]
+                target: gg.Node = path[idx]
+
+                if result[source.symbol] <= result[target.symbol]:
+                    result[source.symbol] = result[target.symbol] + 1
+
+    return result
