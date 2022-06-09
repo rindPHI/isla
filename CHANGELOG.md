@@ -7,8 +7,9 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ### Changed
 
-- Removed deprecated "cost phase" feature; `CostSettings` now expect a single `CostWeightVector` and a value for `k`,
-  exclusively.
+- Removed deprecated/unused "cost phase" feature; `CostSettings` now expect a single `CostWeightVector` and a value
+  for `k`, exclusively.
+- Removed deprecated "vacuous penalty" cost feature from cost vector.
 
 ## [0.2b3]
 

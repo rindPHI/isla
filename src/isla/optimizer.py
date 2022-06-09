@@ -226,7 +226,6 @@ def auto_tune_weight_vector(
         seed_population = [
             CostWeightVector(
                 tree_closing_cost=randno(),
-                vacuous_penalty=0,
                 constraint_cost=randno(),
                 derivation_depth_penalty=randno(),
                 low_k_coverage_penalty=randno(),
@@ -340,7 +339,6 @@ def evaluate_mutated_cost_vectors(
         k: int = 3):
     args = {
         "tree_closing_cost": base_vector.tree_closing_cost,
-        "vacuous_penalty": base_vector.vacuous_penalty,
         "constraint_cost": base_vector.constraint_cost,
         "derivation_depth_penalty": base_vector.derivation_depth_penalty,
         "low_coverage_penalty": base_vector.low_k_coverage_penalty,

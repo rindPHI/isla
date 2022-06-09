@@ -143,7 +143,6 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             cost_settings=CostSettings(
                 CostWeightVector(
                     tree_closing_cost=28,
-                    vacuous_penalty=5,
                     constraint_cost=40,
                     derivation_depth_penalty=3,
                     low_k_coverage_penalty=23,
@@ -169,14 +168,12 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             cost_settings=CostSettings(
                 CostWeightVector(
                     tree_closing_cost=10,
-                    vacuous_penalty=0,
                     constraint_cost=4,
                     derivation_depth_penalty=10,
                     low_k_coverage_penalty=23,
                     low_global_k_path_coverage_penalty=25),
                 # CostWeightVector(
                 #     tree_closing_cost=10,
-                #     vacuous_penalty=0,
                 #     constraint_cost=0,
                 #     derivation_depth_penalty=3,
                 #     low_k_coverage_penalty=0,
@@ -290,7 +287,6 @@ forall <csv-header> hline in start:
             cost_settings=CostSettings(
                 CostWeightVector(
                     tree_closing_cost=1,
-                    vacuous_penalty=0,
                     constraint_cost=0,
                     derivation_depth_penalty=1,
                     low_k_coverage_penalty=0,
@@ -396,9 +392,12 @@ forall int colno:
             custom_test_func=scriptsizec.compile_scriptsizec_clang,
             num_solutions=50,
             cost_settings=CostSettings(
-                CostWeightVector(tree_closing_cost=10, vacuous_penalty=0, constraint_cost=0,
-                                 derivation_depth_penalty=9, low_k_coverage_penalty=28,
-                                 low_global_k_path_coverage_penalty=4),
+                CostWeightVector(
+                    tree_closing_cost=10,
+                    constraint_cost=0,
+                    derivation_depth_penalty=9,
+                    low_k_coverage_penalty=28,
+                    low_global_k_path_coverage_penalty=4),
                 k=4
             ),
             # print_only=True
@@ -414,9 +413,12 @@ forall int colno:
             # custom_test_func=scriptsizec.compile_scriptsizec_clang,
             num_solutions=50,
             cost_settings=CostSettings(
-                CostWeightVector(tree_closing_cost=10, vacuous_penalty=0, constraint_cost=0,
-                                 derivation_depth_penalty=9, low_k_coverage_penalty=28,
-                                 low_global_k_path_coverage_penalty=4),
+                CostWeightVector(
+                    tree_closing_cost=10,
+                    constraint_cost=0,
+                    derivation_depth_penalty=9,
+                    low_k_coverage_penalty=28,
+                    low_global_k_path_coverage_penalty=4),
                 k=4
             ),
             # print_only=True

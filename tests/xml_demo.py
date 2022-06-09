@@ -113,7 +113,6 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
     # Result is something like
     # CostWeightVector(
     #     tree_closing_cost=15,
-    #     vacuous_penalty=15,
     #     constraint_cost=0,
     #     derivation_depth_penalty=0,
     #     low_k_coverage_penalty=5,

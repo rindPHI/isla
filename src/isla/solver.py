@@ -105,26 +105,17 @@ class SolutionState:
         return f"{{{self.constraint}, {replace_line_breaks(str(self.tree))}}}"
 
 
+@dataclass(frozen=True)
 class CostWeightVector:
-    def __init__(
-            self,
-            tree_closing_cost: float = 0,
-            vacuous_penalty: float = 0,
-            constraint_cost: float = 0,
-            derivation_depth_penalty: float = 0,
-            low_k_coverage_penalty: float = 0,
-            low_global_k_path_coverage_penalty: float = 0):
-        self.tree_closing_cost = tree_closing_cost
-        self.vacuous_penalty = vacuous_penalty
-        self.constraint_cost = constraint_cost
-        self.derivation_depth_penalty = derivation_depth_penalty
-        self.low_k_coverage_penalty = low_k_coverage_penalty
-        self.low_global_k_path_coverage_penalty = low_global_k_path_coverage_penalty
+    tree_closing_cost: float = 0,
+    constraint_cost: float = 0,
+    derivation_depth_penalty: float = 0,
+    low_k_coverage_penalty: float = 0,
+    low_global_k_path_coverage_penalty: float = 0
 
     def __iter__(self):
         return iter([
             self.tree_closing_cost,
-            self.vacuous_penalty,
             self.constraint_cost,
             self.derivation_depth_penalty,
             self.low_k_coverage_penalty,
@@ -135,20 +126,11 @@ class CostWeightVector:
         assert isinstance(item, int)
         return [
             self.tree_closing_cost,
-            self.vacuous_penalty,
             self.constraint_cost,
             self.derivation_depth_penalty,
             self.low_k_coverage_penalty,
             self.low_global_k_path_coverage_penalty
         ][item]
-
-    def __repr__(self):
-        return (f"CostWeightVector(tree_closing_cost = {self.tree_closing_cost}, "
-                f"vacuous_penalty = {self.vacuous_penalty}, "
-                f"constraint_cost = {self.constraint_cost}, "
-                f"derivation_depth_penalty = {self.derivation_depth_penalty}, "
-                f"low_k_coverage_penalty = {self.low_k_coverage_penalty}, "
-                f"low_global_k_path_coverage_penalty = {self.low_global_k_path_coverage_penalty})")
 
 
 @dataclass(frozen=True)
@@ -166,7 +148,6 @@ class CostSettings:
 STD_COST_SETTINGS = CostSettings(
     CostWeightVector(
         tree_closing_cost=11,
-        vacuous_penalty=0,
         constraint_cost=3,
         derivation_depth_penalty=5,
         low_k_coverage_penalty=20,
@@ -1742,16 +1723,13 @@ def compute_cost(
     # How far are we from matching a yet unmatched universal quantifier?
     # vacuous_penalty = compute_match_dist(state, grammar, node_distance)
 
-    # What is the proportion of vacuously satisfied universal quantifiers *chains* in (extensions of) this tree?
-    vacuous_penalty = 0  # Deactivated; TODO: Remove any residual code.
-
     # k-Path coverage: Fewer covered -> higher penalty
     k_cov_cost = compute_k_coverage_cost(graph, k, state)
 
     # Covered k-paths: Fewer contributed -> higher penalty
     global_k_path_cost = compute_global_k_coverage_cost(covered_k_paths, graph, k, state)
 
-    costs = [tree_closing_cost, vacuous_penalty, constraint_cost, state.level, k_cov_cost, global_k_path_cost]
+    costs = [tree_closing_cost, constraint_cost, state.level, k_cov_cost, global_k_path_cost]
     assert all(c >= 0 for c in costs)
 
     # Compute geometric mean
