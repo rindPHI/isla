@@ -16,7 +16,7 @@ g_link_defuse = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
+    cost_settings=CostSettings(cost_vector, k=eval_k)
 )
 
 g_link_defuse_len = lambda timeout: ISLaSolver(
@@ -25,7 +25,7 @@ g_link_defuse_len = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
+    cost_settings=CostSettings(cost_vector, k=eval_k)
 )
 
 g_link_defuse_len_numbering = lambda timeout: ISLaSolver(
@@ -34,7 +34,7 @@ g_link_defuse_len_numbering = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
+    cost_settings=CostSettings(cost_vector, k=eval_k)
 )
 
 g_link_defuse_len_numbering_no_redef = lambda timeout: ISLaSolver(
@@ -43,7 +43,7 @@ g_link_defuse_len_numbering_no_redef = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
+    cost_settings=CostSettings(cost_vector, k=eval_k)
 )
 
 if __name__ == '__main__':

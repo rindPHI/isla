@@ -22,7 +22,7 @@ g_wf = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
+    cost_settings=CostSettings(cost_vector, k=eval_k)
 )
 
 g_ns = lambda timeout: ISLaSolver(
@@ -31,7 +31,7 @@ g_ns = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
+    cost_settings=CostSettings(cost_vector, k=eval_k)
 )
 
 g_redef = lambda timeout: ISLaSolver(
@@ -40,7 +40,7 @@ g_redef = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
+    cost_settings=CostSettings(cost_vector, k=eval_k)
 )
 
 g_wf_ns = lambda timeout: ISLaSolver(
@@ -49,7 +49,7 @@ g_wf_ns = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
+    cost_settings=CostSettings(cost_vector, k=eval_k)
 )
 
 g_wf_ns_redef = lambda timeout: ISLaSolver(
@@ -60,7 +60,7 @@ g_wf_ns_redef = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings((cost_vector,), (1000,), k=eval_k)
+    cost_settings=CostSettings(cost_vector, k=eval_k)
 )
 
 if __name__ == '__main__':

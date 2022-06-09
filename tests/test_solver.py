@@ -141,17 +141,13 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             max_number_free_instantiations=1,
             num_solutions=30,
             cost_settings=CostSettings(
-                weight_vectors=(
-                    CostWeightVector(
-                        tree_closing_cost=28,
-                        vacuous_penalty=5,
-                        constraint_cost=40,
-                        derivation_depth_penalty=3,
-                        low_k_coverage_penalty=23,
-                        low_global_k_path_coverage_penalty=5)
-                    ,),
-                cost_phase_lengths=(200,)),
-        )
+                CostWeightVector(
+                    tree_closing_cost=28,
+                    vacuous_penalty=5,
+                    constraint_cost=40,
+                    derivation_depth_penalty=3,
+                    low_k_coverage_penalty=23,
+                    low_global_k_path_coverage_penalty=5)))
 
     def test_get_quantifier_chains(self):
         chains_1 = get_quantifier_chains(XML_WELLFORMEDNESS_CONSTRAINT)
@@ -171,23 +167,20 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             enforce_unique_trees_in_queue=True,
             custom_test_func=validate_xml,
             cost_settings=CostSettings(
-                weight_vectors=(
-                    CostWeightVector(
-                        tree_closing_cost=10,
-                        vacuous_penalty=0,
-                        constraint_cost=4,
-                        derivation_depth_penalty=10,
-                        low_k_coverage_penalty=23,
-                        low_global_k_path_coverage_penalty=25),
-                    # CostWeightVector(
-                    #     tree_closing_cost=10,
-                    #     vacuous_penalty=0,
-                    #     constraint_cost=0,
-                    #     derivation_depth_penalty=3,
-                    #     low_k_coverage_penalty=0,
-                    #     low_global_k_path_coverage_penalty=0),
-                ),
-                cost_phase_lengths=(200,),
+                CostWeightVector(
+                    tree_closing_cost=10,
+                    vacuous_penalty=0,
+                    constraint_cost=4,
+                    derivation_depth_penalty=10,
+                    low_k_coverage_penalty=23,
+                    low_global_k_path_coverage_penalty=25),
+                # CostWeightVector(
+                #     tree_closing_cost=10,
+                #     vacuous_penalty=0,
+                #     constraint_cost=0,
+                #     derivation_depth_penalty=3,
+                #     low_k_coverage_penalty=0,
+                #     low_global_k_path_coverage_penalty=0),
                 k=3
             ),
         )
@@ -295,18 +288,14 @@ forall <csv-header> hline in start:
             global_fuzzer=False,
             fuzzer_factory=functools.partial(GrammarFuzzer, min_nonterminals=0, max_nonterminals=30),
             cost_settings=CostSettings(
-                weight_vectors=(
-                    CostWeightVector(
-                        tree_closing_cost=1,
-                        vacuous_penalty=0,
-                        constraint_cost=0,
-                        derivation_depth_penalty=1,
-                        low_k_coverage_penalty=0,
-                        low_global_k_path_coverage_penalty=0),
-                ),
-                cost_phase_lengths=(200,),
-                k=3
-            ),
+                CostWeightVector(
+                    tree_closing_cost=1,
+                    vacuous_penalty=0,
+                    constraint_cost=0,
+                    derivation_depth_penalty=1,
+                    low_k_coverage_penalty=0,
+                    low_global_k_path_coverage_penalty=0),
+                k=3),
         )
 
     def test_csv_rows_equal_length_more_complex(self):
@@ -407,10 +396,9 @@ forall int colno:
             custom_test_func=scriptsizec.compile_scriptsizec_clang,
             num_solutions=50,
             cost_settings=CostSettings(
-                (CostWeightVector(tree_closing_cost=10, vacuous_penalty=0, constraint_cost=0,
-                                  derivation_depth_penalty=9, low_k_coverage_penalty=28,
-                                  low_global_k_path_coverage_penalty=4),),
-                cost_phase_lengths=(200,),
+                CostWeightVector(tree_closing_cost=10, vacuous_penalty=0, constraint_cost=0,
+                                 derivation_depth_penalty=9, low_k_coverage_penalty=28,
+                                 low_global_k_path_coverage_penalty=4),
                 k=4
             ),
             # print_only=True
@@ -426,10 +414,9 @@ forall int colno:
             # custom_test_func=scriptsizec.compile_scriptsizec_clang,
             num_solutions=50,
             cost_settings=CostSettings(
-                (CostWeightVector(tree_closing_cost=10, vacuous_penalty=0, constraint_cost=0,
-                                  derivation_depth_penalty=9, low_k_coverage_penalty=28,
-                                  low_global_k_path_coverage_penalty=4),),
-                cost_phase_lengths=(200,),
+                CostWeightVector(tree_closing_cost=10, vacuous_penalty=0, constraint_cost=0,
+                                 derivation_depth_penalty=9, low_k_coverage_penalty=28,
+                                 low_global_k_path_coverage_penalty=4),
                 k=4
             ),
             # print_only=True
@@ -448,10 +435,8 @@ forall int colno:
             precompute_reachability=False,
             # custom_test_func=extract_tar,
             cost_settings=CostSettings(
-                (STD_COST_SETTINGS.weight_vectors[0],),
-                (200,),
-                k=4
-            ),
+                STD_COST_SETTINGS.weight_vectors[0],
+                k=4),
             tree_insertion_methods=DIRECT_EMBEDDING | SELF_EMBEDDING
             # cost_settings=CostSettings(
             #     (CostWeightVector(1, 1, 1, 1, 1, 1),),

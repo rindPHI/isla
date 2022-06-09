@@ -126,8 +126,7 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
         max_number_smt_instantiations=1,  # Number of solutions for symbols bound by SMT formulas
         max_number_free_instantiations=1,  # Number of solutions for symbols not bound by any formula
         cost_settings=CostSettings(
-            (tune_result[1],),  # Cost weight(s)
-            cost_phase_lengths=(200,),  # If multiple weights: Number of states for which each weight should be applied
+            tune_result[1],  # Cost weight
             k=3  # For k-Path coverage: Sequences of which length in grammar graph / trees should be considered
         ),
     )

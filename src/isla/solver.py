@@ -4,6 +4,7 @@ import itertools
 import logging
 import sys
 import time
+from dataclasses import dataclass
 from functools import reduce, lru_cache
 
 import math
@@ -150,36 +151,27 @@ class CostWeightVector:
                 f"low_global_k_path_coverage_penalty = {self.low_global_k_path_coverage_penalty})")
 
 
+@dataclass(frozen=True)
 class CostSettings:
-    def __init__(
-            self,
-            weight_vectors: Tuple[CostWeightVector, ...],
-            cost_phase_lengths: Tuple[int, ...] = (1000,),  # TODO: Remove this parameter
-            k: int = 3):
-        assert len(weight_vectors) == len(cost_phase_lengths)
-        self.weight_vectors = weight_vectors
-        self.cost_phase_lengths = cost_phase_lengths
-        self.k = k
+    weight_vector: CostWeightVector
+    k: int = 3
 
-    def __repr__(self):
-        return f"CostSettings(weight_vectors={repr(self.weight_vectors)}, " \
-               f"cost_phase_length={repr(self.cost_phase_lengths)}), " \
-               f"k={self.k}"
+    def __init__(self, weight_vector: CostWeightVector, k: int = 3):
+        assert isinstance(weight_vector, CostWeightVector)
+        assert isinstance(k, int)
+        object.__setattr__(self, 'weight_vector', weight_vector)
+        object.__setattr__(self, 'k', k)
 
 
 STD_COST_SETTINGS = CostSettings(
-    (
-        CostWeightVector(
-            tree_closing_cost=11,
-            vacuous_penalty=0,
-            constraint_cost=3,
-            derivation_depth_penalty=5,
-            low_k_coverage_penalty=20,
-            low_global_k_path_coverage_penalty=10),
-    ),
-    (200,),
-    k=3
-)
+    CostWeightVector(
+        tree_closing_cost=11,
+        vacuous_penalty=0,
+        constraint_cost=3,
+        derivation_depth_penalty=5,
+        low_k_coverage_penalty=20,
+        low_global_k_path_coverage_penalty=10),
+    k=3)
 
 
 class ISLaSolver:
@@ -279,8 +271,6 @@ class ISLaSolver:
         self.enforce_unique_trees_in_queue = enforce_unique_trees_in_queue
 
         self.cost_settings = cost_settings
-        self.current_cost_phase: int = 0
-        self.current_cost_phase_since: int = 0
         self.covered_k_paths: Set[Tuple[gg.Node, ...]] = set()
 
         self.precompute_reachability = precompute_reachability
@@ -1395,7 +1385,7 @@ class ISLaSolver:
     def process_new_states(self, new_states: List[SolutionState]) -> List[DerivationTree]:
         result = [tree for new_state in new_states for tree in self.process_new_state(new_state)]
 
-        if self.cost_settings.weight_vectors[0].low_global_k_path_coverage_penalty > 0:
+        if self.cost_settings.weight_vector.low_global_k_path_coverage_penalty > 0:
             old_covered_k_paths = copy.copy(self.covered_k_paths)
 
             for tree in [state.tree for state in new_states]:
@@ -1544,25 +1534,12 @@ class ISLaSolver:
         if state.constraint == sc.true():
             return 0
 
-        if (len(self.queue) - self.current_cost_phase_since >
-                self.cost_settings.cost_phase_lengths[self.current_cost_phase]):
-            self.current_cost_phase_since = len(self.queue)
-            self.current_cost_phase = (self.current_cost_phase + 1) % len(self.cost_settings.weight_vectors)
-            self.logger.debug(
-                "Switching to cost phase %d of %d, vector %s",
-                self.current_cost_phase + 1,
-                len(self.cost_settings.weight_vectors),
-                str(self.cost_settings.weight_vectors[self.current_cost_phase])
-            )
-
-        cost_weight_vector = self.cost_settings.weight_vectors[self.current_cost_phase]
         symbol_costs = self.symbol_costs
         grammar = self.grammar
         graph = self.graph
-        k = self.cost_settings.k
 
         return compute_cost(
-            state, symbol_costs, cost_weight_vector, k, self.covered_k_paths,
+            state, symbol_costs, self.cost_settings.weight_vector, self.cost_settings.k, self.covered_k_paths,
             self.formula, grammar, graph, self.quantifier_chains)
 
     def compute_symbol_costs(self) -> Dict[str, int]:

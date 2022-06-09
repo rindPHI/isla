@@ -438,7 +438,7 @@ def evaluate_isla_generator(
         max_number_free_instantiations=1,
         max_number_smt_instantiations=1,
         timeout_seconds=timeout,
-        cost_settings=CostSettings((v,), (200,))
+        cost_settings=CostSettings(v)
     ).solve()
 
     return evaluate_producer(
