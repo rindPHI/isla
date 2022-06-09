@@ -1515,13 +1515,13 @@ class ISLaSolver:
         if state.constraint == sc.true():
             return 0
 
-        symbol_costs = self.symbol_costs
-        grammar = self.grammar
-        graph = self.graph
-
         return compute_cost(
-            state, symbol_costs, self.cost_settings.weight_vector, self.cost_settings.k, self.covered_k_paths,
-            self.formula, grammar, graph, self.quantifier_chains)
+            state,
+            self.symbol_costs,
+            self.cost_settings.weight_vector,
+            self.cost_settings.k,
+            self.covered_k_paths,
+            self.graph)
 
     def compute_symbol_costs(self) -> Dict[str, int]:
         self.logger.info("Computing symbol costs")
@@ -1706,10 +1706,7 @@ def compute_cost(
         cost_weight_vector: CostWeightVector,
         k: int,
         covered_k_paths: Set[Tuple[gg.Node, ...]],
-        orig_formula: language.Formula,
-        grammar: Grammar,
-        graph: gg.GrammarGraph,
-        quantifier_chains: List[Tuple[language.ForallFormula, ...]]) -> float:
+        graph: gg.GrammarGraph) -> float:
     # How costly is it to finish the tree?
     tree_closing_cost = compute_tree_closing_cost(state.tree, symbol_costs)
 
@@ -1719,9 +1716,6 @@ def compute_cost(
         [idx * (2 if isinstance(f, language.ExistsFormula) else 1) + 1
          for c in get_quantifier_chains(state.constraint)
          for idx, f in enumerate(c)])
-
-    # How far are we from matching a yet unmatched universal quantifier?
-    # vacuous_penalty = compute_match_dist(state, grammar, node_distance)
 
     # k-Path coverage: Fewer covered -> higher penalty
     k_cov_cost = compute_k_coverage_cost(graph, k, state)
