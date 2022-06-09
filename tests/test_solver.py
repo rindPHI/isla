@@ -9,6 +9,7 @@ from xml.sax.saxutils import escape
 
 import pytest
 import z3
+from grammar_graph import gg
 
 import isla.evaluator
 from isla import isla_shortcuts as sc
@@ -19,12 +20,11 @@ from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, STANDARD_SEM
     STANDARD_STRUCTURAL_PREDICATES
 from isla.language import VariablesCollector, parse_isla
 from isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
-    get_quantifier_chains
+    get_quantifier_chains, CostComputer, GrammarBasedBlackboxCostComputer
 from isla.type_defs import Grammar
 from isla.z3_helpers import z3_eq
 from isla_formalizations import rest, tar, simple_tar, scriptsizec
 from isla_formalizations.csv import csv_lint, CSV_GRAMMAR, CSV_HEADERBODY_GRAMMAR
-from isla_formalizations.tar import extract_tar
 from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, \
     XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, XML_GRAMMAR, validate_xml, XML_NO_ATTR_REDEF_CONSTRAINT
 from test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR
@@ -140,13 +140,15 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             grammar=XML_GRAMMAR,
             max_number_free_instantiations=1,
             num_solutions=30,
-            cost_settings=CostSettings(
-                CostWeightVector(
-                    tree_closing_cost=28,
-                    constraint_cost=40,
-                    derivation_depth_penalty=3,
-                    low_k_coverage_penalty=23,
-                    low_global_k_path_coverage_penalty=5)))
+            cost_computer=GrammarBasedBlackboxCostComputer(
+                CostSettings(
+                    CostWeightVector(
+                        tree_closing_cost=28,
+                        constraint_cost=40,
+                        derivation_depth_penalty=3,
+                        low_k_coverage_penalty=23,
+                        low_global_k_path_coverage_penalty=5)),
+                gg.GrammarGraph.from_grammar(XML_GRAMMAR)))
 
     def test_get_quantifier_chains(self):
         chains_1 = get_quantifier_chains(XML_WELLFORMEDNESS_CONSTRAINT)
@@ -165,22 +167,22 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             num_solutions=50,
             enforce_unique_trees_in_queue=True,
             custom_test_func=validate_xml,
-            cost_settings=CostSettings(
-                CostWeightVector(
-                    tree_closing_cost=10,
-                    constraint_cost=4,
-                    derivation_depth_penalty=10,
-                    low_k_coverage_penalty=23,
-                    low_global_k_path_coverage_penalty=25),
-                # CostWeightVector(
-                #     tree_closing_cost=10,
-                #     constraint_cost=0,
-                #     derivation_depth_penalty=3,
-                #     low_k_coverage_penalty=0,
-                #     low_global_k_path_coverage_penalty=0),
-                k=3
-            ),
-        )
+            cost_computer=GrammarBasedBlackboxCostComputer(
+                CostSettings(
+                    CostWeightVector(
+                        tree_closing_cost=10,
+                        constraint_cost=4,
+                        derivation_depth_penalty=10,
+                        low_k_coverage_penalty=23,
+                        low_global_k_path_coverage_penalty=25),
+                    # CostWeightVector(
+                    #     tree_closing_cost=10,
+                    #     constraint_cost=0,
+                    #     derivation_depth_penalty=3,
+                    #     low_k_coverage_penalty=0,
+                    #     low_global_k_path_coverage_penalty=0),
+                    k=3),
+                gg.GrammarGraph.from_grammar(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)))
 
     def test_declared_before_used(self):
         mgr = language.VariableManager(LANG_GRAMMAR)
@@ -476,7 +478,7 @@ forall int colno:
             state_tree_out="/tmp/state_tree.xml",
             log_out="/tmp/isla_log.txt",
             custom_test_func: Optional[Callable[[language.DerivationTree], Union[bool, str]]] = None,
-            cost_settings=STD_COST_SETTINGS,
+            cost_computer: Optional[CostComputer] = None,
             print_only: bool = False,
             timeout_seconds: Optional[int] = None,
             global_fuzzer: bool = False,
@@ -498,7 +500,7 @@ forall int colno:
             enforce_unique_trees_in_queue=enforce_unique_trees_in_queue,
             precompute_reachability=precompute_reachability,
             debug=debug,
-            cost_settings=cost_settings,
+            cost_computer=cost_computer,
             timeout_seconds=timeout_seconds,
             global_fuzzer=global_fuzzer,
             fuzzer_factory=fuzzer_factory,

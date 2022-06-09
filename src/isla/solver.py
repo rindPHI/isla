@@ -168,7 +168,7 @@ class ISLaSolver:
                  enforce_unique_trees_in_queue: bool = True,
                  precompute_reachability: bool = False,
                  debug: bool = False,
-                 cost_settings: CostSettings = STD_COST_SETTINGS,
+                 cost_computer: Optional['CostComputer'] = None,
                  timeout_seconds: Optional[int] = None,
                  global_fuzzer: bool = False,
                  predicates_unique_in_int_arg: Tuple[language.SemanticPredicate, ...] = (COUNT_PREDICATE,),
@@ -180,9 +180,6 @@ class ISLaSolver:
         :param max_number_free_instantiations: Number of times that nonterminals that are not bound by any formula
         should be expanded by a coverage-based fuzzer.
         :param max_number_smt_instantiations: Number of solutions of SMT formulas that should be produced.
-        :param expand_after_existential_elimination: Trees are expanded after an existential quantifier elimination
-        iff this paramter is set to true. If false, only a finite (potentially small) set of inputs is generated for
-        existential constraints. (CURRENTLY NOT USED, MIGHT BE REMOVED)
         :param precompute_reachability: If true, the distances between all grammar nodes are pre-computed using
         Floyd-Warshall's algorithm. This makes sense if there are many expensive distance queries, e.g., in a big
         grammar and a constraint with relatively many universal quantifiers.
@@ -221,15 +218,15 @@ class ISLaSolver:
         self.grammar = grammar
         self.graph = GrammarGraph.from_grammar(grammar)
         self.canonical_grammar = canonical(grammar)
-        self.symbol_costs: Dict[str, int] = self.compute_symbol_costs()
         self.timeout_seconds = timeout_seconds
         self.global_fuzzer = global_fuzzer
         self.fuzzer_factory = fuzzer_factory
         self.predicates_unique_in_int_arg: Set[language.SemanticPredicate] = set(predicates_unique_in_int_arg)
         self.tree_insertion_methods = tree_insertion_methods
 
-        self.rounds_with_no_new_coverage = 0
-        self.reset_coverage_after_n_round_with_no_coverage = 100
+        self.cost_computer = (
+            cost_computer if cost_computer is not None
+            else GrammarBasedBlackboxCostComputer(STD_COST_SETTINGS, self.graph))
 
         if isinstance(formula, str):
             formula = parse_isla(formula, grammar, structural_predicates, semantic_predicates)
@@ -245,15 +242,13 @@ class ISLaSolver:
         quantifier_chains: List[Tuple[language.ForallFormula, ...]] = [
             tuple([f for f in c if isinstance(f, language.ForallFormula)])
             for c in get_quantifier_chains(formula)]
+        # TODO: Remove?
         self.quantifier_chains: List[Tuple[language.ForallFormula, ...]] = [c for c in quantifier_chains if c]
 
         self.max_number_free_instantiations: int = max_number_free_instantiations
         self.max_number_smt_instantiations: int = max_number_smt_instantiations
         self.max_number_tree_insertion_results = max_number_tree_insertion_results
         self.enforce_unique_trees_in_queue = enforce_unique_trees_in_queue
-
-        self.cost_settings = cost_settings
-        self.covered_k_paths: Set[Tuple[gg.Node, ...]] = set()
 
         self.precompute_reachability = precompute_reachability
         if precompute_reachability:
@@ -420,6 +415,7 @@ class ISLaSolver:
                         result = result.replace_path(path, leaf_inst)
                     yield from self.process_new_states([SolutionState(state.constraint, result)])
             else:
+                # noinspection PyTypeChecker
                 yield from self.process_new_states(self.expand_state(state, fuzzer))
 
     def expand_state(self, state: SolutionState, fuzzer: GrammarCoverageFuzzer) -> List[SolutionState]:
@@ -517,6 +513,7 @@ class ISLaSolver:
             universal_int_formula: language.ForallIntFormula) -> List[SolutionState]:
         constant = language.Constant(universal_int_formula.bound_variable.name,
                                      universal_int_formula.bound_variable.n_type)
+        # noinspection PyTypeChecker
         inner_formula = universal_int_formula.inner_formula.substitute_variables({
             universal_int_formula.bound_variable: constant})
 
@@ -1028,7 +1025,7 @@ class ISLaSolver:
                 methods=self.tree_insertion_methods
             )
 
-            insertion_results = sorted(insertion_results, key=lambda t: compute_tree_closing_cost(t, self.symbol_costs))
+            insertion_results = sorted(insertion_results, key=lambda t: compute_tree_closing_cost(t, self.graph))
             insertion_results = insertion_results[:self.max_number_tree_insertion_results]
 
             for insertion_result in insertion_results:
@@ -1365,39 +1362,7 @@ class ISLaSolver:
         return smt_formulas
 
     def process_new_states(self, new_states: List[SolutionState]) -> List[DerivationTree]:
-        result = [tree for new_state in new_states for tree in self.process_new_state(new_state)]
-
-        if self.cost_settings.weight_vector.low_global_k_path_coverage_penalty > 0:
-            old_covered_k_paths = copy.copy(self.covered_k_paths)
-
-            for tree in [state.tree for state in new_states]:
-                self.covered_k_paths.update(tree.k_paths(self.graph, self.cost_settings.k))
-
-            if old_covered_k_paths == self.covered_k_paths:
-                self.rounds_with_no_new_coverage += 1
-
-            graph_paths = self.graph.k_paths(self.cost_settings.k)
-            if (self.rounds_with_no_new_coverage >= self.reset_coverage_after_n_round_with_no_coverage or
-                    self.covered_k_paths == graph_paths):
-                if self.covered_k_paths == graph_paths:
-                    self.logger.debug("ALL PATHS COVERED")
-                else:
-                    self.logger.debug(
-                        "COVERAGE RESET SINCE NO CHANGE IN COVERED PATHS SINCE %d ROUNDS (%d path(s) uncovered)",
-                        self.reset_coverage_after_n_round_with_no_coverage,
-                        len(graph_paths) - len(self.covered_k_paths)
-                    )
-
-                self.covered_k_paths = set()
-            else:
-                pass
-                # uncovered_paths = self.graph.k_paths(self.cost_settings.k) - self.covered_k_paths
-                # self.logger.info("\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]))
-
-            if self.rounds_with_no_new_coverage >= self.reset_coverage_after_n_round_with_no_coverage:
-                self.rounds_with_no_new_coverage = 0
-
-        return result
+        return [tree for new_state in new_states for tree in self.process_new_state(new_state)]
 
     def process_new_state(self, new_state: SolutionState) -> List[DerivationTree]:
         new_state = self.instantiate_structural_predicates(new_state)
@@ -1511,22 +1476,10 @@ class ISLaSolver:
             for disjunct in split_disjunction(formula)]
 
     def compute_cost(self, state: SolutionState) -> float:
-        """Cost of state. Best value: 0, Worst: Unbounded"""
-
         if state.constraint == sc.true():
             return 0
 
-        return compute_cost(
-            state,
-            self.symbol_costs,
-            self.cost_settings.weight_vector,
-            self.cost_settings.k,
-            self.covered_k_paths,
-            self.graph)
-
-    def compute_symbol_costs(self) -> Dict[str, int]:
-        # TODO: Remove
-        return compute_symbol_costs(self.graph)
+        return self.cost_computer.compute_cost(state)
 
     def remove_nonmatching_universal_quantifiers(self, state: SolutionState) -> SolutionState:
         result = state
@@ -1706,7 +1659,7 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
 
     def compute_cost(self, state: SolutionState) -> float:
         # How costly is it to finish the tree?
-        tree_closing_cost = compute_tree_closing_cost(state.tree, self._symbol_costs())
+        tree_closing_cost = compute_tree_closing_cost(state.tree, self.graph)
 
         # Quantifiers are expensive (universal formulas have to be matched, tree insertion for existential
         # formulas is even more costly). TODO: Penalize nested quantifiers more.
@@ -1716,11 +1669,10 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
              for idx, f in enumerate(c)])
 
         # k-Path coverage: Fewer covered -> higher penalty
-        k_cov_cost = compute_k_coverage_cost(self.graph, self.cost_settings.k, state)
+        k_cov_cost = self._compute_k_coverage_cost(state)
 
         # Covered k-paths: Fewer contributed -> higher penalty
-        global_k_path_cost = compute_global_k_coverage_cost(
-            self.covered_k_paths, self.graph, self.cost_settings.k, state)
+        global_k_path_cost = self._compute_global_k_coverage_cost(state)
 
         costs = [tree_closing_cost, constraint_cost, state.level, k_cov_cost, global_k_path_cost]
         assert all(c >= 0 for c in costs)
@@ -1737,62 +1689,24 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
 
         return result
 
+    def _compute_global_k_coverage_cost(self, state: SolutionState):
+        num_contributed_k_paths = len(
+            {path for path in self.graph.k_paths(self.cost_settings.k)
+             if path in state.tree.k_paths(self.graph, self.cost_settings.k) and
+             path not in self.covered_k_paths})
+        num_missing_k_paths = len(self.graph.k_paths(self.cost_settings.k)) - len(self.covered_k_paths)
 
-def compute_cost(
-        state: SolutionState,
-        symbol_costs: Dict[str, int],
-        cost_weight_vector: CostWeightVector,
-        k: int,
-        covered_k_paths: Set[Tuple[gg.Node, ...]],
-        graph: gg.GrammarGraph) -> float:
-    # How costly is it to finish the tree?
-    tree_closing_cost = compute_tree_closing_cost(state.tree, symbol_costs)
+        return 1 - (num_contributed_k_paths / num_missing_k_paths)
 
-    # Quantifiers are expensive (universal formulas have to be matched, tree insertion for existential
-    # formulas is even more costly). TODO: Penalize nested quantifiers more.
-    constraint_cost = sum(
-        [idx * (2 if isinstance(f, language.ExistsFormula) else 1) + 1
-         for c in get_quantifier_chains(state.constraint)
-         for idx, f in enumerate(c)])
-
-    # k-Path coverage: Fewer covered -> higher penalty
-    k_cov_cost = compute_k_coverage_cost(graph, k, state)
-
-    # Covered k-paths: Fewer contributed -> higher penalty
-    global_k_path_cost = compute_global_k_coverage_cost(covered_k_paths, graph, k, state)
-
-    costs = [tree_closing_cost, constraint_cost, state.level, k_cov_cost, global_k_path_cost]
-    assert all(c >= 0 for c in costs)
-
-    # Compute geometric mean
-    result = weighted_geometric_mean(costs, list(cost_weight_vector))
-
-    logging.getLogger(type(ISLaSolver).__name__).debug(
-        "Computed cost for state %s:\n%f, individual costs: %s, weights: %s",
-        f"({(str(state.constraint)[:50] + '...') if len(str(state.constraint)) > 53 else str(state.constraint)}, "
-        f"{state.tree})", result, costs, cost_weight_vector)
-
-    return result
+    def _compute_k_coverage_cost(self, state: SolutionState) -> float:
+        return math.prod([
+            1 - state.tree.k_coverage(self.graph, k) for k in range(1, self.cost_settings.k + 1)]
+        ) ** (1 / float(self.cost_settings.k))
 
 
-def compute_tree_closing_cost(tree: DerivationTree, symbol_costs: Dict[str, int]) -> float:
+def compute_tree_closing_cost(tree: DerivationTree, graph: GrammarGraph) -> float:
     nonterminals = [leaf.value for _, leaf in tree.open_leaves()]
-    return sum([symbol_costs[nonterminal] for nonterminal in nonterminals])
-
-
-def compute_global_k_coverage_cost(
-        covered_k_paths: Set[Tuple[gg.Node, ...]], graph: gg.GrammarGraph, k: int, state: SolutionState):
-    num_contributed_k_paths = len(
-        {path for path in graph.k_paths(k)
-         if path in state.tree.k_paths(graph, k) and
-         path not in covered_k_paths})
-    num_missing_k_paths = len(graph.k_paths(k)) - len(covered_k_paths)
-
-    return 1 - (num_contributed_k_paths / num_missing_k_paths)
-
-
-def compute_k_coverage_cost(graph: GrammarGraph, k: int, state: SolutionState) -> float:
-    return math.prod([1 - state.tree.k_coverage(graph, k) for k in range(1, k + 1)]) ** (1 / float(k))
+    return sum([compute_symbol_costs(graph)[nonterminal] for nonterminal in nonterminals])
 
 
 def get_quantifier_chains(formula: language.Formula) -> \
@@ -1908,6 +1822,7 @@ def compute_symbol_costs(graph: GrammarGraph) -> Dict[str, int]:
     # from the root to any nonterminal parent, the costs are strictly monotonically
     # decreasing.
     for nonterminal_parent in nonterminal_parents:
+        # noinspection PyTypeChecker
         for path in all_paths(graph.root, graph.get_node(nonterminal_parent)):
             for idx in reversed(range(1, len(path))):
                 source: gg.Node = path[idx - 1]
