@@ -8,11 +8,12 @@ from typing import Optional, List, Dict
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.Grammars import srange
 from fuzzingbook.Parser import EarleyParser
+from grammar_graph import gg
 
 from isla.language import parse_isla, DerivationTree
 from isla.evaluator import evaluate
 from isla.optimizer import auto_tune_weight_vector
-from isla.solver import ISLaSolver, CostSettings
+from isla.solver import ISLaSolver, CostSettings, GrammarBasedBlackboxCostComputer
 from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 
 XML_GRAMMAR = {
@@ -124,10 +125,10 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
         constraint,
         max_number_smt_instantiations=1,  # Number of solutions for symbols bound by SMT formulas
         max_number_free_instantiations=1,  # Number of solutions for symbols not bound by any formula
-        cost_settings=CostSettings(
+        cost_computer=GrammarBasedBlackboxCostComputer(CostSettings(
             tune_result[1],  # Cost weight
             k=3  # For k-Path coverage: Sequences of which length in grammar graph / trees should be considered
-        ),
+        ), gg.GrammarGraph.from_grammar(XML_GRAMMAR)),
     )
 
     generator = solver.solve()

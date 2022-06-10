@@ -376,24 +376,17 @@ def visit_z3_expr(e: z3.ExprRef | z3.QuantifierRef,
         return
 
 
-def get_symbols(formula: z3.BoolRef) -> Set[z3.SeqRef]:
-    result: Set[z3.SeqRef] = set()
+@lru_cache()
+def get_symbols(expr: z3.ExprRef) -> Set[z3.SeqRef]:
+    if is_z3_var(expr):
+        if expr.decl().range() != z3.StringSort():
+            raise NotImplementedError(
+                f"This class was developed for String symbols only, found {op.range()}")
 
-    def recurse(elem: z3.ExprRef):
-        op = elem.decl()
-        if z3.is_const(elem) and op.kind() == z3.Z3_OP_UNINTERPRETED:
-            if op.range() != z3.StringSort():
-                raise NotImplementedError(
-                    f"This class was developed for String symbols only, found {op.range()}")
+        assert isinstance(expr, z3.SeqRef)
+        return {expr}
 
-            assert isinstance(elem, z3.SeqRef)
-            result.add(cast(z3.SeqRef, elem))
-
-        for child in elem.children():
-            recurse(child)
-
-    recurse(formula)
-    return result
+    return reduce(lambda acc, elem: acc | elem, [get_symbols(child) for child in expr.children()], set())
 
 
 def smt_expr_to_str(f: z3.ExprRef, qfd_var_stack: Tuple[str, ...] = ()) -> str:

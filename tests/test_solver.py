@@ -18,9 +18,9 @@ from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_A
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, STANDARD_SEMANTIC_PREDICATES, \
     STANDARD_STRUCTURAL_PREDICATES
-from isla.language import VariablesCollector, parse_isla
+from isla.language import VariablesCollector, parse_isla, DerivationTree
 from isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
-    get_quantifier_chains, CostComputer, GrammarBasedBlackboxCostComputer
+    get_quantifier_chains, CostComputer, GrammarBasedBlackboxCostComputer, quantified_formula_might_match
 from isla.type_defs import Grammar
 from isla.z3_helpers import z3_eq
 from isla_formalizations import rest, tar, simple_tar, scriptsizec
@@ -31,7 +31,7 @@ from test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR
 
 
 class TestSolver(unittest.TestCase):
-    def test_qfd_formula_might_match(self):
+    def test_qfd_formula_might_match_1(self):
         mgr = language.VariableManager(LANG_GRAMMAR)
         solver = ISLaSolver(LANG_GRAMMAR, mgr.smt(z3_eq(mgr.const("$DUMMY", "<start>").to_smt(), z3.StringVal(""))))
 
@@ -55,6 +55,59 @@ class TestSolver(unittest.TestCase):
         # assert not tree.get_subtree((0, 0, 2, 0)).children
 
         self.assertTrue(solver.quantified_formula_might_match(formula, (0, 0, 2, 0), tree))
+
+    def test_qfd_formula_might_match_2(self):
+        path = (0, 0, 0)
+
+        tree = DerivationTree(
+            '<start>', (
+                DerivationTree('<stmt>', (
+                    DerivationTree('<assgn>', (
+                        DerivationTree('<var>'),
+                        DerivationTree(' := ', ()),
+                        DerivationTree('<rhs>'))),)),))
+
+        grammar = LANG_GRAMMAR
+        graph = gg.GrammarGraph.from_grammar(LANG_GRAMMAR)
+        reachable = lambda fr, to: fr == to or graph.reachable(fr, to)
+
+        formula = parse_isla('''
+forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
+  exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
+    (before(assgn_2, assgn_1) and (= lhs rhs))
+''', LANG_GRAMMAR, {BEFORE_PREDICATE})
+
+        formula = formula.substitute_expressions({language.Constant('start', '<start>'): tree})
+
+        self.assertFalse(quantified_formula_might_match(
+            cast(language.QuantifiedFormula, formula),
+            path,
+            tree,
+            grammar,
+            reachable))
+
+    def test_qfd_formula_might_match_3(self):
+        path = (0, 0, 2)
+        tree = DerivationTree.from_parse_tree(
+            ('<start>', [('<stmt>', [('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', None)])])]))
+        grammar = LANG_GRAMMAR
+        graph = gg.GrammarGraph.from_grammar(LANG_GRAMMAR)
+        reachable = lambda fr, to: fr == to or graph.reachable(fr, to)
+
+        formula = parse_isla('''
+forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
+  exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
+    (before(assgn_2, assgn_1) and (= lhs rhs))
+''', LANG_GRAMMAR, {BEFORE_PREDICATE})
+
+        formula = formula.substitute_expressions({language.Constant('start', '<start>'): tree})
+
+        self.assertTrue(quantified_formula_might_match(
+            cast(language.QuantifiedFormula, formula),
+            path,
+            tree,
+            grammar,
+            reachable))
 
     def test_atomic_smt_formula(self):
         assgn = language.Constant("$assgn", "<assgn>")
@@ -89,13 +142,22 @@ class TestSolver(unittest.TestCase):
         formula = mgr.create(
             sc.exists(
                 mgr.bv("$var", "<var>"), start,
-                mgr.smt(z3_eq(mgr.bv("$var").to_smt(), z3.StringVal("x"))))
-        )
+                mgr.smt(z3_eq(mgr.bv("$var").to_smt(), z3.StringVal("x")))))
 
         self.execute_generation_test(
             formula,
             num_solutions=50,
             max_number_free_instantiations=1,
+            enforce_unique_trees_in_queue=False,
+            cost_computer=GrammarBasedBlackboxCostComputer(
+                CostSettings(CostWeightVector(
+                    tree_closing_cost=5,
+                    constraint_cost=0,
+                    derivation_depth_penalty=10,
+                    low_k_coverage_penalty=20,
+                    low_global_k_path_coverage_penalty=40
+                ), k=4),
+                gg.GrammarGraph.from_grammar(LANG_GRAMMAR))
         )
 
     def test_simple_existential_formula_with_bind(self):
@@ -164,23 +226,17 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             XML_NAMESPACE_CONSTRAINT & XML_WELLFORMEDNESS_CONSTRAINT & XML_NO_ATTR_REDEF_CONSTRAINT,
             grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
             max_number_free_instantiations=1,
-            num_solutions=50,
+            num_solutions=30,
             enforce_unique_trees_in_queue=True,
             custom_test_func=validate_xml,
             cost_computer=GrammarBasedBlackboxCostComputer(
                 CostSettings(
                     CostWeightVector(
-                        tree_closing_cost=10,
-                        constraint_cost=4,
-                        derivation_depth_penalty=10,
-                        low_k_coverage_penalty=23,
+                        tree_closing_cost=20,
+                        constraint_cost=0,
+                        derivation_depth_penalty=15,
+                        low_k_coverage_penalty=13,
                         low_global_k_path_coverage_penalty=25),
-                    # CostWeightVector(
-                    #     tree_closing_cost=10,
-                    #     constraint_cost=0,
-                    #     derivation_depth_penalty=3,
-                    #     low_k_coverage_penalty=0,
-                    #     low_global_k_path_coverage_penalty=0),
                     k=3),
                 gg.GrammarGraph.from_grammar(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)))
 
@@ -199,30 +255,45 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
                     mgr.const("$start"),
                     sc.before(mgr.bv("$assgn_2"), mgr.bv("$assgn_1")) &
                     mgr.smt(z3_eq(mgr.bv("$lhs_2").to_smt(), mgr.bv("$var").to_smt()))
-                )
-            )
-        ))
+                ))))
 
         self.execute_generation_test(
             formula,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=1,
             num_solutions=40,
+            cost_computer=GrammarBasedBlackboxCostComputer(
+                CostSettings(CostWeightVector(
+                    tree_closing_cost=7,
+                    constraint_cost=5,
+                    derivation_depth_penalty=15,
+                    low_k_coverage_penalty=20,
+                    low_global_k_path_coverage_penalty=10
+                ), k=3),
+                gg.GrammarGraph.from_grammar(LANG_GRAMMAR))
         )
 
     def test_declared_before_used_concrete_syntax(self):
         formula = """
-forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
-  forall <var> var in rhs_1:
-    exists <assgn> assgn_2="{<var> lhs_2} := {<rhs> rhs_2}" in start:
-      (before(assgn_2, assgn_1) and (= lhs_2 var))
+forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
+  exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
+    (before(assgn_2, assgn_1) and (= lhs rhs))
 """
 
         self.execute_generation_test(
             formula,
             structural_predicates={BEFORE_PREDICATE},
             max_number_free_instantiations=1,
-            num_solutions=30)
+            cost_computer=GrammarBasedBlackboxCostComputer(
+                CostSettings(CostWeightVector(
+                    tree_closing_cost=7,
+                    constraint_cost=5,
+                    derivation_depth_penalty=15,
+                    low_k_coverage_penalty=20,
+                    low_global_k_path_coverage_penalty=10
+                ), k=4),
+                gg.GrammarGraph.from_grammar(LANG_GRAMMAR)),
+            num_solutions=50)
 
     def test_simple_csv_rows_equal_length(self):
         property = """
@@ -286,7 +357,7 @@ forall <csv-header> hline in start:
             enforce_unique_trees_in_queue=False,
             global_fuzzer=False,
             fuzzer_factory=functools.partial(GrammarFuzzer, min_nonterminals=0, max_nonterminals=30),
-            cost_settings=CostSettings(
+            cost_computer=GrammarBasedBlackboxCostComputer(CostSettings(
                 CostWeightVector(
                     tree_closing_cost=1,
                     constraint_cost=0,
@@ -294,7 +365,7 @@ forall <csv-header> hline in start:
                     low_k_coverage_penalty=0,
                     low_global_k_path_coverage_penalty=0),
                 k=3),
-        )
+                gg.GrammarGraph.from_grammar(CSV_GRAMMAR)))
 
     def test_csv_rows_equal_length_more_complex(self):
         property = """
@@ -345,7 +416,16 @@ exists <csv-header> header in start:
             max_number_smt_instantiations=1,
             enforce_unique_trees_in_queue=False,
             global_fuzzer=True,
-            debug=True
+            debug=True,
+            cost_computer=GrammarBasedBlackboxCostComputer(
+                CostSettings(CostWeightVector(
+                    tree_closing_cost=7,
+                    constraint_cost=5,
+                    derivation_depth_penalty=15,
+                    low_k_coverage_penalty=20,
+                    low_global_k_path_coverage_penalty=10
+                ), k=3),
+                gg.GrammarGraph.from_grammar(CSV_HEADERBODY_GRAMMAR))
         )
 
     def test_simple_equal_length_csv_negated(self):
@@ -392,16 +472,16 @@ forall int colno:
             max_number_smt_instantiations=2,
             enforce_unique_trees_in_queue=True,
             custom_test_func=scriptsizec.compile_scriptsizec_clang,
-            num_solutions=50,
-            cost_settings=CostSettings(
+            num_solutions=25,
+            cost_computer=GrammarBasedBlackboxCostComputer(CostSettings(
                 CostWeightVector(
                     tree_closing_cost=10,
                     constraint_cost=0,
                     derivation_depth_penalty=9,
                     low_k_coverage_penalty=28,
-                    low_global_k_path_coverage_penalty=4),
-                k=4
-            ),
+                    low_global_k_path_coverage_penalty=14),
+                k=4),
+                gg.GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR)),
             # print_only=True
         )
 
@@ -414,15 +494,15 @@ forall int colno:
             enforce_unique_trees_in_queue=True,
             # custom_test_func=scriptsizec.compile_scriptsizec_clang,
             num_solutions=50,
-            cost_settings=CostSettings(
+            cost_computer=GrammarBasedBlackboxCostComputer(CostSettings(
                 CostWeightVector(
                     tree_closing_cost=10,
                     constraint_cost=0,
                     derivation_depth_penalty=9,
                     low_k_coverage_penalty=28,
                     low_global_k_path_coverage_penalty=4),
-                k=4
-            ),
+                k=4),
+                gg.GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR)),
             # print_only=True
         )
 
@@ -438,9 +518,10 @@ forall int colno:
             num_solutions=60,
             precompute_reachability=False,
             # custom_test_func=extract_tar,
-            cost_settings=CostSettings(
-                STD_COST_SETTINGS.weight_vectors[0],
+            cost_computer=GrammarBasedBlackboxCostComputer(CostSettings(
+                STD_COST_SETTINGS.weight_vector,
                 k=4),
+                gg.GrammarGraph.from_grammar(tar.TAR_GRAMMAR)),
             tree_insertion_methods=DIRECT_EMBEDDING | SELF_EMBEDDING
             # cost_settings=CostSettings(
             #     (CostWeightVector(1, 1, 1, 1, 1, 1),),
@@ -458,9 +539,7 @@ forall int colno:
             enforce_unique_trees_in_queue=False,
             debug=True,
             num_solutions=10,
-            precompute_reachability=False,
-            cost_settings=STD_COST_SETTINGS,
-        )
+            precompute_reachability=False)
 
     def execute_generation_test(
             self,
@@ -540,8 +619,7 @@ forall int colno:
                     self.assertTrue(
                         isla.evaluator.evaluate(formula.substitute_expressions({constant: assignment}), assignment,
                                                 grammar),
-                        f"Solution {assignment} does not satisfy constraint {formula}"
-                    )
+                        f"Solution {assignment} does not satisfy constraint {formula}")
 
                     if custom_test_func:
                         test_result = custom_test_func(assignment)

@@ -19,7 +19,7 @@ import isla.evaluator
 from isla import language, solver
 from isla.performance_evaluator import logger, generate_inputs
 from isla.helpers import weighted_geometric_mean
-from isla.solver import CostWeightVector, ISLaSolver, CostSettings
+from isla.solver import CostWeightVector, ISLaSolver, CostSettings, GrammarBasedBlackboxCostComputer
 from isla.type_defs import Grammar
 
 
@@ -395,7 +395,6 @@ def evaluate_random_cost_vectors(
     for i in range(rounds):
         v = CostWeightVector(
             tree_closing_cost=randno(),
-            vacuous_penalty=randno(),
             constraint_cost=randno(),
             derivation_depth_penalty=randno(),
             low_k_coverage_penalty=randno()
@@ -436,7 +435,7 @@ def evaluate_isla_generator(
         max_number_free_instantiations=1,
         max_number_smt_instantiations=1,
         timeout_seconds=timeout,
-        cost_settings=CostSettings(v)
+        cost_computer=GrammarBasedBlackboxCostComputer(CostSettings(v, k), gg.GrammarGraph.from_grammar(grammar))
     ).solve()
 
     return evaluate_producer(

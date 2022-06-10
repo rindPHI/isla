@@ -1,7 +1,8 @@
+from grammar_graph import gg
 from grammar_graph.gg import GrammarGraph
 
 from isla.performance_evaluator import Evaluator
-from isla.solver import ISLaSolver, CostSettings, CostWeightVector
+from isla.solver import ISLaSolver, CostSettings, CostWeightVector, GrammarBasedBlackboxCostComputer
 from isla_formalizations import tar
 
 max_number_free_instantiations = 10
@@ -10,7 +11,6 @@ eval_k = 4
 
 cost_vector = CostWeightVector(
     tree_closing_cost=11,
-    vacuous_penalty=0,
     constraint_cost=3,
     derivation_depth_penalty=5,
     low_k_coverage_penalty=10,
@@ -85,7 +85,9 @@ g_len = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings(cost_vector, k=eval_k)
+    cost_computer=GrammarBasedBlackboxCostComputer(
+        CostSettings(cost_vector, k=eval_k),
+        gg.GrammarGraph.from_grammar(tar.TAR_GRAMMAR)),
 )
 
 g_len_cs = lambda timeout: ISLaSolver(
@@ -94,7 +96,9 @@ g_len_cs = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings(cost_vector, k=eval_k)
+    cost_computer=GrammarBasedBlackboxCostComputer(
+        CostSettings(cost_vector, k=eval_k),
+        gg.GrammarGraph.from_grammar(tar.TAR_GRAMMAR)),
 )
 
 g_len_cs_lin = lambda timeout: ISLaSolver(
@@ -103,7 +107,9 @@ g_len_cs_lin = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings(cost_vector, k=eval_k)
+    cost_computer=GrammarBasedBlackboxCostComputer(
+        CostSettings(cost_vector, k=eval_k),
+        gg.GrammarGraph.from_grammar(tar.TAR_GRAMMAR)),
 )
 
 if __name__ == '__main__':

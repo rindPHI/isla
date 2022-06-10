@@ -24,32 +24,28 @@ SIMPLE_TAR_GRAMMAR = {
         "<typeflag>"
         "<linked_file_name>"
     ],
-    "<file_name>": ["<characters><maybe_nuls>"],
-    "<checksum>": ["<padded_octal_digits><NUL><SPACE>"],
+    "<file_name>": ["<file_name_str><maybe_nuls>"],
+    "<file_name_str>": ["<file_name_first_char><file_name_chars>", "<file_name_first_char>"],
+    "<checksum>": ["<octal_digits><NUL><SPACE>"],
     "<typeflag>": [  # Generalize?
         "0",  # normal file
         "2"  # symbolic link
     ],
-    "<linked_file_name>": ["<characters><maybe_nuls>"],
+    "<linked_file_name>": ["<file_name_str><maybe_nuls>", "<nuls>"],
 
     "<content>": ["CONTENT"],
 
-    "<padded_octal_digits>": ["<maybe_zeroes><octal_digit_nonzero><maybe_octal_digits>"],
-    "<maybe_octal_digits>": ["", "<octal_digits>"],
-    "<octal_digits>": ["<octal_digit>", "<octal_digit><octal_digits>"],
+    "<octal_digits>": ["<octal_digit><octal_digits>", "<octal_digit>"],
     "<octal_digit>": srange("01234567"),
-    "<octal_digit_nonzero>": srange("1234567"),
-    "<maybe_zeroes>": ["", "<zeroes>"],
-    "<zeroes>": ["<ZERO>", "<ZERO><zeroes>"],
 
-    "<characters>": ["<character>", "<character><characters>"],
-    "<character>": srange(string.printable),
+    "<file_name_first_char>": srange(string.ascii_letters + string.digits + "_"),
+    "<file_name_chars>": ["<file_name_char><file_name_chars>", "<file_name_char>"],
+    "<file_name_char>": list(set(srange(string.printable)) - set(srange(string.whitespace + "\b\f\v"))),
 
     "<maybe_nuls>": ["", "<nuls>"],
     "<nuls>": ["<NUL>", "<NUL><nuls>"],
     "<NUL>": ["\x00"],
     "<SPACE>": [" "],
-    "<ZERO>": ["0"]
 }
 
 
@@ -100,57 +96,60 @@ def tar_checksum(
 
 mgr = language.VariableManager(SIMPLE_TAR_GRAMMAR)
 start = mgr.const("$start", "<start>")
-TAR_CONSTRAINTS = mgr.create(
+
+link_constraint = sc.forall(
+    mgr.bv("$entry", "<entry>"), start,
     sc.forall(
-        mgr.bv("$file_name", "<file_name>"),
-        start,
-        ljust_crop_tar(mgr.bv("$file_name"), 100, "\x00")
-    ) &
-    sc.forall(
-        mgr.bv("$header", "<header>"),
-        start,
-        sc.forall(
-            mgr.bv("$checksum", "<checksum>"),
-            mgr.bv("$header"),
-            tar_checksum(mgr.bv("$header"), mgr.bv("$checksum"))
-        )) &
+        mgr.bv("$typeflag", "<typeflag>"),
+        mgr.bv("$entry"),
+        mgr.smt(cast(z3.BoolRef, z3_eq(mgr.bv("$typeflag").to_smt(), z3.StringVal("0")))) |
+        (mgr.smt(z3_eq(mgr.bv("$typeflag").to_smt(), z3.StringVal("2"))) &
+         sc.forall_bind(
+             mgr.bv("$linked_file_name_str", "<file_name_str>") + "<maybe_nuls>",
+             mgr.bv("$linked_file_name", "<linked_file_name>"),
+             mgr.bv("$entry"),
+             sc.exists(
+                 mgr.bv("$linked_entry", "<entry>"),
+                 start,
+                 (sc.before(mgr.bv("$entry"), mgr.bv("$linked_entry")) |
+                  sc.before(mgr.bv("$linked_entry"), mgr.bv("$entry"))) &
+                 sc.forall_bind(
+                     mgr.bv("$file_name_str", "<file_name_str>") + "<maybe_nuls>",
+                     mgr.bv("$file_name"),
+                     mgr.bv("$linked_entry"),
+                     mgr.smt(z3_eq(
+                         mgr.bv("$file_name_str").to_smt(),
+                         mgr.bv("$linked_file_name_str").to_smt()))))))))
+
+file_name_length_constraint = sc.forall(
+    mgr.bv("$file_name", "<file_name>"),
+    start,
+    ljust_crop_tar(mgr.bv("$file_name"), 100, "\x00"))
+
+linked_file_name_length_constraint = sc.forall(
+    mgr.bv("$linked_file_name", "<linked_file_name>"),
+    start,
+    ljust_crop_tar(mgr.bv("$linked_file_name"), 100, "\x00"))
+
+checksum_length_constraint = sc.forall(
+    mgr.bv("$checksum", "<checksum>"),
+    start,
+    rjust_crop_tar(mgr.bv("$checksum"), 8, "0"))
+
+checksum_constraint = sc.forall(
+    mgr.bv("$header", "<header>"),
+    start,
     sc.forall(
         mgr.bv("$checksum", "<checksum>"),
-        start,
-        rjust_crop_tar(mgr.bv("$checksum"), 8, "0")
-    ) &
-    sc.forall(
-        mgr.bv("$linked_file_name", "<linked_file_name>"),
-        start,
-        ljust_crop_tar(mgr.bv("$linked_file_name"), 100, "\x00")
-    ) &
-    sc.forall(
-        mgr.bv("$entry", "<entry>"),
-        start,
-        sc.forall(
-            mgr.bv("$typeflag", "<typeflag>"),
-            mgr.bv("$entry"),
-            mgr.smt(cast(z3.BoolRef, z3_eq(mgr.bv("$typeflag").to_smt(), z3.StringVal("0"))))
-            | (mgr.smt(z3_eq(mgr.bv("$typeflag").to_smt(), z3.StringVal("2"))) &
-               sc.forall_bind(
-                   mgr.bv("$linked_file_name_chars", "<characters>") + "<maybe_nuls>",
-                   mgr.bv("$linked_file_name", "<linked_file_name>"),
-                   mgr.bv("$entry"),
-                   sc.exists(
-                       mgr.bv("$linked_entry", "<entry>"),
-                       start,
-                       (sc.before(mgr.bv("$entry"), mgr.bv("$linked_entry"))
-                        | sc.before(mgr.bv("$linked_entry"), mgr.bv("$entry")))
-                       & sc.forall_bind(
-                           mgr.bv("$file_name_chars", "<characters>") + "<maybe_nuls>",
-                           mgr.bv("$file_name"),
-                           mgr.bv("$linked_entry"),
-                           mgr.smt(
-                               z3_eq(mgr.bv("$file_name_chars").to_smt(),
-                                     mgr.bv("$linked_file_name_chars").to_smt()))
-                       )
-                   )))
-        ))
+        mgr.bv("$header"),
+        tar_checksum(mgr.bv("$header"), mgr.bv("$checksum"))))
+
+TAR_CONSTRAINTS = mgr.create(
+    file_name_length_constraint &
+    checksum_constraint &
+    checksum_length_constraint &
+    linked_file_name_length_constraint &
+    link_constraint
     # sc.forall(
     #    mgr.bv("$entry", "<entry>"),
     #    start,

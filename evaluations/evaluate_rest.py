@@ -1,7 +1,8 @@
+from grammar_graph import gg
 from grammar_graph.gg import GrammarGraph
 
 from isla.performance_evaluator import Evaluator
-from isla.solver import ISLaSolver, CostSettings, STD_COST_SETTINGS
+from isla.solver import ISLaSolver, CostSettings, STD_COST_SETTINGS, GrammarBasedBlackboxCostComputer
 from isla_formalizations import rest
 
 max_number_free_instantiations = 10
@@ -16,7 +17,9 @@ g_link_defuse = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings(cost_vector, k=eval_k)
+    cost_computer=GrammarBasedBlackboxCostComputer(
+        CostSettings(cost_vector, k=eval_k),
+        gg.GrammarGraph.from_grammar(rest.REST_GRAMMAR)),
 )
 
 g_link_defuse_len = lambda timeout: ISLaSolver(
@@ -25,7 +28,9 @@ g_link_defuse_len = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings(cost_vector, k=eval_k)
+    cost_computer=GrammarBasedBlackboxCostComputer(
+        CostSettings(cost_vector, k=eval_k),
+        gg.GrammarGraph.from_grammar(rest.REST_GRAMMAR)),
 )
 
 g_link_defuse_len_numbering = lambda timeout: ISLaSolver(
@@ -34,7 +39,9 @@ g_link_defuse_len_numbering = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings(cost_vector, k=eval_k)
+    cost_computer=GrammarBasedBlackboxCostComputer(
+        CostSettings(cost_vector, k=eval_k),
+        gg.GrammarGraph.from_grammar(rest.REST_GRAMMAR)),
 )
 
 g_link_defuse_len_numbering_no_redef = lambda timeout: ISLaSolver(
@@ -43,7 +50,9 @@ g_link_defuse_len_numbering_no_redef = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_settings=CostSettings(cost_vector, k=eval_k)
+    cost_computer=GrammarBasedBlackboxCostComputer(
+        CostSettings(cost_vector, k=eval_k),
+        gg.GrammarGraph.from_grammar(rest.REST_GRAMMAR)),
 )
 
 if __name__ == '__main__':

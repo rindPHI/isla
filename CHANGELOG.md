@@ -5,11 +5,22 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [Unreleased]
 
+### Added
+
+- Cost computation is not outsourced to exchangeable `CostComputer` classes. The existing cost computation strategy
+  is encapsulated in the class `GrammarBasedBlackboxCostComputer`.
+
 ### Changed
 
 - Removed deprecated/unused "cost phase" feature; `CostSettings` now expect a single `CostWeightVector` and a value
   for `k`, exclusively.
 - Removed deprecated "vacuous penalty" cost feature from cost vector.
+- Performance fix in tree expansion: If there is a limit on the number of desired expansions, we don't compute all
+  of them and choose a subset afterward, but only compute the desired number of (random) expansions.
+- Bug fix in tree expansion, more precisely in determining whether a nonterminal can be freely instantiated: If the
+  nonterminal can be associated with a *dummy* variable in the match expression, we not correctly report that it
+  is not bound by the quantifier and can be freely instantiated. This mitigates state explosion in certain cases.
+- Performance fix: Lazy computation of complex string arguments passed to the logger.
 
 ## [0.2b3]
 

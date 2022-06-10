@@ -2,6 +2,7 @@ import copy
 import heapq
 import itertools
 import logging
+import random
 import sys
 import time
 from abc import ABC
@@ -29,7 +30,7 @@ from isla.existential_helpers import insert_tree, DIRECT_EMBEDDING, SELF_EMBEDDI
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
     replace_line_breaks, weighted_geometric_mean, assertions_activated, \
-    split_str_with_nonterminals, cluster_by_common_elements, is_nonterminal, canonical
+    split_str_with_nonterminals, cluster_by_common_elements, is_nonterminal, canonical, lazyjoin, lazystr, is_prefix
 from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES, COUNT_PREDICATE
 from isla.language import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
     convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, QuantifiedFormula
@@ -276,6 +277,7 @@ class ISLaSolver:
 
         self.queue: List[Tuple[float, SolutionState]] = []
         self.tree_hashes_in_queue: Set[int] = {initial_tree.structural_hash()}
+        self.state_hashes_in_queue: Set[int] = {hash(state) for state in initial_states}
         for state in initial_states:
             heapq.heappush(self.queue, (self.compute_cost(state), state))
         self.current_level = 0
@@ -318,6 +320,7 @@ class ISLaSolver:
 
             self.current_level = state.level
             self.tree_hashes_in_queue.discard(state.tree.structural_hash())
+            self.state_hashes_in_queue.discard(hash(state))
 
             if self.debug:
                 self.current_state = state
@@ -607,7 +610,7 @@ class ISLaSolver:
             self.logger.debug(
                 "Instantiating universal integer quantifier (%s -> %s) %s",
                 universal_int_formula.bound_variable,
-                str(instantiation[constant]),
+                instantiation[constant],
                 universal_int_formula)
 
             formula = language.replace_formula(
@@ -708,8 +711,10 @@ class ISLaSolver:
                 language.replace_formula(state.constraint, universal_int_formula, new_formula),
                 state.tree)]
 
-        self.logger.warning(f"Did not find a way to instantiate formula {universal_int_formula}!\n"
-                            f"Discarding this state. Please report this to your nearest ISLa developer.")
+        self.logger.warning(
+            "Did not find a way to instantiate formula %s!\n" +
+            "Discarding this state. Please report this to your nearest ISLa developer.",
+            universal_int_formula)
         return []
 
     def eliminate_all_semantic_formulas(self, state: SolutionState) -> Optional[List[SolutionState]]:
@@ -721,7 +726,7 @@ class ISLaSolver:
         if not semantic_formulas:
             return None
 
-        self.logger.debug("Eliminating semantic formulas [%s]", ", ".join(map(str, semantic_formulas)))
+        self.logger.debug("Eliminating semantic formulas [%s]", lazyjoin(", ", semantic_formulas))
 
         prefix_conjunction = reduce(lambda a, b: a & b, semantic_formulas, sc.true())
         new_disjunct = (
@@ -846,8 +851,7 @@ class ISLaSolver:
         if first_matched:
             self.logger.debug(
                 "Matched first existential formulas, result: [%s]",
-                ", ".join([f"{s} (hash={hash(s)})" for s in first_matched])
-            )
+                lazyjoin(", ", [lazystr(lambda: f"{s} (hash={hash(s)})") for s in first_matched]))
 
         # 3. Eliminate first existential formula by tree insertion.
         elimination_result = OrderedSet(self.eliminate_existential_formula(existential_formulas[0], state))
@@ -882,7 +886,7 @@ class ISLaSolver:
 
         result = self.match_universal_formulas(universal_formulas, state)
         if result:
-            self.logger.debug("Matched universal formulas [%s]", ", ".join(map(str, universal_formulas)))
+            self.logger.debug("Matched universal formulas [%s]", lazyjoin(", ", universal_formulas))
 
         return result or None
 
@@ -902,7 +906,7 @@ class ISLaSolver:
         :return: A (possibly empty) list of expanded trees.
         """
 
-        nonterminal_expansions = {
+        nonterminal_expansions: Dict[Path, List[List[DerivationTree]]] = {
             leaf_path: [
                 [DerivationTree(child, None if is_nonterminal(child) else [])
                  for child in expansion]
@@ -916,16 +920,22 @@ class ISLaSolver:
                 or (not only_universal and isinstance(formula, language.QuantifiedFormula))
             )}
 
-        possible_expansions: List[Dict[Path, List[DerivationTree]]] = \
-            dict_of_lists_to_list_of_dicts(nonterminal_expansions)
+        possible_expansions: List[Dict[Path, List[DerivationTree]]] = []
+        if not limit:
+            possible_expansions = dict_of_lists_to_list_of_dicts(nonterminal_expansions)
+            assert len(possible_expansions) == math.prod(len(values) for values in nonterminal_expansions.values())
+        else:
+            for _ in range(limit):
+                curr_expansion = {}
+                for path, expansions in nonterminal_expansions.items():
+                    if not expansions:
+                        continue
 
-        assert len(possible_expansions) == math.prod(len(values) for values in nonterminal_expansions.values())
+                    curr_expansion[path] = random.choice(expansions)
+                possible_expansions.append(curr_expansion)
 
         if len(possible_expansions) == 1 and not possible_expansions[0]:
             return []
-
-        if limit:
-            possible_expansions = possible_expansions[:limit]
 
         result: List[SolutionState] = []
         for possible_expansion in possible_expansions:
@@ -1012,8 +1022,8 @@ class ISLaSolver:
         for inserted_tree, bind_expr_paths in inserted_trees_and_bind_paths:
             self.logger.debug(
                 "insert_tree(self.canonical_grammar, %s, %s, self.graph, %s)",
-                repr(inserted_tree),
-                repr(existential_formula.in_variable),
+                lazystr(lambda: repr(inserted_tree)),
+                lazystr(lambda: repr(existential_formula.in_variable)),
                 self.max_number_tree_insertion_results)
 
             insertion_results = insert_tree(
@@ -1377,7 +1387,12 @@ class ISLaSolver:
             if isinstance(quantified_formula, language.QuantifiedFormula)
             for _, tree in quantified_formula.in_variable.filter(lambda t: True))
 
-        return [new_state.tree for new_state in new_states if self.state_is_valid_or_enqueue(new_state)]
+        solution_trees = [new_state.tree for new_state in new_states if self.state_is_valid_or_enqueue(new_state)]
+
+        for tree in solution_trees:
+            self.cost_computer.signal_tree_output(tree)
+
+        return solution_trees
 
     def state_is_valid_or_enqueue(self, state: SolutionState) -> bool:
         """
@@ -1431,6 +1446,10 @@ class ISLaSolver:
             self.logger.debug("Discarding state %s, tree already in queue", state)
             return False
 
+        if hash(state) in self.state_hashes_in_queue:
+            self.logger.debug("Discarding state %s, already in queue", state)
+            return False
+
         # if state.constraint == sc.false():
         if self.propositionally_unsatisfiable(state.constraint):
             self.logger.debug("Discarding state %s", state)
@@ -1441,6 +1460,7 @@ class ISLaSolver:
         cost = self.compute_cost(state)
         heapq.heappush(self.queue, (cost, state))
         self.tree_hashes_in_queue.add(state.tree.structural_hash())
+        self.state_hashes_in_queue.add(hash(state))
 
         if self.debug:
             self.state_tree[self.current_state].append(state)
@@ -1517,7 +1537,7 @@ class ISLaSolver:
             path_to_nonterminal,
             tree,
             self.grammar,
-            self.reachable)
+            self.reachable_reflexively)
 
     @lru_cache(maxsize=None)
     def node_distance(self, nonterminal: str, to_nonterminal: str) -> int:
@@ -1532,8 +1552,8 @@ class ISLaSolver:
 
             return self.graph.dijkstra(from_node, to_node)[0][to_node]
 
-    def reachable(self, nonterminal: str, to_nonterminal: str) -> bool:
-        return self.node_distance(nonterminal, to_nonterminal) < sys.maxsize
+    def reachable_reflexively(self, from_nonterminal: str, to_nonterminal: str) -> bool:
+        return self.node_distance(from_nonterminal, to_nonterminal) < sys.maxsize
 
     @lru_cache(maxsize=None)
     def extract_regular_expression(self, nonterminal: str) -> z3.ReRef:
@@ -1605,13 +1625,23 @@ class CostComputer(ABC):
         """
         raise NotImplementedError()
 
+    def signal_tree_output(self, tree: DerivationTree) -> None:
+        """
+        Should be called when a tree is output as a solution. Used to
+        update internal information for cost computation.
+
+        :param tree The tree that is output as a solution.
+        :return: Nothing.
+        """
+        raise NotImplementedError()
+
 
 class GrammarBasedBlackboxCostComputer(CostComputer):
     def __init__(
             self,
             cost_settings: CostSettings,
             graph: gg.GrammarGraph,
-            reset_coverage_after_n_round_with_no_coverage: bool = True):
+            reset_coverage_after_n_round_with_no_coverage: int = 100):
         self.cost_settings = cost_settings
         self.graph = graph
 
@@ -1621,41 +1651,6 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
         self.symbol_costs: Optional[Dict[str, int]] = None
 
         self.logger = logging.getLogger(type(self).__name__)
-
-    def _symbol_costs(self):
-        if self.symbol_costs is None:
-            self.symbol_costs = compute_symbol_costs(self.graph)
-        return self.symbol_costs
-
-    def _update_covered_k_paths(self, tree: DerivationTree):
-        if self.cost_settings.weight_vector.low_global_k_path_coverage_penalty > 0:
-            old_covered_k_paths = copy.copy(self.covered_k_paths)
-
-            self.covered_k_paths.update(tree.k_paths(self.graph, self.cost_settings.k))
-
-            if old_covered_k_paths == self.covered_k_paths:
-                self.rounds_with_no_new_coverage += 1
-
-            graph_paths = self.graph.k_paths(self.cost_settings.k)
-            if (self.rounds_with_no_new_coverage >= self.reset_coverage_after_n_round_with_no_coverage or
-                    self.covered_k_paths == graph_paths):
-                if self.covered_k_paths == graph_paths:
-                    self.logger.debug("ALL PATHS COVERED")
-                else:
-                    self.logger.debug(
-                        "COVERAGE RESET SINCE NO CHANGE IN COVERED PATHS SINCE %d ROUNDS (%d path(s) uncovered)",
-                        self.reset_coverage_after_n_round_with_no_coverage,
-                        len(graph_paths) - len(self.covered_k_paths)
-                    )
-
-                self.covered_k_paths = set()
-            else:
-                pass
-                # uncovered_paths = self.graph.k_paths(self.cost_settings.k) - self.covered_k_paths
-                # self.logger.info("\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]))
-
-            if self.rounds_with_no_new_coverage >= self.reset_coverage_after_n_round_with_no_coverage:
-                self.rounds_with_no_new_coverage = 0
 
     def compute_cost(self, state: SolutionState) -> float:
         # How costly is it to finish the tree?
@@ -1682,12 +1677,50 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
 
         self.logger.debug(
             "Computed cost for state %s:\n%f, individual costs: %s, weights: %s",
-            f"({(str(state.constraint)[:50] + '...') if len(str(state.constraint)) > 53 else str(state.constraint)}, "
-            f"{state.tree})", result, costs, self.cost_settings.weight_vector)
-
-        self._update_covered_k_paths(state.tree)
+            lazystr(lambda: f"({(str(state.constraint)[:50] + '...')}, {state.tree})"),
+            result, costs, self.cost_settings.weight_vector)
 
         return result
+
+    def signal_tree_output(self, tree: DerivationTree) -> None:
+        self._update_covered_k_paths(tree)
+
+    def _symbol_costs(self):
+        if self.symbol_costs is None:
+            self.symbol_costs = compute_symbol_costs(self.graph)
+        return self.symbol_costs
+
+    def _update_covered_k_paths(self, tree: DerivationTree):
+        if self.cost_settings.weight_vector.low_global_k_path_coverage_penalty > 0:
+            old_covered_k_paths = copy.copy(self.covered_k_paths)
+
+            self.covered_k_paths.update(tree.k_paths(self.graph, self.cost_settings.k))
+
+            if old_covered_k_paths == self.covered_k_paths:
+                self.rounds_with_no_new_coverage += 1
+
+            graph_paths = self.graph.k_paths(self.cost_settings.k)
+            if (self.rounds_with_no_new_coverage >= self.reset_coverage_after_n_round_with_no_coverage or
+                    self.covered_k_paths == graph_paths):
+                if self.covered_k_paths == graph_paths:
+                    self.logger.debug("ALL PATHS COVERED")
+                else:
+                    self.logger.debug(
+                        "COVERAGE RESET SINCE NO CHANGE IN COVERED PATHS SINCE %d ROUNDS (%d path(s) uncovered)",
+                        self.reset_coverage_after_n_round_with_no_coverage,
+                        len(graph_paths) - len(self.covered_k_paths))
+
+                    # uncovered_paths = self.graph.k_paths(self.cost_settings.k) - self.covered_k_paths
+                    # self.logger.info("\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]))
+
+                self.covered_k_paths = set()
+            else:
+                pass
+                # uncovered_paths = self.graph.k_paths(self.cost_settings.k) - self.covered_k_paths
+                # self.logger.info("\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]))
+
+            if self.rounds_with_no_new_coverage >= self.reset_coverage_after_n_round_with_no_coverage:
+                self.rounds_with_no_new_coverage = 0
 
     def _compute_global_k_coverage_cost(self, state: SolutionState):
         num_contributed_k_paths = len(
@@ -1746,6 +1779,8 @@ def quantified_formula_might_match(
     maybe_prefix_tree: DerivationTree
     for maybe_prefix_tree, var_map in qfd_formula.bind_expression.to_tree_prefix(
             qfd_formula.bound_variable.n_type, grammar):
+        reverse_var_map = {path: var for var, path in var_map.items()}
+
         for idx in reversed(range(len(path_to_nonterminal))):
             subtree = tree.get_subtree(path_to_nonterminal[:idx])
             if (maybe_prefix_tree.is_potential_prefix(subtree) and
@@ -1755,8 +1790,18 @@ def quantified_formula_might_match(
                 # expand nonterminals that could actually be freely instantiated.
 
                 path_to_node_in_prefix_tree = path_to_nonterminal[idx:]
+
                 while not maybe_prefix_tree.is_valid_path(path_to_node_in_prefix_tree):
                     path_to_node_in_prefix_tree = path_to_node_in_prefix_tree[:-1]
+
+                # If this path in the prefix tree is sub-path of a path associated with a dummy
+                # variable, we do not resport a possible match; such an element can be freely instantiated.
+                mapping_paths = [path for path in reverse_var_map if is_prefix(path_to_node_in_prefix_tree, path)]
+                assert mapping_paths
+                if all(isinstance(reverse_var_map[mapping_path], language.DummyVariable)
+                       for mapping_path in mapping_paths):
+                    continue
+
                 node_in_prefix_tree = maybe_prefix_tree.get_subtree(path_to_node_in_prefix_tree)
 
                 if reachable(node.value, node_in_prefix_tree.value):

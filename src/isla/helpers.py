@@ -2,6 +2,7 @@ import itertools
 import math
 import re
 from bisect import bisect_left
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast, Callable, Iterable, Any
 
@@ -383,3 +384,20 @@ def copy_trie(trie: datrie.Trie) -> datrie.Trie:
     for key, value in trie.items():
         result[key] = value
     return result
+
+
+@dataclass(frozen=True)
+class lazyjoin:
+    s: str
+    items: Iterable[Any]
+
+    def __str__(self):
+        return self.s.join(map(str, self.items))
+
+
+@dataclass(frozen=True)
+class lazystr:
+    c: Callable[[], Any]
+
+    def __str__(self):
+        return str(self.c())
