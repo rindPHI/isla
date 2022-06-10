@@ -226,17 +226,23 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             XML_NAMESPACE_CONSTRAINT & XML_WELLFORMEDNESS_CONSTRAINT & XML_NO_ATTR_REDEF_CONSTRAINT,
             grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
             max_number_free_instantiations=1,
-            num_solutions=30,
+            num_solutions=50,
             enforce_unique_trees_in_queue=True,
             custom_test_func=validate_xml,
             cost_computer=GrammarBasedBlackboxCostComputer(
                 CostSettings(
+                    # CostWeightVector(
+                    #     tree_closing_cost=20,
+                    #     constraint_cost=0,
+                    #     derivation_depth_penalty=15,
+                    #     low_k_coverage_penalty=13,
+                    #     low_global_k_path_coverage_penalty=25),
                     CostWeightVector(
-                        tree_closing_cost=20,
-                        constraint_cost=0,
-                        derivation_depth_penalty=15,
-                        low_k_coverage_penalty=13,
-                        low_global_k_path_coverage_penalty=25),
+                        tree_closing_cost=16,
+                        constraint_cost=7,
+                        derivation_depth_penalty=13,
+                        low_k_coverage_penalty=26,
+                        low_global_k_path_coverage_penalty=20),
                     k=3),
                 gg.GrammarGraph.from_grammar(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)))
 

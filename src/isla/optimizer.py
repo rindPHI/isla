@@ -210,7 +210,6 @@ def auto_tune_weight_vector(
         cpu_count: int = -1) -> Tuple[PerformanceEvaluationResult, CostWeightVector]:
     assert population_size >= 4
     assert population_size % 2 == 0
-    assert seed_population is None or len(seed_population) == population_size
 
     if cpu_count < 1:
         cpu_count = mp.cpu_count()
@@ -222,8 +221,9 @@ def auto_tune_weight_vector(
     print(f"Autotuning, estimated time > {time_estimate}s, end: {endtime}", )
 
     # Create initial population
-    if not seed_population:
-        seed_population = [
+    seed_population = seed_population or []
+    if len(seed_population) < population_size:
+        seed_population = seed_population + [
             CostWeightVector(
                 tree_closing_cost=randno(),
                 constraint_cost=randno(),
@@ -231,7 +231,9 @@ def auto_tune_weight_vector(
                 low_k_coverage_penalty=randno(),
                 low_global_k_path_coverage_penalty=randno()
             )
-            for _ in range(population_size)]
+            for _ in range(population_size - len(seed_population))]
+
+    assert len(seed_population) == population_size
 
     current_population = sorted(zip(
         evaluate_cost_vectors_isla(
@@ -263,16 +265,25 @@ def auto_tune_weight_vector(
             first_parent = current_population[idx % len(current_population)]
             second_parent = current_population[(idx + 1) % len(current_population)]
 
-            # We take two features from the first, and three from the second parent
-            all_features = list(set(first_parent[1].__dict__.keys()) - {"vacuous_penalty"})
-            first_parent_features = random.sample(all_features, 2)
+            all_features = list(set(first_parent[1].__dict__.keys()))
+
+            # OPTION 1: Crossing using arithmetic mean
             child = CostWeightVector(**{
                 feature:
-                    first_parent[1].__dict__[feature]
-                    if feature in first_parent_features
-                    else second_parent[1].__dict__[feature]
+                    (first_parent[1].__dict__[feature] +
+                     second_parent[1].__dict__[feature]) // 2
                 for feature in all_features
             })
+
+            # OPTION 2: Crossing with two features from the first, and three from the second parent
+            # first_parent_features = random.sample(all_features, 2)
+            # child = CostWeightVector(**{
+            #     feature:
+            #         first_parent[1].__dict__[feature]
+            #         if feature in first_parent_features
+            #         else second_parent[1].__dict__[feature]
+            #     for feature in all_features
+            # })
 
             logger.debug(f"Crossover of\n{first_parent[1]}\nand\n{second_parent[1]}:\n{child}")
 

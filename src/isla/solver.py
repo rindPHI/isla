@@ -107,7 +107,7 @@ class SolutionState:
         return f"{{{self.constraint}, {replace_line_breaks(str(self.tree))}}}"
 
 
-@dataclass(frozen=True)
+@dataclass
 class CostWeightVector:
     tree_closing_cost: float = 0,
     constraint_cost: float = 0,
