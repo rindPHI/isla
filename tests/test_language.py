@@ -500,6 +500,15 @@ class TestLanguage(unittest.TestCase):
             scriptsize_c_no_redef_constr,
             parse_isla(unparsed, scriptsizec.SCRIPTSIZE_C_GRAMMAR, structural_predicates={SAME_POSITION_PREDICATE}))
 
+    def test_can_pickle_formula(self):
+        constraint = parse_isla("""
+forall <xml-tree> tree="<<id>><inner-xml-tree></<id>>" in start:
+    (= tree "<a></a>")
+""", XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
+
+        import dill as pickle
+        pickle.dumps(constraint)
+
 
 if __name__ == '__main__':
     unittest.main()

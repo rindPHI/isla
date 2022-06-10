@@ -122,7 +122,7 @@ class DummyVariable(BoundVariable):
 
     def __init__(self, n_type: str):
         super().__init__(f"DUMMY_{DummyVariable.cnt}", n_type)
-        self.is_nonterminal = is_nonterminal(n_type)
+        self.is_nonterminal = bool(is_nonterminal(n_type))
         DummyVariable.cnt += 1
 
     def __str__(self):

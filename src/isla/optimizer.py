@@ -319,6 +319,7 @@ def evaluate_cost_vectors_isla(
 
     with pmp.Pool(processes=cpu_count) as pool:
         start_time = datetime.datetime.now()
+
         result = pool.starmap(evaluate_isla_generator, [
             (grammar, formula, vector, validator, timeout, None, k)
             for vector in population])
