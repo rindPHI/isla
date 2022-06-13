@@ -487,14 +487,15 @@ forall int colno:
             max_number_smt_instantiations=2,
             enforce_unique_trees_in_queue=True,
             custom_test_func=scriptsizec.compile_scriptsizec_clang,
-            num_solutions=25,
+            num_solutions=500,
             cost_computer=GrammarBasedBlackboxCostComputer(CostSettings(
                 CostWeightVector(
                     tree_closing_cost=10,
                     constraint_cost=0,
                     derivation_depth_penalty=9,
                     low_k_coverage_penalty=28,
-                    low_global_k_path_coverage_penalty=14),
+                    low_global_k_path_coverage_penalty=14,
+                ),
                 k=4),
                 gg.GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR)),
             # print_only=True

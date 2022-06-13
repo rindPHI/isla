@@ -345,14 +345,6 @@ def evaluate_mutated_cost_vectors(
         timeout: int = 60,
         rounds: int = 30,
         k: int = 3):
-    args = {
-        "tree_closing_cost": base_vector.tree_closing_cost,
-        "constraint_cost": base_vector.constraint_cost,
-        "derivation_depth_penalty": base_vector.derivation_depth_penalty,
-        "low_k_coverage_penalty": base_vector.low_k_coverage_penalty,
-        "low_global_k_path_coverage_penalty": base_vector.low_global_k_path_coverage_penalty
-    }
-
     for i in range(rounds):
         v = mutate_cost_vector(base_vector)
 

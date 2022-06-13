@@ -14,7 +14,8 @@ cost_vector = CostWeightVector(
     constraint_cost=0,
     derivation_depth_penalty=9,
     low_k_coverage_penalty=28,
-    low_global_k_path_coverage_penalty=4)
+    low_global_k_path_coverage_penalty=14,
+)
 
 g_defuse = lambda timeout: ISLaSolver(
     scriptsizec.SCRIPTSIZE_C_GRAMMAR,

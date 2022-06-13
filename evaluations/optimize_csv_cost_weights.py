@@ -12,7 +12,7 @@ def validator(t: DerivationTree) -> bool:
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.ERROR)
-    logging.getLogger("evaluator").setLevel(logging.DEBUG)
+    # logging.getLogger("evaluator").setLevel(logging.DEBUG)
 
     random.seed(3519871684213)
 
@@ -20,10 +20,10 @@ if __name__ == '__main__':
         csv.CSV_GRAMMAR,
         csv.CSV_COLNO_PROPERTY,
         validator,
-        timeout=90,
-        population_size=16,
+        timeout=60,
+        population_size=32,
         generations=5,
-        cpu_count=-1
+        cpu_count=32
     )
 
     print(tune_result[1])

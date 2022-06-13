@@ -27,15 +27,15 @@ if __name__ == '__main__':
         generations=6,
         cpu_count=16,
         k=4,
-        seed_population=[
-            mutate_cost_vector(CostWeightVector(
-                tree_closing_cost=20,
-                constraint_cost=1,
-                derivation_depth_penalty=11.25,
-                low_k_coverage_penalty=12,
-                low_global_k_path_coverage_penalty=26))
-            for _ in range(16)
-        ]
+        # seed_population=[
+        #     mutate_cost_vector(CostWeightVector(
+        #         tree_closing_cost=20,
+        #         constraint_cost=1,
+        #         derivation_depth_penalty=11.25,
+        #         low_k_coverage_penalty=12,
+        #         low_global_k_path_coverage_penalty=26))
+        #     for _ in range(16)
+        # ]
     )
 
     print(tune_result[1])
