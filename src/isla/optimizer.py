@@ -149,10 +149,6 @@ class PerformanceEvaluationResult:
             list(self.accumulated_k_path_coverage.keys()),
             list(self.accumulated_k_path_coverage.values()),
             label="k-Path Coverage (%)")
-        ax.plot(
-            list(self.accumulated_non_vacuous_index.keys()),
-            list(self.accumulated_non_vacuous_index.values()),
-            label="Non-Vacuity Index")
 
         mean = self.mean_data()
         ax.plot(
@@ -164,15 +160,15 @@ class PerformanceEvaluationResult:
             self.accumulated_valid_inputs.values(),
             self.accumulated_invalid_inputs.values(),
             self.accumulated_k_path_coverage.values(),
-            self.accumulated_non_vacuous_index.values(),
             mean.values()
         ]:
-            plt.annotate(
-                max(values),
-                xy=(1, max(values)),
-                xytext=(8, 0),
-                xycoords=('axes fraction', 'data'),
-                textcoords='offset points')
+            if values:
+                plt.annotate(
+                    max(values),
+                    xy=(1, max(values)),
+                    xytext=(8, 0),
+                    xycoords=('axes fraction', 'data'),
+                    textcoords='offset points')
 
         ax.set_xlabel("Seconds")
         ax.set_title(title)
@@ -180,7 +176,7 @@ class PerformanceEvaluationResult:
         fig.tight_layout()
         plt.plot()
 
-        print("Saving performance analysis plot to %s", outfile_pdf)
+        print(f"Saving performance analysis plot to {outfile_pdf}")
         matplotlib.pyplot.savefig(outfile_pdf)
 
     def __repr__(self):
@@ -290,7 +286,7 @@ def auto_tune_weight_vector(
             # Mutate one child feature
             mutated_feature = random.choice(all_features)
             current_feature_value: int = getattr(child, mutated_feature)
-            setattr(child, mutated_feature, mutate_cost_weight(current_feature_value, max_add=10, max_factor=5))
+            setattr(child, mutated_feature, mutate_cost_weight(current_feature_value))
 
             logger.debug("After Mutation: %s", child)
 
@@ -353,17 +349,12 @@ def evaluate_mutated_cost_vectors(
         "tree_closing_cost": base_vector.tree_closing_cost,
         "constraint_cost": base_vector.constraint_cost,
         "derivation_depth_penalty": base_vector.derivation_depth_penalty,
-        "low_coverage_penalty": base_vector.low_k_coverage_penalty,
+        "low_k_coverage_penalty": base_vector.low_k_coverage_penalty,
         "low_global_k_path_coverage_penalty": base_vector.low_global_k_path_coverage_penalty
     }
 
     for i in range(rounds):
-        num_mutated_elements = random.choices(range(1, 6), weights=[400, 200, 100, 50, 25], k=1)[0]
-        mutated_elements = random.sample(args.keys(), k=num_mutated_elements)
-
-        new_args = copy.copy(args)
-        new_args.update({elem: mutate_cost_weight(args[elem]) for elem in mutated_elements})
-        v = CostWeightVector(**new_args)
+        v = mutate_cost_vector(base_vector)
 
         print(f"Round {i + 1}, cost vector {v}")
         outfile_name = f"/tmp/xml_perf_eval_{str((i + 1)).rjust(len(str(rounds)), '0')}.pdf"
@@ -382,50 +373,32 @@ def evaluate_mutated_cost_vectors(
         print("Saved combined output file at " + final_out_file_name)
 
 
-def mutate_cost_weight(w: float, max_add: int = 5, max_factor: int = 3) -> float:
+def mutate_cost_vector(vector: CostWeightVector) -> CostWeightVector:
+    args = {
+        "tree_closing_cost": vector.tree_closing_cost,
+        "constraint_cost": vector.constraint_cost,
+        "derivation_depth_penalty": vector.derivation_depth_penalty,
+        "low_k_coverage_penalty": vector.low_k_coverage_penalty,
+        "low_global_k_path_coverage_penalty": vector.low_global_k_path_coverage_penalty
+    }
+
+    num_mutated_elements = random.choices(range(1, 6), weights=[400, 200, 100, 50, 25], k=1)[0]
+    mutated_elements = random.sample(args.keys(), k=num_mutated_elements)
+    new_args = copy.copy(args)
+    new_args.update({elem: mutate_cost_weight(args[elem]) for elem in mutated_elements})
+
+    return CostWeightVector(**new_args)
+
+
+def mutate_cost_weight(w: float, max_factor: int = 1.5) -> float:
     if w == 0:
-        return w + random.choices(
-            range(1, max_add + 1),
-            list(reversed(list(map(lambda x: 1.2 ** x, range(max_add))))))[0]
+        return random.random()
 
+    factor = (random.random() + 1) * max_factor
+    if factor == max_factor:
+        return .0
     else:
-        factor = random.choices(
-            range(1, max_factor + 1),
-            list(reversed(list(map(lambda x: 1.2 ** x, range(max_factor))))))[0] + .5
-
-        return w * factor if random.random() < .5 else w / factor
-
-
-def evaluate_random_cost_vectors(
-        grammar: Grammar,
-        formula: language.Formula,
-        validator: Callable[[language.DerivationTree], bool],
-        final_out_file_name: str,
-        timeout: int = 60,
-        rounds: int = 30,
-        k: int = 3):
-    for i in range(rounds):
-        v = CostWeightVector(
-            tree_closing_cost=randno(),
-            constraint_cost=randno(),
-            derivation_depth_penalty=randno(),
-            low_k_coverage_penalty=randno()
-        )
-        print(f"Round {i + i}, cost vector {v}")
-        outfile_name = f"/tmp/xml_perf_eval_{str((i + 1)).rjust(len(str(rounds)), '0')}.pdf"
-
-        evaluate_isla_generator(grammar, formula, v, validator, timeout, outfile_name, k)
-
-    process = subprocess.run(
-        ["pdfjam"] +
-        [f"/tmp/xml_perf_eval_{str((i + 1)).rjust(len(str(rounds)), '0')}.pdf" for i in range(rounds)] +
-        ["--nup", "4x3", "--landscape", "--outfile", final_out_file_name],
-        stderr=subprocess.PIPE)
-
-    if process.returncode != 0:
-        print(f"Combining output PDFs did not work, error message: {process.stderr}", file=sys.stderr)
-    else:
-        print("Saved combined output file at " + final_out_file_name)
+        return (w * factor) if random.random() < .5 else w / factor
 
 
 def randno(maxno: int = 40) -> int:

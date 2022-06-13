@@ -467,7 +467,16 @@ forall int colno:
             max_number_free_instantiations=1,
             max_number_smt_instantiations=1,
             num_solutions=50,
-            enforce_unique_trees_in_queue=False,
+            enforce_unique_trees_in_queue=True,
+            cost_computer=GrammarBasedBlackboxCostComputer(CostSettings(
+                CostWeightVector(
+                    tree_closing_cost=20,
+                    constraint_cost=1,
+                    derivation_depth_penalty=11.25,
+                    low_k_coverage_penalty=12,
+                    low_global_k_path_coverage_penalty=26),
+                k=3
+            ), gg.GrammarGraph.from_grammar(rest.REST_GRAMMAR))
         )
 
     def test_scriptsize_c_def_before_use(self):

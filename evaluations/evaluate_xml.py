@@ -10,11 +10,11 @@ max_number_smt_instantiations = 2
 eval_k = 4
 
 cost_vector = CostWeightVector(
-    tree_closing_cost=15,
-    constraint_cost=0,
-    derivation_depth_penalty=0,
-    low_k_coverage_penalty=5,
-    low_global_k_path_coverage_penalty=17)  # Changed from 7 in PLDI publication. Might need to re-calibrate vector...
+    tree_closing_cost=16,
+    constraint_cost=7,
+    derivation_depth_penalty=13,
+    low_k_coverage_penalty=26,
+    low_global_k_path_coverage_penalty=20)
 
 g_wf = lambda timeout: ISLaSolver(
     xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
