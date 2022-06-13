@@ -149,11 +149,11 @@ class CostSettings:
 
 STD_COST_SETTINGS = CostSettings(
     CostWeightVector(
-        tree_closing_cost=11,
+        tree_closing_cost=7,
         constraint_cost=3,
         derivation_depth_penalty=5,
         low_k_coverage_penalty=20,
-        low_global_k_path_coverage_penalty=10),
+        low_global_k_path_coverage_penalty=12),
     k=3)
 
 

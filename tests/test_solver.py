@@ -205,11 +205,12 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             cost_computer=GrammarBasedBlackboxCostComputer(
                 CostSettings(
                     CostWeightVector(
-                        tree_closing_cost=28,
-                        constraint_cost=40,
-                        derivation_depth_penalty=3,
-                        low_k_coverage_penalty=23,
-                        low_global_k_path_coverage_penalty=5)),
+                        tree_closing_cost=16,
+                        constraint_cost=7,
+                        derivation_depth_penalty=13,
+                        low_k_coverage_penalty=26,
+                        low_global_k_path_coverage_penalty=20)
+                ),
                 gg.GrammarGraph.from_grammar(XML_GRAMMAR)))
 
     def test_get_quantifier_chains(self):
@@ -291,13 +292,14 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
             structural_predicates={BEFORE_PREDICATE},
             max_number_free_instantiations=1,
             cost_computer=GrammarBasedBlackboxCostComputer(
-                CostSettings(CostWeightVector(
-                    tree_closing_cost=7,
-                    constraint_cost=5,
-                    derivation_depth_penalty=15,
-                    low_k_coverage_penalty=20,
-                    low_global_k_path_coverage_penalty=10
-                ), k=4),
+                CostSettings(
+                    CostWeightVector(
+                        tree_closing_cost=7,
+                        constraint_cost=3.25,
+                        derivation_depth_penalty=12.06,
+                        low_k_coverage_penalty=21.5,
+                        low_global_k_path_coverage_penalty=12.5),
+                    k=4),
                 gg.GrammarGraph.from_grammar(LANG_GRAMMAR)),
             num_solutions=50)
 
@@ -487,16 +489,17 @@ forall int colno:
             max_number_smt_instantiations=2,
             enforce_unique_trees_in_queue=True,
             custom_test_func=scriptsizec.compile_scriptsizec_clang,
-            num_solutions=500,
-            cost_computer=GrammarBasedBlackboxCostComputer(CostSettings(
-                CostWeightVector(
-                    tree_closing_cost=10,
-                    constraint_cost=0,
-                    derivation_depth_penalty=9,
-                    low_k_coverage_penalty=28,
-                    low_global_k_path_coverage_penalty=14,
-                ),
-                k=4),
+            num_solutions=50,
+            cost_computer=GrammarBasedBlackboxCostComputer(
+                CostSettings(
+                    CostWeightVector(
+                        tree_closing_cost=10,
+                        constraint_cost=0,
+                        derivation_depth_penalty=9,
+                        low_k_coverage_penalty=28,
+                        low_global_k_path_coverage_penalty=14,
+                    ),
+                    k=4),
                 gg.GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR)),
             # print_only=True
         )
