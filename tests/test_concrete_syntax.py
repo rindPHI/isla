@@ -2,6 +2,7 @@ import string
 import unittest
 from typing import cast
 
+import pytest
 import z3
 from fuzzingbook.Grammars import srange
 
@@ -168,6 +169,16 @@ forall <key_value> container="{<key> key} = {<value> value}" in start:
         result = parse_isla('''
 exists <xml-attribute> attr="<id>=\\"{<text> text}\\"" in start:
   (= text "")''', XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
+
+    @pytest.mark.skip(reason="Support for tested feature yet to be implemented.")
+    def test_free_nonterminal(self):
+        result = parse_isla('(= <var> "x")')
+        var = language.BoundVariable('<var>_0', '<var>')
+        expected = language.SMTFormula(
+            cast(z3.BoolRef, var.to_smt() == z3.StringVal('x')),
+            var)
+
+        self.assertEqual(expected, result)
 
 
 if __name__ == '__main__':
