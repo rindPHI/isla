@@ -1,7 +1,9 @@
 import copy
+import functools
 import heapq
 import itertools
 import logging
+import operator
 import random
 import sys
 import time
@@ -1182,24 +1184,17 @@ class ISLaSolver:
                    for smt_formula in smt_formulas)
 
         formula_clusters = [cluster for cluster in formula_clusters if cluster]
-        formula_clusters.append([smt_formula for smt_formula in smt_formulas if not cluster_keys(smt_formula)])
+        remaining_clusters = [smt_formula for smt_formula in smt_formulas if not cluster_keys(smt_formula)]
+        if remaining_clusters:
+            formula_clusters.append(remaining_clusters)
 
         all_solutions: List[List[Dict[Union[language.Constant, DerivationTree], DerivationTree]]] = [
             self.solve_quantifier_free_formula(cluster) for cluster in formula_clusters
         ]
 
         # These solutions are all independent, such that we can combine each solution with all others.
-        solutions: List[Dict[Union[language.Constant, DerivationTree], DerivationTree]] = []
-
-        if len(all_solutions) == 1:
-            solutions = all_solutions[0]
-        else:
-            for solutions_1, solutions_2 in itertools.product(all_solutions, all_solutions):
-                if solutions_1 is solutions_2:
-                    continue
-
-                for solution_1, solution_2 in zip(solutions_1, solutions_2):
-                    solutions.append(solution_1 | solution_2)
+        solutions: List[Dict[Union[language.Constant, DerivationTree], DerivationTree]] = [
+            functools.reduce(operator.or_, dicts) for dicts in itertools.product(*all_solutions)]
 
         solutions_with_subtrees: List[Dict[Union[language.Constant, DerivationTree], DerivationTree]] = []
         for solution in solutions:
