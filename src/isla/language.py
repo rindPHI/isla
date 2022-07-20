@@ -2594,8 +2594,18 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         return fresh_var
 
     def close_over_free_nonterminals(self, formula: Formula) -> Formula:
+        def helper(formula: Formula, var: BoundVariable) -> Formula:
+            if var not in formula.free_variables():
+                return formula
+
+            if (isinstance(formula, PropositionalCombinator) and
+                    any(var not in arg.free_variables() for arg in formula.args)):
+                return type(formula)(*map(lambda arg: helper(arg, var), formula.args))
+
+            return ForallFormula(var, Constant('start', '<start>'), formula)
+
         for var in reversed(self.vars_for_free_nonterminals.values()):
-            formula = ForallFormula(var, Constant('start', '<start>'), formula)
+            formula = helper(formula, var)
 
         return formula
 

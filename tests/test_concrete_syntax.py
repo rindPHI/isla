@@ -207,6 +207,12 @@ forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
 
         self.assertEqual(expected, result)
 
+    def test_free_nonterminal_scope(self):
+        result = parse_isla('(= <var> "x") and (= <expr> "1")')
+        expected = parse_isla('forall <var> var in start: (= var "x") and forall <expr> expr in start: (= expr "1")')
+
+        self.assertEqual(expected, result)
+
     def test_default_name(self):
         result = parse_isla('forall <var> in start: (= <var> "x")')
         expected = parse_isla('forall <var> var in start: (= var "x")')
