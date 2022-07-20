@@ -36,7 +36,7 @@ sexpr:
   | '(' op=sexpr sexpr + ')' # SepxrApp
   ;
 
-predicateArg: ID | INT | STRING ;
+predicateArg: ID | varType | INT | STRING ;
 
 STRING: '"' (ESC|.) *? '"';
 ID: ID_LETTER (ID_LETTER | DIGIT) * ;

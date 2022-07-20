@@ -2594,7 +2594,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         return fresh_var
 
     def close_over_free_nonterminals(self, formula: Formula) -> Formula:
-        for var in self.vars_for_free_nonterminals.values():
+        for var in reversed(self.vars_for_free_nonterminals.values()):
             formula = ForallFormula(var, Constant('start', '<start>'), formula)
 
         return formula
@@ -2749,6 +2749,11 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             self.predicate_args[ctx] = int(parse_tree_text(ctx))
         elif ctx.STRING():
             self.predicate_args[ctx] = parse_tree_text(ctx)[1:-1]
+        elif ctx.varType():
+            variable = self.register_var_for_free_nonterminal(parse_tree_text(ctx.varType()))
+            self.predicate_args[ctx] = variable
+        else:
+            assert False, f'Unexpected predicate argument: {parse_tree_text(ctx)}'
 
     def exitSMTFormula(self, ctx: IslaLanguageParser.SMTFormulaContext):
         formula_text = "<N/A>"
@@ -2768,7 +2773,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.formulas[ctx] = SMTFormula(z3_constr, *free_vars)
 
     def enterSexprFreeId(self, ctx: IslaLanguageParser.SexprFreeIdContext):
-        self.register_var_for_free_nonterminal(antlr_get_text_with_whitespace(ctx.varType()))
+        self.register_var_for_free_nonterminal(parse_tree_text(ctx.varType()))
 
     def exitExistsInt(self, ctx: IslaLanguageParser.ExistsIntContext):
         var_id = parse_tree_text(ctx.ID())

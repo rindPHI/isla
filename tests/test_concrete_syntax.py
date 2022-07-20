@@ -199,6 +199,14 @@ forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
 
         self.assertEqual(expected, result)
 
+    def test_free_nonterminal_predicate(self):
+        result = parse_isla('before(<var>, <expr>)', structural_predicates={BEFORE_PREDICATE})
+        expected = parse_isla(
+            'forall <var> var in start: forall <expr> expr in start: before(var, expr)',
+            structural_predicates={BEFORE_PREDICATE})
+
+        self.assertEqual(expected, result)
+
     def test_default_name(self):
         result = parse_isla('forall <var> in start: (= <var> "x")')
         expected = parse_isla('forall <var> var in start: (= var "x")')
@@ -216,6 +224,7 @@ forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
         expected = parse_isla('forall <var> var in start: (= var "x")')
 
         self.assertEqual(expected, result)
+
 
 if __name__ == '__main__':
     unittest.main()
