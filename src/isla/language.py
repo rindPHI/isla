@@ -2493,6 +2493,66 @@ class MExprEmitter(MexprParserListener.MexprParserListener):
         self.result.append(self.mgr.bv(parse_tree_text(ctx.ID()), parse_tree_text(ctx.varType())))
 
 
+class ConcreteSyntaxMexprUsedVariablesCollector(MexprParserListener.MexprParserListener):
+    def __init__(self):
+        self.used_variables: OrderedSet[str] = OrderedSet()
+
+    def enterMatchExprVar(self, ctx: MexprParser.MatchExprVarContext):
+        self.used_variables.add(parse_tree_text(ctx.ID()))
+
+
+class ConcreteSyntaxUsedVariablesCollector(IslaLanguageListener.IslaLanguageListener):
+    def __init__(self):
+        self.used_variables: OrderedSet[str] = OrderedSet()
+
+    def collect_used_variables_in_mexpr(self, inp: str) -> None:
+        lexer = MexprLexer(InputStream(inp))
+        parser = MexprParser(antlr4.CommonTokenStream(lexer))
+        parser._errHandler = BailPrintErrorStrategy()
+        collector = ConcreteSyntaxMexprUsedVariablesCollector()
+        antlr4.ParseTreeWalker().walk(collector, parser.matchExpr())
+        self.used_variables.update(collector.used_variables)
+
+    def enterForall(self, ctx: IslaLanguageParser.ForallContext):
+        if ctx.varId:
+            self.used_variables.add(parse_tree_text(ctx.varId))
+
+    def enterForallMexpr(self, ctx: IslaLanguageParser.ForallMexprContext):
+        if ctx.varId:
+            self.used_variables.add(parse_tree_text(ctx.varId))
+        self.collect_used_variables_in_mexpr(antlr_get_text_with_whitespace(ctx.STRING())[1:-1])
+
+    def enterExists(self, ctx: IslaLanguageParser.ExistsContext):
+        if ctx.varId:
+            self.used_variables.add(parse_tree_text(ctx.varId))
+
+    def enterExistsMexpr(self, ctx: IslaLanguageParser.ExistsMexprContext):
+        if ctx.varId:
+            self.used_variables.add(parse_tree_text(ctx.varId))
+        self.collect_used_variables_in_mexpr(antlr_get_text_with_whitespace(ctx.STRING())[1:-1])
+
+
+class BailPrintErrorStrategy(antlr4.BailErrorStrategy):
+    def recover(self, recognizer: antlr4.Parser, e: antlr4.RecognitionException):
+        recognizer._errHandler.reportError(recognizer, e)
+        super().recover(recognizer, e)
+
+
+def used_variables_in_concrete_syntax(inp: str | IslaLanguageParser.StartContext) -> OrderedSet[str]:
+    if isinstance(inp, str):
+        lexer = IslaLanguageLexer(InputStream(inp))
+        parser = IslaLanguageParser(antlr4.CommonTokenStream(lexer))
+        parser._errHandler = BailPrintErrorStrategy()
+        context = parser.start()
+    else:
+        assert isinstance(inp, IslaLanguageParser.StartContext)
+        context = inp
+
+    collector = ConcreteSyntaxUsedVariablesCollector()
+    antlr4.ParseTreeWalker().walk(collector, context)
+    return collector.used_variables
+
+
 class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
     def __init__(
             self,
@@ -2508,13 +2568,10 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.predicate_args = {}
 
         self.mgr = VariableManager(grammar)
+        self.used_variables = None
+        self.vars_for_free_nonterminals: Dict[str, BoundVariable] = {}
 
     def parse_mexpr(self, inp: str, mgr: VariableManager) -> BindExpression:
-        class BailPrintErrorStrategy(antlr4.BailErrorStrategy):
-            def recover(self, recognizer: antlr4.Parser, e: antlr4.RecognitionException):
-                recognizer._errHandler.reportError(recognizer, e)
-                super().recover(recognizer, e)
-
         lexer = MexprLexer(InputStream(inp))
         parser = MexprParser(antlr4.CommonTokenStream(lexer))
         parser._errHandler = BailPrintErrorStrategy()
@@ -2522,9 +2579,32 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         antlr4.ParseTreeWalker().walk(mexpr_emitter, parser.matchExpr())
         return BindExpression(*mexpr_emitter.result)
 
+    def register_var_for_free_nonterminal(self, nonterminal: str) -> BoundVariable:
+        if nonterminal in self.vars_for_free_nonterminals:
+            return self.vars_for_free_nonterminals[nonterminal]
+
+        fresh_var = fresh_bound_variable(
+            self.used_variables | self.vars_for_free_nonterminals,
+            BoundVariable(nonterminal[1:-1], nonterminal),
+            add=False)
+
+        self.mgr.bv(fresh_var.name, fresh_var.n_type)
+        self.vars_for_free_nonterminals[nonterminal] = fresh_var
+
+        return fresh_var
+
+    def close_over_free_nonterminals(self, formula: Formula) -> Formula:
+        for var in self.vars_for_free_nonterminals.values():
+            formula = ForallFormula(var, Constant('start', '<start>'), formula)
+
+        return formula
+
+    def enterStart(self, ctx: IslaLanguageParser.StartContext):
+        self.used_variables = used_variables_in_concrete_syntax(ctx)
+
     def exitStart(self, ctx: IslaLanguageParser.StartContext):
         try:
-            self.result = self.mgr.create(self.formulas[ctx.formula()])
+            self.result = self.close_over_free_nonterminals(self.mgr.create(self.formulas[ctx.formula()]))
         except RuntimeError as exc:
             raise SyntaxError(str(exc))
 
@@ -2676,13 +2756,19 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             formula_text = antlr_get_text_with_whitespace(ctx)
             z3_constr = z3.parse_smt2_string(
                 f"(assert {formula_text})",
-                decls={var: z3.String(var) for var in self.known_var_names()})[0]
+                decls=({var: z3.String(var)
+                        for var in self.known_var_names()} |
+                       {nonterminal: z3.String(var.name)
+                        for nonterminal, var in self.vars_for_free_nonterminals.items()}))[0]
         except z3.Z3Exception as exp:
             raise SyntaxError(
                 f"Error parsing SMT formula '{formula_text}', {exp.value.decode().strip()}")
 
         free_vars = [self.get_var(str(s)) for s in get_symbols(z3_constr)]
         self.formulas[ctx] = SMTFormula(z3_constr, *free_vars)
+
+    def enterSexprFreeId(self, ctx: IslaLanguageParser.SexprFreeIdContext):
+        self.register_var_for_free_nonterminal(antlr_get_text_with_whitespace(ctx.varType()))
 
     def exitExistsInt(self, ctx: IslaLanguageParser.ExistsIntContext):
         var_id = parse_tree_text(ctx.ID())
@@ -2735,11 +2821,6 @@ def parse_isla(
         grammar: Optional[Grammar] = None,
         structural_predicates: Optional[Set[StructuralPredicate]] = None,
         semantic_predicates: Optional[Set[SemanticPredicate]] = None) -> Formula:
-    class BailPrintErrorStrategy(antlr4.BailErrorStrategy):
-        def recover(self, recognizer: antlr4.Parser, e: antlr4.RecognitionException):
-            recognizer._errHandler.reportError(recognizer, e)
-            super().recover(recognizer, e)
-
     lexer = IslaLanguageLexer(InputStream(inp))
     parser = IslaLanguageParser(antlr4.CommonTokenStream(lexer))
     parser._errHandler = BailPrintErrorStrategy()
@@ -2858,14 +2939,14 @@ T = TypeVar("T")
 
 
 def fresh_variable(
-        used: MutableSet[Variable],
+        used: MutableSet[Variable | str],
         base_name: str,
         n_type: str,
         constructor: Callable[[str, str], T],
         add: bool = True) -> T:
     name = base_name
     idx = 0
-    while any(used_var.name == name for used_var in used):
+    while any((used_var.name if isinstance(used_var, Variable) else used_var) == name for used_var in used):
         name = f"{base_name}_{idx}"
         idx += 1
 
@@ -2876,11 +2957,11 @@ def fresh_variable(
     return result
 
 
-def fresh_constant(used: MutableSet[Variable], proposal: Constant, add: bool = True) -> Constant:
+def fresh_constant(used: MutableSet[Variable | str], proposal: Constant, add: bool = True) -> Constant:
     return fresh_variable(used, proposal.name, proposal.n_type, Constant, add)
 
 
-def fresh_bound_variable(used: MutableSet[Variable], proposal: BoundVariable, add: bool = True) -> BoundVariable:
+def fresh_bound_variable(used: MutableSet[Variable | str], proposal: BoundVariable, add: bool = True) -> BoundVariable:
     return fresh_variable(used, proposal.name, proposal.n_type, BoundVariable, add)
 
 

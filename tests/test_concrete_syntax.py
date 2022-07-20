@@ -5,10 +5,11 @@ from typing import cast
 import pytest
 import z3
 from fuzzingbook.Grammars import srange
+from orderedset import OrderedSet
 
 from isla.helpers import strip_ws
 from isla import language
-from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManager
+from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManager, used_variables_in_concrete_syntax
 from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
 from isla.z3_helpers import z3_eq
 from isla_formalizations import scriptsizec
@@ -170,16 +171,51 @@ forall <key_value> container="{<key> key} = {<value> value}" in start:
 exists <xml-attribute> attr="<id>=\\"{<text> text}\\"" in start:
   (= text "")''', XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
 
-    @pytest.mark.skip(reason="Support for tested feature yet to be implemented.")
-    def test_free_nonterminal(self):
-        result = parse_isla('(= <var> "x")')
-        var = language.BoundVariable('<var>_0', '<var>')
-        expected = language.SMTFormula(
-            cast(z3.BoolRef, var.to_smt() == z3.StringVal('x')),
-            var)
+    def test_used_variables(self):
+        concr_syntax_formula = """
+forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
+  forall <var> var in rhs_1:
+    exists <assgn> assgn_2="{<var> lhs_2} := {<rhs> rhs_2}" in start:
+      (before(assgn_2, assgn_1) and (= lhs_2 var))"""
+
+        result = used_variables_in_concrete_syntax(concr_syntax_formula)
+        expected = OrderedSet(['assgn_1', 'lhs_1', 'rhs_1', 'var', 'assgn_2', 'lhs_2', 'rhs_2'])
 
         self.assertEqual(expected, result)
 
+    def test_used_variables_default_name(self):
+        result = used_variables_in_concrete_syntax('forall <var> in start: exists <elem> elem in start: (= var elem)')
+        self.assertEqual(result, OrderedSet(['elem']))
+
+    def test_free_nonterminal(self):
+        result = parse_isla('(= <var> "x")')
+        expected = parse_isla('forall <var> var in start: (= var "x")')
+
+        self.assertEqual(expected, result)
+
+    def test_free_nonterminal_name_collision(self):
+        result = parse_isla('exists <var> var in start: (= var <var>)')
+        expected = parse_isla('forall <var> var_0 in start: exists <var> var in start: (= var var_0)')
+
+        self.assertEqual(expected, result)
+
+    def test_default_name(self):
+        result = parse_isla('forall <var> in start: (= <var> "x")')
+        expected = parse_isla('forall <var> var in start: (= var "x")')
+
+        self.assertEqual(expected, result)
+
+    def test_default_name_nested(self):
+        result = parse_isla('forall <expr> in start: exists <elem> in <var>: (= <elem> "x")')
+        expected = parse_isla('forall <expr> expr in start: exists <elem> elem in <var>: (= elem "x")')
+
+        self.assertEqual(expected, result)
+
+    def test_omit_start(self):
+        result = parse_isla('forall <var>: (= <var> "x")')
+        expected = parse_isla('forall <var> var in start: (= var "x")')
+
+        self.assertEqual(expected, result)
 
 if __name__ == '__main__':
     unittest.main()

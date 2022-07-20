@@ -5,10 +5,10 @@ start: constDecl? formula;
 constDecl: 'const' ID ':' varType ';' ;
 
 formula:
-    'forall' varType varId=ID            'in' inId=ID ':' formula  # Forall
-  | 'exists' varType varId=ID            'in' inId=ID ':' formula  # Exists
-  | 'forall' varType varId=ID '=' STRING 'in' inId=ID ':' formula  # ForallMexpr
-  | 'exists' varType varId=ID '=' STRING 'in' inId=ID ':' formula  # ExistsMexpr
+    'forall' varType (varId=ID) ?            'in' inId=ID ':' formula  # Forall
+  | 'exists' varType (varId=ID) ?            'in' inId=ID ':' formula  # Exists
+  | 'forall' varType (varId=ID) ? '=' STRING 'in' inId=ID ':' formula  # ForallMexpr
+  | 'exists' varType (varId=ID) ? '=' STRING 'in' inId=ID ':' formula  # ExistsMexpr
   | 'exists' 'int' ID ':' formula                                  # ExistsInt
   | 'forall' 'int' ID ':' formula                                  # ForallInt
   | 'not' formula                                                  # Negation
@@ -29,6 +29,7 @@ sexpr:
   | 'false'         # SexprFalse
   | INT             # SexprNum
   | ID              # SexprId
+  | varType         # SexprFreeId
   | STRING          # SexprStr
   | ('re.+' | 're.*' | 're.++' | 'str.++' | '=' | DIV | MUL | PLUS | MINUS | GEQ | LEQ | GT | LT)
                     # SexprOp
