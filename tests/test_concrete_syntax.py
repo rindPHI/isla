@@ -213,9 +213,15 @@ forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
 
         self.assertEqual(expected, result)
 
-    def test_default_name(self):
+    def test_default_name_forall(self):
         result = parse_isla('forall <var> in start: (= <var> "x")')
         expected = parse_isla('forall <var> var in start: (= var "x")')
+
+        self.assertEqual(expected, result)
+
+    def test_default_name_exists(self):
+        result = parse_isla('exists <var> in start: (= <var> "x")')
+        expected = parse_isla('exists <var> var in start: (= var "x")')
 
         self.assertEqual(expected, result)
 

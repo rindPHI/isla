@@ -2631,14 +2631,18 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.constant = Constant(parse_tree_text(ctx.ID()), parse_tree_text(ctx.varType()))
 
     def exitForall(self, ctx: IslaLanguageParser.ForallContext):
-        var_id = parse_tree_text(ctx.varId)
         var_type = parse_tree_text(ctx.varType())
 
-        if self.mgr.var_declared(var_id):
-            raise SyntaxError(
-                f"Variable {var_id} already declared "
-                f"(line {ctx.varId.line}, column {ctx.varId.column})"
-            )
+        if ctx.varId:
+            var_id = parse_tree_text(ctx.varId)
+
+            if self.mgr.var_declared(var_id):
+                raise SyntaxError(
+                    f"Variable {var_id} already declared "
+                    f"(line {ctx.varId.line}, column {ctx.varId.column})")
+        else:
+            var = self.vars_for_free_nonterminals[var_type]
+            var_id = var.name
 
         self.formulas[ctx] = ForallFormula(
             self.get_var(var_id, var_type),
@@ -2646,14 +2650,18 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             self.formulas[ctx.formula()])
 
     def exitExists(self, ctx: IslaLanguageParser.ExistsContext):
-        var_id = parse_tree_text(ctx.varId)
         var_type = parse_tree_text(ctx.varType())
 
-        if self.mgr.var_declared(var_id):
-            raise SyntaxError(
-                f"Variable {var_id} already declared "
-                f"(line {ctx.varId.line}, column {ctx.varId.column})"
-            )
+        if ctx.varId:
+            var_id = parse_tree_text(ctx.varId)
+
+            if self.mgr.var_declared(var_id):
+                raise SyntaxError(
+                    f"Variable {var_id} already declared "
+                    f"(line {ctx.varId.line}, column {ctx.varId.column})")
+        else:
+            var = self.vars_for_free_nonterminals[var_type]
+            var_id = var.name
 
         self.formulas[ctx] = ExistsFormula(
             self.get_var(var_id, var_type),
@@ -2665,14 +2673,18 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             antlr_get_text_with_whitespace(ctx.STRING())[1:-1],
             self.mgr)
 
-        var_id = parse_tree_text(ctx.varId)
         var_type = parse_tree_text(ctx.varType())
 
-        if self.mgr.var_declared(var_id):
-            raise SyntaxError(
-                f"Variable {var_id} already declared "
-                f"(line {ctx.varId.line}, column {ctx.varId.column})"
-            )
+        if ctx.varId:
+            var_id = parse_tree_text(ctx.varId)
+
+            if self.mgr.var_declared(var_id):
+                raise SyntaxError(
+                    f"Variable {var_id} already declared "
+                    f"(line {ctx.varId.line}, column {ctx.varId.column})")
+        else:
+            var = self.vars_for_free_nonterminals[var_type]
+            var_id = var.name
 
         self.formulas[ctx] = ForallFormula(
             self.get_var(var_id, var_type),
@@ -2686,14 +2698,18 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             antlr_get_text_with_whitespace(ctx.STRING())[1:-1],
             self.mgr)
 
-        var_id = parse_tree_text(ctx.varId)
         var_type = parse_tree_text(ctx.varType())
 
-        if self.mgr.var_declared(var_id):
-            raise SyntaxError(
-                f"Variable {var_id} already declared "
-                f"(line {ctx.varId.line}, column {ctx.varId.column})"
-            )
+        if ctx.varId:
+            var_id = parse_tree_text(ctx.varId)
+
+            if self.mgr.var_declared(var_id):
+                raise SyntaxError(
+                    f"Variable {var_id} already declared "
+                    f"(line {ctx.varId.line}, column {ctx.varId.column})")
+        else:
+            var = self.vars_for_free_nonterminals[var_type]
+            var_id = var.name
 
         self.formulas[ctx] = ExistsFormula(
             self.get_var(var_id, var_type),
