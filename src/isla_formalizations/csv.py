@@ -67,6 +67,7 @@ def csv_lint(tree: language.DerivationTree) -> Union[bool, str]:
         return True if not has_error else err_msg
 
 
+# TODO: Choose different formalization?
 csv_colno_property = """
 forall <csv-header> hline in start:
   exists int colno:

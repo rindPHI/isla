@@ -2631,7 +2631,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.constant = Constant(parse_tree_text(ctx.ID()), parse_tree_text(ctx.varType()))
 
     def exitForall(self, ctx: IslaLanguageParser.ForallContext):
-        var_type = parse_tree_text(ctx.varType())
+        var_type = parse_tree_text(ctx.boundVarType)
 
         if ctx.varId:
             var_id = parse_tree_text(ctx.varId)
@@ -2650,7 +2650,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             self.formulas[ctx.formula()])
 
     def exitExists(self, ctx: IslaLanguageParser.ExistsContext):
-        var_type = parse_tree_text(ctx.varType())
+        var_type = parse_tree_text(ctx.boundVarType)
 
         if ctx.varId:
             var_id = parse_tree_text(ctx.varId)
@@ -2673,7 +2673,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             antlr_get_text_with_whitespace(ctx.STRING())[1:-1],
             self.mgr)
 
-        var_type = parse_tree_text(ctx.varType())
+        var_type = parse_tree_text(ctx.boundVarType)
 
         if ctx.varId:
             var_id = parse_tree_text(ctx.varId)
@@ -2698,7 +2698,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             antlr_get_text_with_whitespace(ctx.STRING())[1:-1],
             self.mgr)
 
-        var_type = parse_tree_text(ctx.varType())
+        var_type = parse_tree_text(ctx.boundVarType)
 
         if ctx.varId:
             var_id = parse_tree_text(ctx.varId)

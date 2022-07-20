@@ -225,9 +225,10 @@ forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
 
         self.assertEqual(expected, result)
 
+    # TODO (2022-07-20): Continue from here!
     def test_default_name_nested(self):
         result = parse_isla('forall <expr> in start: exists <elem> in <var>: (= <elem> "x")')
-        expected = parse_isla('forall <expr> expr in start: exists <elem> elem in <var>: (= elem "x")')
+        expected = parse_isla('forall <expr> expr in start: forall <var> var in start: exists <elem> elem in var: (= elem "x")')
 
         self.assertEqual(expected, result)
 
