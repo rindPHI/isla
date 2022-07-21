@@ -2,13 +2,13 @@ grammar IslaLanguage;
 
 start: constDecl? formula;
 
-constDecl: 'const' ID ':' varType ';' ;
+constDecl: 'const' ID ':' VAR_TYPE ';' ;
 
 formula:
-    'forall' (boundVarType=varType) (varId=ID) ?            ('in' (inId=ID | inVarType=varType)) ? ':' formula  # Forall
-  | 'exists' (boundVarType=varType) (varId=ID) ?            ('in' (inId=ID | inVarType=varType)) ? ':' formula  # Exists
-  | 'forall' (boundVarType=varType) (varId=ID) ? '=' STRING ('in' (inId=ID | inVarType=varType)) ? ':' formula  # ForallMexpr
-  | 'exists' (boundVarType=varType) (varId=ID) ? '=' STRING ('in' (inId=ID | inVarType=varType)) ? ':' formula  # ExistsMexpr
+    'forall' (boundVarType=VAR_TYPE) (varId=ID) ?            ('in' (inId=ID | inVarType=VAR_TYPE)) ? ':' formula  # Forall
+  | 'exists' (boundVarType=VAR_TYPE) (varId=ID) ?            ('in' (inId=ID | inVarType=VAR_TYPE)) ? ':' formula  # Exists
+  | 'forall' (boundVarType=VAR_TYPE) (varId=ID) ? '=' STRING ('in' (inId=ID | inVarType=VAR_TYPE)) ? ':' formula  # ForallMexpr
+  | 'exists' (boundVarType=VAR_TYPE) (varId=ID) ? '=' STRING ('in' (inId=ID | inVarType=VAR_TYPE)) ? ':' formula  # ExistsMexpr
   | 'exists' 'int' ID ':' formula                                  # ExistsInt
   | 'forall' 'int' ID ':' formula                                  # ForallInt
   | 'not' formula                                                  # Negation
@@ -22,26 +22,40 @@ formula:
   | '(' formula ')'                                                # ParFormula
   ;
 
-varType : LT ID GT ;
-
 sexpr:
     'true'          # SexprTrue
   | 'false'         # SexprFalse
   | INT             # SexprNum
   | ID              # SexprId
-  | varType         # SexprFreeId
+  | XPATHEXPR       # SexprXPathExpr
+  | VAR_TYPE         # SexprFreeId
   | STRING          # SexprStr
   | ('re.+' | 're.*' | 're.++' | 'str.++' | '=' | DIV | MUL | PLUS | MINUS | GEQ | LEQ | GT | LT)
                     # SexprOp
   | '(' op=sexpr sexpr + ')' # SepxrApp
   ;
 
-predicateArg: ID | varType | INT | STRING ;
+predicateArg: ID | VAR_TYPE | INT | STRING ;
+
+XPATHEXPR: (ID | VAR_TYPE) XPATHSEGMENT + ;
+
+fragment XPATHSEGMENT:
+      DOT VAR_TYPE
+    | DOT VAR_TYPE BROP INT BRCL
+    | TWODOTS VAR_TYPE
+    ;
+
+VAR_TYPE : LT ID GT ;
 
 STRING: '"' (ESC|.) *? '"';
 ID: ID_LETTER (ID_LETTER | DIGIT) * ;
 INT : DIGIT+ ;
 ESC : '\\' [btnr"\\] ;
+
+DOT : '.' ;
+TWODOTS : '..' ;
+BROP : '[' ;
+BRCL : ']' ;
 
 DIV: '/' ;
 MUL: '*' ;

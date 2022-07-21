@@ -1929,8 +1929,10 @@ def used_variables_in_concrete_syntax(inp: str | IslaLanguageParser.StartContext
     antlr4.ParseTreeWalker().walk(collector, context)
     return collector.used_variables
 
+
 def start_constant():
     return Constant('start', '<start>')
+
 
 class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
     def __init__(
@@ -1949,6 +1951,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.mgr = VariableManager(grammar)
         self.used_variables = None
         self.vars_for_free_nonterminals: Dict[str, BoundVariable] = {}
+        self.vars_for_xpath_expressions: Dict[str, BoundVariable] = {}
 
     def parse_mexpr(self, inp: str, mgr: VariableManager) -> BindExpression:
         lexer = MexprLexer(InputStream(inp))
@@ -1962,6 +1965,10 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         if nonterminal in self.vars_for_free_nonterminals:
             return self.vars_for_free_nonterminals[nonterminal]
 
+        assert nonterminal[0] == '<'
+        assert nonterminal[-1] == '>'
+        assert len(nonterminal) > 2
+
         fresh_var = fresh_bound_variable(
             self.used_variables | self.vars_for_free_nonterminals,
             BoundVariable(nonterminal[1:-1], nonterminal),
@@ -1969,6 +1976,26 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
         self.mgr.bv(fresh_var.name, fresh_var.n_type)
         self.vars_for_free_nonterminals[nonterminal] = fresh_var
+
+        return fresh_var
+
+    def register_var_for_xpath_expression(self, xpath_expr: str) -> BoundVariable:
+        if xpath_expr in self.vars_for_xpath_expressions:
+            return self.vars_for_xpath_expressions[xpath_expr]
+
+        nonterminal = [seg_2 for seg_1 in xpath_expr.split('.') for seg_2 in seg_1.split('..')][-1]
+
+        assert nonterminal[0] == '<'
+        assert nonterminal[-1] == '>'
+        assert len(nonterminal) > 2
+
+        fresh_var = fresh_bound_variable(
+            self.used_variables | self.vars_for_free_nonterminals,
+            BoundVariable(nonterminal[1:-1], nonterminal),
+            add=False)
+
+        self.mgr.bv(fresh_var.name, fresh_var.n_type)
+        self.vars_for_xpath_expressions[xpath_expr] = fresh_var
 
         return fresh_var
 
@@ -2123,8 +2150,8 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             self.predicate_args[ctx] = int(parse_tree_text(ctx))
         elif ctx.STRING():
             self.predicate_args[ctx] = parse_tree_text(ctx)[1:-1]
-        elif ctx.varType():
-            variable = self.register_var_for_free_nonterminal(parse_tree_text(ctx.varType()))
+        elif ctx.VAR_TYPE():
+            variable = self.register_var_for_free_nonterminal(parse_tree_text(ctx.VAR_TYPE()))
             self.predicate_args[ctx] = variable
         else:
             assert False, f'Unexpected predicate argument: {parse_tree_text(ctx)}'
@@ -2138,7 +2165,9 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                 decls=({var: z3.String(var)
                         for var in self.known_var_names()} |
                        {nonterminal: z3.String(var.name)
-                        for nonterminal, var in self.vars_for_free_nonterminals.items()}))[0]
+                        for nonterminal, var in self.vars_for_free_nonterminals.items()} |
+                       {xpath_expr: z3.String(var.name)
+                        for xpath_expr, var in self.vars_for_xpath_expressions.items()}))[0]
         except z3.Z3Exception as exp:
             raise SyntaxError(
                 f"Error parsing SMT formula '{formula_text}', {exp.value.decode().strip()}")
@@ -2147,7 +2176,10 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.formulas[ctx] = SMTFormula(z3_constr, *free_vars)
 
     def enterSexprFreeId(self, ctx: IslaLanguageParser.SexprFreeIdContext):
-        self.register_var_for_free_nonterminal(parse_tree_text(ctx.varType()))
+        self.register_var_for_free_nonterminal(parse_tree_text(ctx.VAR_TYPE()))
+
+    def enterSexprXPathExpr(self, ctx: IslaLanguageParser.SexprXPathExprContext):
+        self.register_var_for_xpath_expression(parse_tree_text(ctx))
 
     def exitExistsInt(self, ctx: IslaLanguageParser.ExistsIntContext):
         var_id = parse_tree_text(ctx.ID())

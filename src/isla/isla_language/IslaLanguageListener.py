@@ -161,15 +161,6 @@ class IslaLanguageListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by IslaLanguageParser#varType.
-    def enterVarType(self, ctx:IslaLanguageParser.VarTypeContext):
-        pass
-
-    # Exit a parse tree produced by IslaLanguageParser#varType.
-    def exitVarType(self, ctx:IslaLanguageParser.VarTypeContext):
-        pass
-
-
     # Enter a parse tree produced by IslaLanguageParser#SexprTrue.
     def enterSexprTrue(self, ctx:IslaLanguageParser.SexprTrueContext):
         pass
@@ -203,6 +194,15 @@ class IslaLanguageListener(ParseTreeListener):
 
     # Exit a parse tree produced by IslaLanguageParser#SexprId.
     def exitSexprId(self, ctx:IslaLanguageParser.SexprIdContext):
+        pass
+
+
+    # Enter a parse tree produced by IslaLanguageParser#SexprXPathExpr.
+    def enterSexprXPathExpr(self, ctx:IslaLanguageParser.SexprXPathExprContext):
+        pass
+
+    # Exit a parse tree produced by IslaLanguageParser#SexprXPathExpr.
+    def exitSexprXPathExpr(self, ctx:IslaLanguageParser.SexprXPathExprContext):
         pass
 
 

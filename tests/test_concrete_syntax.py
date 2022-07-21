@@ -242,7 +242,7 @@ forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
         expected = parse_isla('''
 forall <xml-tree> tree="<{<id> id}><inner-xml-tree></<id>>" in start:
     (= id "a") and
-forall <xml-tree> tree="<{<id> id_0} <xml-attribute>><inner-xml-tree></<id>>" in start:
+forall <xml-tree> tree_0="<{<id> id_0} <xml-attribute>><inner-xml-tree></<id>>" in start:
     (= id_0 "a")''')
 
         self.assertEqual(expected, result)
@@ -252,7 +252,7 @@ forall <xml-tree> tree="<{<id> id_0} <xml-attribute>><inner-xml-tree></<id>>" in
         expected = parse_isla('''
 forall <xml-tree> tree="<{<id> id}><inner-xml-tree></{<id> id_0}>" in start:
     (= id id_0) and
-forall <xml-tree> tree="<{<id> id_1} <xml-attribute>><inner-xml-tree></{<id> id_2}>" in start:
+forall <xml-tree> tree_0="<{<id> id_1} <xml-attribute>><inner-xml-tree></{<id> id_2}>" in start:
     (= id_1 id_2)''')
 
         self.assertEqual(expected, result)

@@ -153,10 +153,10 @@ class CostSettings:
 STD_COST_SETTINGS = CostSettings(
     CostWeightVector(
         tree_closing_cost=7,
-        constraint_cost=3,
-        derivation_depth_penalty=5,
-        low_k_coverage_penalty=20,
-        low_global_k_path_coverage_penalty=12),
+        constraint_cost=3.25,
+        derivation_depth_penalty=15,
+        low_k_coverage_penalty=21.5,
+        low_global_k_path_coverage_penalty=12.5),
     k=3)
 
 
@@ -309,7 +309,7 @@ class ISLaSolver:
                     return
 
             # import dill as pickle
-            # state_hash = 7615739788910218270
+            # state_hash = -7249231706094547066
             # out_file = "/tmp/saved_debug_state"
             # if hash(self.queue[0][1]) == state_hash:
             #     with open(out_file, 'wb') as debug_state_file:
