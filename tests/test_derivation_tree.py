@@ -5,7 +5,7 @@ from typing import List
 from fuzzingbook.GrammarFuzzer import GrammarFuzzer
 
 from isla.helpers import parent_or_child
-from isla.language import DerivationTree
+from isla.derivation_tree import DerivationTree
 from isla_formalizations.xml_lang import XML_GRAMMAR
 from test_data import LANG_GRAMMAR
 from test_helpers import parse

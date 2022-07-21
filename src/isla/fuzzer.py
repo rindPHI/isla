@@ -32,14 +32,12 @@
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import random
-import re
 import subprocess
 from typing import Tuple, List, Any, Set, Callable, Optional
 
-from fuzzingbook.Grammars import is_valid_grammar
 
-from isla.helpers import RE_NONTERMINAL, is_nonterminal, nonterminals
-from isla.language import DerivationTree
+from isla.helpers import RE_NONTERMINAL, is_nonterminal, nonterminals, is_valid_grammar
+from isla.derivation_tree import DerivationTree
 from isla.type_defs import Grammar
 
 Expansion = str
@@ -158,9 +156,7 @@ class GrammarFuzzer(Fuzzer):
     def check_grammar(self) -> None:
         """Check the grammar passed"""
         assert self.start_symbol in self.grammar
-        assert is_valid_grammar(
-            self.grammar,
-            start_symbol=self.start_symbol)
+        assert is_valid_grammar( self.grammar, _start_symbol=self.start_symbol)
 
     def init_tree(self) -> DerivationTree:
         return DerivationTree(self.start_symbol, None)

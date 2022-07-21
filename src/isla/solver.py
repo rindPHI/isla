@@ -14,7 +14,6 @@ from functools import reduce, lru_cache
 import math
 import pkg_resources
 import z3
-from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
 from grammar_graph.gg import GrammarGraph
 from grammar_to_regex.cfg2regex import RegexConverter
@@ -34,8 +33,10 @@ from isla.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
     replace_line_breaks, weighted_geometric_mean, assertions_activated, \
     split_str_with_nonterminals, cluster_by_common_elements, is_nonterminal, canonical, lazyjoin, lazystr, is_prefix
 from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES, COUNT_PREDICATE
-from isla.language import DerivationTree, VariablesCollector, split_conjunction, split_disjunction, \
+from isla.language import VariablesCollector, split_conjunction, split_disjunction, \
     convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, QuantifiedFormula
+from isla.derivation_tree import DerivationTree
+from isla.parser import EarleyParser
 from isla.type_defs import Grammar, Path
 from isla.z3_helpers import z3_solve, z3_subst, z3_eq
 

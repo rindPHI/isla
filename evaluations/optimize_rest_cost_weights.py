@@ -2,7 +2,7 @@ import logging
 import random
 import sys
 
-from isla.language import DerivationTree
+from isla.derivation_tree import DerivationTree
 from isla.optimizer import auto_tune_weight_vector, evaluate_mutated_cost_vectors, mutate_cost_vector
 from isla.solver import CostWeightVector
 from isla_formalizations import rest

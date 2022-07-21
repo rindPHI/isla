@@ -4,10 +4,10 @@ import xml.etree.ElementTree as ET
 from html import escape
 from typing import Optional, List
 
-from fuzzingbook.Grammars import srange
-
+from isla.helpers import srange
 from isla.isla_predicates import IN_TREE_PREDICATE, SAME_POSITION_PREDICATE
-from isla.language import parse_isla, DerivationTree
+from isla.language import parse_isla
+from isla.derivation_tree import DerivationTree
 
 XML_GRAMMAR = {
     "<start>": ["<xml-tree>"],

@@ -11,6 +11,7 @@ import pytest
 import z3
 from grammar_graph import gg
 
+import isla.derivation_tree
 import isla.evaluator
 from isla import isla_shortcuts as sc
 from isla import language
@@ -18,7 +19,8 @@ from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_A
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, STANDARD_SEMANTIC_PREDICATES, \
     STANDARD_STRUCTURAL_PREDICATES
-from isla.language import VariablesCollector, parse_isla, DerivationTree
+from isla.language import VariablesCollector, parse_isla
+from isla.derivation_tree import DerivationTree
 from isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
     get_quantifier_chains, CostComputer, GrammarBasedBlackboxCostComputer, quantified_formula_might_match
 from isla.type_defs import Grammar
@@ -35,7 +37,7 @@ class TestSolver(unittest.TestCase):
         mgr = language.VariableManager(LANG_GRAMMAR)
         solver = ISLaSolver(LANG_GRAMMAR, mgr.smt(z3_eq(mgr.const("$DUMMY", "<start>").to_smt(), z3.StringVal(""))))
 
-        tree = language.DerivationTree.from_parse_tree(
+        tree = isla.derivation_tree.DerivationTree.from_parse_tree(
             ('<start>', [
                 ('<stmt>', [
                     ('<assgn>', [
@@ -575,7 +577,7 @@ forall int colno:
             debug=False,
             state_tree_out="/tmp/state_tree.xml",
             log_out="/tmp/isla_log.txt",
-            custom_test_func: Optional[Callable[[language.DerivationTree], Union[bool, str]]] = None,
+            custom_test_func: Optional[Callable[[isla.derivation_tree.DerivationTree], Union[bool, str]]] = None,
             cost_computer: Optional[CostComputer] = None,
             print_only: bool = False,
             timeout_seconds: Optional[int] = None,

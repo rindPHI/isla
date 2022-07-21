@@ -2,14 +2,13 @@ import sys
 from functools import lru_cache
 from typing import Optional, List, Tuple, cast, Union, Set, Dict
 
-from fuzzingbook.Grammars import is_nonterminal
-from fuzzingbook.Parser import non_canonical
 from grammar_graph.gg import GrammarGraph, NonterminalNode, Node, ChoiceNode
 from orderedset import OrderedSet
 
 from isla import language
-from isla.helpers import is_prefix, path_iterator, dict_of_lists_to_list_of_dicts, assertions_activated
-from isla.language import DerivationTree
+from isla.helpers import is_prefix, path_iterator, dict_of_lists_to_list_of_dicts, assertions_activated, is_nonterminal
+from isla.derivation_tree import DerivationTree
+from isla.parser import non_canonical
 from isla.type_defs import Path, CanonicalGrammar, ParseTree
 
 DIRECT_EMBEDDING = 0b001

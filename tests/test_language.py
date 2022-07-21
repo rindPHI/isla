@@ -15,8 +15,9 @@ from isla.helpers import delete_unreachable
 from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, SAME_POSITION_PREDICATE
 from isla.isla_predicates import count, COUNT_PREDICATE
 from isla.language import Constant, BoundVariable, Formula, BindExpression, \
-    DerivationTree, convert_to_dnf, ensure_unique_bound_variables, VariableManager, \
+    convert_to_dnf, ensure_unique_bound_variables, VariableManager, \
     DummyVariable, parse_isla, ISLaUnparser, SMTFormula
+from isla.derivation_tree import DerivationTree
 from isla.z3_helpers import z3_eq
 from isla_formalizations import rest, scriptsizec, tar
 from isla_formalizations.csv import CSV_GRAMMAR, CSV_COLNO_PROPERTY

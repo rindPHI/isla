@@ -15,6 +15,7 @@ from grammar_graph import gg
 from matplotlib import pyplot as plt, ticker as mtick
 from pathos import multiprocessing as pmp
 
+import isla.derivation_tree
 import isla.evaluator
 from isla import language, solver
 from isla.performance_evaluator import logger, generate_inputs
@@ -197,7 +198,7 @@ class PerformanceEvaluationResult:
 def auto_tune_weight_vector(
         grammar: Grammar,
         formula: language.Formula,
-        validator: Callable[[language.DerivationTree], bool],
+        validator: Callable[[isla.derivation_tree.DerivationTree], bool],
         timeout: int = 60,
         population_size: int = 10,
         generations: int = 10,
@@ -312,7 +313,7 @@ def evaluate_cost_vectors_isla(
         population: List[CostWeightVector],
         grammar: Grammar,
         formula: language.Formula,
-        validator: Callable[[language.DerivationTree], bool],
+        validator: Callable[[isla.derivation_tree.DerivationTree], bool],
         timeout: int,
         cpu_count: int = -1,
         k=3) -> List[PerformanceEvaluationResult]:
@@ -340,7 +341,7 @@ def evaluate_mutated_cost_vectors(
         grammar: Grammar,
         formula: language.Formula,
         base_vector: CostWeightVector,
-        validator: Callable[[language.DerivationTree], bool],
+        validator: Callable[[isla.derivation_tree.DerivationTree], bool],
         final_out_file_name: str,
         timeout: int = 60,
         rounds: int = 30,
@@ -401,7 +402,7 @@ def evaluate_isla_generator(
         grammar: Grammar,
         formula: language.Formula,
         v: CostWeightVector,
-        validator: Callable[[language.DerivationTree], bool],
+        validator: Callable[[isla.derivation_tree.DerivationTree], bool],
         timeout: int,
         outfile_name: Optional[str] = None,
         k=3) -> PerformanceEvaluationResult:
@@ -428,10 +429,10 @@ def evaluate_isla_generator(
 
 
 def evaluate_producer(
-        producer: Union[Generator[language.DerivationTree, None, None], ISLaSolver, Grammar],
+        producer: Union[Generator[isla.derivation_tree.DerivationTree, None, None], ISLaSolver, Grammar],
         formula: Optional[language.Formula],
         graph: gg.GrammarGraph,
-        validator: Callable[[language.DerivationTree], bool],
+        validator: Callable[[isla.derivation_tree.DerivationTree], bool],
         outfile_pdf: Optional[str] = None,
         timeout_seconds: int = 60,
         diagram_title: str = "Performance Data",
@@ -460,7 +461,7 @@ def evaluate_generators(
         producers: List[Union[Grammar, ISLaSolver]],
         formula: Optional[language.Formula],
         graph: gg.GrammarGraph,
-        validator: Callable[[language.DerivationTree], bool],
+        validator: Callable[[isla.derivation_tree.DerivationTree], bool],
         timeout_seconds: int = 60,
         k=3,
         cpu_count: int = -1,
@@ -557,10 +558,10 @@ def plot_proportion_valid_inputs_graph(
 
 
 def evaluate_data(
-        data: Dict[float, language.DerivationTree],
+        data: Dict[float, isla.derivation_tree.DerivationTree],
         formula: Optional[language.Formula],
         graph: gg.GrammarGraph,
-        validator: Callable[[language.DerivationTree], bool],
+        validator: Callable[[isla.derivation_tree.DerivationTree], bool],
         k: int = 3,
         jobname: str = "Unnamed",
         compute_kpath_coverage: bool = True,

@@ -2,7 +2,7 @@ import logging
 import random
 import xml.etree.ElementTree as ET
 
-from isla.language import DerivationTree
+from isla.derivation_tree import DerivationTree
 from isla.optimizer import auto_tune_weight_vector
 from isla.solver import CostWeightVector
 from isla_formalizations.xml_lang import XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, \

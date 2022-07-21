@@ -9,6 +9,7 @@ from fuzzingbook.Grammars import srange
 from fuzzingbook.Parser import EarleyParser
 from orderedset import OrderedSet
 
+import isla.derivation_tree
 import isla.isla_shortcuts as sc
 from isla import language
 from isla.evaluator import evaluate, matches_for_quantified_formula, implies
@@ -18,8 +19,9 @@ from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, IN_TREE_PRED
 from isla.isla_predicates import COUNT_PREDICATE
 from isla.language import BoundVariable
 from isla.language import Constant, Formula, BindExpression, \
-    DerivationTree, VariableManager, \
+    VariableManager, \
     QuantifiedFormula, parse_isla
+from isla.derivation_tree import DerivationTree
 from isla.z3_helpers import z3_eq
 from isla_formalizations import rest, scriptsizec
 from isla_formalizations.csv import CSV_GRAMMAR, CSV_HEADERBODY_GRAMMAR
@@ -292,7 +294,7 @@ class TestEvaluator(unittest.TestCase):
 
     def test_xml_with_prefixes(self):
         inp = '<a xmlns:ns="salami"><ns:asdf>asdf</ns:asdf></a>'
-        tree = language.DerivationTree.from_parse_tree(
+        tree = isla.derivation_tree.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert validate_xml(tree)
 
@@ -306,7 +308,7 @@ class TestEvaluator(unittest.TestCase):
             '<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
             'xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd"> '
             '</project>')
-        tree = language.DerivationTree.from_parse_tree(
+        tree = isla.derivation_tree.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert validate_xml(tree)
 
@@ -318,7 +320,7 @@ class TestEvaluator(unittest.TestCase):
 
         inp = (
             '<view:view xmlns:view="http://www.view.org/view/repository/1.0"> </view:view>')
-        tree = language.DerivationTree.from_parse_tree(
+        tree = isla.derivation_tree.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert validate_xml(tree)
 
@@ -329,7 +331,7 @@ class TestEvaluator(unittest.TestCase):
             structural_predicates={IN_TREE_PREDICATE}))
 
         inp = '<a xmlns:ns="salami" xmlns:ns1="toast"><ns:asdf ns1:asdf="asdf">asdf</ns:asdf></a>'
-        tree = language.DerivationTree.from_parse_tree(
+        tree = isla.derivation_tree.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert validate_xml(tree)
 
@@ -340,7 +342,7 @@ class TestEvaluator(unittest.TestCase):
             structural_predicates={IN_TREE_PREDICATE}))
 
         inp = '<a xmlns:ons="salami"><ns:asdf>asdf</ns:asdf></a>'
-        tree = language.DerivationTree.from_parse_tree(
+        tree = isla.derivation_tree.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert not validate_xml(tree)
 
@@ -351,7 +353,7 @@ class TestEvaluator(unittest.TestCase):
             structural_predicates={IN_TREE_PREDICATE}))
 
         inp = '<xmlns:S47 s1="mr"/>'
-        tree = language.DerivationTree.from_parse_tree(
+        tree = isla.derivation_tree.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert not validate_xml(tree)
 
@@ -363,7 +365,7 @@ class TestEvaluator(unittest.TestCase):
 
     def test_xml_attr_redefs(self):
         inp = '<a b="..." c="...">asdf</a>'
-        tree = language.DerivationTree.from_parse_tree(
+        tree = isla.derivation_tree.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert validate_xml(tree)
 
@@ -376,7 +378,7 @@ class TestEvaluator(unittest.TestCase):
                 SAME_POSITION_PREDICATE}))
 
         inp = '<a b="..." b="...">asdf</a>'
-        tree = language.DerivationTree.from_parse_tree(
+        tree = isla.derivation_tree.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert not validate_xml(tree)
 
@@ -389,7 +391,7 @@ class TestEvaluator(unittest.TestCase):
                 SAME_POSITION_PREDICATE}))
 
         inp = '<x xmlns:ns="..."><a ns:b="..." ns:c="..."/></x>'
-        tree = language.DerivationTree.from_parse_tree(
+        tree = isla.derivation_tree.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert validate_xml(tree)
 
@@ -402,7 +404,7 @@ class TestEvaluator(unittest.TestCase):
                 SAME_POSITION_PREDICATE}))
 
         inp = '<x xmlns:ns="..."><a ns:b="..." ns:b="..."/></x>'
-        tree = language.DerivationTree.from_parse_tree(
+        tree = isla.derivation_tree.DerivationTree.from_parse_tree(
             list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
         assert not validate_xml(tree)
 

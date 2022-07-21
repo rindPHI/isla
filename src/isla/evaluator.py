@@ -11,12 +11,13 @@ from orderedset import OrderedSet
 
 from isla.helpers import is_nonterminal, transitive_closure, path_to_trie_key, get_subtrie
 from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES
-from isla.language import Formula, DerivationTree, StructuralPredicate, SemanticPredicate, parse_isla, \
+from isla.language import Formula, StructuralPredicate, SemanticPredicate, parse_isla, \
     VariablesCollector, Constant, FilterVisitor, NumericQuantifiedFormula, StructuralPredicateFormula, SMTFormula, \
     SemanticPredicateFormula, Variable, replace_formula, \
     BoundVariable, ExistsIntFormula, ForallIntFormula, QuantifiedFormula, PropositionalCombinator, \
     ConjunctiveFormula, ForallFormula, ExistsFormula, NegatedFormula, \
     DisjunctiveFormula, BindExpression, split_conjunction, split_disjunction, DummyVariable
+from isla.derivation_tree import DerivationTree
 from isla.three_valued_truth import ThreeValuedTruth
 from isla.type_defs import Grammar, Path, CanonicalGrammar
 from isla.z3_helpers import evaluate_z3_expression, DomainError, is_valid, z3_and, z3_or, z3_eq, replace_in_z3_expr

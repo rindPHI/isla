@@ -10,7 +10,8 @@ from fuzzingbook.Grammars import srange
 from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
 
-from isla.language import parse_isla, DerivationTree
+from isla.language import parse_isla
+from isla.derivation_tree import DerivationTree
 from isla.evaluator import evaluate
 from isla.optimizer import auto_tune_weight_vector
 from isla.solver import ISLaSolver, CostSettings, GrammarBasedBlackboxCostComputer

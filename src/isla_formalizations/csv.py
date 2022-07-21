@@ -3,11 +3,10 @@ import subprocess
 import tempfile
 from typing import Union
 
-from fuzzingbook.Grammars import convert_ebnf_grammar, srange
-
-from isla import language
-from isla.language import parse_isla
+import isla.derivation_tree
+from isla.helpers import srange
 from isla.isla_predicates import COUNT_PREDICATE
+from isla.language import parse_isla
 
 CSV_GRAMMAR = {
     "<start>": ["<csv-file>"],
@@ -47,7 +46,7 @@ CSV_HEADERBODY_GRAMMAR = {
 }
 
 
-def csv_lint(tree: language.DerivationTree) -> Union[bool, str]:
+def csv_lint(tree: isla.derivation_tree.DerivationTree) -> Union[bool, str]:
     with tempfile.NamedTemporaryFile(suffix=".csv") as tmp:
         tmp.write(str(tree).encode())
         tmp.flush()

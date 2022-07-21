@@ -1,13 +1,13 @@
 import itertools
 import math
 import re
+import sys
 from bisect import bisect_left
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast, Callable, Iterable, Any
+from typing import Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast, Callable, Iterable, Any, Optional
 
 import datrie
-from fuzzingbook.Grammars import unreachable_nonterminals
 
 from isla.type_defs import Path, Grammar, ParseTree, ImmutableGrammar, CanonicalGrammar
 
@@ -263,6 +263,11 @@ def cluster_by_common_elements(l: Sequence[T], f: Callable[[T], Set[S]]) -> List
     return result
 
 
+def srange(characters: str) -> List[str]:
+    """Construct a list with all characters in the string"""
+    return [c for c in characters]
+
+
 RE_NONTERMINAL = re.compile(r'(<[^<> ]*>)')
 
 
@@ -384,6 +389,103 @@ def copy_trie(trie: datrie.Trie) -> datrie.Trie:
     for key, value in trie.items():
         result[key] = value
     return result
+
+
+def start_symbol():
+    return '<start>'
+
+
+def def_used_nonterminals(grammar: Grammar, _start_symbol: str = start_symbol()) -> \
+        Tuple[Optional[Set[str]], Optional[Set[str]]]:
+    """Return a pair (`defined_nonterminals`, `used_nonterminals`) in `grammar`.
+    In case of error, return (`None`, `None`)."""
+
+    defined_nonterminals = set()
+    used_nonterminals = {_start_symbol}
+
+    for defined_nonterminal in grammar:
+        defined_nonterminals.add(defined_nonterminal)
+        expansions = grammar[defined_nonterminal]
+        if not isinstance(expansions, list):
+            print(repr(defined_nonterminal) + ": expansion is not a list",
+                  file=sys.stderr)
+            return None, None
+
+        if len(expansions) == 0:
+            print(repr(defined_nonterminal) + ": expansion list empty",
+                  file=sys.stderr)
+            return None, None
+
+        for expansion in expansions:
+            if isinstance(expansion, tuple):
+                expansion = expansion[0]
+            if not isinstance(expansion, str):
+                print(repr(defined_nonterminal) + ": "
+                      + repr(expansion) + ": not a string",
+                      file=sys.stderr)
+                return None, None
+
+            for used_nonterminal in nonterminals(expansion):
+                used_nonterminals.add(used_nonterminal)
+
+    return defined_nonterminals, used_nonterminals
+
+
+def reachable_nonterminals(grammar: Grammar, _start_symbol: str = start_symbol()) -> Set[str]:
+    reachable = set()
+
+    def _find_reachable_nonterminals(grammar, symbol):
+        nonlocal reachable
+        reachable.add(symbol)
+        for expansion in grammar.get(symbol, []):
+            for nonterminal in nonterminals(expansion):
+                if nonterminal not in reachable:
+                    _find_reachable_nonterminals(grammar, nonterminal)
+
+    _find_reachable_nonterminals(grammar, _start_symbol)
+    return reachable
+
+
+def unreachable_nonterminals(grammar: Grammar, _start_symbol=start_symbol()) -> Set[str]:
+    return grammar.keys() - reachable_nonterminals(grammar, _start_symbol)
+
+
+def is_valid_grammar(grammar: Grammar, _start_symbol: str = start_symbol(), ) -> bool:
+    """Check if the given `grammar` is valid.
+       `start_symbol`: optional start symbol (default: `<start>`)
+       `supported_opts`: options supported (default: none)"""
+
+    defined_nonterminals, used_nonterminals = \
+        def_used_nonterminals(grammar, _start_symbol)
+    if defined_nonterminals is None or used_nonterminals is None:
+        return False
+
+    # Do not complain about '<start>' being not used,
+    # even if start_symbol is different
+    if start_symbol() in grammar:
+        used_nonterminals.add(start_symbol())
+
+    for unused_nonterminal in defined_nonterminals - used_nonterminals:
+        print(repr(unused_nonterminal) + ": defined, but not used",
+              file=sys.stderr)
+    for undefined_nonterminal in used_nonterminals - defined_nonterminals:
+        print(repr(undefined_nonterminal) + ": used, but not defined",
+              file=sys.stderr)
+
+    # Symbols must be reachable either from <start> or given start symbol
+    unreachable = unreachable_nonterminals(grammar, _start_symbol)
+    msg_start_symbol = _start_symbol
+
+    if start_symbol() in grammar:
+        unreachable = unreachable - reachable_nonterminals(grammar, start_symbol())
+        if start_symbol != start_symbol():
+            msg_start_symbol += " or " + start_symbol()
+
+    for unreachable_nonterminal in unreachable:
+        print(repr(unreachable_nonterminal) + ": unreachable from " + msg_start_symbol,
+              file=sys.stderr)
+
+    return used_nonterminals == defined_nonterminals and len(unreachable) == 0
 
 
 @dataclass(frozen=True)

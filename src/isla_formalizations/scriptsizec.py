@@ -4,11 +4,12 @@ import tempfile
 from subprocess import PIPE
 from typing import Union
 
-from fuzzingbook.Grammars import srange
 
+import isla.derivation_tree
 from isla import language
 # Based on:
 # Kartik Talwar. Tiny-C Compiler. https://gist.github.com/KartikTalwar/3095780.
+from isla.helpers import srange
 from isla.language import parse_isla
 from isla.isla_predicates import BEFORE_PREDICATE, SAME_POSITION_PREDICATE, LEVEL_PREDICATE
 
@@ -93,7 +94,7 @@ SCRIPTSIZE_C_NO_REDEF_CONSTR = parse_isla(
     structural_predicates={SAME_POSITION_PREDICATE})
 
 
-def compile_scriptsizec_clang(tree: language.DerivationTree) -> Union[bool, str]:
+def compile_scriptsizec_clang(tree: isla.derivation_tree.DerivationTree) -> Union[bool, str]:
     contents = "int main() {\n"
     contents += "\n" + str(tree).replace("\n", "    \t")
     contents += "\n" + "}"

@@ -3,14 +3,13 @@ import string
 from typing import cast, Union, List
 
 import z3
-from fuzzingbook.Grammars import srange
-from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
 
+import isla.derivation_tree
 import isla.isla_shortcuts as sc
 from isla import language
-from isla.helpers import delete_unreachable
-from isla.type_defs import Grammar
+from isla.helpers import delete_unreachable, srange
+from isla.parser import EarleyParser
 from isla.z3_helpers import z3_eq
 from .tar import ljust_crop_tar, rjust_crop_tar
 
@@ -50,8 +49,8 @@ SIMPLE_TAR_GRAMMAR = {
 
 
 def tar_checksum(
-        graph: gg.GrammarGraph, header: language.DerivationTree,
-        checksum_tree: language.DerivationTree) -> language.SemPredEvalResult:
+        graph: gg.GrammarGraph, header: isla.derivation_tree.DerivationTree,
+        checksum_tree: isla.derivation_tree.DerivationTree) -> language.SemPredEvalResult:
     if not header.is_complete():
         return language.SemPredEvalResult(None)
 
@@ -63,7 +62,7 @@ def tar_checksum(
     delete_unreachable(checksum_grammar)
     checksum_parser = EarleyParser(checksum_grammar)
 
-    space_checksum = language.DerivationTree.from_parse_tree(list(checksum_parser.parse("        "))[0]).get_subtree(
+    space_checksum = isla.derivation_tree.DerivationTree.from_parse_tree(list(checksum_parser.parse("        "))[0]).get_subtree(
         (0,))
     header_wo_checksum = header.replace_path(current_checksum_path, space_checksum)
 
@@ -76,7 +75,7 @@ def tar_checksum(
     delete_unreachable(checksum_grammar)
     checksum_parser = EarleyParser(checksum_grammar)
 
-    new_checksum_tree = language.DerivationTree.from_parse_tree(
+    new_checksum_tree = isla.derivation_tree.DerivationTree.from_parse_tree(
         list(checksum_parser.parse(checksum_value))[0]).get_subtree((0,))
 
     if str(new_checksum_tree) == str(checksum_tree):
@@ -89,8 +88,8 @@ TAR_CHECKSUM_PREDICATE = language.SemanticPredicate("tar_checksum", 2, tar_check
 
 
 def tar_checksum(
-        header: Union[language.Variable, language.DerivationTree],
-        checksum: Union[language.Variable, language.DerivationTree]) -> language.SemanticPredicateFormula:
+        header: Union[language.Variable, isla.derivation_tree.DerivationTree],
+        checksum: Union[language.Variable, isla.derivation_tree.DerivationTree]) -> language.SemanticPredicateFormula:
     return language.SemanticPredicateFormula(TAR_CHECKSUM_PREDICATE, header, checksum)
 
 

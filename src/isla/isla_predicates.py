@@ -2,14 +2,15 @@ import copy
 import random
 from typing import Union, List, Optional, Dict, Tuple, Callable
 
-from fuzzingbook.Parser import EarleyParser
 from grammar_graph.gg import GrammarGraph
 
 from isla import language
 from isla.existential_helpers import insert_tree, DIRECT_EMBEDDING, SELF_EMBEDDING
 from isla.helpers import delete_unreachable, parent_reflexive, parent_or_child, is_nonterminal, \
     canonical
-from isla.language import DerivationTree, SemPredEvalResult, StructuralPredicate, SemanticPredicate, Variable
+from isla.language import SemPredEvalResult, StructuralPredicate, SemanticPredicate, Variable
+from isla.derivation_tree import DerivationTree
+from isla.parser import EarleyParser
 from isla.type_defs import Grammar, Path, ParseTree
 
 

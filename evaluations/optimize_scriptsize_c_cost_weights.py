@@ -1,7 +1,7 @@
 import logging
 import random
 
-from isla.language import DerivationTree
+from isla.derivation_tree import DerivationTree
 from isla.optimizer import auto_tune_weight_vector
 from isla.solver import CostWeightVector
 from isla_formalizations.scriptsizec import SCRIPTSIZE_C_GRAMMAR, compile_scriptsizec_clang, \

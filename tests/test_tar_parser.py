@@ -4,7 +4,7 @@ import unittest
 from grammar_graph import gg
 
 from isla.helpers import tree_to_string
-from isla.language import DerivationTree
+from isla.derivation_tree import DerivationTree
 from isla_formalizations import tar
 from isla_formalizations.tar import TAR_GRAMMAR
 
