@@ -2630,7 +2630,20 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
     def exitConstDecl(self, ctx: IslaLanguageParser.ConstDeclContext):
         self.constant = Constant(parse_tree_text(ctx.ID()), parse_tree_text(ctx.varType()))
 
-    def exitForall(self, ctx: IslaLanguageParser.ForallContext):
+    def exitQfdFormula(
+            self,
+            ctx: IslaLanguageParser.ForallContext |
+                 IslaLanguageParser.ExistsContext |
+                 IslaLanguageParser.ForallMexprContext |
+                 IslaLanguageParser.ExistsMexprContext,
+            mexpr=False):
+        if mexpr:
+            mexpr = self.parse_mexpr(
+                antlr_get_text_with_whitespace(ctx.STRING())[1:-1],
+                self.mgr)
+        else:
+            mexpr = None
+
         var_type = parse_tree_text(ctx.boundVarType)
 
         if ctx.varId:
@@ -2641,82 +2654,37 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                     f"Variable {var_id} already declared "
                     f"(line {ctx.varId.line}, column {ctx.varId.column})")
         else:
-            var = self.vars_for_free_nonterminals[var_type]
+            var = self.register_var_for_free_nonterminal(var_type)
             var_id = var.name
 
-        self.formulas[ctx] = ForallFormula(
+        if ctx.inId:
+            in_var = self.get_var(parse_tree_text(ctx.inId))
+        else:
+            assert ctx.inVarType
+            in_var = self.register_var_for_free_nonterminal(parse_tree_text(ctx.inVarType))
+
+        self.formulas[ctx] = (
+            ForallFormula
+            if (isinstance(ctx, IslaLanguageParser.ForallContext) or
+                isinstance(ctx, IslaLanguageParser.ForallMexprContext))
+            else ExistsFormula
+        )(
             self.get_var(var_id, var_type),
-            self.get_var(parse_tree_text(ctx.inId)),
-            self.formulas[ctx.formula()])
+            in_var,
+            self.formulas[ctx.formula()],
+            bind_expression=mexpr)
+
+    def exitForall(self, ctx: IslaLanguageParser.ForallContext):
+        self.exitQfdFormula(ctx)
 
     def exitExists(self, ctx: IslaLanguageParser.ExistsContext):
-        var_type = parse_tree_text(ctx.boundVarType)
-
-        if ctx.varId:
-            var_id = parse_tree_text(ctx.varId)
-
-            if self.mgr.var_declared(var_id):
-                raise SyntaxError(
-                    f"Variable {var_id} already declared "
-                    f"(line {ctx.varId.line}, column {ctx.varId.column})")
-        else:
-            var = self.vars_for_free_nonterminals[var_type]
-            var_id = var.name
-
-        self.formulas[ctx] = ExistsFormula(
-            self.get_var(var_id, var_type),
-            self.get_var(parse_tree_text(ctx.inId)),
-            self.formulas[ctx.formula()])
+        self.exitQfdFormula(ctx)
 
     def exitForallMexpr(self, ctx: IslaLanguageParser.ForallMexprContext):
-        mexpr = self.parse_mexpr(
-            antlr_get_text_with_whitespace(ctx.STRING())[1:-1],
-            self.mgr)
-
-        var_type = parse_tree_text(ctx.boundVarType)
-
-        if ctx.varId:
-            var_id = parse_tree_text(ctx.varId)
-
-            if self.mgr.var_declared(var_id):
-                raise SyntaxError(
-                    f"Variable {var_id} already declared "
-                    f"(line {ctx.varId.line}, column {ctx.varId.column})")
-        else:
-            var = self.vars_for_free_nonterminals[var_type]
-            var_id = var.name
-
-        self.formulas[ctx] = ForallFormula(
-            self.get_var(var_id, var_type),
-            self.get_var(parse_tree_text(ctx.inId)),
-            self.formulas[ctx.formula()],
-            bind_expression=mexpr
-        )
+        self.exitQfdFormula(ctx, mexpr=True)
 
     def exitExistsMexpr(self, ctx: IslaLanguageParser.ExistsMexprContext):
-        mexpr = self.parse_mexpr(
-            antlr_get_text_with_whitespace(ctx.STRING())[1:-1],
-            self.mgr)
-
-        var_type = parse_tree_text(ctx.boundVarType)
-
-        if ctx.varId:
-            var_id = parse_tree_text(ctx.varId)
-
-            if self.mgr.var_declared(var_id):
-                raise SyntaxError(
-                    f"Variable {var_id} already declared "
-                    f"(line {ctx.varId.line}, column {ctx.varId.column})")
-        else:
-            var = self.vars_for_free_nonterminals[var_type]
-            var_id = var.name
-
-        self.formulas[ctx] = ExistsFormula(
-            self.get_var(var_id, var_type),
-            self.get_var(parse_tree_text(ctx.inId)),
-            self.formulas[ctx.formula()],
-            bind_expression=mexpr
-        )
+        self.exitQfdFormula(ctx, mexpr=True)
 
     def exitNegation(self, ctx: IslaLanguageParser.NegationContext):
         self.formulas[ctx] = -self.formulas[ctx.formula()]
