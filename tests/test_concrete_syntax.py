@@ -238,7 +238,7 @@ forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
         self.assertEqual(expected, result)
 
     def test_xpath_syntax_xml_simplified(self):
-        result = parse_isla('<xml-tree>.<xml-open-tag>.<id> = "a"')
+        result = parse_isla('(= <xml-tree>.<xml-open-tag>.<id> "a")')
         expected = parse_isla('''
 forall <xml-tree> tree="<{<id> id}><inner-xml-tree></<id>>" in start:
     (= id "a") and
@@ -248,7 +248,7 @@ forall <xml-tree> tree="<{<id> id_0} <xml-attribute>><inner-xml-tree></<id>>" in
         self.assertEqual(expected, result)
 
     def test_xpath_syntax_xml(self):
-        result = parse_isla('<xml-tree>.<xml-open-tag>.<id> = <xml-tree>.<xml-close-tag>.<id>')
+        result = parse_isla('(= <xml-tree>.<xml-open-tag>.<id> <xml-tree>.<xml-close-tag>.<id>)')
         expected = parse_isla('''
 forall <xml-tree> tree="<{<id> id}><inner-xml-tree></{<id> id_0}>" in start:
     (= id id_0) and
