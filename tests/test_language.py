@@ -311,6 +311,21 @@ class TestLanguage(unittest.TestCase):
         tree = DerivationTree.from_parse_tree(list(EarleyParser(attr_grammar).parse('a="..." b="..."'))[0][1][0])
         self.assertTrue(bind_expression.match(tree, XML_GRAMMAR))
 
+    def test_bind_expr_match_lang_assgn_1(self):
+        bind_expression = BindExpression(DummyVariable("<var>"), DummyVariable(" := "), BoundVariable("rhs", "<var>"))
+        tree = DerivationTree(
+            '<assgn>', (
+                DerivationTree('<var>'),
+                DerivationTree(' := ', ()),
+                DerivationTree('<rhs>', (DerivationTree('<var>'),))))
+
+        self.assertTrue(bind_expression.match(tree, LANG_GRAMMAR))
+
+    def test_bind_expr_match_lang_assgn_2(self):
+        bind_expression = BindExpression(BoundVariable("rhs", "<var>"))
+        tree = DerivationTree('<rhs>', (DerivationTree('<var>'),))
+        self.assertTrue(bind_expression.match(tree, LANG_GRAMMAR))
+
     def test_match_expr_match_xml(self):
         match_expression = BindExpression(
             "<",
