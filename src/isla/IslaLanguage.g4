@@ -5,10 +5,10 @@ start: constDecl? formula;
 constDecl: 'const' ID ':' varType ';' ;
 
 formula:
-    'forall' (boundVarType=varType) (varId=ID) ?            'in' (inId=ID | inVarType=varType) ':' formula  # Forall
-  | 'exists' (boundVarType=varType) (varId=ID) ?            'in' (inId=ID | inVarType=varType) ':' formula  # Exists
-  | 'forall' (boundVarType=varType) (varId=ID) ? '=' STRING 'in' (inId=ID | inVarType=varType) ':' formula  # ForallMexpr
-  | 'exists' (boundVarType=varType) (varId=ID) ? '=' STRING 'in' (inId=ID | inVarType=varType) ':' formula  # ExistsMexpr
+    'forall' (boundVarType=varType) (varId=ID) ?            ('in' (inId=ID | inVarType=varType)) ? ':' formula  # Forall
+  | 'exists' (boundVarType=varType) (varId=ID) ?            ('in' (inId=ID | inVarType=varType)) ? ':' formula  # Exists
+  | 'forall' (boundVarType=varType) (varId=ID) ? '=' STRING ('in' (inId=ID | inVarType=varType)) ? ':' formula  # ForallMexpr
+  | 'exists' (boundVarType=varType) (varId=ID) ? '=' STRING ('in' (inId=ID | inVarType=varType)) ? ':' formula  # ExistsMexpr
   | 'exists' 'int' ID ':' formula                                  # ExistsInt
   | 'forall' 'int' ID ':' formula                                  # ForallInt
   | 'not' formula                                                  # Negation

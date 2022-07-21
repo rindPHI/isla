@@ -2552,6 +2552,8 @@ def used_variables_in_concrete_syntax(inp: str | IslaLanguageParser.StartContext
     antlr4.ParseTreeWalker().walk(collector, context)
     return collector.used_variables
 
+def start_constant():
+    return Constant('start', '<start>')
 
 class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
     def __init__(
@@ -2602,7 +2604,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                     any(var not in arg.free_variables() for arg in formula.args)):
                 return type(formula)(*map(lambda arg: helper(arg, var), formula.args))
 
-            return ForallFormula(var, Constant('start', '<start>'), formula)
+            return ForallFormula(var, start_constant(), formula)
 
         for var in reversed(self.vars_for_free_nonterminals.values()):
             formula = helper(formula, var)
@@ -2659,9 +2661,10 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
         if ctx.inId:
             in_var = self.get_var(parse_tree_text(ctx.inId))
-        else:
-            assert ctx.inVarType
+        elif ctx.inVarType:
             in_var = self.register_var_for_free_nonterminal(parse_tree_text(ctx.inVarType))
+        else:
+            in_var = start_constant()
 
         self.formulas[ctx] = (
             ForallFormula
