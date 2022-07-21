@@ -122,7 +122,6 @@ class TestExistentialHelpers(unittest.TestCase):
         self.assertTrue(all(t.find_node(into_tree.get_subtree((0, 0))) for t in result))
         self.assertTrue(all(t.find_node(into_tree.get_subtree((0, 2, 0))) for t in result))
 
-
     def test_insert_json_1(self):
         inp = ' { "T" : { "I" : true , "" : [ false , "salami" ] , "" : true , "" : null , "" : false } } '
         tree = DerivationTree.from_parse_tree(parse(inp, JSON_GRAMMAR))
@@ -160,8 +159,8 @@ class TestExistentialHelpers(unittest.TestCase):
         )
 
         self.assertEqual(
-            ['<var> := <var> ; <assgn>',
-             '<var> := <var> ; <assgn> ; <stmt>',
+            ['<var> := <var> ; <assgn> ; <stmt>',
+             '<var> := <var> ; <assgn>',
              '<assgn> ; <var> := <var>'],
             list(map(str, results))
         )
