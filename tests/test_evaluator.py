@@ -2,6 +2,7 @@ import string
 import unittest
 from typing import cast, Callable
 
+import pytest
 import z3
 from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
 from fuzzingbook.Grammars import srange
