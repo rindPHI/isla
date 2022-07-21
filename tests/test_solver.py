@@ -234,16 +234,10 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             custom_test_func=validate_xml,
             cost_computer=GrammarBasedBlackboxCostComputer(
                 CostSettings(
-                    # CostWeightVector(
-                    #     tree_closing_cost=20,
-                    #     constraint_cost=0,
-                    #     derivation_depth_penalty=15,
-                    #     low_k_coverage_penalty=13,
-                    #     low_global_k_path_coverage_penalty=25),
                     CostWeightVector(
                         tree_closing_cost=16,
                         constraint_cost=7,
-                        derivation_depth_penalty=13,
+                        derivation_depth_penalty=30,
                         low_k_coverage_penalty=26,
                         low_global_k_path_coverage_penalty=20),
                     k=3),
@@ -283,6 +277,7 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
         )
 
     def test_declared_before_used_concrete_syntax(self):
+        # TODO: Check why there are so many similar inputs generated
         formula = """
 forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
   exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
@@ -298,7 +293,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
                     CostWeightVector(
                         tree_closing_cost=7,
                         constraint_cost=3.25,
-                        derivation_depth_penalty=12.06,
+                        derivation_depth_penalty=15,
                         low_k_coverage_penalty=21.5,
                         low_global_k_path_coverage_penalty=12.5),
                     k=4),

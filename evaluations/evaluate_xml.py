@@ -12,7 +12,7 @@ eval_k = 4
 cost_vector = CostWeightVector(
     tree_closing_cost=16,
     constraint_cost=7,
-    derivation_depth_penalty=13,
+    derivation_depth_penalty=30,
     low_k_coverage_penalty=26,
     low_global_k_path_coverage_penalty=20)
 
