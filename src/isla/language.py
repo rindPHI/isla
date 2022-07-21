@@ -928,17 +928,19 @@ class BindExpression:
         curr_elem_is_terminal = isinstance(curr_elem, DummyVariable) and not curr_elem.is_nonterminal
         elem_matched = False
         path_key = None
+        last_subtree_was_leaf = False
 
         while subtrees_trie and curr_elem:
             if (path_key is not None
                     and not elem_matched
-                    and len(subtrees_trie.suffixes(path_key)) == 1):
+                    and last_subtree_was_leaf):
                 # The last subtree was a leaf and was not matched.
                 # This means that the current result is only partial. Fail early.
                 return False
 
             path_key = next(iter(subtrees_trie))
             path, subtree = subtrees_trie[path_key]
+            last_subtree_was_leaf = len(subtrees_trie.suffixes(path_key)) == 1
             del subtrees_trie[path_key]
 
             elem_matched = False
