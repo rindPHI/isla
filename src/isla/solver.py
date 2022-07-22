@@ -1560,18 +1560,20 @@ class ISLaSolver:
 
         if assertions_activated():
             # Check correctness of regular expression
-            # 1. L(grammar) \subseteq L(regex)
-            self.logger.debug(
-                "Checking L(grammar) \\subseteq L(regex) for nonterminal '%s' and regex '%s'",
-                nonterminal,
-                regex)
             grammar = self.graph.subgraph(nonterminal).to_grammar()
-            fuzzer = GrammarCoverageFuzzer(grammar)
-            for _ in range(400):
-                inp = fuzzer.fuzz()
-                s = z3.Solver()
-                s.add(z3.InRe(z3.StringVal(inp), z3_regex))
-                assert s.check() == z3.sat, f"Input '{inp}' from grammar language is not in regex language"
+
+            # 1. L(grammar) \subseteq L(regex)
+            # NOTE: Removed this check. If unwinding is required, it will fail!
+            # self.logger.debug(
+            #     "Checking L(grammar) \\subseteq L(regex) for nonterminal '%s' and regex '%s'",
+            #     nonterminal,
+            #     regex)
+            # fuzzer = GrammarCoverageFuzzer(grammar)
+            # for _ in range(400):
+            #     inp = fuzzer.fuzz()
+            #     s = z3.Solver()
+            #     s.add(z3.InRe(z3.StringVal(inp), z3_regex))
+            #     assert s.check() == z3.sat, f"Input '{inp}' from grammar language is not in regex language"
 
             # 2. L(regex) \subseteq L(grammar)
             self.logger.debug(
