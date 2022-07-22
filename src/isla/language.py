@@ -2015,12 +2015,23 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
         return formula
 
+    def close_over_xpath_expressions(self, formula: Formula) -> Formula:
+        # xpath_segments = [
+        #     [(elem, 0) if '[' not in elem
+        #      else (elem.split('[')[0], elem.split('[')[1][:-1])
+        #      for elem in seg.split('.')]
+        #     for seg in parse_tree_text(ctx).split('..')]
+        return formula
+
     def enterStart(self, ctx: IslaLanguageParser.StartContext):
         self.used_variables = used_variables_in_concrete_syntax(ctx)
 
     def exitStart(self, ctx: IslaLanguageParser.StartContext):
         try:
-            self.result = self.close_over_free_nonterminals(self.mgr.create(self.formulas[ctx.formula()]))
+            self.result = \
+                self.close_over_xpath_expressions(
+                    self.close_over_free_nonterminals(
+                        self.mgr.create(self.formulas[ctx.formula()])))
         except RuntimeError as exc:
             raise SyntaxError(str(exc))
 
