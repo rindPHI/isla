@@ -1947,6 +1947,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.constant: Constant = Constant("start", "<start>")
         self.formulas = {}
         self.predicate_args = {}
+        self.grammar = grammar
 
         self.mgr = VariableManager(grammar)
         self.used_variables = None
@@ -2016,11 +2017,30 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         return formula
 
     def close_over_xpath_expressions(self, formula: Formula) -> Formula:
-        # xpath_segments = [
-        #     [(elem, 0) if '[' not in elem
-        #      else (elem.split('[')[0], elem.split('[')[1][:-1])
-        #      for elem in seg.split('.')]
-        #     for seg in parse_tree_text(ctx).split('..')]
+        assert self.grammar is not None, 'You need to pass a grammar to process "XPath" expressions in formulas.'
+
+        for xpath_expr in self.vars_for_xpath_expressions:
+            xpath_segments: List[List[Tuple[str, int]]] = [
+                [(elem, 0) if '[' not in elem
+                 else (elem.split('[')[0], elem.split('[')[1][:-1])
+                 for elem in seg.split('.')]
+                for seg in xpath_expr.split('..')]
+
+            assert len(xpath_segments) > 0
+            assert all(len(xpath_segment) > 1 for xpath_segment in xpath_segments)
+            assert all(
+                all((idx == 0 or is_nonterminal(elem)) and
+                    (idx > 0 or pos == 0)
+                    for idx, (elem, pos) in enumerate(xpath_segment))
+                for xpath_segment in xpath_segments)
+
+            # Only as intermediate simplification:
+            assert len(xpath_segments) == 1, 'The .. axis is not yet supported'
+            assert is_nonterminal(xpath_segments[0][0][0]), \
+                'Bound variables as first elements in XPath segments are not yet supported'
+
+            # TODO
+
         return formula
 
     def enterStart(self, ctx: IslaLanguageParser.StartContext):
