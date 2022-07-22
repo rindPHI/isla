@@ -6,7 +6,6 @@ USER root
 RUN echo "https://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories
 RUN apk update
 RUN apk upgrade
-# RUN apk add python3-dev git bash gcc g++ libgcc py3-scipy gfortran libgfortran musl musl-dev lapack lapack-dev freetype-dev libffi-dev make cmake clang
 RUN apk add python3-dev git bash gcc g++ make cmake clang z3
 
 RUN wget https://github.com/Clever/csvlint/releases/download/v0.3.0/csvlint-v0.3.0-linux-amd64.tar.gz -O /tmp/csvlint.tar.gz
