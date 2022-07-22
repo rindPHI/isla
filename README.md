@@ -126,20 +126,26 @@ though, the stream of solutions will be infinite (given that the grammar contain
 
 ## Build, Run, Install
 
-ISLa depends on Python 3.10 and the Python header files. Furthermore, the virtualenv library is required to run
-ISLa in a virtual environment. To compile all of ISLa's dependencies, the following further requirements have to
-be satisfied:
+ISLa depends on Python 3.10 and the Python header files. To compile all of ISLa's dependencies, you need
+gcc, g++ make, and cmake. To check out the current ISLa version, git will be needed. Additionally, for testing
+ISLa, clang and the `csvlint` executable are required (for the Scriptsize-C and CSV case studies).
 
-* gcc, g++, make, cmake
-* glibc or musl
-* Fortran
-* freetype, lapack, libffi
-
-On *Alpine Linux*, all dependencies can be installed using
+On *Alpine Linux*, all dependencies (but `csvlint`) can be installed using
 
 ```shell
-apk add python3 python3-dev py3-virtualenv git bash gcc g++ libgcc py3-scipy gfortran libgfortran musl musl-dev lapack lapack-dev freetype-dev libffi-dev make cmake clang
+apk add python3-dev gcc g++ make cmake git clang
 ```
+
+The `csvlint` executable can be obtained from
+https://github.com/Clever/csvlint/releases/download/v0.3.0/csvlint-v0.3.0-linux-amd64.tar.gz. You obtain and
+unpack `csvlint` by running (in a Unix shell)
+
+```shell
+wget https://github.com/Clever/csvlint/releases/download/v0.3.0/csvlint-v0.3.0-linux-amd64.tar.gz -O /tmp/csvlint.tar.gz
+tar xzf /tmp/csvlint.tar.gz -C /tmp
+```
+
+Then, move the file `/tmp/csvlint-v0.3.0-linux-amd64/csvlint` to some location in your PATH (e.g., `/usr/bin`).
 
 ### Docker
 
@@ -182,14 +188,8 @@ pip3 install --upgrade pip
 pip3 install -r requirements_test.txt
 
 # Run tests
-python3.10 -m tox
-```
-
-For running scripts without tox, you have to install ISLa in "editable" mode first (inside the virtual environment), as
-follows:
-
-```shell
 pip3 install -e .[dev,test]
+python3.10 -m pytest -n 16 tests
 ```
 
 Then you can, for instance, run `python3 tests/xml_demo.py` inside the virtual environment.

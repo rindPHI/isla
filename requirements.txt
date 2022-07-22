@@ -1,7 +1,6 @@
 # The ANTLR4 runtime *must* be pinned to 4.7.1 due to requirements by setuptools-antlr
 antlr4-python3-runtime==4.7.1
 datrie>=0.8.2
-docutils>=0.18.1
 grammar2regex @ git+https://github.com/rindPHI/grammar2regex
 grammargraph @ git+https://github.com/rindPHI/GrammarGraph
 pathos>=0.2.9
