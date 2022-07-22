@@ -4,13 +4,12 @@ import unittest
 
 import pytest
 import z3
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
-from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
 
 import isla.isla_shortcuts as sc
 from isla import language
 from isla.evaluator import well_formed
+from isla.fuzzer import GrammarCoverageFuzzer
 from isla.helpers import delete_unreachable
 from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, SAME_POSITION_PREDICATE
 from isla.isla_predicates import count, COUNT_PREDICATE
@@ -18,6 +17,7 @@ from isla.language import Constant, BoundVariable, Formula, BindExpression, \
     convert_to_dnf, ensure_unique_bound_variables, VariableManager, \
     DummyVariable, parse_isla, ISLaUnparser, SMTFormula
 from isla.derivation_tree import DerivationTree
+from isla.parser import EarleyParser
 from isla.z3_helpers import z3_eq
 from isla_formalizations import rest, scriptsizec, tar
 from isla_formalizations.csv import CSV_GRAMMAR, CSV_COLNO_PROPERTY
@@ -393,7 +393,7 @@ class TestLanguage(unittest.TestCase):
         fuzzer = GrammarCoverageFuzzer(scriptsizec.SCRIPTSIZE_C_GRAMMAR)
         for k in range(1, 5):
             for i in range(10):
-                tree = DerivationTree.from_parse_tree(fuzzer.expand_tree(("<start>", None)))
+                tree = fuzzer.expand_tree(DerivationTree("<start>"))
                 self.assertEqual(
                     {path_to_string(p) for p in tree.k_paths(graph, k)},
                     {path_to_string(p) for p in set(graph.k_paths_in_tree(tree.to_parse_tree(), k))},
@@ -406,13 +406,12 @@ class TestLanguage(unittest.TestCase):
         fuzzer = GrammarCoverageFuzzer(scriptsizec.SCRIPTSIZE_C_GRAMMAR)
         for k in range(1, 5):
             for i in range(20):
-                tree = ("<start>", None)
+                tree = DerivationTree("<start>")
                 for _ in range(random.randint(1, 10)):
                     tree = fuzzer.expand_tree_once(tree)
-                d_tree = DerivationTree.from_parse_tree(tree)
                 self.assertEqual(
-                    {path_to_string(p) for p in d_tree.k_paths(graph, k)},
-                    {path_to_string(p) for p in set(graph.k_paths_in_tree(d_tree.to_parse_tree(), k))},
+                    {path_to_string(p) for p in tree.k_paths(graph, k)},
+                    {path_to_string(p) for p in set(graph.k_paths_in_tree(tree.to_parse_tree(), k))},
                     f"Paths for tree {tree} differ"
                 )
 

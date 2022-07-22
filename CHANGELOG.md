@@ -21,6 +21,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
   nonterminal can be associated with a *dummy* variable in the match expression, we not correctly report that it
   is not bound by the quantifier and can be freely instantiated. This mitigates state explosion in certain cases.
 - Performance fix: Lazy computation of complex string arguments passed to the logger.
+- Removed all `fuzzingbook` dependencies. This significantly reduces the number of indirect dependencies
+  that have to be installed.
+- Split dependencies into required, dev, and test dependencies. If you want to develop or test ISLa, use
+  `pip install -e .[dev,test]` in your virtual environment.
+- Removed an assertion that made the solver fail for SMT constraints on non-regular nonterminals. For nonterminals
+  with a context-free language, the regular expression passed to the SMT solver will always be an approximation,
+  and it cannot be asserted that the languages of the subgrammar and the regex are identical.
 
 ## [0.2b3]
 

@@ -1,11 +1,10 @@
 import string
 from typing import Dict, Callable
 
-from fuzzingbook.GrammarFuzzer import tree_to_string
-from fuzzingbook.Parser import EarleyParser
-
 from isla import language
-from isla.type_defs import ParseTree, Path
+from isla.helpers import tree_to_string, srange, crange, convert_ebnf_grammar
+from isla.parser import EarleyParser
+from isla.type_defs import ParseTree, Path, Grammar
 
 LANG_GRAMMAR = {
     "<start>":
@@ -79,3 +78,37 @@ def get_subtree(path: Path, tree: ParseTree) -> ParseTree:
         return tree
 
     return get_subtree(path[1:], children[path[0]])
+
+
+CHARACTERS_WITHOUT_QUOTE = (
+        string.digits
+        + string.ascii_letters
+        + string.punctuation.replace('"', '').replace('\\', '')
+        + ' ')
+
+JSON_EBNF_GRAMMAR: Grammar = {
+    "<start>": ["<json>"],
+    "<json>": ["<element>"],
+    "<element>": ["<ws><value><ws>"],
+    "<value>": ["<object>", "<array>", "<string>", "<number>",
+                "true", "false", "null", "'; DROP TABLE STUDENTS"],
+    "<object>": ["{<ws>}", "{<members>}"],
+    "<members>": ["<member>(,<members>)*"],
+    "<member>": ["<ws><string><ws>:<element>"],
+    "<array>": ["[<ws>]", "[<elements>]"],
+    "<elements>": ["<element>(,<elements>)*"],
+    "<string>": ['"' + "<characters>" + '"'],
+    "<characters>": ["<character>*"],
+    "<character>": srange(CHARACTERS_WITHOUT_QUOTE),
+    "<number>": ["<int><frac><exp>"],
+    "<int>": ["<digit>", "<onenine><digits>", "-<digit>", "-<onenine><digits>"],
+    "<digits>": ["<digit>+"],
+    "<digit>": ['0', "<onenine>"],
+    "<onenine>": crange('1', '9'),
+    "<frac>": ["", ".<digits>"],
+    "<exp>": ["", "E<sign><digits>", "e<sign><digits>"],
+    "<sign>": ["", '+', '-'],
+    "<ws>": [" "]
+}
+
+JSON_GRAMMAR = convert_ebnf_grammar(JSON_EBNF_GRAMMAR)

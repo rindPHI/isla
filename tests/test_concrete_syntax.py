@@ -2,20 +2,18 @@ import string
 import unittest
 from typing import cast
 
-import pytest
 import z3
-from fuzzingbook.Grammars import srange
 from orderedset import OrderedSet
 
-from isla.helpers import strip_ws
+import isla.isla_shortcuts as sc
 from isla import language
-from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManager, used_variables_in_concrete_syntax
+from isla.helpers import strip_ws, srange
 from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
+from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManager, used_variables_in_concrete_syntax
 from isla.z3_helpers import z3_eq
 from isla_formalizations import scriptsizec
 from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 from test_data import LANG_GRAMMAR
-import isla.isla_shortcuts as sc
 
 
 class TestConcreteSyntax(unittest.TestCase):

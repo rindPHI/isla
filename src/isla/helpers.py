@@ -1,3 +1,4 @@
+import copy
 import itertools
 import math
 import re
@@ -266,6 +267,138 @@ def cluster_by_common_elements(l: Sequence[T], f: Callable[[T], Set[S]]) -> List
 def srange(characters: str) -> List[str]:
     """Construct a list with all characters in the string"""
     return [c for c in characters]
+
+
+def crange(character_start: str, character_end: str) -> List[str]:
+    return [chr(i) for i in range(ord(character_start), ord(character_end) + 1)]
+
+
+RE_EXTENDED_NONTERMINAL = re.compile(r'(<[^<> ]*>[?+*])')
+
+
+def extended_nonterminals(expansion: str) -> List[str]:
+    # In later chapters, we allow expansions to be tuples,
+    # with the expansion being the first element
+    if isinstance(expansion, tuple):
+        expansion = expansion[0]
+    return RE_EXTENDED_NONTERMINAL.findall(expansion)
+
+
+def extend_grammar(grammar: Grammar, extension: Optional[Grammar] = None) -> Grammar:
+    if extension is None:
+        extension = {}
+    new_grammar = copy.deepcopy(grammar)
+    new_grammar.update(extension)
+    return new_grammar
+
+
+def new_symbol(grammar: Grammar, symbol_name: str = "<symbol>") -> str:
+    """Return a new symbol for `grammar` based on `symbol_name`"""
+    if symbol_name not in grammar:
+        return symbol_name
+
+    count = 1
+    while True:
+        tentative_symbol_name = symbol_name[:-1] + "-" + repr(count) + ">"
+        if tentative_symbol_name not in grammar:
+            return tentative_symbol_name
+        count += 1
+
+
+def convert_ebnf_operators(ebnf_grammar: Grammar) -> Grammar:
+    """Convert a grammar in extended BNF to BNF"""
+    grammar = extend_grammar(ebnf_grammar)
+    for nonterminal in ebnf_grammar:
+        expansions = ebnf_grammar[nonterminal]
+
+        for i in range(len(expansions)):
+            expansion = expansions[i]
+            extended_symbols = extended_nonterminals(expansion)
+
+            for extended_symbol in extended_symbols:
+                operator = extended_symbol[-1:]
+                original_symbol = extended_symbol[:-1]
+                assert original_symbol in ebnf_grammar, \
+                    f"{original_symbol} is not defined in grammar"
+
+                new_sym = new_symbol(grammar, original_symbol)
+
+                exp = grammar[nonterminal][i]
+                opts = None
+                if isinstance(exp, tuple):
+                    (exp, opts) = exp
+                assert isinstance(exp, str)
+
+                new_exp = exp.replace(extended_symbol, new_sym, 1)
+                if opts:
+                    grammar[nonterminal][i] = (new_exp, opts)
+                else:
+                    grammar[nonterminal][i] = new_exp
+
+                if operator == '?':
+                    grammar[new_sym] = ["", original_symbol]
+                elif operator == '*':
+                    grammar[new_sym] = ["", original_symbol + new_sym]
+                elif operator == '+':
+                    grammar[new_sym] = [
+                        original_symbol, original_symbol + new_sym]
+
+    return grammar
+
+
+RE_PARENTHESIZED_EXPR = re.compile(r'\([^()]*\)[?+*]')
+
+
+def parenthesized_expressions(expansion: str) -> List[str]:
+    # In later chapters, we allow expansions to be tuples,
+    # with the expansion being the first element
+    if isinstance(expansion, tuple):
+        expansion = expansion[0]
+
+    return RE_PARENTHESIZED_EXPR.findall(expansion)
+
+
+def convert_ebnf_parentheses(ebnf_grammar: Grammar) -> Grammar:
+    """Convert a grammar in extended BNF to BNF"""
+    grammar = extend_grammar(ebnf_grammar)
+    for nonterminal in ebnf_grammar:
+        expansions = ebnf_grammar[nonterminal]
+
+        for i in range(len(expansions)):
+            expansion = expansions[i]
+            if not isinstance(expansion, str):
+                expansion = expansion[0]
+
+            while True:
+                parenthesized_exprs = parenthesized_expressions(expansion)
+                if len(parenthesized_exprs) == 0:
+                    break
+
+                for expr in parenthesized_exprs:
+                    operator = expr[-1:]
+                    contents = expr[1:-2]
+
+                    new_sym = new_symbol(grammar)
+
+                    exp = grammar[nonterminal][i]
+                    opts = None
+                    if isinstance(exp, tuple):
+                        (exp, opts) = exp
+                    assert isinstance(exp, str)
+
+                    expansion = exp.replace(expr, new_sym + operator, 1)
+                    if opts:
+                        grammar[nonterminal][i] = (expansion, opts)
+                    else:
+                        grammar[nonterminal][i] = expansion
+
+                    grammar[new_sym] = [contents]
+
+    return grammar
+
+
+def convert_ebnf_grammar(ebnf_grammar: Grammar) -> Grammar:
+    return convert_ebnf_operators(convert_ebnf_parentheses(ebnf_grammar))
 
 
 RE_NONTERMINAL = re.compile(r'(<[^<> ]*>)')

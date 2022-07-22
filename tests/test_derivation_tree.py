@@ -2,8 +2,7 @@ import random
 import unittest
 from typing import List
 
-from fuzzingbook.GrammarFuzzer import GrammarFuzzer
-
+from isla.fuzzer import GrammarFuzzer
 from isla.helpers import parent_or_child
 from isla.derivation_tree import DerivationTree
 from isla_formalizations.xml_lang import XML_GRAMMAR
@@ -209,7 +208,7 @@ class TestDerivationTree(unittest.TestCase):
             tree = ("<start>", None)
             for _ in range(random.randint(1, 50)):
                 try:
-                    tree = fuzzer.expand_tree_once(tree)
+                    tree = fuzzer.expand_tree_once(DerivationTree.from_parse_tree(tree)).to_parse_tree()
                 except ValueError:
                     # Tree already closed
                     break
@@ -217,7 +216,7 @@ class TestDerivationTree(unittest.TestCase):
             dtree = DerivationTree.from_parse_tree(tree)
             self.assertEqual(tree, dtree.to_parse_tree())
 
-            tree = fuzzer.expand_tree(tree)
+            tree = fuzzer.expand_tree(DerivationTree.from_parse_tree(tree)).to_parse_tree()
             dtree = DerivationTree.from_parse_tree(tree)
             self.assertEqual(tree, dtree.to_parse_tree())
 

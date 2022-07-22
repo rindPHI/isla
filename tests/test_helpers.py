@@ -1,21 +1,20 @@
 import copy
 import itertools
-import random
 import unittest
-from typing import Optional, cast
+from typing import Optional
 
 import z3
-from fuzzingbook.Parser import EarleyParser
 from grammar_graph.gg import GrammarGraph
 
+from isla.derivation_tree import DerivationTree
 from isla.existential_helpers import path_to_tree, paths_between
 from isla.helpers import is_prefix, path_iterator, delete_unreachable, \
     dict_of_lists_to_list_of_dicts, weighted_geometric_mean, canonical, trie_key_to_path, get_subtrie, path_to_trie_key, \
     mk_subtree_trie
-from isla.derivation_tree import DerivationTree
-from isla.z3_helpers import evaluate_z3_expression, z3_eq, smt_expr_to_str
 from isla.isla_predicates import is_before
+from isla.parser import EarleyParser
 from isla.type_defs import Grammar, ParseTree
+from isla.z3_helpers import evaluate_z3_expression, z3_eq, smt_expr_to_str
 from test_data import LANG_GRAMMAR
 
 

@@ -151,7 +151,6 @@ class GrammarFuzzer(Fuzzer):
         self.check_grammar()  # Invokes is_valid_grammar()
 
         self.derivation_tree: Optional[DerivationTree] = None
-        self.expand_node: Optional[Callable] = None
 
     def check_grammar(self) -> None:
         """Check the grammar passed"""

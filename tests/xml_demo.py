@@ -5,15 +5,15 @@ import xml.etree.ElementTree as ET
 from html import escape
 from typing import Optional, List, Dict
 
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
-from fuzzingbook.Grammars import srange
-from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
 
+from isla.fuzzer import GrammarCoverageFuzzer
+from isla.helpers import srange
 from isla.language import parse_isla
 from isla.derivation_tree import DerivationTree
 from isla.evaluator import evaluate
 from isla.optimizer import auto_tune_weight_vector
+from isla.parser import EarleyParser
 from isla.solver import ISLaSolver, CostSettings, GrammarBasedBlackboxCostComputer
 from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 
@@ -66,7 +66,7 @@ if __name__ == '__main__':
     fuzzer = GrammarCoverageFuzzer(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
     errors: Dict[str, int] = {}
     for _ in range(100):
-        inp = DerivationTree.from_parse_tree(fuzzer.expand_tree(("<start>", None)))
+        inp = fuzzer.expand_tree(DerivationTree("<start>"))
         out = []
         if not validate_xml(inp, out):
             assert out

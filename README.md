@@ -157,14 +157,13 @@ You should now have entered the container. Next, check out the ISLa repository, 
 ```shell
 git clone https://github.com/rindPHI/isla.git
 cd isla/
-pip3 install -r requirements.txt
 ```
 
 Now, you can perform an editable installation of ISLa and run the ISLa tests:
 
 ```shell
-pip3 install -e .
-python3.10 -m pytest -n 16
+pip3 install -e .[dev,test]
+python3.10 -m pytest -n 16 tests
 ```
 
 ### Virtual Environment
@@ -180,7 +179,7 @@ python3.10 -m venv venv
 source venv/bin/activate
 
 pip3 install --upgrade pip
-pip3 install -r requirements.txt
+pip3 install -r requirements_test.txt
 
 # Run tests
 python3.10 -m tox
@@ -190,7 +189,7 @@ For running scripts without tox, you have to install ISLa in "editable" mode fir
 follows:
 
 ```shell
-pip3 install -e .
+pip3 install -e .[dev,test]
 ```
 
 Then you can, for instance, run `python3 tests/xml_demo.py` inside the virtual environment.

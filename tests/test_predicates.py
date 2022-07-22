@@ -1,16 +1,15 @@
 import unittest
 
 import z3
-from fuzzingbook.Parser import EarleyParser
 from grammar_graph import gg
-from orderedset import OrderedSet
 
 from isla import language
+from isla.derivation_tree import DerivationTree
 from isla.evaluator import evaluate
 from isla.helpers import delete_unreachable
 from isla.isla_predicates import embed_tree, mk_parser, level_check, OCTAL_TO_DEC_PREDICATE, is_nth, NTH_PREDICATE
-from isla.language import parse_isla, Constant
-from isla.derivation_tree import DerivationTree
+from isla.language import parse_isla
+from isla.parser import EarleyParser
 from isla.type_defs import Path
 from isla_formalizations import tar, rest, scriptsizec
 from isla_formalizations.csv import CSV_GRAMMAR

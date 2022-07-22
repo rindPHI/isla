@@ -1,14 +1,13 @@
 import unittest
 
-from fuzzingbook.Grammars import JSON_GRAMMAR
-from fuzzingbook.Parser import EarleyParser
 from grammar_graph.gg import GrammarGraph
 
 from isla.existential_helpers import insert_tree, insert_trees
 from isla.derivation_tree import DerivationTree
+from isla.parser import EarleyParser
 from isla_formalizations import scriptsizec
 from isla_formalizations.xml_lang import XML_GRAMMAR, XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
-from test_data import LANG_GRAMMAR
+from test_data import LANG_GRAMMAR, JSON_GRAMMAR
 from test_helpers import parse, canonical
 
 

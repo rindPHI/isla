@@ -4,16 +4,16 @@ from typing import cast, Callable
 
 import pytest
 import z3
-from fuzzingbook.GrammarCoverageFuzzer import GrammarCoverageFuzzer
-from fuzzingbook.Grammars import srange
-from fuzzingbook.Parser import EarleyParser
+
+from isla.fuzzer import GrammarCoverageFuzzer
+from isla.parser import EarleyParser
 from orderedset import OrderedSet
 
 import isla.derivation_tree
 import isla.isla_shortcuts as sc
 from isla import language
 from isla.evaluator import evaluate, matches_for_quantified_formula, implies
-from isla.helpers import tree_to_string, canonical
+from isla.helpers import tree_to_string, canonical, srange
 from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, IN_TREE_PREDICATE, \
     SAME_POSITION_PREDICATE
 from isla.isla_predicates import COUNT_PREDICATE
@@ -160,9 +160,9 @@ class TestEvaluator(unittest.TestCase):
         success = 0
         fail = 0
         for _ in range(500):
-            tree = DerivationTree.from_parse_tree(fuzzer.expand_tree(("<start>", None)))
+            tree = fuzzer.expand_tree(DerivationTree("<start>", None))
             if evaluate(formula(tree), tree, LANG_GRAMMAR):
-                inp = tree_to_string(tree)
+                inp = str(tree)
                 try:
                     eval_lang(inp)
                 except KeyError:
