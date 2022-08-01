@@ -2025,13 +2025,25 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
         assert self.grammar is not None, 'You need to pass a grammar to process "XPath" expressions in formulas.'
 
-        for xpath_expr in self.vars_for_xpath_expressions:
-            xpath_segments: List[List[Tuple[str, int]]] = [
-                [(elem, 0) if '[' not in elem
-                 else (elem.split('[')[0], elem.split('[')[1][:-1])
-                 for elem in seg.split('.')]
-                for seg in xpath_expr.split('..')]
+        preprocessed_xpath_exprs_with_vars: List[Tuple[List[List[Tuple[str, int]]], BoundVariable]] = [
+            ([[(elem, 0) if '[' not in elem
+               else (elem.split('[')[0], elem.split('[')[1][:-1])
+               for elem in seg.split('.')]
+              for seg in xpath_expr.split('..')],
+             bound_mexpr_var)
+            for xpath_expr, bound_mexpr_var in self.vars_for_xpath_expressions.items()
+        ]
 
+        # TODO
+        # # We need to group XPath expressions by the first element of the first segment,
+        # # such that, e.g., `<xml-tree>.<xml-open-tag>.<id>` and `<xml-tree>.<xml-close-tag>.<id>`
+        # # refer to the same `<xml-tree>`-typed variable (similarly if the first element of the first
+        # # segment is a named variable).
+        # groups = {}
+        # for xpath_segments, bound_mexpr_var in preprocessed_xpath_exprs_with_vars:
+        #     groups.setdefault(xpath_segments[0][0][0], []).append((xpath_segments, bound_mexpr_var))
+
+        for xpath_segments, bound_mexpr_var in preprocessed_xpath_exprs_with_vars:
             assert len(xpath_segments) > 0
             assert all(len(xpath_segment) > 1 for xpath_segment in xpath_segments)
             assert all(
@@ -2056,12 +2068,6 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             bound_var = fresh_bound_variable(
                 self.used_variables,
                 BoundVariable(bound_var_type[1:-1], bound_var_type),
-                add=True)
-
-            bound_mexpr_var_type = xpath_segment[-1][0]
-            bound_mexpr_var = fresh_bound_variable(
-                self.used_variables,
-                BoundVariable(bound_mexpr_var_type[1:-1], bound_mexpr_var_type),
                 add=True)
 
             partial_match_expressions: List[Tuple[List[str], int]] = [([bound_var_type], 0)]
@@ -2098,8 +2104,6 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                 Formula.__and__,
                 [ForallFormula(bound_var, in_var, formula, bind_expression=match_expression)
                  for match_expression in match_expressions])
-
-            # TODO
 
         return ensure_unique_bound_variables(formula)
 
