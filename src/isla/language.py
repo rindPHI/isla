@@ -22,7 +22,7 @@ import isla.mexpr_parser.MexprParserListener as MexprParserListener
 from isla.derivation_tree import DerivationTree
 from isla.fuzzer import GrammarCoverageFuzzer
 from isla.helpers import RE_NONTERMINAL, is_nonterminal, assertions_activated, \
-    copy_trie
+    copy_trie, canonical, nth_occ, replace_in_list
 from isla.helpers import replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, \
     immutable_to_grammar, \
     nested_list_to_tuple
@@ -1948,6 +1948,8 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.formulas = {}
         self.predicate_args = {}
         self.grammar = grammar
+        if grammar:
+            self.canonical_grammar = canonical(grammar)
 
         self.mgr = VariableManager(grammar)
         self.used_variables = None
@@ -2017,6 +2019,9 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         return formula
 
     def close_over_xpath_expressions(self, formula: Formula) -> Formula:
+        if not self.vars_for_xpath_expressions:
+            return formula
+
         assert self.grammar is not None, 'You need to pass a grammar to process "XPath" expressions in formulas.'
 
         for xpath_expr in self.vars_for_xpath_expressions:
@@ -2036,8 +2041,62 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
             # Only as intermediate simplification:
             assert len(xpath_segments) == 1, 'The .. axis is not yet supported'
+
+            xpath_segment: List[Tuple[str, int]] = xpath_segments[0]
+            assert is_nonterminal(xpath_segment[0][0])
+
+            # Only as intermediate simplification:
             assert is_nonterminal(xpath_segments[0][0][0]), \
                 'Bound variables as first elements in XPath segments are not yet supported'
+            in_var_type = '<start>'
+            in_var = Constant('start', in_var_type)
+
+            bound_var_type = xpath_segment[0][0]
+            bound_var = fresh_bound_variable(
+                self.used_variables,
+                BoundVariable(bound_var_type[1:-1], bound_var_type),
+                add=True)
+
+            bound_mexpr_var_type = xpath_segment[-1][0]
+            bound_mexpr_var = fresh_bound_variable(
+                self.used_variables,
+                BoundVariable(bound_mexpr_var_type[1:-1], bound_mexpr_var_type),
+                add=True)
+
+            partial_match_expressions: List[Tuple[List[str], int]] = [([bound_var_type], 0)]
+
+            previous_nonterminal = bound_var_type
+            for nonterminal, position in xpath_segment[1:]:
+                # Find expansions of `previous_nonterminal` which include more than `position`
+                # occurrences of `nonterminal`.
+                expansions = [
+                    expansion for expansion in self.canonical_grammar[previous_nonterminal]
+                    if sum([1 if elem == nonterminal else 0 for elem in expansion]) > position]
+
+                # Replace the indicated position in each `partial_match_expressions` list
+                # with the new expansion; the new position points to the `nonterminal` element
+                # that should be expanded next.
+                partial_match_expressions = [
+                    (replace_in_list(prev_expansion, expansion, idx_to_expand),
+                     nth_occ(expansion, nonterminal, position) + position)
+                    for prev_expansion, idx_to_expand in partial_match_expressions
+                    for expansion in expansions]
+
+                assert all(mexpr[idx] == nonterminal for mexpr, idx in partial_match_expressions)
+
+                previous_nonterminal = nonterminal
+
+            match_expressions = [
+                BindExpression(*replace_in_list(
+                    expanded_match_expression,
+                    bound_mexpr_var,
+                    idx_of_bound_var))
+                for expanded_match_expression, idx_of_bound_var in partial_match_expressions]
+
+            formula = ensure_unique_bound_variables(reduce(
+                Formula.__and__,
+                [ForallFormula(bound_var, in_var, formula, bind_expression=match_expression)
+                 for match_expression in match_expressions]))
 
             # TODO
 
