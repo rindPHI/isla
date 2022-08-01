@@ -2070,7 +2070,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                 BoundVariable(bound_var_type[1:-1], bound_var_type),
                 add=True)
 
-            partial_match_expressions: List[Tuple[List[str], int]] = [([bound_var_type], 0)]
+            partial_mexpr_trees: List[Tuple[DerivationTree, Path]] = [(DerivationTree(bound_var_type), ())]
 
             previous_nonterminal = bound_var_type
             for nonterminal, position in xpath_segment[1:]:
@@ -2080,25 +2080,30 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                     expansion for expansion in self.canonical_grammar[previous_nonterminal]
                     if sum([1 if elem == nonterminal else 0 for elem in expansion]) > position]
 
-                # Replace the indicated position in each `partial_match_expressions` list
+                # Replace the indicated position in each `partial_mexpr_trees` list
                 # with the new expansion; the new position points to the `nonterminal` element
                 # that should be expanded next.
-                partial_match_expressions = [
-                    (replace_in_list(prev_expansion, expansion, idx_to_expand),
-                     nth_occ(expansion, nonterminal, position) + idx_to_expand)
-                    for prev_expansion, idx_to_expand in partial_match_expressions
+                partial_mexpr_trees = [
+                    (prev_expansion.replace_path(
+                        path_to_expand,
+                        DerivationTree(
+                            prev_expansion.value,
+                            [DerivationTree(elem) if is_nonterminal(elem)
+                             else DerivationTree(elem, [])
+                             for elem in expansion])),
+                     path_to_expand + (nth_occ(expansion, nonterminal, position),))
+                    for prev_expansion, path_to_expand in partial_mexpr_trees
                     for expansion in expansions]
 
-                assert all(mexpr[idx] == nonterminal for mexpr, idx in partial_match_expressions)
+                assert all(tree.get_subtree(path).value == nonterminal for tree, path in partial_mexpr_trees)
 
                 previous_nonterminal = nonterminal
 
             match_expressions = [
-                BindExpression(*replace_in_list(
-                    expanded_match_expression,
-                    bound_mexpr_var,
-                    idx_of_bound_var))
-                for expanded_match_expression, idx_of_bound_var in partial_match_expressions]
+                BindExpression(*[
+                    (bound_mexpr_var if path == path_to_bound_var else leaf.value)
+                    for path, leaf in expanded_match_expression.leaves()])
+                for expanded_match_expression, path_to_bound_var in partial_mexpr_trees]
 
             formula = reduce(
                 Formula.__and__,
