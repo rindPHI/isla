@@ -1993,7 +1993,8 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         assert len(nonterminal) > 2
 
         fresh_var = fresh_bound_variable(
-            self.used_variables | self.vars_for_free_nonterminals,
+            self.used_variables | self.vars_for_free_nonterminals |
+            {var.name for var in self.vars_for_xpath_expressions.values()},
             BoundVariable(nonterminal[1:-1], nonterminal),
             add=False)
 
@@ -2078,7 +2079,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                 # that should be expanded next.
                 partial_match_expressions = [
                     (replace_in_list(prev_expansion, expansion, idx_to_expand),
-                     nth_occ(expansion, nonterminal, position) + position)
+                     nth_occ(expansion, nonterminal, position) + idx_to_expand)
                     for prev_expansion, idx_to_expand in partial_match_expressions
                     for expansion in expansions]
 

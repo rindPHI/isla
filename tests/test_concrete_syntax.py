@@ -248,12 +248,18 @@ forall <xml-tree> xml-tree_0="<{<id> id_0}><inner-xml-tree><xml-close-tag>" in s
         self.assertEqual(expected, result)
 
     def test_xpath_syntax_xml(self):
-        result = parse_isla('(= <xml-tree>.<xml-open-tag>.<id> <xml-tree>.<xml-close-tag>.<id>)')
+        result = parse_isla(
+            '(= <xml-tree>.<xml-open-tag>.<id> <xml-tree>.<xml-close-tag>.<id>)',
+            grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
         expected = parse_isla('''
 forall <xml-tree> tree="<{<id> id}><inner-xml-tree></{<id> id_0}>" in start:
     (= id id_0) and
 forall <xml-tree> tree_0="<{<id> id_1} <xml-attribute>><inner-xml-tree></{<id> id_2}>" in start:
     (= id_1 id_2)''')
+
+        print(ISLaUnparser(result).unparse())
+        print()
+        print(ISLaUnparser(expected).unparse())
 
         self.assertEqual(expected, result)
 
