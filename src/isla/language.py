@@ -2094,14 +2094,14 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                     idx_of_bound_var))
                 for expanded_match_expression, idx_of_bound_var in partial_match_expressions]
 
-            formula = ensure_unique_bound_variables(reduce(
+            formula = reduce(
                 Formula.__and__,
                 [ForallFormula(bound_var, in_var, formula, bind_expression=match_expression)
-                 for match_expression in match_expressions]))
+                 for match_expression in match_expressions])
 
             # TODO
 
-        return formula
+        return ensure_unique_bound_variables(formula)
 
     def enterStart(self, ctx: IslaLanguageParser.StartContext):
         self.used_variables = used_variables_in_concrete_syntax(ctx)
