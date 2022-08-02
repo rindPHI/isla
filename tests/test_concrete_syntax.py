@@ -12,6 +12,7 @@ from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
 from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManager, used_variables_in_concrete_syntax
 from isla.z3_helpers import z3_eq
 from isla_formalizations import scriptsizec
+from isla_formalizations.tar import TAR_GRAMMAR, tar_checksum, TAR_CHECKSUM_PREDICATE
 from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 from test_data import LANG_GRAMMAR
 
@@ -239,6 +240,7 @@ forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
 
     def test_xpath_syntax_xml_simplified(self):
         result = parse_isla('(= <xml-tree>.<xml-open-tag>.<id> "a")', grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
+
         expected = parse_isla('''
 forall <xml-tree> xml-tree="<{<id> id} <xml-attribute>><inner-xml-tree><xml-close-tag>" in start:
     (= id "a") and
@@ -251,6 +253,7 @@ forall <xml-tree> xml-tree_0="<{<id> id_0}><inner-xml-tree><xml-close-tag>" in s
         result = parse_isla(
             '(= <xml-tree>.<xml-open-tag>.<id> <xml-tree>.<xml-close-tag>.<id>)',
             grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
+
         expected = parse_isla('''
 forall <xml-tree> xml-tree="<{<id> id} <xml-attribute>><inner-xml-tree></{<id> id_0}>" in start:
     (= id id_0) and
@@ -258,6 +261,35 @@ forall <xml-tree> xml-tree_0="<{<id> id_1}><inner-xml-tree></{<id> id_2}>" in st
     (= id_1 id_2)''')
 
         self.assertEqual(expected, result)
+
+    def test_xpath_syntax_tar_checksum(self):
+        result = parse_isla('''
+forall <checksum> in <header>:
+  tar_checksum(<header>, <checksum>)''', semantic_predicates={TAR_CHECKSUM_PREDICATE})
+
+        expected = parse_isla('''
+forall <header> header in start:
+  forall <checksum> checksum in header:
+    tar_checksum(header, checksum)''', semantic_predicates={TAR_CHECKSUM_PREDICATE})
+
+        self.assertEqual(expected, result)
+
+    def test_xpath_for_bound_variable_assgn_lang(self):
+        result = parse_isla(
+            '''exists <assgn> assgn:
+                 (before(assgn, <assgn>) and (= <assgn>.<rhs>.<var> assgn.<var>))''',
+            grammar=LANG_GRAMMAR,
+            structural_predicates={BEFORE_PREDICATE})
+
+        expected = parse_isla('''
+forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
+  exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
+    (before(assgn_2, assgn_1) and (= rhs lhs)))''', structural_predicates={BEFORE_PREDICATE})
+
+        self.assertEqual(expected, result)
+
+    # TODO: Add test case for conflicting XPath expressions. Example test_xpath_syntax_xml:
+    #       `<xml-tree>.<xml-open-tag>` and `<xml-tree>.<xml-open-tag>.<id>`.
 
 
 if __name__ == '__main__':
