@@ -12,7 +12,7 @@ from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
 from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManager, used_variables_in_concrete_syntax
 from isla.z3_helpers import z3_eq
 from isla_formalizations import scriptsizec
-from isla_formalizations.tar import TAR_GRAMMAR, tar_checksum, TAR_CHECKSUM_PREDICATE
+from isla_formalizations.tar import TAR_CHECKSUM_PREDICATE
 from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 from test_data import LANG_GRAMMAR
 
@@ -274,6 +274,20 @@ forall <header> header in start:
 
         self.assertEqual(expected, result)
 
+    def test_xpath_for_bound_variable_assgn_lang_simplified(self):
+        result = parse_isla(
+            '''exists <assgn> assgn:
+                 (before(assgn, <assgn>) and (= <assgn>.<rhs>.<var> "x"))''',
+            grammar=LANG_GRAMMAR,
+            structural_predicates={BEFORE_PREDICATE})
+
+        expected = parse_isla('''
+forall <assgn> assgn_0="<var> := {<var> var}" in start:
+  exists <assgn> assgn in start:
+    (before(assgn, assgn_0) and (= var "x")))''', structural_predicates={BEFORE_PREDICATE})
+
+        self.assertEqual(expected, result)
+
     def test_xpath_for_bound_variable_assgn_lang(self):
         result = parse_isla(
             '''exists <assgn> assgn:
@@ -282,11 +296,15 @@ forall <header> header in start:
             structural_predicates={BEFORE_PREDICATE})
 
         expected = parse_isla('''
-forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
-  exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
-    (before(assgn_2, assgn_1) and (= rhs lhs)))''', structural_predicates={BEFORE_PREDICATE})
+forall <assgn> assgn_0="<var> := {<var> rhs}" in start:
+  exists <assgn> assgn="{<var> lhs} := <rhs>" in start:
+    (before(assgn, assgn_0) and (= rhs lhs)))''', structural_predicates={BEFORE_PREDICATE})
 
-        self.assertEqual(expected, result)
+        unparsed_result = ISLaUnparser(result).unparse()
+        unparsed_expected = ISLaUnparser(expected).unparse()
+        self.assertEqual(unparsed_expected, unparsed_result)
+
+        # self.assertEqual(expected, result)
 
     # TODO: Add test case for conflicting XPath expressions. Example test_xpath_syntax_xml:
     #       `<xml-tree>.<xml-open-tag>` and `<xml-tree>.<xml-open-tag>.<id>`.

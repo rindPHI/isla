@@ -5,6 +5,7 @@ import unittest
 import pytest
 import z3
 from grammar_graph import gg
+from orderedset import OrderedSet
 
 import isla.isla_shortcuts as sc
 from isla import language
@@ -15,7 +16,7 @@ from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, SAME_POSITIO
 from isla.isla_predicates import count, COUNT_PREDICATE
 from isla.language import Constant, BoundVariable, Formula, BindExpression, \
     convert_to_dnf, ensure_unique_bound_variables, VariableManager, \
-    DummyVariable, parse_isla, ISLaUnparser, SMTFormula
+    DummyVariable, parse_isla, ISLaUnparser, SMTFormula, ExistsFormula
 from isla.derivation_tree import DerivationTree
 from isla.parser import EarleyParser
 from isla.z3_helpers import z3_eq
@@ -145,6 +146,14 @@ class TestLanguage(unittest.TestCase):
 
         self.assertFalse(well_formed(bad_formula_7, LANG_GRAMMAR)[0])
 
+    def test_free_variables(self):
+        # TODO: Remove if not refined, trivial that way
+        formula: ExistsFormula = parse_isla(
+            'exists <assgn> assgn in start: before(assgn, assgn)',
+            structural_predicates={BEFORE_PREDICATE})
+
+        self.assertEqual(OrderedSet([formula.bound_variable]), formula.inner_formula.free_variables())
+
     def test_equality_hash_smt_formulas(self):
         elem = BoundVariable("elem", "<digits>")
 
@@ -240,6 +249,14 @@ class TestLanguage(unittest.TestCase):
 
         self.assertEqual(expected, ensure_unique_bound_variables(formula))
         self.assertEqual(expected, ensure_unique_bound_variables(expected))
+
+    def test_ensure_unique_bound_variables_2(self):
+        formula = parse_isla('''forall <assgn> assgn_0="<var> := {<var> var}" in start:
+  exists <assgn> assgn in start:
+    (before(assgn, assgn_0) and
+    (= var "x"))''', structural_predicates={BEFORE_PREDICATE})
+
+        self.assertEqual(formula, ensure_unique_bound_variables(formula))
 
     def test_count(self):
         # prog = "x := 1 ; x := 1 ; x := 1"

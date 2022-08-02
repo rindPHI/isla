@@ -1710,14 +1710,14 @@ def ensure_unique_bound_variables(formula: Formula, used_names: Optional[Set[str
 
         for variable in orig_vars:
             proposal = variable.name
-            maybe_match = re.match(r'^(.*)_[0-9]+$', proposal)
-            if maybe_match:
-                proposal = maybe_match.group(1)
-
             if proposal not in used_names:
                 used_names.add(proposal)
                 result[variable] = variable
                 continue
+
+            maybe_match = re.match(r'^(.*)_[0-9]+$', proposal)
+            if maybe_match:
+                proposal = maybe_match.group(1)
 
             idx = 0
             while f"{proposal}_{idx}" in used_names:
@@ -1939,6 +1939,25 @@ def start_constant():
     return Constant('start', '<start>')
 
 
+def univ_close_over_var_push_in(
+        formula: Formula,
+        var: BoundVariable,
+        in_var: Variable = start_constant(),
+        mexpr: Optional[BindExpression] = None) -> Formula:
+    """Adds a universal quantifier over `var` with match expression `mexpr` and "in" variable `in_var`
+    in `formula`, such that, if `formula` is a propositional combination, the new quantifier is pushed
+    inside as much as possible."""
+
+    if not ({var} | (set() if not mexpr else mexpr.bound_variables())).intersection(formula.free_variables()):
+        return formula
+
+    if (isinstance(formula, PropositionalCombinator) and
+            any(var not in arg.free_variables() for arg in formula.args)):
+        return type(formula)(*map(lambda arg: univ_close_over_var_push_in(arg, var, in_var, mexpr), formula.args))
+
+    return ForallFormula(var, in_var, formula, bind_expression=mexpr)
+
+
 class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
     def __init__(
             self,
@@ -1957,7 +1976,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             self.canonical_grammar = canonical(grammar)
 
         self.mgr = VariableManager(grammar)
-        self.used_variables = None
+        self.used_variables: Optional[OrderedSet[str]] = None
         self.vars_for_free_nonterminals: Dict[str, BoundVariable] = {}
         self.vars_for_xpath_expressions: Dict[str, BoundVariable] = {}
 
@@ -2009,18 +2028,20 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         return fresh_var
 
     def close_over_free_nonterminals(self, formula: Formula) -> Formula:
-        def helper(formula: Formula, var: BoundVariable) -> Formula:
-            if var not in formula.free_variables():
-                return formula
+        # We skip "free nonterminals" that are also part of XPath expressions,
+        # as in `(before(assgn, <assgn>) and (= <assgn>.<rhs>.<var> "x"))`. Otherwise,
+        # We get one spurious quantifier over `<assgn>` alone, where we only need one
+        # also containing the match expression from the XPath specifier.
 
-            if (isinstance(formula, PropositionalCombinator) and
-                    any(var not in arg.free_variables() for arg in formula.args)):
-                return type(formula)(*map(lambda arg: helper(arg, var), formula.args))
+        first_nonterminals_in_xpath_expressions = {
+            xpath_expr.split('.')[0]
+            for xpath_expr in self.vars_for_xpath_expressions
+            if is_nonterminal(xpath_expr.split('.')[0])
+        }
 
-            return ForallFormula(var, start_constant(), formula)
-
-        for var in reversed(self.vars_for_free_nonterminals.values()):
-            formula = helper(formula, var)
+        for var_name, var in reversed(list(self.vars_for_free_nonterminals.items())):
+            if var_name not in first_nonterminals_in_xpath_expressions:
+                formula = univ_close_over_var_push_in(formula, var)
 
         return formula
 
@@ -2061,8 +2082,31 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             # Only as intermediate simplification:
             assert all(len(xpath_segments) == 1 for xpath_segments, _ in group), 'The .. axis is not yet supported'
 
-            assert is_nonterminal(bound_var_name_or_type)
-            bound_var_type = bound_var_name_or_type
+            is_existing_var = False
+            if is_nonterminal(bound_var_name_or_type) and bound_var_name_or_type in self.vars_for_free_nonterminals:
+                bound_var = self.vars_for_free_nonterminals[bound_var_name_or_type]
+                bound_var_type = bound_var.n_type
+            elif is_nonterminal(bound_var_name_or_type):
+                bound_var_type = bound_var_name_or_type
+                bound_var_name = bound_var_type[1:-1]
+                bound_var = fresh_bound_variable(
+                    self.used_variables,
+                    BoundVariable(bound_var_name, bound_var_type),
+                    add=False)
+                self.used_variables.add(bound_var.name)
+            else:
+                try:
+                    bound_var = next(
+                        var for var in VariablesCollector.collect(formula)
+                        if var.name == bound_var_name_or_type)
+                except StopIteration:
+                    raise RuntimeError(
+                        f'Unknown variable {bound_var_name_or_type} in '
+                        f'XPath expression {group[0][0]}')
+
+                is_existing_var = True
+                bound_var_type = bound_var.n_type
+                assert False, 'Not yet implemented'
 
             partial_mexpr_trees = {DerivationTree(bound_var_type): []}
             for xpath_segments, _ in group:
@@ -2082,15 +2126,13 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
                 match_expressions.append(BindExpression(*mexpr_elems))
 
-            bound_var_name = bound_var_type[1:-1]
-            bound_var = fresh_bound_variable(
-                self.used_variables,
-                BoundVariable(bound_var_name, bound_var_type),
-                add=True)
-
+            # TODO: Add match expression to existing quantifier if `is_existing_var` is True.
+            #       When implementing the '..' axis, take care not to break things; additional
+            #       quantifiers have to be put on a lower level. Well, that's actually also true
+            #       for "free" initial qfrs.
             formula = reduce(
                 Formula.__and__,
-                [ForallFormula(bound_var, Constant('start', '<start>'), formula, bind_expression=match_expression)
+                [univ_close_over_var_push_in(formula, bound_var, in_var=start_constant(), mexpr=match_expression)
                  for match_expression in match_expressions])
 
         return ensure_unique_bound_variables(formula)
@@ -2150,10 +2192,11 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
     def exitStart(self, ctx: IslaLanguageParser.StartContext):
         try:
+            formula: Formula = self.mgr.create(self.formulas[ctx.formula()])
+            self.used_variables.update({var.name for var in VariablesCollector.collect(formula)})
             self.result = \
                 self.close_over_xpath_expressions(
-                    self.close_over_free_nonterminals(
-                        self.mgr.create(self.formulas[ctx.formula()])))
+                    self.close_over_free_nonterminals(formula))
         except RuntimeError as exc:
             raise SyntaxError(str(exc))
 
