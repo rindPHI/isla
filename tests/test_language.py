@@ -233,7 +233,7 @@ class TestLanguage(unittest.TestCase):
                 assgn, start,
                 sc.smt_for(z3_eq(var_1.to_smt(), z3.StringVal("y")), var_1))
 
-        rhs_1_0 = BoundVariable("$rhs_1_0", "<rhs>")
+        rhs_1_0 = BoundVariable("$rhs_0", "<rhs>")
         var_1_0 = BoundVariable("$var1_0", "<var>")
 
         DummyVariable.cnt = 0
