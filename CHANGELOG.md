@@ -3,7 +3,7 @@
 This file contains the notable changes in the ISLa project since version 0.2a1
 (February 2022). Changes prior to this date are not documented.
 
-## [Unreleased]
+## [0.3b1]
 
 ### Added
 

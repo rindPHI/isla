@@ -2,6 +2,7 @@ import string
 import unittest
 from typing import cast
 
+import pytest
 import z3
 from orderedset import OrderedSet
 
@@ -12,7 +13,7 @@ from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
 from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManager, used_variables_in_concrete_syntax
 from isla.z3_helpers import z3_eq
 from isla_formalizations import scriptsizec
-from isla_formalizations.tar import TAR_CHECKSUM_PREDICATE
+from isla_formalizations.tar import TAR_CHECKSUM_PREDICATE, TAR_GRAMMAR
 from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 from test_data import LANG_GRAMMAR
 
@@ -355,9 +356,22 @@ forall <expr> expr in start:
 
         self.assertEqual(expected, result)
 
-        # unparsed_result = ISLaUnparser(result).unparse()
-        # unparsed_expected = ISLaUnparser(expected).unparse()
-        # self.assertEqual(unparsed_expected, unparsed_result)
+    @pytest.mark.skip('Functionality yet to be implemented.')
+    def test_xpath_syntax_twodot_axis_tar_checksum(self):
+        result = parse_isla(
+            'tar_checksum(<header>, <header>..<checksum>)',
+            grammar=TAR_GRAMMAR,
+            semantic_predicates={TAR_CHECKSUM_PREDICATE})
+
+        expected = parse_isla('''
+    forall <header> header in start:
+      forall <checksum> checksum in header:
+        tar_checksum(header, checksum)''', semantic_predicates={TAR_CHECKSUM_PREDICATE})
+
+        # self.assertEqual(expected, result)
+        unparsed_result = ISLaUnparser(result).unparse()
+        unparsed_expected = ISLaUnparser(expected).unparse()
+        self.assertEqual(unparsed_expected, unparsed_result)
 
 
 if __name__ == '__main__':

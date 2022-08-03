@@ -2269,7 +2269,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         group: List[Tuple[List[List[Tuple[str, int]]], BoundVariable]]
         for bound_var_name_or_type, group in groups.items():
             assert all(len(xpath_segments) > 0 for xpath_segments, _ in group)
-            assert all(len(xpath_segment) > 1 for xpath_segments, _ in group for xpath_segment in xpath_segments)
+            assert all(len(xpath_segments) > 1 or len(xpath_segments[0]) > 1 for xpath_segments, _ in group)
             assert all(
                 all((idx == 0 or is_nonterminal(elem)) and
                     (idx > 0 or pos == 0)
@@ -2547,6 +2547,9 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             self.predicate_args[ctx] = parse_tree_text(ctx)[1:-1]
         elif ctx.VAR_TYPE():
             variable = self.register_var_for_free_nonterminal(parse_tree_text(ctx.VAR_TYPE()))
+            self.predicate_args[ctx] = variable
+        elif ctx.XPATHEXPR():
+            variable = self.register_var_for_xpath_expression(parse_tree_text(ctx))
             self.predicate_args[ctx] = variable
         else:
             assert False, f'Unexpected predicate argument: {parse_tree_text(ctx)}'

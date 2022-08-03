@@ -24,7 +24,7 @@ def serializedATN():
         buf.write("\5\5\u00a3\n\5\3\5\3\5\3\5\3\5\3\5\3\5\3\5\3\5\3\5\3\5")
         buf.write("\3\5\3\5\7\5\u00b1\n\5\f\5\16\5\u00b4\13\5\3\6\3\6\3\6")
         buf.write("\2\4\6\b\7\2\4\6\b\n\2\t\5\2\t\t\26\31$+\3\2\26\27\3\2")
-        buf.write("\30\31\3\2&\'\3\2$%\4\2\t\t(+\3\2\33\36\2\u00dd\2\r\3")
+        buf.write("\30\31\3\2&\'\3\2$%\4\2\t\t(+\3\2\32\36\2\u00dd\2\r\3")
         buf.write("\2\2\2\4\21\3\2\2\2\6q\3\2\2\2\b\u00a2\3\2\2\2\n\u00b5")
         buf.write("\3\2\2\2\f\16\5\4\3\2\r\f\3\2\2\2\r\16\3\2\2\2\16\17\3")
         buf.write("\2\2\2\17\20\5\6\4\2\20\3\3\2\2\2\21\22\7\3\2\2\22\23")
@@ -1645,6 +1645,9 @@ class IslaLanguageParser ( Parser ):
         def STRING(self):
             return self.getToken(IslaLanguageParser.STRING, 0)
 
+        def XPATHEXPR(self):
+            return self.getToken(IslaLanguageParser.XPATHEXPR, 0)
+
         def getRuleIndex(self):
             return IslaLanguageParser.RULE_predicateArg
 
@@ -1668,7 +1671,7 @@ class IslaLanguageParser ( Parser ):
             self.enterOuterAlt(localctx, 1)
             self.state = 179
             _la = self._input.LA(1)
-            if not((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.VAR_TYPE) | (1 << IslaLanguageParser.STRING) | (1 << IslaLanguageParser.ID) | (1 << IslaLanguageParser.INT))) != 0)):
+            if not((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.XPATHEXPR) | (1 << IslaLanguageParser.VAR_TYPE) | (1 << IslaLanguageParser.STRING) | (1 << IslaLanguageParser.ID) | (1 << IslaLanguageParser.INT))) != 0)):
                 self._errHandler.recoverInline(self)
             else:
                 self._errHandler.reportMatch(self)

@@ -41,7 +41,7 @@ sexpr:
   | '(' op=sexpr sexpr + ')'                # SepxrApp
   ;
 
-predicateArg: ID | VAR_TYPE | INT | STRING ;
+predicateArg: ID | VAR_TYPE | INT | STRING | XPATHEXPR ;
 
 XPATHEXPR: (ID | VAR_TYPE) XPATHSEGMENT + ;
 
