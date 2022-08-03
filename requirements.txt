@@ -1,10 +1,10 @@
 # The ANTLR4 runtime *must* be pinned to 4.7.1 due to requirements by setuptools-antlr
 antlr4-python3-runtime==4.7.1
 datrie>=0.8.2
-grammar2regex @ git+https://github.com/rindPHI/grammar2regex
-grammargraph @ git+https://github.com/rindPHI/GrammarGraph
+grammar_to_regex>=0.0.2
+grammar_graph>=0.1.0
 pathos>=0.2.9
-proxyorderedset @ git+https://github.com/rindPHI/proxyorderedset
+proxyorderedset>=0.3.0
 setuptools-antlr>=0.4.0
 wheel>=0.37.1
 z3-solver>=4.8.17.0
