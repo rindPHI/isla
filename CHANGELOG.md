@@ -42,14 +42,14 @@ This file contains the notable changes in the ISLa project since version 0.2a1
   with a context-free language, the regular expression passed to the SMT solver will always be an approximation,
   and it cannot be asserted that the languages of the subgrammar and the regex are identical.
 
-## [0.2b3]
+## [0.2b3] - 2022-06-03
 
 ### Changed
 
 - Simplification in assignment language example in README.
 - Added README section about the new ISLa Docker image.
 
-## [0.2b2]
+## [0.2b2] - 2022-06-03
 
 ### Added
 
