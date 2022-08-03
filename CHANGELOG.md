@@ -3,7 +3,13 @@
 This file contains the notable changes in the ISLa project since version 0.2a1
 (February 2022). Changes prior to this date are not documented.
 
-## [0.3b1]
+## [unreleased]
+
+### Added
+
+- Brief descriptions of the built-in predicate added to the README.md file.
+
+## [0.3b1] - 2022-08-03
 
 ### Added
 

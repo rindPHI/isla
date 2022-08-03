@@ -780,6 +780,7 @@ forall <expr> expr in start:
         self.assertTrue(implies(constraint_2, constraint_3, canonical(LANG_GRAMMAR)))
         self.assertFalse(implies(constraint_3, constraint_2, canonical(LANG_GRAMMAR)))
 
+    @pytest.mark.flaky(reruns=3, reruns_delay=2)
     def test_implication_check_type_implied_scriptsize_c(self):
         constraint_1 = parse_isla("""
         forall <statement> stmt in start:
