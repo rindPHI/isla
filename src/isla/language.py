@@ -2282,6 +2282,11 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                     {tree: paths + [()] for tree, paths in partial_mexpr_trees.items()},
                     xpath_segments[0])
 
+            if not partial_mexpr_trees:
+                raise RuntimeError(
+                    'Could not convert XPath expressions to match expressions. ' +
+                    'Do you have conflicting XPath expressions in your formula?')
+
             match_expressions = []
             for expanded_match_expression, paths_to_bound_vars in partial_mexpr_trees.items():
                 paths_to_bound_vars_map = dict(zip(paths_to_bound_vars, [var for _, var in group]))

@@ -306,8 +306,21 @@ forall <assgn> assgn_0="<var> := {<var> var}" in start:
 
         self.assertEqual(expected, result)
 
-    # TODO: Add test case for conflicting XPath expressions. Example test_xpath_syntax_xml:
-    #       `<xml-tree>.<xml-open-tag>` and `<xml-tree>.<xml-open-tag>.<id>`.
+    def test_xpath_syntax_xml_conflicting_xpaths(self):
+        self.assertRaises(
+            SyntaxError,
+            parse_isla,
+            '(= <xml-tree>.<xml-open-tag>.<id> <xml-tree>.<xml-open-tag>)',
+            XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
+
+    def test_xpath_already_existing_match_expression(self):
+        self.assertRaises(
+            SyntaxError,
+            parse_isla,
+            '''exists <assgn> assgn="<var> := <rhs>" in start:
+                 (before(assgn, <assgn>) and (= <assgn>.<rhs>.<var> assgn.<var>))''',
+            LANG_GRAMMAR,
+            {BEFORE_PREDICATE})
 
 
 if __name__ == '__main__':
