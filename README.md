@@ -38,7 +38,28 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
     (before(assgn_2, assgn_1) and (= rhs lhs))
 ```
 
-or, using the Python API,
+ISLa also allows writing binary SMT-LIB S-expressions in infix syntax: `(= rhs lhs)` gets `rhs = lhs`.
+Furthermore, the `in start` is optional, and the "match expressions" `"{<var> lhs} := <rhs>"` etc. can (at least
+in such simple cases) be expressed using a syntax inspired by the 
+[XPath abbreviated syntax](https://www.w3.org/TR/1999/REC-xpath-19991116/#path-abbrev):
+
+```
+forall <assgn> assgn_1:
+  exists <assgn> assgn_2:
+    (before(assgn_2, assgn_1) and assgn_1.<rhs>.<var> = assgn_2.<var>)
+```
+
+Additionally, top-level universal quantifiers without match expressions (like `forall <assgn> assgn_1`) can be
+omitted; instead of the bound name (e.g., `assgn_1`) one then simply uses the type (`<assgn>`) in the inner
+formula. This only works for one such quantifier over any type, since otherwise, the names are needed for
+disambiguation. The final, simpler formula is:
+
+```
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)
+```
+
+Using the Python API, the same constraint is written as follows:
 
 ```python
 from isla import language

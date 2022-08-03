@@ -299,6 +299,28 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
                 gg.GrammarGraph.from_grammar(LANG_GRAMMAR)),
             num_solutions=50)
 
+    def test_declared_before_used_concrete_simplified_syntax(self):
+        formula = """
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)
+"""
+
+        self.execute_generation_test(
+            formula,
+            structural_predicates={BEFORE_PREDICATE},
+            max_number_free_instantiations=1,
+            cost_computer=GrammarBasedBlackboxCostComputer(
+                CostSettings(
+                    CostWeightVector(
+                        tree_closing_cost=7,
+                        constraint_cost=3.25,
+                        derivation_depth_penalty=15,
+                        low_k_coverage_penalty=21.5,
+                        low_global_k_path_coverage_penalty=12.5),
+                    k=4),
+                gg.GrammarGraph.from_grammar(LANG_GRAMMAR)),
+            num_solutions=50)
+
     def test_simple_csv_rows_equal_length(self):
         property = """
 forall <csv-header> hline in start:
