@@ -8,7 +8,7 @@ import sys
 def serializedATN():
     with StringIO() as buf:
         buf.write("\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3-")
-        buf.write("\u009d\4\2\t\2\4\3\t\3\4\4\t\4\4\5\t\5\4\6\t\6\3\2\5\2")
+        buf.write("\u00b8\4\2\t\2\4\3\t\3\4\4\t\4\4\5\t\5\4\6\t\6\3\2\5\2")
         buf.write("\16\n\2\3\2\3\2\3\3\3\3\3\3\3\3\3\3\3\3\3\4\3\4\3\4\3")
         buf.write("\4\5\4\34\n\4\3\4\3\4\3\4\5\4!\n\4\5\4#\n\4\3\4\3\4\3")
         buf.write("\4\3\4\3\4\5\4*\n\4\3\4\3\4\3\4\5\4/\n\4\5\4\61\n\4\3")
@@ -19,56 +19,71 @@ def serializedATN():
         buf.write("\4\f\4\16\4i\13\4\3\4\3\4\3\4\3\4\3\4\3\4\3\4\5\4r\n\4")
         buf.write("\3\4\3\4\3\4\3\4\3\4\3\4\3\4\3\4\3\4\3\4\3\4\3\4\3\4\3")
         buf.write("\4\3\4\7\4\u0083\n\4\f\4\16\4\u0086\13\4\3\5\3\5\3\5\3")
-        buf.write("\5\3\5\3\5\3\5\3\5\3\5\3\5\3\5\6\5\u0093\n\5\r\5\16\5")
-        buf.write("\u0094\3\5\3\5\5\5\u0099\n\5\3\6\3\6\3\6\2\3\6\7\2\4\6")
-        buf.write("\b\n\2\4\5\2\t\t\26\31$+\3\2\33\36\2\u00bc\2\r\3\2\2\2")
-        buf.write("\4\21\3\2\2\2\6q\3\2\2\2\b\u0098\3\2\2\2\n\u009a\3\2\2")
-        buf.write("\2\f\16\5\4\3\2\r\f\3\2\2\2\r\16\3\2\2\2\16\17\3\2\2\2")
-        buf.write("\17\20\5\6\4\2\20\3\3\2\2\2\21\22\7\3\2\2\22\23\7\35\2")
-        buf.write("\2\23\24\7\4\2\2\24\25\7\33\2\2\25\26\7\5\2\2\26\5\3\2")
-        buf.write("\2\2\27\30\b\4\1\2\30\31\7\6\2\2\31\33\7\33\2\2\32\34")
-        buf.write("\7\35\2\2\33\32\3\2\2\2\33\34\3\2\2\2\34\"\3\2\2\2\35")
-        buf.write(" \7\7\2\2\36!\7\35\2\2\37!\7\33\2\2 \36\3\2\2\2 \37\3")
-        buf.write("\2\2\2!#\3\2\2\2\"\35\3\2\2\2\"#\3\2\2\2#$\3\2\2\2$%\7")
-        buf.write("\4\2\2%r\5\6\4\21&\'\7\b\2\2\')\7\33\2\2(*\7\35\2\2)(")
-        buf.write("\3\2\2\2)*\3\2\2\2*\60\3\2\2\2+.\7\7\2\2,/\7\35\2\2-/")
-        buf.write("\7\33\2\2.,\3\2\2\2.-\3\2\2\2/\61\3\2\2\2\60+\3\2\2\2")
-        buf.write("\60\61\3\2\2\2\61\62\3\2\2\2\62\63\7\4\2\2\63r\5\6\4\20")
-        buf.write("\64\65\7\6\2\2\65\67\7\33\2\2\668\7\35\2\2\67\66\3\2\2")
-        buf.write("\2\678\3\2\2\289\3\2\2\29:\7\t\2\2:@\7\34\2\2;>\7\7\2")
-        buf.write("\2<?\7\35\2\2=?\7\33\2\2><\3\2\2\2>=\3\2\2\2?A\3\2\2\2")
-        buf.write("@;\3\2\2\2@A\3\2\2\2AB\3\2\2\2BC\7\4\2\2Cr\5\6\4\17DE")
-        buf.write("\7\b\2\2EG\7\33\2\2FH\7\35\2\2GF\3\2\2\2GH\3\2\2\2HI\3")
-        buf.write("\2\2\2IJ\7\t\2\2JP\7\34\2\2KN\7\7\2\2LO\7\35\2\2MO\7\33")
-        buf.write("\2\2NL\3\2\2\2NM\3\2\2\2OQ\3\2\2\2PK\3\2\2\2PQ\3\2\2\2")
-        buf.write("QR\3\2\2\2RS\7\4\2\2Sr\5\6\4\16TU\7\b\2\2UV\7\n\2\2VW")
-        buf.write("\7\35\2\2WX\7\4\2\2Xr\5\6\4\rYZ\7\6\2\2Z[\7\n\2\2[\\\7")
-        buf.write("\35\2\2\\]\7\4\2\2]r\5\6\4\f^_\7\13\2\2_r\5\6\4\13`a\7")
-        buf.write("\35\2\2ab\7\21\2\2bg\5\n\6\2cd\7\22\2\2df\5\n\6\2ec\3")
-        buf.write("\2\2\2fi\3\2\2\2ge\3\2\2\2gh\3\2\2\2hj\3\2\2\2ig\3\2\2")
-        buf.write("\2jk\7\23\2\2kr\3\2\2\2lr\5\b\5\2mn\7\21\2\2no\5\6\4\2")
-        buf.write("op\7\23\2\2pr\3\2\2\2q\27\3\2\2\2q&\3\2\2\2q\64\3\2\2")
-        buf.write("\2qD\3\2\2\2qT\3\2\2\2qY\3\2\2\2q^\3\2\2\2q`\3\2\2\2q")
-        buf.write("l\3\2\2\2qm\3\2\2\2r\u0084\3\2\2\2st\f\n\2\2tu\7\f\2\2")
-        buf.write("u\u0083\5\6\4\13vw\f\t\2\2wx\7\r\2\2x\u0083\5\6\4\nyz")
-        buf.write("\f\b\2\2z{\7\16\2\2{\u0083\5\6\4\t|}\f\7\2\2}~\7\17\2")
-        buf.write("\2~\u0083\5\6\4\b\177\u0080\f\6\2\2\u0080\u0081\7\20\2")
-        buf.write("\2\u0081\u0083\5\6\4\7\u0082s\3\2\2\2\u0082v\3\2\2\2\u0082")
-        buf.write("y\3\2\2\2\u0082|\3\2\2\2\u0082\177\3\2\2\2\u0083\u0086")
-        buf.write("\3\2\2\2\u0084\u0082\3\2\2\2\u0084\u0085\3\2\2\2\u0085")
-        buf.write("\7\3\2\2\2\u0086\u0084\3\2\2\2\u0087\u0099\7\24\2\2\u0088")
-        buf.write("\u0099\7\25\2\2\u0089\u0099\7\36\2\2\u008a\u0099\7\35")
-        buf.write("\2\2\u008b\u0099\7\32\2\2\u008c\u0099\7\33\2\2\u008d\u0099")
-        buf.write("\7\34\2\2\u008e\u0099\t\2\2\2\u008f\u0090\7\21\2\2\u0090")
-        buf.write("\u0092\5\b\5\2\u0091\u0093\5\b\5\2\u0092\u0091\3\2\2\2")
-        buf.write("\u0093\u0094\3\2\2\2\u0094\u0092\3\2\2\2\u0094\u0095\3")
-        buf.write("\2\2\2\u0095\u0096\3\2\2\2\u0096\u0097\7\23\2\2\u0097")
-        buf.write("\u0099\3\2\2\2\u0098\u0087\3\2\2\2\u0098\u0088\3\2\2\2")
-        buf.write("\u0098\u0089\3\2\2\2\u0098\u008a\3\2\2\2\u0098\u008b\3")
-        buf.write("\2\2\2\u0098\u008c\3\2\2\2\u0098\u008d\3\2\2\2\u0098\u008e")
-        buf.write("\3\2\2\2\u0098\u008f\3\2\2\2\u0099\t\3\2\2\2\u009a\u009b")
-        buf.write("\t\3\2\2\u009b\13\3\2\2\2\25\r\33 \").\60\67>@GNPgq\u0082")
-        buf.write("\u0084\u0094\u0098")
+        buf.write("\5\3\5\3\5\3\5\3\5\3\5\3\5\3\5\3\5\3\5\3\5\3\5\3\5\3\5")
+        buf.write("\3\5\3\5\3\5\3\5\6\5\u009d\n\5\r\5\16\5\u009e\3\5\3\5")
+        buf.write("\5\5\u00a3\n\5\3\5\3\5\3\5\3\5\3\5\3\5\3\5\3\5\3\5\3\5")
+        buf.write("\3\5\3\5\7\5\u00b1\n\5\f\5\16\5\u00b4\13\5\3\6\3\6\3\6")
+        buf.write("\2\4\6\b\7\2\4\6\b\n\2\t\5\2\t\t\26\31$+\3\2\26\27\3\2")
+        buf.write("\30\31\3\2&\'\3\2$%\4\2\t\t(+\3\2\33\36\2\u00dd\2\r\3")
+        buf.write("\2\2\2\4\21\3\2\2\2\6q\3\2\2\2\b\u00a2\3\2\2\2\n\u00b5")
+        buf.write("\3\2\2\2\f\16\5\4\3\2\r\f\3\2\2\2\r\16\3\2\2\2\16\17\3")
+        buf.write("\2\2\2\17\20\5\6\4\2\20\3\3\2\2\2\21\22\7\3\2\2\22\23")
+        buf.write("\7\35\2\2\23\24\7\4\2\2\24\25\7\33\2\2\25\26\7\5\2\2\26")
+        buf.write("\5\3\2\2\2\27\30\b\4\1\2\30\31\7\6\2\2\31\33\7\33\2\2")
+        buf.write("\32\34\7\35\2\2\33\32\3\2\2\2\33\34\3\2\2\2\34\"\3\2\2")
+        buf.write("\2\35 \7\7\2\2\36!\7\35\2\2\37!\7\33\2\2 \36\3\2\2\2 ")
+        buf.write("\37\3\2\2\2!#\3\2\2\2\"\35\3\2\2\2\"#\3\2\2\2#$\3\2\2")
+        buf.write("\2$%\7\4\2\2%r\5\6\4\21&\'\7\b\2\2\')\7\33\2\2(*\7\35")
+        buf.write("\2\2)(\3\2\2\2)*\3\2\2\2*\60\3\2\2\2+.\7\7\2\2,/\7\35")
+        buf.write("\2\2-/\7\33\2\2.,\3\2\2\2.-\3\2\2\2/\61\3\2\2\2\60+\3")
+        buf.write("\2\2\2\60\61\3\2\2\2\61\62\3\2\2\2\62\63\7\4\2\2\63r\5")
+        buf.write("\6\4\20\64\65\7\6\2\2\65\67\7\33\2\2\668\7\35\2\2\67\66")
+        buf.write("\3\2\2\2\678\3\2\2\289\3\2\2\29:\7\t\2\2:@\7\34\2\2;>")
+        buf.write("\7\7\2\2<?\7\35\2\2=?\7\33\2\2><\3\2\2\2>=\3\2\2\2?A\3")
+        buf.write("\2\2\2@;\3\2\2\2@A\3\2\2\2AB\3\2\2\2BC\7\4\2\2Cr\5\6\4")
+        buf.write("\17DE\7\b\2\2EG\7\33\2\2FH\7\35\2\2GF\3\2\2\2GH\3\2\2")
+        buf.write("\2HI\3\2\2\2IJ\7\t\2\2JP\7\34\2\2KN\7\7\2\2LO\7\35\2\2")
+        buf.write("MO\7\33\2\2NL\3\2\2\2NM\3\2\2\2OQ\3\2\2\2PK\3\2\2\2PQ")
+        buf.write("\3\2\2\2QR\3\2\2\2RS\7\4\2\2Sr\5\6\4\16TU\7\b\2\2UV\7")
+        buf.write("\n\2\2VW\7\35\2\2WX\7\4\2\2Xr\5\6\4\rYZ\7\6\2\2Z[\7\n")
+        buf.write("\2\2[\\\7\35\2\2\\]\7\4\2\2]r\5\6\4\f^_\7\13\2\2_r\5\6")
+        buf.write("\4\13`a\7\35\2\2ab\7\21\2\2bg\5\n\6\2cd\7\22\2\2df\5\n")
+        buf.write("\6\2ec\3\2\2\2fi\3\2\2\2ge\3\2\2\2gh\3\2\2\2hj\3\2\2\2")
+        buf.write("ig\3\2\2\2jk\7\23\2\2kr\3\2\2\2lr\5\b\5\2mn\7\21\2\2n")
+        buf.write("o\5\6\4\2op\7\23\2\2pr\3\2\2\2q\27\3\2\2\2q&\3\2\2\2q")
+        buf.write("\64\3\2\2\2qD\3\2\2\2qT\3\2\2\2qY\3\2\2\2q^\3\2\2\2q`")
+        buf.write("\3\2\2\2ql\3\2\2\2qm\3\2\2\2r\u0084\3\2\2\2st\f\n\2\2")
+        buf.write("tu\7\f\2\2u\u0083\5\6\4\13vw\f\t\2\2wx\7\r\2\2x\u0083")
+        buf.write("\5\6\4\nyz\f\b\2\2z{\7\16\2\2{\u0083\5\6\4\t|}\f\7\2\2")
+        buf.write("}~\7\17\2\2~\u0083\5\6\4\b\177\u0080\f\6\2\2\u0080\u0081")
+        buf.write("\7\20\2\2\u0081\u0083\5\6\4\7\u0082s\3\2\2\2\u0082v\3")
+        buf.write("\2\2\2\u0082y\3\2\2\2\u0082|\3\2\2\2\u0082\177\3\2\2\2")
+        buf.write("\u0083\u0086\3\2\2\2\u0084\u0082\3\2\2\2\u0084\u0085\3")
+        buf.write("\2\2\2\u0085\7\3\2\2\2\u0086\u0084\3\2\2\2\u0087\u0088")
+        buf.write("\b\5\1\2\u0088\u00a3\7\24\2\2\u0089\u00a3\7\25\2\2\u008a")
+        buf.write("\u00a3\7\36\2\2\u008b\u00a3\7\35\2\2\u008c\u00a3\7\32")
+        buf.write("\2\2\u008d\u00a3\7\33\2\2\u008e\u00a3\7\34\2\2\u008f\u00a3")
+        buf.write("\t\2\2\2\u0090\u0091\t\3\2\2\u0091\u0092\7\21\2\2\u0092")
+        buf.write("\u0093\5\b\5\2\u0093\u0094\7\23\2\2\u0094\u00a3\3\2\2")
+        buf.write("\2\u0095\u0096\7\21\2\2\u0096\u0097\5\b\5\2\u0097\u0098")
+        buf.write("\7\23\2\2\u0098\u00a3\3\2\2\2\u0099\u009a\7\21\2\2\u009a")
+        buf.write("\u009c\5\b\5\2\u009b\u009d\5\b\5\2\u009c\u009b\3\2\2\2")
+        buf.write("\u009d\u009e\3\2\2\2\u009e\u009c\3\2\2\2\u009e\u009f\3")
+        buf.write("\2\2\2\u009f\u00a0\3\2\2\2\u00a0\u00a1\7\23\2\2\u00a1")
+        buf.write("\u00a3\3\2\2\2\u00a2\u0087\3\2\2\2\u00a2\u0089\3\2\2\2")
+        buf.write("\u00a2\u008a\3\2\2\2\u00a2\u008b\3\2\2\2\u00a2\u008c\3")
+        buf.write("\2\2\2\u00a2\u008d\3\2\2\2\u00a2\u008e\3\2\2\2\u00a2\u008f")
+        buf.write("\3\2\2\2\u00a2\u0090\3\2\2\2\u00a2\u0095\3\2\2\2\u00a2")
+        buf.write("\u0099\3\2\2\2\u00a3\u00b2\3\2\2\2\u00a4\u00a5\f\b\2\2")
+        buf.write("\u00a5\u00a6\t\4\2\2\u00a6\u00b1\5\b\5\t\u00a7\u00a8\f")
+        buf.write("\7\2\2\u00a8\u00a9\t\5\2\2\u00a9\u00b1\5\b\5\b\u00aa\u00ab")
+        buf.write("\f\6\2\2\u00ab\u00ac\t\6\2\2\u00ac\u00b1\5\b\5\7\u00ad")
+        buf.write("\u00ae\f\5\2\2\u00ae\u00af\t\7\2\2\u00af\u00b1\5\b\5\6")
+        buf.write("\u00b0\u00a4\3\2\2\2\u00b0\u00a7\3\2\2\2\u00b0\u00aa\3")
+        buf.write("\2\2\2\u00b0\u00ad\3\2\2\2\u00b1\u00b4\3\2\2\2\u00b2\u00b0")
+        buf.write("\3\2\2\2\u00b2\u00b3\3\2\2\2\u00b3\t\3\2\2\2\u00b4\u00b2")
+        buf.write("\3\2\2\2\u00b5\u00b6\t\b\2\2\u00b6\13\3\2\2\2\27\r\33")
+        buf.write(" \").\60\67>@GNPgq\u0082\u0084\u009e\u00a2\u00b0\u00b2")
         return buf.getvalue()
 
 
@@ -925,7 +940,7 @@ class IslaLanguageParser ( Parser ):
                 self._ctx = localctx
                 _prevctx = localctx
                 self.state = 106
-                self.sexpr()
+                self.sexpr(0)
                 pass
 
             elif la_ == 10:
@@ -1046,23 +1061,27 @@ class IslaLanguageParser ( Parser ):
             super().copyFrom(ctx)
 
 
-
-    class SexprStrContext(SexprContext):
+    class SexprInfixReStrContext(SexprContext):
 
         def __init__(self, parser, ctx:ParserRuleContext): # actually a IslaLanguageParser.SexprContext
             super().__init__(parser)
+            self.op = None # Token
             self.copyFrom(ctx)
 
-        def STRING(self):
-            return self.getToken(IslaLanguageParser.STRING, 0)
+        def sexpr(self, i:int=None):
+            if i is None:
+                return self.getTypedRuleContexts(IslaLanguageParser.SexprContext)
+            else:
+                return self.getTypedRuleContext(IslaLanguageParser.SexprContext,i)
+
 
         def enterRule(self, listener:ParseTreeListener):
-            if hasattr( listener, "enterSexprStr" ):
-                listener.enterSexprStr(self)
+            if hasattr( listener, "enterSexprInfixReStr" ):
+                listener.enterSexprInfixReStr(self)
 
         def exitRule(self, listener:ParseTreeListener):
-            if hasattr( listener, "exitSexprStr" ):
-                listener.exitSexprStr(self)
+            if hasattr( listener, "exitSexprInfixReStr" ):
+                listener.exitSexprInfixReStr(self)
 
 
     class SexprNumContext(SexprContext):
@@ -1107,14 +1126,6 @@ class IslaLanguageParser ( Parser ):
             super().__init__(parser)
             self.copyFrom(ctx)
 
-        def DIV(self):
-            return self.getToken(IslaLanguageParser.DIV, 0)
-        def MUL(self):
-            return self.getToken(IslaLanguageParser.MUL, 0)
-        def PLUS(self):
-            return self.getToken(IslaLanguageParser.PLUS, 0)
-        def MINUS(self):
-            return self.getToken(IslaLanguageParser.MINUS, 0)
         def GEQ(self):
             return self.getToken(IslaLanguageParser.GEQ, 0)
         def LEQ(self):
@@ -1123,6 +1134,14 @@ class IslaLanguageParser ( Parser ):
             return self.getToken(IslaLanguageParser.GT, 0)
         def LT(self):
             return self.getToken(IslaLanguageParser.LT, 0)
+        def DIV(self):
+            return self.getToken(IslaLanguageParser.DIV, 0)
+        def MUL(self):
+            return self.getToken(IslaLanguageParser.MUL, 0)
+        def PLUS(self):
+            return self.getToken(IslaLanguageParser.PLUS, 0)
+        def MINUS(self):
+            return self.getToken(IslaLanguageParser.MINUS, 0)
 
         def enterRule(self, listener:ParseTreeListener):
             if hasattr( listener, "enterSexprOp" ):
@@ -1131,6 +1150,33 @@ class IslaLanguageParser ( Parser ):
         def exitRule(self, listener:ParseTreeListener):
             if hasattr( listener, "exitSexprOp" ):
                 listener.exitSexprOp(self)
+
+
+    class SexprInfixPlusMinusContext(SexprContext):
+
+        def __init__(self, parser, ctx:ParserRuleContext): # actually a IslaLanguageParser.SexprContext
+            super().__init__(parser)
+            self.op = None # Token
+            self.copyFrom(ctx)
+
+        def sexpr(self, i:int=None):
+            if i is None:
+                return self.getTypedRuleContexts(IslaLanguageParser.SexprContext)
+            else:
+                return self.getTypedRuleContext(IslaLanguageParser.SexprContext,i)
+
+        def PLUS(self):
+            return self.getToken(IslaLanguageParser.PLUS, 0)
+        def MINUS(self):
+            return self.getToken(IslaLanguageParser.MINUS, 0)
+
+        def enterRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "enterSexprInfixPlusMinus" ):
+                listener.enterSexprInfixPlusMinus(self)
+
+        def exitRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "exitSexprInfixPlusMinus" ):
+                listener.exitSexprInfixPlusMinus(self)
 
 
     class SexprTrueContext(SexprContext):
@@ -1167,22 +1213,6 @@ class IslaLanguageParser ( Parser ):
                 listener.exitSexprFreeId(self)
 
 
-    class SexprFalseContext(SexprContext):
-
-        def __init__(self, parser, ctx:ParserRuleContext): # actually a IslaLanguageParser.SexprContext
-            super().__init__(parser)
-            self.copyFrom(ctx)
-
-
-        def enterRule(self, listener:ParseTreeListener):
-            if hasattr( listener, "enterSexprFalse" ):
-                listener.enterSexprFalse(self)
-
-        def exitRule(self, listener:ParseTreeListener):
-            if hasattr( listener, "exitSexprFalse" ):
-                listener.exitSexprFalse(self)
-
-
     class SepxrAppContext(SexprContext):
 
         def __init__(self, parser, ctx:ParserRuleContext): # actually a IslaLanguageParser.SexprContext
@@ -1206,6 +1236,33 @@ class IslaLanguageParser ( Parser ):
                 listener.exitSepxrApp(self)
 
 
+    class SexprInfixMulDivContext(SexprContext):
+
+        def __init__(self, parser, ctx:ParserRuleContext): # actually a IslaLanguageParser.SexprContext
+            super().__init__(parser)
+            self.op = None # Token
+            self.copyFrom(ctx)
+
+        def sexpr(self, i:int=None):
+            if i is None:
+                return self.getTypedRuleContexts(IslaLanguageParser.SexprContext)
+            else:
+                return self.getTypedRuleContext(IslaLanguageParser.SexprContext,i)
+
+        def MUL(self):
+            return self.getToken(IslaLanguageParser.MUL, 0)
+        def DIV(self):
+            return self.getToken(IslaLanguageParser.DIV, 0)
+
+        def enterRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "enterSexprInfixMulDiv" ):
+                listener.enterSexprInfixMulDiv(self)
+
+        def exitRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "exitSexprInfixMulDiv" ):
+                listener.exitSexprInfixMulDiv(self)
+
+
     class SexprIdContext(SexprContext):
 
         def __init__(self, parser, ctx:ParserRuleContext): # actually a IslaLanguageParser.SexprContext
@@ -1224,62 +1281,186 @@ class IslaLanguageParser ( Parser ):
                 listener.exitSexprId(self)
 
 
+    class SexprPrefixContext(SexprContext):
 
-    def sexpr(self):
+        def __init__(self, parser, ctx:ParserRuleContext): # actually a IslaLanguageParser.SexprContext
+            super().__init__(parser)
+            self.op = None # Token
+            self.copyFrom(ctx)
 
-        localctx = IslaLanguageParser.SexprContext(self, self._ctx, self.state)
-        self.enterRule(localctx, 6, self.RULE_sexpr)
+        def sexpr(self):
+            return self.getTypedRuleContext(IslaLanguageParser.SexprContext,0)
+
+
+        def enterRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "enterSexprPrefix" ):
+                listener.enterSexprPrefix(self)
+
+        def exitRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "exitSexprPrefix" ):
+                listener.exitSexprPrefix(self)
+
+
+    class SepxrParenContext(SexprContext):
+
+        def __init__(self, parser, ctx:ParserRuleContext): # actually a IslaLanguageParser.SexprContext
+            super().__init__(parser)
+            self.copyFrom(ctx)
+
+        def sexpr(self):
+            return self.getTypedRuleContext(IslaLanguageParser.SexprContext,0)
+
+
+        def enterRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "enterSepxrParen" ):
+                listener.enterSepxrParen(self)
+
+        def exitRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "exitSepxrParen" ):
+                listener.exitSepxrParen(self)
+
+
+    class SexprStrContext(SexprContext):
+
+        def __init__(self, parser, ctx:ParserRuleContext): # actually a IslaLanguageParser.SexprContext
+            super().__init__(parser)
+            self.copyFrom(ctx)
+
+        def STRING(self):
+            return self.getToken(IslaLanguageParser.STRING, 0)
+
+        def enterRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "enterSexprStr" ):
+                listener.enterSexprStr(self)
+
+        def exitRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "exitSexprStr" ):
+                listener.exitSexprStr(self)
+
+
+    class SexprInfixEqContext(SexprContext):
+
+        def __init__(self, parser, ctx:ParserRuleContext): # actually a IslaLanguageParser.SexprContext
+            super().__init__(parser)
+            self.op = None # Token
+            self.copyFrom(ctx)
+
+        def sexpr(self, i:int=None):
+            if i is None:
+                return self.getTypedRuleContexts(IslaLanguageParser.SexprContext)
+            else:
+                return self.getTypedRuleContext(IslaLanguageParser.SexprContext,i)
+
+        def GEQ(self):
+            return self.getToken(IslaLanguageParser.GEQ, 0)
+        def LEQ(self):
+            return self.getToken(IslaLanguageParser.LEQ, 0)
+        def GT(self):
+            return self.getToken(IslaLanguageParser.GT, 0)
+        def LT(self):
+            return self.getToken(IslaLanguageParser.LT, 0)
+
+        def enterRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "enterSexprInfixEq" ):
+                listener.enterSexprInfixEq(self)
+
+        def exitRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "exitSexprInfixEq" ):
+                listener.exitSexprInfixEq(self)
+
+
+    class SexprFalseContext(SexprContext):
+
+        def __init__(self, parser, ctx:ParserRuleContext): # actually a IslaLanguageParser.SexprContext
+            super().__init__(parser)
+            self.copyFrom(ctx)
+
+
+        def enterRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "enterSexprFalse" ):
+                listener.enterSexprFalse(self)
+
+        def exitRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "exitSexprFalse" ):
+                listener.exitSexprFalse(self)
+
+
+
+    def sexpr(self, _p:int=0):
+        _parentctx = self._ctx
+        _parentState = self.state
+        localctx = IslaLanguageParser.SexprContext(self, self._ctx, _parentState)
+        _prevctx = localctx
+        _startState = 6
+        self.enterRecursionRule(localctx, 6, self.RULE_sexpr, _p)
         self._la = 0 # Token type
         try:
-            self.state = 150
+            self.enterOuterAlt(localctx, 1)
+            self.state = 160
             self._errHandler.sync(self)
-            token = self._input.LA(1)
-            if token in [IslaLanguageParser.T__17]:
+            la_ = self._interp.adaptivePredict(self._input,18,self._ctx)
+            if la_ == 1:
                 localctx = IslaLanguageParser.SexprTrueContext(self, localctx)
-                self.enterOuterAlt(localctx, 1)
-                self.state = 133
+                self._ctx = localctx
+                _prevctx = localctx
+
+                self.state = 134
                 self.match(IslaLanguageParser.T__17)
                 pass
-            elif token in [IslaLanguageParser.T__18]:
+
+            elif la_ == 2:
                 localctx = IslaLanguageParser.SexprFalseContext(self, localctx)
-                self.enterOuterAlt(localctx, 2)
-                self.state = 134
+                self._ctx = localctx
+                _prevctx = localctx
+                self.state = 135
                 self.match(IslaLanguageParser.T__18)
                 pass
-            elif token in [IslaLanguageParser.INT]:
+
+            elif la_ == 3:
                 localctx = IslaLanguageParser.SexprNumContext(self, localctx)
-                self.enterOuterAlt(localctx, 3)
-                self.state = 135
+                self._ctx = localctx
+                _prevctx = localctx
+                self.state = 136
                 self.match(IslaLanguageParser.INT)
                 pass
-            elif token in [IslaLanguageParser.ID]:
+
+            elif la_ == 4:
                 localctx = IslaLanguageParser.SexprIdContext(self, localctx)
-                self.enterOuterAlt(localctx, 4)
-                self.state = 136
+                self._ctx = localctx
+                _prevctx = localctx
+                self.state = 137
                 self.match(IslaLanguageParser.ID)
                 pass
-            elif token in [IslaLanguageParser.XPATHEXPR]:
+
+            elif la_ == 5:
                 localctx = IslaLanguageParser.SexprXPathExprContext(self, localctx)
-                self.enterOuterAlt(localctx, 5)
-                self.state = 137
+                self._ctx = localctx
+                _prevctx = localctx
+                self.state = 138
                 self.match(IslaLanguageParser.XPATHEXPR)
                 pass
-            elif token in [IslaLanguageParser.VAR_TYPE]:
+
+            elif la_ == 6:
                 localctx = IslaLanguageParser.SexprFreeIdContext(self, localctx)
-                self.enterOuterAlt(localctx, 6)
-                self.state = 138
+                self._ctx = localctx
+                _prevctx = localctx
+                self.state = 139
                 self.match(IslaLanguageParser.VAR_TYPE)
                 pass
-            elif token in [IslaLanguageParser.STRING]:
+
+            elif la_ == 7:
                 localctx = IslaLanguageParser.SexprStrContext(self, localctx)
-                self.enterOuterAlt(localctx, 7)
-                self.state = 139
+                self._ctx = localctx
+                _prevctx = localctx
+                self.state = 140
                 self.match(IslaLanguageParser.STRING)
                 pass
-            elif token in [IslaLanguageParser.T__6, IslaLanguageParser.T__19, IslaLanguageParser.T__20, IslaLanguageParser.T__21, IslaLanguageParser.T__22, IslaLanguageParser.DIV, IslaLanguageParser.MUL, IslaLanguageParser.PLUS, IslaLanguageParser.MINUS, IslaLanguageParser.GEQ, IslaLanguageParser.LEQ, IslaLanguageParser.GT, IslaLanguageParser.LT]:
+
+            elif la_ == 8:
                 localctx = IslaLanguageParser.SexprOpContext(self, localctx)
-                self.enterOuterAlt(localctx, 8)
-                self.state = 140
+                self._ctx = localctx
+                _prevctx = localctx
+                self.state = 141
                 _la = self._input.LA(1)
                 if not((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.T__6) | (1 << IslaLanguageParser.T__19) | (1 << IslaLanguageParser.T__20) | (1 << IslaLanguageParser.T__21) | (1 << IslaLanguageParser.T__22) | (1 << IslaLanguageParser.DIV) | (1 << IslaLanguageParser.MUL) | (1 << IslaLanguageParser.PLUS) | (1 << IslaLanguageParser.MINUS) | (1 << IslaLanguageParser.GEQ) | (1 << IslaLanguageParser.LEQ) | (1 << IslaLanguageParser.GT) | (1 << IslaLanguageParser.LT))) != 0)):
                     self._errHandler.recoverInline(self)
@@ -1287,37 +1468,163 @@ class IslaLanguageParser ( Parser ):
                     self._errHandler.reportMatch(self)
                     self.consume()
                 pass
-            elif token in [IslaLanguageParser.T__14]:
-                localctx = IslaLanguageParser.SepxrAppContext(self, localctx)
-                self.enterOuterAlt(localctx, 9)
-                self.state = 141
-                self.match(IslaLanguageParser.T__14)
+
+            elif la_ == 9:
+                localctx = IslaLanguageParser.SexprPrefixContext(self, localctx)
+                self._ctx = localctx
+                _prevctx = localctx
                 self.state = 142
-                localctx.op = self.sexpr()
-                self.state = 144 
+                localctx.op = self._input.LT(1)
+                _la = self._input.LA(1)
+                if not(_la==IslaLanguageParser.T__19 or _la==IslaLanguageParser.T__20):
+                    localctx.op = self._errHandler.recoverInline(self)
+                else:
+                    self._errHandler.reportMatch(self)
+                    self.consume()
+                self.state = 143
+                self.match(IslaLanguageParser.T__14)
+                self.state = 144
+                self.sexpr(0)
+                self.state = 145
+                self.match(IslaLanguageParser.T__16)
+                pass
+
+            elif la_ == 10:
+                localctx = IslaLanguageParser.SepxrParenContext(self, localctx)
+                self._ctx = localctx
+                _prevctx = localctx
+                self.state = 147
+                self.match(IslaLanguageParser.T__14)
+                self.state = 148
+                self.sexpr(0)
+                self.state = 149
+                self.match(IslaLanguageParser.T__16)
+                pass
+
+            elif la_ == 11:
+                localctx = IslaLanguageParser.SepxrAppContext(self, localctx)
+                self._ctx = localctx
+                _prevctx = localctx
+                self.state = 151
+                self.match(IslaLanguageParser.T__14)
+                self.state = 152
+                localctx.op = self.sexpr(0)
+                self.state = 154 
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
                 while True:
-                    self.state = 143
-                    self.sexpr()
-                    self.state = 146 
+                    self.state = 153
+                    self.sexpr(0)
+                    self.state = 156 
                     self._errHandler.sync(self)
                     _la = self._input.LA(1)
                     if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.T__6) | (1 << IslaLanguageParser.T__14) | (1 << IslaLanguageParser.T__17) | (1 << IslaLanguageParser.T__18) | (1 << IslaLanguageParser.T__19) | (1 << IslaLanguageParser.T__20) | (1 << IslaLanguageParser.T__21) | (1 << IslaLanguageParser.T__22) | (1 << IslaLanguageParser.XPATHEXPR) | (1 << IslaLanguageParser.VAR_TYPE) | (1 << IslaLanguageParser.STRING) | (1 << IslaLanguageParser.ID) | (1 << IslaLanguageParser.INT) | (1 << IslaLanguageParser.DIV) | (1 << IslaLanguageParser.MUL) | (1 << IslaLanguageParser.PLUS) | (1 << IslaLanguageParser.MINUS) | (1 << IslaLanguageParser.GEQ) | (1 << IslaLanguageParser.LEQ) | (1 << IslaLanguageParser.GT) | (1 << IslaLanguageParser.LT))) != 0)):
                         break
 
-                self.state = 148
+                self.state = 158
                 self.match(IslaLanguageParser.T__16)
                 pass
-            else:
-                raise NoViableAltException(self)
+
+
+            self._ctx.stop = self._input.LT(-1)
+            self.state = 176
+            self._errHandler.sync(self)
+            _alt = self._interp.adaptivePredict(self._input,20,self._ctx)
+            while _alt!=2 and _alt!=ATN.INVALID_ALT_NUMBER:
+                if _alt==1:
+                    if self._parseListeners is not None:
+                        self.triggerExitRuleEvent()
+                    _prevctx = localctx
+                    self.state = 174
+                    self._errHandler.sync(self)
+                    la_ = self._interp.adaptivePredict(self._input,19,self._ctx)
+                    if la_ == 1:
+                        localctx = IslaLanguageParser.SexprInfixReStrContext(self, IslaLanguageParser.SexprContext(self, _parentctx, _parentState))
+                        self.pushNewRecursionContext(localctx, _startState, self.RULE_sexpr)
+                        self.state = 162
+                        if not self.precpred(self._ctx, 6):
+                            from antlr4.error.Errors import FailedPredicateException
+                            raise FailedPredicateException(self, "self.precpred(self._ctx, 6)")
+                        self.state = 163
+                        localctx.op = self._input.LT(1)
+                        _la = self._input.LA(1)
+                        if not(_la==IslaLanguageParser.T__21 or _la==IslaLanguageParser.T__22):
+                            localctx.op = self._errHandler.recoverInline(self)
+                        else:
+                            self._errHandler.reportMatch(self)
+                            self.consume()
+                        self.state = 164
+                        self.sexpr(7)
+                        pass
+
+                    elif la_ == 2:
+                        localctx = IslaLanguageParser.SexprInfixPlusMinusContext(self, IslaLanguageParser.SexprContext(self, _parentctx, _parentState))
+                        self.pushNewRecursionContext(localctx, _startState, self.RULE_sexpr)
+                        self.state = 165
+                        if not self.precpred(self._ctx, 5):
+                            from antlr4.error.Errors import FailedPredicateException
+                            raise FailedPredicateException(self, "self.precpred(self._ctx, 5)")
+                        self.state = 166
+                        localctx.op = self._input.LT(1)
+                        _la = self._input.LA(1)
+                        if not(_la==IslaLanguageParser.PLUS or _la==IslaLanguageParser.MINUS):
+                            localctx.op = self._errHandler.recoverInline(self)
+                        else:
+                            self._errHandler.reportMatch(self)
+                            self.consume()
+                        self.state = 167
+                        self.sexpr(6)
+                        pass
+
+                    elif la_ == 3:
+                        localctx = IslaLanguageParser.SexprInfixMulDivContext(self, IslaLanguageParser.SexprContext(self, _parentctx, _parentState))
+                        self.pushNewRecursionContext(localctx, _startState, self.RULE_sexpr)
+                        self.state = 168
+                        if not self.precpred(self._ctx, 4):
+                            from antlr4.error.Errors import FailedPredicateException
+                            raise FailedPredicateException(self, "self.precpred(self._ctx, 4)")
+                        self.state = 169
+                        localctx.op = self._input.LT(1)
+                        _la = self._input.LA(1)
+                        if not(_la==IslaLanguageParser.DIV or _la==IslaLanguageParser.MUL):
+                            localctx.op = self._errHandler.recoverInline(self)
+                        else:
+                            self._errHandler.reportMatch(self)
+                            self.consume()
+                        self.state = 170
+                        self.sexpr(5)
+                        pass
+
+                    elif la_ == 4:
+                        localctx = IslaLanguageParser.SexprInfixEqContext(self, IslaLanguageParser.SexprContext(self, _parentctx, _parentState))
+                        self.pushNewRecursionContext(localctx, _startState, self.RULE_sexpr)
+                        self.state = 171
+                        if not self.precpred(self._ctx, 3):
+                            from antlr4.error.Errors import FailedPredicateException
+                            raise FailedPredicateException(self, "self.precpred(self._ctx, 3)")
+                        self.state = 172
+                        localctx.op = self._input.LT(1)
+                        _la = self._input.LA(1)
+                        if not((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.T__6) | (1 << IslaLanguageParser.GEQ) | (1 << IslaLanguageParser.LEQ) | (1 << IslaLanguageParser.GT) | (1 << IslaLanguageParser.LT))) != 0)):
+                            localctx.op = self._errHandler.recoverInline(self)
+                        else:
+                            self._errHandler.reportMatch(self)
+                            self.consume()
+                        self.state = 173
+                        self.sexpr(4)
+                        pass
+
+             
+                self.state = 178
+                self._errHandler.sync(self)
+                _alt = self._interp.adaptivePredict(self._input,20,self._ctx)
 
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
             self._errHandler.recover(self, re)
         finally:
-            self.exitRule()
+            self.unrollRecursionContexts(_parentctx)
         return localctx
 
     class PredicateArgContext(ParserRuleContext):
@@ -1359,7 +1666,7 @@ class IslaLanguageParser ( Parser ):
         self._la = 0 # Token type
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 152
+            self.state = 179
             _la = self._input.LA(1)
             if not((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.VAR_TYPE) | (1 << IslaLanguageParser.STRING) | (1 << IslaLanguageParser.ID) | (1 << IslaLanguageParser.INT))) != 0)):
                 self._errHandler.recoverInline(self)
@@ -1380,6 +1687,7 @@ class IslaLanguageParser ( Parser ):
         if self._predicates == None:
             self._predicates = dict()
         self._predicates[2] = self.formula_sempred
+        self._predicates[3] = self.sexpr_sempred
         pred = self._predicates.get(ruleIndex, None)
         if pred is None:
             raise Exception("No predicate with index:" + str(ruleIndex))
@@ -1405,6 +1713,23 @@ class IslaLanguageParser ( Parser ):
 
             if predIndex == 4:
                 return self.precpred(self._ctx, 4)
+         
+
+    def sexpr_sempred(self, localctx:SexprContext, predIndex:int):
+            if predIndex == 5:
+                return self.precpred(self._ctx, 6)
+         
+
+            if predIndex == 6:
+                return self.precpred(self._ctx, 5)
+         
+
+            if predIndex == 7:
+                return self.precpred(self._ctx, 4)
+         
+
+            if predIndex == 8:
+                return self.precpred(self._ctx, 3)
          
 
 

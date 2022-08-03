@@ -12,7 +12,7 @@ from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Set, Iter
 import antlr4
 import datrie
 import z3
-from antlr4 import InputStream, RuleContext
+from antlr4 import InputStream, RuleContext, ParserRuleContext
 from antlr4.Token import CommonToken
 from grammar_graph import gg
 from orderedset import OrderedSet
@@ -2166,6 +2166,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.result: Optional[Formula] = None
         self.constant: Constant = Constant("start", "<start>")
         self.formulas = {}
+        self.smt_expressions: Dict[ParserRuleContext, str] = {}
         self.predicate_args = {}
         self.grammar = grammar
         if grammar:
@@ -2551,9 +2552,8 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             assert False, f'Unexpected predicate argument: {parse_tree_text(ctx)}'
 
     def exitSMTFormula(self, ctx: IslaLanguageParser.SMTFormulaContext):
-        formula_text = "<N/A>"
+        formula_text = self.smt_expressions[ctx.sexpr()]
         try:
-            formula_text = antlr_get_text_with_whitespace(ctx)
             z3_constr = z3.parse_smt2_string(
                 f"(assert {formula_text})",
                 decls=({var: z3.String(var)
@@ -2569,12 +2569,65 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         free_vars = [self.get_var(str(s)) for s in get_symbols(z3_constr)]
         self.formulas[ctx] = SMTFormula(z3_constr, *free_vars)
 
+    def exitSexprTrue(self, ctx: IslaLanguageParser.SexprTrueContext):
+        self.smt_expressions[ctx] = antlr_get_text_with_whitespace(ctx)
+
+    def exitSexprFalse(self, ctx: IslaLanguageParser.SexprFalseContext):
+        self.smt_expressions[ctx] = antlr_get_text_with_whitespace(ctx)
+
+    def exitSexprNum(self, ctx: IslaLanguageParser.SexprNumContext):
+        self.smt_expressions[ctx] = antlr_get_text_with_whitespace(ctx)
+
+    def exitSexprId(self, ctx: IslaLanguageParser.SexprIdContext):
+        id_text = parse_tree_text(ctx.ID())
+        self.smt_expressions[ctx] = id_text
+
+        if not ISLaEmitter.is_protected_smtlib_keyword(id_text):
+            self.get_var(id_text)  # Simply register variable
+
+    def enterSexprXPathExpr(self, ctx: IslaLanguageParser.SexprXPathExprContext):
+        self.register_var_for_xpath_expression(parse_tree_text(ctx))
+
+    def exitSexprXPathExpr(self, ctx: IslaLanguageParser.SexprXPathExprContext):
+        self.smt_expressions[ctx] = parse_tree_text(ctx)
+
     def enterSexprFreeId(self, ctx: IslaLanguageParser.SexprFreeIdContext):
         nonterminal = parse_tree_text(ctx.VAR_TYPE())
         self.register_var_for_free_nonterminal(nonterminal)
 
-    def enterSexprXPathExpr(self, ctx: IslaLanguageParser.SexprXPathExprContext):
-        self.register_var_for_xpath_expression(parse_tree_text(ctx))
+    def exitSexprFreeId(self, ctx: IslaLanguageParser.SexprFreeIdContext):
+        self.smt_expressions[ctx] = parse_tree_text(ctx)
+
+    def exitSexprStr(self, ctx: IslaLanguageParser.SexprStrContext):
+        self.smt_expressions[ctx] = antlr_get_text_with_whitespace(ctx)
+
+    def exitSexprOp(self, ctx: IslaLanguageParser.SexprOpContext):
+        self.smt_expressions[ctx] = parse_tree_text(ctx)
+
+    def exitSexprPrefix(self, ctx: IslaLanguageParser.SexprPrefixContext):
+        self.smt_expressions[ctx] = f'({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr()]})'
+
+    def exitSexprInfixReStr(self, ctx: IslaLanguageParser.SexprInfixReStrContext):
+        self.smt_expressions[ctx] = \
+            f'({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})'
+
+    def exitSexprInfixPlusMinus(self, ctx: IslaLanguageParser.SexprInfixPlusMinusContext):
+        self.smt_expressions[ctx] = \
+            f'({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})'
+
+    def exitSexprInfixMulDiv(self, ctx: IslaLanguageParser.SexprInfixMulDivContext):
+        self.smt_expressions[ctx] = \
+            f'({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})'
+
+    def exitSexprInfixEq(self, ctx: IslaLanguageParser.SexprInfixEqContext):
+        self.smt_expressions[ctx] = \
+            f'({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})'
+
+    def exitSepxrParen(self, ctx: IslaLanguageParser.SepxrParenContext):
+        self.smt_expressions[ctx] = self.smt_expressions[ctx.sexpr()]
+
+    def exitSepxrApp(self, ctx: IslaLanguageParser.SepxrAppContext):
+        self.smt_expressions[ctx] = antlr_get_text_with_whitespace(ctx)
 
     def exitExistsInt(self, ctx: IslaLanguageParser.ExistsIntContext):
         var_id = parse_tree_text(ctx.ID())
@@ -2601,11 +2654,6 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.formulas[ctx] = ForallIntFormula(
             self.get_var(var_id, Variable.NUMERIC_NTYPE),
             self.formulas[ctx.formula()])
-
-    def exitSexprId(self, ctx: IslaLanguageParser.SexprIdContext):
-        id_text = parse_tree_text(ctx.ID())
-        if not ISLaEmitter.is_protected_smtlib_keyword(id_text):
-            self.get_var(id_text)  # Simply register variable
 
     def exitParFormula(self, ctx: IslaLanguageParser.ParFormulaContext):
         self.formulas[ctx] = self.formulas[ctx.formula()]

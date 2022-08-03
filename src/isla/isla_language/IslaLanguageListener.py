@@ -161,21 +161,12 @@ class IslaLanguageListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by IslaLanguageParser#SexprTrue.
-    def enterSexprTrue(self, ctx:IslaLanguageParser.SexprTrueContext):
+    # Enter a parse tree produced by IslaLanguageParser#SexprInfixReStr.
+    def enterSexprInfixReStr(self, ctx:IslaLanguageParser.SexprInfixReStrContext):
         pass
 
-    # Exit a parse tree produced by IslaLanguageParser#SexprTrue.
-    def exitSexprTrue(self, ctx:IslaLanguageParser.SexprTrueContext):
-        pass
-
-
-    # Enter a parse tree produced by IslaLanguageParser#SexprFalse.
-    def enterSexprFalse(self, ctx:IslaLanguageParser.SexprFalseContext):
-        pass
-
-    # Exit a parse tree produced by IslaLanguageParser#SexprFalse.
-    def exitSexprFalse(self, ctx:IslaLanguageParser.SexprFalseContext):
+    # Exit a parse tree produced by IslaLanguageParser#SexprInfixReStr.
+    def exitSexprInfixReStr(self, ctx:IslaLanguageParser.SexprInfixReStrContext):
         pass
 
 
@@ -188,39 +179,12 @@ class IslaLanguageListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by IslaLanguageParser#SexprId.
-    def enterSexprId(self, ctx:IslaLanguageParser.SexprIdContext):
-        pass
-
-    # Exit a parse tree produced by IslaLanguageParser#SexprId.
-    def exitSexprId(self, ctx:IslaLanguageParser.SexprIdContext):
-        pass
-
-
     # Enter a parse tree produced by IslaLanguageParser#SexprXPathExpr.
     def enterSexprXPathExpr(self, ctx:IslaLanguageParser.SexprXPathExprContext):
         pass
 
     # Exit a parse tree produced by IslaLanguageParser#SexprXPathExpr.
     def exitSexprXPathExpr(self, ctx:IslaLanguageParser.SexprXPathExprContext):
-        pass
-
-
-    # Enter a parse tree produced by IslaLanguageParser#SexprFreeId.
-    def enterSexprFreeId(self, ctx:IslaLanguageParser.SexprFreeIdContext):
-        pass
-
-    # Exit a parse tree produced by IslaLanguageParser#SexprFreeId.
-    def exitSexprFreeId(self, ctx:IslaLanguageParser.SexprFreeIdContext):
-        pass
-
-
-    # Enter a parse tree produced by IslaLanguageParser#SexprStr.
-    def enterSexprStr(self, ctx:IslaLanguageParser.SexprStrContext):
-        pass
-
-    # Exit a parse tree produced by IslaLanguageParser#SexprStr.
-    def exitSexprStr(self, ctx:IslaLanguageParser.SexprStrContext):
         pass
 
 
@@ -233,12 +197,102 @@ class IslaLanguageListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by IslaLanguageParser#SexprInfixPlusMinus.
+    def enterSexprInfixPlusMinus(self, ctx:IslaLanguageParser.SexprInfixPlusMinusContext):
+        pass
+
+    # Exit a parse tree produced by IslaLanguageParser#SexprInfixPlusMinus.
+    def exitSexprInfixPlusMinus(self, ctx:IslaLanguageParser.SexprInfixPlusMinusContext):
+        pass
+
+
+    # Enter a parse tree produced by IslaLanguageParser#SexprTrue.
+    def enterSexprTrue(self, ctx:IslaLanguageParser.SexprTrueContext):
+        pass
+
+    # Exit a parse tree produced by IslaLanguageParser#SexprTrue.
+    def exitSexprTrue(self, ctx:IslaLanguageParser.SexprTrueContext):
+        pass
+
+
+    # Enter a parse tree produced by IslaLanguageParser#SexprFreeId.
+    def enterSexprFreeId(self, ctx:IslaLanguageParser.SexprFreeIdContext):
+        pass
+
+    # Exit a parse tree produced by IslaLanguageParser#SexprFreeId.
+    def exitSexprFreeId(self, ctx:IslaLanguageParser.SexprFreeIdContext):
+        pass
+
+
     # Enter a parse tree produced by IslaLanguageParser#SepxrApp.
     def enterSepxrApp(self, ctx:IslaLanguageParser.SepxrAppContext):
         pass
 
     # Exit a parse tree produced by IslaLanguageParser#SepxrApp.
     def exitSepxrApp(self, ctx:IslaLanguageParser.SepxrAppContext):
+        pass
+
+
+    # Enter a parse tree produced by IslaLanguageParser#SexprInfixMulDiv.
+    def enterSexprInfixMulDiv(self, ctx:IslaLanguageParser.SexprInfixMulDivContext):
+        pass
+
+    # Exit a parse tree produced by IslaLanguageParser#SexprInfixMulDiv.
+    def exitSexprInfixMulDiv(self, ctx:IslaLanguageParser.SexprInfixMulDivContext):
+        pass
+
+
+    # Enter a parse tree produced by IslaLanguageParser#SexprId.
+    def enterSexprId(self, ctx:IslaLanguageParser.SexprIdContext):
+        pass
+
+    # Exit a parse tree produced by IslaLanguageParser#SexprId.
+    def exitSexprId(self, ctx:IslaLanguageParser.SexprIdContext):
+        pass
+
+
+    # Enter a parse tree produced by IslaLanguageParser#SexprPrefix.
+    def enterSexprPrefix(self, ctx:IslaLanguageParser.SexprPrefixContext):
+        pass
+
+    # Exit a parse tree produced by IslaLanguageParser#SexprPrefix.
+    def exitSexprPrefix(self, ctx:IslaLanguageParser.SexprPrefixContext):
+        pass
+
+
+    # Enter a parse tree produced by IslaLanguageParser#SepxrParen.
+    def enterSepxrParen(self, ctx:IslaLanguageParser.SepxrParenContext):
+        pass
+
+    # Exit a parse tree produced by IslaLanguageParser#SepxrParen.
+    def exitSepxrParen(self, ctx:IslaLanguageParser.SepxrParenContext):
+        pass
+
+
+    # Enter a parse tree produced by IslaLanguageParser#SexprStr.
+    def enterSexprStr(self, ctx:IslaLanguageParser.SexprStrContext):
+        pass
+
+    # Exit a parse tree produced by IslaLanguageParser#SexprStr.
+    def exitSexprStr(self, ctx:IslaLanguageParser.SexprStrContext):
+        pass
+
+
+    # Enter a parse tree produced by IslaLanguageParser#SexprInfixEq.
+    def enterSexprInfixEq(self, ctx:IslaLanguageParser.SexprInfixEqContext):
+        pass
+
+    # Exit a parse tree produced by IslaLanguageParser#SexprInfixEq.
+    def exitSexprInfixEq(self, ctx:IslaLanguageParser.SexprInfixEqContext):
+        pass
+
+
+    # Enter a parse tree produced by IslaLanguageParser#SexprFalse.
+    def enterSexprFalse(self, ctx:IslaLanguageParser.SexprFalseContext):
+        pass
+
+    # Exit a parse tree produced by IslaLanguageParser#SexprFalse.
+    def exitSexprFalse(self, ctx:IslaLanguageParser.SexprFalseContext):
         pass
 
 

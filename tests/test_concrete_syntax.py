@@ -238,6 +238,12 @@ forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
 
         self.assertEqual(expected, result)
 
+    def test_infix(self):
+        result = parse_isla('forall <var>: <var> = "x"')
+        expected = parse_isla('forall <var> var in start: (= var "x")')
+
+        self.assertEqual(expected, result)
+
     def test_xpath_syntax_xml_simplified(self):
         result = parse_isla('(= <xml-tree>.<xml-open-tag>.<id> "a")', grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
 
@@ -286,16 +292,12 @@ forall <assgn> assgn_0="<var> := {<var> var}" in start:
   exists <assgn> assgn in start:
     (before(assgn, assgn_0) and (= var "x")))''', structural_predicates={BEFORE_PREDICATE})
 
-        # unparsed_result = ISLaUnparser(result).unparse()
-        # unparsed_expected = ISLaUnparser(expected).unparse()
-        # self.assertEqual(unparsed_expected, unparsed_result)
-
         self.assertEqual(expected, result)
 
-    def test_xpath_for_bound_variable_assgn_lang(self):
+    def test_xpath_infix_for_bound_variable_assgn_lang(self):
         result = parse_isla(
             '''exists <assgn> assgn:
-                 (before(assgn, <assgn>) and (= <assgn>.<rhs>.<var> assgn.<var>))''',
+                 (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)''',
             grammar=LANG_GRAMMAR,
             structural_predicates={BEFORE_PREDICATE})
 
@@ -322,11 +324,11 @@ forall <assgn> assgn_0="<var> := {<var> var}" in start:
             LANG_GRAMMAR,
             {BEFORE_PREDICATE})
 
-    def test_xpath_c_defuse(self):
+    def test_xpath_infix_c_defuse(self):
         result = parse_isla(
             '''forall <id> in <expr>:
                  exists <declaration>:
-                    (= <id> <declaration>.<id>)''',
+                    <id> = <declaration>.<id>''',
             grammar=scriptsizec.SCRIPTSIZE_C_GRAMMAR,
             structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
 
@@ -339,6 +341,23 @@ forall <expr> expr in start:
        (= id id_1))''', structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
 
         self.assertEqual(expected, result)
+
+    def test_infix_equation_xml(self):
+        result = parse_isla(
+            '<xml-tree>.<xml-open-tag>.<id> = <xml-tree>.<xml-close-tag>.<id>',
+            grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
+
+        expected = parse_isla('''
+    forall <xml-tree> xml-tree="<{<id> id} <xml-attribute>><inner-xml-tree></{<id> id_0}>" in start:
+        (= id id_0) and
+    forall <xml-tree> xml-tree_0="<{<id> id_1}><inner-xml-tree></{<id> id_2}>" in start:
+        (= id_1 id_2)''')
+
+        self.assertEqual(expected, result)
+
+        # unparsed_result = ISLaUnparser(result).unparse()
+        # unparsed_expected = ISLaUnparser(expected).unparse()
+        # self.assertEqual(unparsed_expected, unparsed_result)
 
 
 if __name__ == '__main__':

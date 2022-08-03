@@ -23,16 +23,22 @@ formula:
   ;
 
 sexpr:
-    'true'          # SexprTrue
-  | 'false'         # SexprFalse
-  | INT             # SexprNum
-  | ID              # SexprId
-  | XPATHEXPR       # SexprXPathExpr
-  | VAR_TYPE         # SexprFreeId
-  | STRING          # SexprStr
-  | ('re.+' | 're.*' | 're.++' | 'str.++' | '=' | DIV | MUL | PLUS | MINUS | GEQ | LEQ | GT | LT)
-                    # SexprOp
-  | '(' op=sexpr sexpr + ')' # SepxrApp
+    'true'                                  # SexprTrue
+  | 'false'                                 # SexprFalse
+  | INT                                     # SexprNum
+  | ID                                      # SexprId
+  | XPATHEXPR                               # SexprXPathExpr
+  | VAR_TYPE                                # SexprFreeId
+  | STRING                                  # SexprStr
+  | ('=' | GEQ | LEQ | GT | LT | 're.+' | 're.*' | 're.++' | 'str.++' | DIV | MUL | PLUS | MINUS)
+                                            # SexprOp
+  | op=('re.+' | 're.*') '(' sexpr ')'      # SexprPrefix
+  | sexpr op=('re.++' | 'str.++') sexpr     # SexprInfixReStr
+  | sexpr op=(PLUS | MINUS) sexpr           # SexprInfixPlusMinus
+  | sexpr op=(MUL | DIV) sexpr              # SexprInfixMulDiv
+  | sexpr op=('=' | GEQ | LEQ | GT | LT) sexpr # SexprInfixEq
+  | '(' sexpr ')'                           # SepxrParen
+  | '(' op=sexpr sexpr + ')'                # SepxrApp
   ;
 
 predicateArg: ID | VAR_TYPE | INT | STRING ;
