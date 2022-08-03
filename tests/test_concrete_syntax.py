@@ -286,6 +286,10 @@ forall <assgn> assgn_0="<var> := {<var> var}" in start:
   exists <assgn> assgn in start:
     (before(assgn, assgn_0) and (= var "x")))''', structural_predicates={BEFORE_PREDICATE})
 
+        # unparsed_result = ISLaUnparser(result).unparse()
+        # unparsed_expected = ISLaUnparser(expected).unparse()
+        # self.assertEqual(unparsed_expected, unparsed_result)
+
         self.assertEqual(expected, result)
 
     def test_xpath_for_bound_variable_assgn_lang(self):
@@ -299,10 +303,6 @@ forall <assgn> assgn_0="<var> := {<var> var}" in start:
 forall <assgn> assgn_0="<var> := {<var> var}" in start:
   exists <assgn> assgn="{<var> var_0} := <rhs>" in start:
     (before(assgn, assgn_0) and (= var var_0)))''', structural_predicates={BEFORE_PREDICATE})
-
-        # unparsed_result = ISLaUnparser(result).unparse()
-        # unparsed_expected = ISLaUnparser(expected).unparse()
-        # self.assertEqual(unparsed_expected, unparsed_result)
 
         self.assertEqual(expected, result)
 
@@ -321,6 +321,24 @@ forall <assgn> assgn_0="<var> := {<var> var}" in start:
                  (before(assgn, <assgn>) and (= <assgn>.<rhs>.<var> assgn.<var>))''',
             LANG_GRAMMAR,
             {BEFORE_PREDICATE})
+
+    def test_xpath_c_defuse(self):
+        result = parse_isla(
+            '''forall <id> in <expr>:
+                 exists <declaration>:
+                    (= <id> <declaration>.<id>)''',
+            grammar=scriptsizec.SCRIPTSIZE_C_GRAMMAR,
+            structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
+
+        expected = parse_isla('''
+forall <expr> expr in start:
+  forall <id> id in expr: (
+    exists <declaration> declaration="int {<id> id_0} = <expr>;" in start:
+       (= id id_0) or
+    exists <declaration> declaration_0="int {<id> id_1};" in start:
+       (= id id_1))''', structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
+
+        self.assertEqual(expected, result)
 
 
 if __name__ == '__main__':

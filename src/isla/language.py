@@ -1601,6 +1601,34 @@ class VariablesCollector(FormulaVisitor):
         self.result.update(formula.free_variables())
 
 
+class BoundVariablesCollector(FormulaVisitor):
+    def __init__(self):
+        self.result: OrderedSet[Variable] = OrderedSet()
+
+    @staticmethod
+    def collect(formula: Formula) -> OrderedSet[Variable]:
+        c = BoundVariablesCollector()
+        formula.accept(c)
+        return c.result
+
+    def visit_exists_formula(self, formula: ExistsFormula):
+        self.visit_quantified_formula(formula)
+
+    def visit_forall_formula(self, formula: ForallFormula):
+        self.visit_quantified_formula(formula)
+
+    def visit_quantified_formula(self, formula: QuantifiedFormula):
+        self.result.add(formula.bound_variable)
+        if formula.bind_expression is not None:
+            self.result.update(formula.bind_expression.bound_variables())
+
+    def visit_exists_int_formula(self, formula: ExistsIntFormula):
+        self.result.add(formula.bound_variable)
+
+    def visit_forall_int_formula(self, formula: ForallIntFormula):
+        self.result.add(formula.bound_variable)
+
+
 class FilterVisitor(FormulaVisitor):
     def __init__(
             self,
@@ -2185,7 +2213,8 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         assert len(nonterminal) > 2
 
         fresh_var = fresh_bound_variable(
-            self.used_variables | self.vars_for_free_nonterminals |
+            self.used_variables |
+            {var.name for var in self.vars_for_free_nonterminals.values()} |
             {var.name for var in self.vars_for_xpath_expressions.values()},
             BoundVariable(nonterminal[1:-1], nonterminal),
             add=False)
@@ -2254,6 +2283,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             if is_nonterminal(bound_var_name_or_type) and bound_var_name_or_type in self.vars_for_free_nonterminals:
                 bound_var = self.vars_for_free_nonterminals[bound_var_name_or_type]
                 bound_var_type = bound_var.n_type
+                is_existing_var = bound_var in BoundVariablesCollector.collect(formula)
             elif is_nonterminal(bound_var_name_or_type):
                 bound_var_type = bound_var_name_or_type
                 bound_var_name = bound_var_type[1:-1]
@@ -2388,6 +2418,17 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
     def exitConstDecl(self, ctx: IslaLanguageParser.ConstDeclContext):
         self.constant = Constant(parse_tree_text(ctx.ID()), parse_tree_text(ctx.varType()))
+
+    def enterQfdFormula(self, ctx: IslaLanguageParser.ForallContext | IslaLanguageParser.ExistsContext):
+        if not ctx.varId:
+            var_type = parse_tree_text(ctx.boundVarType)
+            self.register_var_for_free_nonterminal(var_type)
+
+    def enterForall(self, ctx: IslaLanguageParser.ForallContext):
+        self.enterQfdFormula(ctx)
+
+    def enterExists(self, ctx: IslaLanguageParser.ExistsContext):
+        self.enterQfdFormula(ctx)
 
     def exitQfdFormula(
             self,
@@ -2529,7 +2570,8 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.formulas[ctx] = SMTFormula(z3_constr, *free_vars)
 
     def enterSexprFreeId(self, ctx: IslaLanguageParser.SexprFreeIdContext):
-        self.register_var_for_free_nonterminal(parse_tree_text(ctx.VAR_TYPE()))
+        nonterminal = parse_tree_text(ctx.VAR_TYPE())
+        self.register_var_for_free_nonterminal(nonterminal)
 
     def enterSexprXPathExpr(self, ctx: IslaLanguageParser.SexprXPathExprContext):
         self.register_var_for_xpath_expression(parse_tree_text(ctx))
