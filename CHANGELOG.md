@@ -3,12 +3,25 @@
 This file contains the notable changes in the ISLa project since version 0.2a1
 (February 2022). Changes prior to this date are not documented.
 
-## [Unreleased]
+## [0.3b1]
 
 ### Added
 
 - Cost computation is not outsourced to exchangeable `CostComputer` classes. The existing cost computation strategy
   is encapsulated in the class `GrammarBasedBlackboxCostComputer`.
+- ISLa now has a simplified syntax layer, which is translated to the core syntax (it's "syntactic sugar"):
+  * Names in quantifiers may be omitted; quantified elements can be referred to
+    by their nonterminal types (if unambiguous) in quantifier core.
+  * "Free" nonterminals are permitted, and are universally quantified (and `in <start>`) as default.
+  * The `in ...` part of quantifiers may be omitted and defaults to `in <start>`.
+  * For SMT expressions, we support an infix (for binary operators) and prefix (for unary ones) syntax 
+    instead of the usual SMT-LIB S-Expressions.
+  * Additionally to match expressions, we permit the *descendant axis* `.` (`..` is not yet implemented,
+    but planned) borrowed from the [XPath abbreviated syntax](https://www.w3.org/TR/1999/REC-xpath-19991116/#path-abbrev)
+    (there, one writes `/` and `//`). For `.`, the specification of a *position
+    predicate* `[n]`, for $n=1,2,\dots$, is required, as in `<id>.<char>[2]` (the
+    second `<char>` occurrence in an `<id>` nonterminal). If it is omitted, it
+    defaults to `[1]`.
 
 ### Changed
 
@@ -29,14 +42,14 @@ This file contains the notable changes in the ISLa project since version 0.2a1
   with a context-free language, the regular expression passed to the SMT solver will always be an approximation,
   and it cannot be asserted that the languages of the subgrammar and the regex are identical.
 
-## [0.2b3]
+## [0.2b3] - 2022-06-03
 
 ### Changed
 
 - Simplification in assignment language example in README.
 - Added README section about the new ISLa Docker image.
 
-## [0.2b2]
+## [0.2b2] - 2022-06-03
 
 ### Added
 

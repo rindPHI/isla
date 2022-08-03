@@ -12,7 +12,7 @@ from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Set, Iter
 import antlr4
 import datrie
 import z3
-from antlr4 import InputStream, RuleContext
+from antlr4 import InputStream, RuleContext, ParserRuleContext
 from antlr4.Token import CommonToken
 from grammar_graph import gg
 from orderedset import OrderedSet
@@ -22,7 +22,7 @@ import isla.mexpr_parser.MexprParserListener as MexprParserListener
 from isla.derivation_tree import DerivationTree
 from isla.fuzzer import GrammarCoverageFuzzer
 from isla.helpers import RE_NONTERMINAL, is_nonterminal, assertions_activated, \
-    copy_trie
+    copy_trie, canonical, nth_occ, replace_in_list
 from isla.helpers import replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, \
     immutable_to_grammar, \
     nested_list_to_tuple
@@ -431,6 +431,70 @@ class FormulaVisitor:
         pass
 
 
+class FormulaTransformer(ABC):
+    def transform_predicate_formula(self, formula: 'StructuralPredicateFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_semantic_predicate_formula(self, formula: 'SemanticPredicateFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_negated_formula(self, formula: 'NegatedFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_conjunctive_formula(self, formula: 'ConjunctiveFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_disjunctive_formula(self, formula: 'DisjunctiveFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_smt_formula(self, formula: 'SMTFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_exists_formula(self, formula: 'ExistsFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_forall_formula(self, formula: 'ForallFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_exists_int_formula(self, formula: 'ExistsIntFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_forall_int_formula(self, formula: 'ForallIntFormula') -> 'Formula':
+        raise NotImplementedError()
+
+
+class NoopFormulaTransformer(FormulaTransformer):
+    def transform_predicate_formula(self, formula: 'StructuralPredicateFormula') -> 'Formula':
+        return formula
+
+    def transform_semantic_predicate_formula(self, formula: 'SemanticPredicateFormula') -> 'Formula':
+        return formula
+
+    def transform_negated_formula(self, formula: 'NegatedFormula') -> 'Formula':
+        return formula
+
+    def transform_conjunctive_formula(self, formula: 'ConjunctiveFormula') -> 'Formula':
+        return formula
+
+    def transform_disjunctive_formula(self, formula: 'DisjunctiveFormula') -> 'Formula':
+        return formula
+
+    def transform_smt_formula(self, formula: 'SMTFormula') -> 'Formula':
+        return formula
+
+    def transform_exists_formula(self, formula: 'ExistsFormula') -> 'Formula':
+        return formula
+
+    def transform_forall_formula(self, formula: 'ForallFormula') -> 'Formula':
+        return formula
+
+    def transform_exists_int_formula(self, formula: 'ExistsIntFormula') -> 'Formula':
+        return formula
+
+    def transform_forall_int_formula(self, formula: 'ForallIntFormula') -> 'Formula':
+        return formula
+
+
 class Formula(ABC):
     # def __getstate__(self):
     #     return {f: pickle.dumps(v) for f, v in self.__dict__.items()} | {"cls": type(self).__name__}
@@ -457,6 +521,9 @@ class Formula(ABC):
         raise NotImplementedError()
 
     def accept(self, visitor: FormulaVisitor):
+        raise NotImplementedError()
+
+    def transform(self, transformer: FormulaTransformer) -> 'Formula':
         raise NotImplementedError()
 
     def __len__(self):
@@ -653,6 +720,9 @@ class StructuralPredicateFormula(Formula):
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_predicate_formula(self)
 
+    def transform(self, visitor: FormulaTransformer) -> Formula:
+        return visitor.transform_predicate_formula(self)
+
     def __len__(self):
         return 1
 
@@ -833,6 +903,9 @@ class SemanticPredicateFormula(Formula):
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_semantic_predicate_formula(self)
 
+    def transform(self, visitor: FormulaTransformer) -> Formula:
+        return visitor.transform_semantic_predicate_formula(self)
+
     def __len__(self):
         return 1
 
@@ -898,6 +971,9 @@ class NegatedFormula(PropositionalCombinator):
             for formula in self.args:
                 formula.accept(visitor)
 
+    def transform(self, transformer: FormulaTransformer) -> 'Formula':
+        return transformer.transform_negated_formula(NegatedFormula(self.args[0].transform(transformer)))
+
     def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> 'NegatedFormula':
         return NegatedFormula(*[arg.substitute_variables(subst_map) for arg in self.args])
 
@@ -930,6 +1006,10 @@ class ConjunctiveFormula(PropositionalCombinator):
             for formula in self.args:
                 formula.accept(visitor)
 
+    def transform(self, transformer: FormulaTransformer) -> 'Formula':
+        return transformer.transform_conjunctive_formula(
+            ConjunctiveFormula(*[arg.transform(transformer) for arg in self.args]))
+
     def __hash__(self):
         return hash((type(self).__name__, self.args))
 
@@ -957,6 +1037,10 @@ class DisjunctiveFormula(PropositionalCombinator):
         if visitor.do_continue(self):
             for formula in self.args:
                 formula.accept(visitor)
+
+    def transform(self, transformer: FormulaTransformer) -> 'Formula':
+        return transformer.transform_disjunctive_formula(
+            DisjunctiveFormula(*[arg.transform(transformer) for arg in self.args]))
 
     def __hash__(self):
         return hash((type(self).__name__, self.args))
@@ -1086,6 +1170,15 @@ class SMTFormula(Formula):
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_smt_formula(self)
 
+    def transform(self, transformer: FormulaTransformer) -> Formula:
+        return transformer.transform_smt_formula(
+            SMTFormula(
+                self.formula,
+                *self.free_variables_,
+                instantiated_variables=self.instantiated_variables,
+                substitutions=self.substitutions,
+                auto_eval=self.auto_eval))
+
     # NOTE: Combining SMT formulas with and/or is not that easy due to tree substitutions, see
     #       function "eliminate_semantic_formula" in solver.py. Problems: Name collisions, plus
     #       impedes clustering which improves solver efficiency. The conjunction and disjunction
@@ -1194,6 +1287,10 @@ class ExistsIntFormula(NumericQuantifiedFormula):
         if visitor.do_continue(self):
             self.inner_formula.accept(visitor)
 
+    def transform(self, transformer: FormulaTransformer) -> Formula:
+        return transformer.transform_exists_int_formula(
+            ExistsIntFormula(self.bound_variable, self.inner_formula.transform(transformer)))
+
     def __hash__(self):
         return hash((type(self).__name__, self.bound_variable, self.inner_formula))
 
@@ -1228,6 +1325,10 @@ class ForallIntFormula(NumericQuantifiedFormula):
         visitor.visit_forall_int_formula(self)
         if visitor.do_continue(self):
             self.inner_formula.accept(visitor)
+
+    def transform(self, transformer: FormulaTransformer) -> Formula:
+        return transformer.transform_forall_int_formula(
+            ForallIntFormula(self.bound_variable, self.inner_formula.transform(transformer)))
 
     def __hash__(self):
         return hash((type(self).__name__, self.bound_variable, self.inner_formula))
@@ -1390,6 +1491,16 @@ class ForallFormula(QuantifiedFormula):
         if visitor.do_continue(self):
             self.inner_formula.accept(visitor)
 
+    def transform(self, transformer: FormulaTransformer) -> Formula:
+        return transformer.transform_forall_formula(
+            ForallFormula(
+                self.bound_variable,
+                self.in_variable,
+                self.inner_formula.transform(transformer),
+                self.bind_expression,
+                self.already_matched,
+                id=self.id))
+
     def __str__(self):
         quote = '"'
         return f'∀ {"" if not self.bind_expression else quote + str(self.bind_expression) + quote + " = "}' \
@@ -1437,6 +1548,14 @@ class ExistsFormula(QuantifiedFormula):
         if visitor.do_continue(self):
             self.inner_formula.accept(visitor)
 
+    def transform(self, transformer: FormulaTransformer) -> Formula:
+        return transformer.transform_exists_formula(
+            ExistsFormula(
+                self.bound_variable,
+                self.in_variable,
+                self.inner_formula.transform(transformer),
+                self.bind_expression))
+
     def __str__(self):
         quote = "'"
         return f'∃ {"" if not self.bind_expression else quote + str(self.bind_expression) + quote + " = "}' \
@@ -1480,6 +1599,34 @@ class VariablesCollector(FormulaVisitor):
 
     def visit_smt_formula(self, formula: SMTFormula):
         self.result.update(formula.free_variables())
+
+
+class BoundVariablesCollector(FormulaVisitor):
+    def __init__(self):
+        self.result: OrderedSet[Variable] = OrderedSet()
+
+    @staticmethod
+    def collect(formula: Formula) -> OrderedSet[Variable]:
+        c = BoundVariablesCollector()
+        formula.accept(c)
+        return c.result
+
+    def visit_exists_formula(self, formula: ExistsFormula):
+        self.visit_quantified_formula(formula)
+
+    def visit_forall_formula(self, formula: ForallFormula):
+        self.visit_quantified_formula(formula)
+
+    def visit_quantified_formula(self, formula: QuantifiedFormula):
+        self.result.add(formula.bound_variable)
+        if formula.bind_expression is not None:
+            self.result.update(formula.bind_expression.bound_variables())
+
+    def visit_exists_int_formula(self, formula: ExistsIntFormula):
+        self.result.add(formula.bound_variable)
+
+    def visit_forall_int_formula(self, formula: ForallIntFormula):
+        self.result.add(formula.bound_variable)
 
 
 class FilterVisitor(FormulaVisitor):
@@ -1709,16 +1856,21 @@ def ensure_unique_bound_variables(formula: Formula, used_names: Optional[Set[str
         result: Dict[BoundVariable, BoundVariable] = {}
 
         for variable in orig_vars:
-            if variable.name not in used_names:
-                used_names.add(variable.name)
+            proposal = variable.name
+            if proposal not in used_names:
+                used_names.add(proposal)
                 result[variable] = variable
                 continue
 
+            maybe_match = re.match(r'^(.*)_[0-9]+$', proposal)
+            if maybe_match:
+                proposal = maybe_match.group(1)
+
             idx = 0
-            while f"{variable.name}_{idx}" in used_names:
+            while f"{proposal}_{idx}" in used_names:
                 idx += 1
 
-            new_name = f"{variable.name}_{idx}"
+            new_name = f"{proposal}_{idx}"
             used_names.add(new_name)
             result[variable] = BoundVariable(new_name, variable.n_type)
 
@@ -1929,8 +2081,78 @@ def used_variables_in_concrete_syntax(inp: str | IslaLanguageParser.StartContext
     antlr4.ParseTreeWalker().walk(collector, context)
     return collector.used_variables
 
+
 def start_constant():
     return Constant('start', '<start>')
+
+
+def univ_close_over_var_push_in(
+        formula: Formula,
+        var: BoundVariable,
+        in_var: Variable = start_constant(),
+        mexpr: Optional[BindExpression] = None) -> Formula:
+    """Adds a universal quantifier over `var` with match expression `mexpr` and "in" variable `in_var`
+    in `formula`, such that, if `formula` is a propositional combination, the new quantifier is pushed
+    inside as much as possible."""
+
+    if not ({var} | (set() if not mexpr else mexpr.bound_variables())).intersection(formula.free_variables()):
+        return formula
+
+    if (isinstance(formula, PropositionalCombinator) and
+            any(var not in arg.free_variables() for arg in formula.args)):
+        return type(formula)(*map(lambda arg: univ_close_over_var_push_in(arg, var, in_var, mexpr), formula.args))
+
+    return ForallFormula(var, in_var, formula, bind_expression=mexpr)
+
+
+def add_mexpr_to_qfr_over_var(
+        formula: Formula,
+        qfd_var: BoundVariable,
+        mexprs: Iterable[BindExpression]) -> Formula:
+    class AddMexprTransformer(NoopFormulaTransformer):
+        def __init__(self, qfd_var: BoundVariable, mexprs: Iterable[BindExpression]):
+            super().__init__()
+            self.qfd_var: BoundVariable = qfd_var
+            self.mexprs: Iterable[BindExpression] = mexprs
+
+        def transform_forall_formula(self, formula: ForallFormula) -> Formula:
+            if formula.bound_variable != self.qfd_var:
+                return formula
+
+            if formula.bind_expression is not None:
+                raise RuntimeError(
+                    'Cannot add a match expression to formula with match expression, ' +
+                    f'formula: {formula}, match expressions: {self.mexprs}')
+
+            return reduce(Formula.__and__, [
+                ForallFormula(
+                    formula.bound_variable,
+                    formula.in_variable,
+                    formula.inner_formula,
+                    mexpr,
+                    formula.already_matched,
+                    id=formula.id)
+                for mexpr in self.mexprs])
+
+        def transform_exists_formula(self, formula: ExistsFormula) -> Formula:
+            if formula.bound_variable != self.qfd_var:
+                return formula
+
+            if formula.bind_expression is not None:
+                raise RuntimeError(
+                    'Cannot add a match expression to formula with match expression, ' +
+                    f'formula: {formula}, match expressions: {self.mexprs}')
+
+            return reduce(Formula.__or__, [
+                ExistsFormula(
+                    formula.bound_variable,
+                    formula.in_variable,
+                    formula.inner_formula,
+                    mexpr)
+                for mexpr in self.mexprs])
+
+    return formula.transform(AddMexprTransformer(qfd_var, mexprs))
+
 
 class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
     def __init__(
@@ -1944,11 +2166,16 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.result: Optional[Formula] = None
         self.constant: Constant = Constant("start", "<start>")
         self.formulas = {}
+        self.smt_expressions: Dict[ParserRuleContext, str] = {}
         self.predicate_args = {}
+        self.grammar = grammar
+        if grammar:
+            self.canonical_grammar = canonical(grammar)
 
         self.mgr = VariableManager(grammar)
-        self.used_variables = None
+        self.used_variables: Optional[OrderedSet[str]] = None
         self.vars_for_free_nonterminals: Dict[str, BoundVariable] = {}
+        self.vars_for_xpath_expressions: Dict[str, BoundVariable] = {}
 
     def parse_mexpr(self, inp: str, mgr: VariableManager) -> BindExpression:
         lexer = MexprLexer(InputStream(inp))
@@ -1962,6 +2189,10 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         if nonterminal in self.vars_for_free_nonterminals:
             return self.vars_for_free_nonterminals[nonterminal]
 
+        assert nonterminal[0] == '<'
+        assert nonterminal[-1] == '>'
+        assert len(nonterminal) > 2
+
         fresh_var = fresh_bound_variable(
             self.used_variables | self.vars_for_free_nonterminals,
             BoundVariable(nonterminal[1:-1], nonterminal),
@@ -1972,28 +2203,208 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
         return fresh_var
 
+    def register_var_for_xpath_expression(self, xpath_expr: str) -> BoundVariable:
+        if xpath_expr in self.vars_for_xpath_expressions:
+            return self.vars_for_xpath_expressions[xpath_expr]
+
+        nonterminal = [seg_2 for seg_1 in xpath_expr.split('.') for seg_2 in seg_1.split('..')][-1]
+
+        assert nonterminal[0] == '<'
+        assert nonterminal[-1] == '>'
+        assert len(nonterminal) > 2
+
+        fresh_var = fresh_bound_variable(
+            self.used_variables |
+            {var.name for var in self.vars_for_free_nonterminals.values()} |
+            {var.name for var in self.vars_for_xpath_expressions.values()},
+            BoundVariable(nonterminal[1:-1], nonterminal),
+            add=False)
+
+        self.mgr.bv(fresh_var.name, fresh_var.n_type)
+        self.vars_for_xpath_expressions[xpath_expr] = fresh_var
+
+        return fresh_var
+
     def close_over_free_nonterminals(self, formula: Formula) -> Formula:
-        def helper(formula: Formula, var: BoundVariable) -> Formula:
-            if var not in formula.free_variables():
-                return formula
+        # We skip "free nonterminals" that are also part of XPath expressions,
+        # as in `(before(assgn, <assgn>) and (= <assgn>.<rhs>.<var> "x"))`. Otherwise,
+        # We get one spurious quantifier over `<assgn>` alone, where we only need one
+        # also containing the match expression from the XPath specifier.
 
-            if (isinstance(formula, PropositionalCombinator) and
-                    any(var not in arg.free_variables() for arg in formula.args)):
-                return type(formula)(*map(lambda arg: helper(arg, var), formula.args))
+        first_nonterminals_in_xpath_expressions = {
+            xpath_expr.split('.')[0]
+            for xpath_expr in self.vars_for_xpath_expressions
+            if is_nonterminal(xpath_expr.split('.')[0])
+        }
 
-            return ForallFormula(var, start_constant(), formula)
-
-        for var in reversed(self.vars_for_free_nonterminals.values()):
-            formula = helper(formula, var)
+        for var_name, var in reversed(list(self.vars_for_free_nonterminals.items())):
+            if var_name not in first_nonterminals_in_xpath_expressions:
+                formula = univ_close_over_var_push_in(formula, var)
 
         return formula
+
+    def close_over_xpath_expressions(self, formula: Formula) -> Formula:
+        if not self.vars_for_xpath_expressions:
+            return formula
+
+        assert self.grammar is not None, 'You need to pass a grammar to process "XPath" expressions in formulas.'
+
+        preprocessed_xpath_exprs_with_vars: List[Tuple[List[List[Tuple[str, int]]], BoundVariable]] = [
+            ([[(elem, 0) if '[' not in elem
+               else (elem.split('[')[0], elem.split('[')[1][:-1])
+               for elem in seg.split('.')]
+              for seg in xpath_expr.split('..')],
+             bound_mexpr_var)
+            for xpath_expr, bound_mexpr_var in self.vars_for_xpath_expressions.items()
+        ]
+
+        # We need to group XPath expressions by the first element of the first segment,
+        # such that, e.g., `<xml-tree>.<xml-open-tag>.<id>` and `<xml-tree>.<xml-close-tag>.<id>`
+        # refer to the same `<xml-tree>`-typed variable (similarly if the first element of the first
+        # segment is a named variable).
+        groups: Dict[str, List[Tuple[List[List[Tuple[str, int]]], BoundVariable]]] = {}
+        for xpath_segments, bound_mexpr_var in preprocessed_xpath_exprs_with_vars:
+            groups.setdefault(xpath_segments[0][0][0], []).append((xpath_segments, bound_mexpr_var))
+
+        group: List[Tuple[List[List[Tuple[str, int]]], BoundVariable]]
+        for bound_var_name_or_type, group in groups.items():
+            assert all(len(xpath_segments) > 0 for xpath_segments, _ in group)
+            assert all(len(xpath_segments) > 1 or len(xpath_segments[0]) > 1 for xpath_segments, _ in group)
+            assert all(
+                all((idx == 0 or is_nonterminal(elem)) and
+                    (idx > 0 or pos == 0)
+                    for idx, (elem, pos) in enumerate(xpath_segment))
+                for xpath_segments, _ in group
+                for xpath_segment in xpath_segments)
+
+            # Only as intermediate simplification:
+            assert all(len(xpath_segments) == 1 for xpath_segments, _ in group), 'The .. axis is not yet supported'
+
+            is_existing_var = False
+            if is_nonterminal(bound_var_name_or_type) and bound_var_name_or_type in self.vars_for_free_nonterminals:
+                bound_var = self.vars_for_free_nonterminals[bound_var_name_or_type]
+                bound_var_type = bound_var.n_type
+                is_existing_var = bound_var in BoundVariablesCollector.collect(formula)
+            elif is_nonterminal(bound_var_name_or_type):
+                bound_var_type = bound_var_name_or_type
+                bound_var_name = bound_var_type[1:-1]
+                bound_var = fresh_bound_variable(
+                    self.used_variables,
+                    BoundVariable(bound_var_name, bound_var_type),
+                    add=False)
+                self.used_variables.add(bound_var.name)
+            else:
+                try:
+                    bound_var = next(
+                        var for var in VariablesCollector.collect(formula)
+                        if var.name == bound_var_name_or_type)
+                except StopIteration:
+                    raise RuntimeError(
+                        f'Unknown variable {bound_var_name_or_type} in '
+                        f'XPath expression {group[0][0]}')
+
+                is_existing_var = True
+                bound_var_type = bound_var.n_type
+                # assert False, 'Not yet implemented'
+
+            partial_mexpr_trees = {DerivationTree(bound_var_type): []}
+            for xpath_segments, _ in group:
+                partial_mexpr_trees = self.expand_mexpr_trees(
+                    {tree: paths + [()] for tree, paths in partial_mexpr_trees.items()},
+                    xpath_segments[0])
+
+            if not partial_mexpr_trees:
+                raise RuntimeError(
+                    'Could not convert XPath expressions to match expressions. ' +
+                    'Do you have conflicting XPath expressions in your formula?')
+
+            match_expressions = []
+            for expanded_match_expression, paths_to_bound_vars in partial_mexpr_trees.items():
+                paths_to_bound_vars_map = dict(zip(paths_to_bound_vars, [var for _, var in group]))
+                mexpr_elems = []
+                for path, leaf in expanded_match_expression.leaves():
+                    if path in paths_to_bound_vars_map:
+                        mexpr_elems.append(paths_to_bound_vars_map[path])
+                    else:
+                        mexpr_elems.append(leaf.value)
+
+                match_expressions.append(BindExpression(*mexpr_elems))
+
+            # TODO: Add match expression to existing quantifier if `is_existing_var` is True.
+            #       When implementing the '..' axis, take care not to break things; additional
+            #       quantifiers have to be put on a lower level. Well, that's actually also true
+            #       for "free" initial qfrs.
+            if is_existing_var:
+                formula = add_mexpr_to_qfr_over_var(formula, bound_var, match_expressions)
+            else:
+                formula = reduce(
+                    Formula.__and__,
+                    [univ_close_over_var_push_in(formula, bound_var, in_var=start_constant(), mexpr=match_expression)
+                     for match_expression in match_expressions])
+
+        return ensure_unique_bound_variables(formula)
+
+    def expand_mexpr_trees(
+            self, partial_mexpr_trees: Dict[DerivationTree, List[Path]], xpath_segment: List[Tuple[str, int]]):
+        for nonterminal, position in xpath_segment[1:]:
+            old_partial_mexpr_trees = dict(partial_mexpr_trees)
+            partial_mexpr_trees: Dict[DerivationTree, List[Path]] = {}
+
+            for partial_tree, paths in old_partial_mexpr_trees.items():
+                path_to_expand = paths[-1]
+                subtree = partial_tree.get_subtree(path_to_expand)
+
+                assert subtree.children is None or subtree.children
+
+                # If `path_to_expand` is an inner node, check if there are `position` many `nonterminal`
+                # children; if so, update the last path. Otherwise, continue (this expansion is discarded
+                # since it conflicts with the current `xpath_segment`).
+                if subtree.children:
+                    indices = [idx for idx, node in enumerate(subtree.children) if node.value == nonterminal]
+                    if len(indices) < position + 1:
+                        continue
+
+                    partial_mexpr_trees[partial_tree] = paths[:-1] + [path_to_expand + (indices[position],)]
+                else:
+                    previous_nonterminal = subtree.value
+
+                    # Find expansions of `previous_nonterminal` which include more than `position`
+                    # occurrences of `nonterminal`.
+                    expansions = [
+                        expansion for expansion in self.canonical_grammar[previous_nonterminal]
+                        if sum([1 if elem == nonterminal else 0 for elem in expansion]) > position]
+
+                    # Replace the indicated position in each `partial_mexpr_trees` list
+                    # with the new expansion; the new position points to the `nonterminal` element
+                    # that should be expanded next.
+
+                    for expansion in expansions:
+                        partial_mexpr_trees[
+                            partial_tree.replace_path(
+                                path_to_expand,
+                                DerivationTree(
+                                    partial_tree.value,
+                                    [DerivationTree(elem) if is_nonterminal(elem)
+                                     else DerivationTree(elem, [])
+                                     for elem in expansion]))] = \
+                            paths[:-1] + [path_to_expand + (nth_occ(expansion, nonterminal, position),)]
+
+                assert all(tree.get_subtree(paths[-1]).value == nonterminal
+                           for tree, paths in partial_mexpr_trees.items())
+
+        return partial_mexpr_trees
 
     def enterStart(self, ctx: IslaLanguageParser.StartContext):
         self.used_variables = used_variables_in_concrete_syntax(ctx)
 
     def exitStart(self, ctx: IslaLanguageParser.StartContext):
         try:
-            self.result = self.close_over_free_nonterminals(self.mgr.create(self.formulas[ctx.formula()]))
+            formula: Formula = self.mgr.create(self.formulas[ctx.formula()])
+            formula = ensure_unique_bound_variables(formula)
+            self.used_variables.update({var.name for var in VariablesCollector.collect(formula)})
+            self.result = \
+                self.close_over_xpath_expressions(
+                    self.close_over_free_nonterminals(formula))
         except RuntimeError as exc:
             raise SyntaxError(str(exc))
 
@@ -2008,6 +2419,17 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
     def exitConstDecl(self, ctx: IslaLanguageParser.ConstDeclContext):
         self.constant = Constant(parse_tree_text(ctx.ID()), parse_tree_text(ctx.varType()))
+
+    def enterQfdFormula(self, ctx: IslaLanguageParser.ForallContext | IslaLanguageParser.ExistsContext):
+        if not ctx.varId:
+            var_type = parse_tree_text(ctx.boundVarType)
+            self.register_var_for_free_nonterminal(var_type)
+
+    def enterForall(self, ctx: IslaLanguageParser.ForallContext):
+        self.enterQfdFormula(ctx)
+
+    def enterExists(self, ctx: IslaLanguageParser.ExistsContext):
+        self.enterQfdFormula(ctx)
 
     def exitQfdFormula(
             self,
@@ -2123,22 +2545,26 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             self.predicate_args[ctx] = int(parse_tree_text(ctx))
         elif ctx.STRING():
             self.predicate_args[ctx] = parse_tree_text(ctx)[1:-1]
-        elif ctx.varType():
-            variable = self.register_var_for_free_nonterminal(parse_tree_text(ctx.varType()))
+        elif ctx.VAR_TYPE():
+            variable = self.register_var_for_free_nonterminal(parse_tree_text(ctx.VAR_TYPE()))
+            self.predicate_args[ctx] = variable
+        elif ctx.XPATHEXPR():
+            variable = self.register_var_for_xpath_expression(parse_tree_text(ctx))
             self.predicate_args[ctx] = variable
         else:
             assert False, f'Unexpected predicate argument: {parse_tree_text(ctx)}'
 
     def exitSMTFormula(self, ctx: IslaLanguageParser.SMTFormulaContext):
-        formula_text = "<N/A>"
+        formula_text = self.smt_expressions[ctx.sexpr()]
         try:
-            formula_text = antlr_get_text_with_whitespace(ctx)
             z3_constr = z3.parse_smt2_string(
                 f"(assert {formula_text})",
                 decls=({var: z3.String(var)
                         for var in self.known_var_names()} |
                        {nonterminal: z3.String(var.name)
-                        for nonterminal, var in self.vars_for_free_nonterminals.items()}))[0]
+                        for nonterminal, var in self.vars_for_free_nonterminals.items()} |
+                       {xpath_expr: z3.String(var.name)
+                        for xpath_expr, var in self.vars_for_xpath_expressions.items()}))[0]
         except z3.Z3Exception as exp:
             raise SyntaxError(
                 f"Error parsing SMT formula '{formula_text}', {exp.value.decode().strip()}")
@@ -2146,8 +2572,65 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         free_vars = [self.get_var(str(s)) for s in get_symbols(z3_constr)]
         self.formulas[ctx] = SMTFormula(z3_constr, *free_vars)
 
+    def exitSexprTrue(self, ctx: IslaLanguageParser.SexprTrueContext):
+        self.smt_expressions[ctx] = antlr_get_text_with_whitespace(ctx)
+
+    def exitSexprFalse(self, ctx: IslaLanguageParser.SexprFalseContext):
+        self.smt_expressions[ctx] = antlr_get_text_with_whitespace(ctx)
+
+    def exitSexprNum(self, ctx: IslaLanguageParser.SexprNumContext):
+        self.smt_expressions[ctx] = antlr_get_text_with_whitespace(ctx)
+
+    def exitSexprId(self, ctx: IslaLanguageParser.SexprIdContext):
+        id_text = parse_tree_text(ctx.ID())
+        self.smt_expressions[ctx] = id_text
+
+        if not ISLaEmitter.is_protected_smtlib_keyword(id_text):
+            self.get_var(id_text)  # Simply register variable
+
+    def enterSexprXPathExpr(self, ctx: IslaLanguageParser.SexprXPathExprContext):
+        self.register_var_for_xpath_expression(parse_tree_text(ctx))
+
+    def exitSexprXPathExpr(self, ctx: IslaLanguageParser.SexprXPathExprContext):
+        self.smt_expressions[ctx] = parse_tree_text(ctx)
+
     def enterSexprFreeId(self, ctx: IslaLanguageParser.SexprFreeIdContext):
-        self.register_var_for_free_nonterminal(parse_tree_text(ctx.varType()))
+        nonterminal = parse_tree_text(ctx.VAR_TYPE())
+        self.register_var_for_free_nonterminal(nonterminal)
+
+    def exitSexprFreeId(self, ctx: IslaLanguageParser.SexprFreeIdContext):
+        self.smt_expressions[ctx] = parse_tree_text(ctx)
+
+    def exitSexprStr(self, ctx: IslaLanguageParser.SexprStrContext):
+        self.smt_expressions[ctx] = antlr_get_text_with_whitespace(ctx)
+
+    def exitSexprOp(self, ctx: IslaLanguageParser.SexprOpContext):
+        self.smt_expressions[ctx] = parse_tree_text(ctx)
+
+    def exitSexprPrefix(self, ctx: IslaLanguageParser.SexprPrefixContext):
+        self.smt_expressions[ctx] = f'({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr()]})'
+
+    def exitSexprInfixReStr(self, ctx: IslaLanguageParser.SexprInfixReStrContext):
+        self.smt_expressions[ctx] = \
+            f'({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})'
+
+    def exitSexprInfixPlusMinus(self, ctx: IslaLanguageParser.SexprInfixPlusMinusContext):
+        self.smt_expressions[ctx] = \
+            f'({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})'
+
+    def exitSexprInfixMulDiv(self, ctx: IslaLanguageParser.SexprInfixMulDivContext):
+        self.smt_expressions[ctx] = \
+            f'({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})'
+
+    def exitSexprInfixEq(self, ctx: IslaLanguageParser.SexprInfixEqContext):
+        self.smt_expressions[ctx] = \
+            f'({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})'
+
+    def exitSepxrParen(self, ctx: IslaLanguageParser.SepxrParenContext):
+        self.smt_expressions[ctx] = self.smt_expressions[ctx.sexpr()]
+
+    def exitSepxrApp(self, ctx: IslaLanguageParser.SepxrAppContext):
+        self.smt_expressions[ctx] = antlr_get_text_with_whitespace(ctx)
 
     def exitExistsInt(self, ctx: IslaLanguageParser.ExistsIntContext):
         var_id = parse_tree_text(ctx.ID())
@@ -2174,11 +2657,6 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.formulas[ctx] = ForallIntFormula(
             self.get_var(var_id, Variable.NUMERIC_NTYPE),
             self.formulas[ctx.formula()])
-
-    def exitSexprId(self, ctx: IslaLanguageParser.SexprIdContext):
-        id_text = parse_tree_text(ctx.ID())
-        if not ISLaEmitter.is_protected_smtlib_keyword(id_text):
-            self.get_var(id_text)  # Simply register variable
 
     def exitParFormula(self, ctx: IslaLanguageParser.ParFormulaContext):
         self.formulas[ctx] = self.formulas[ctx.formula()]

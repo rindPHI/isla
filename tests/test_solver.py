@@ -234,16 +234,10 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             custom_test_func=validate_xml,
             cost_computer=GrammarBasedBlackboxCostComputer(
                 CostSettings(
-                    # CostWeightVector(
-                    #     tree_closing_cost=20,
-                    #     constraint_cost=0,
-                    #     derivation_depth_penalty=15,
-                    #     low_k_coverage_penalty=13,
-                    #     low_global_k_path_coverage_penalty=25),
                     CostWeightVector(
                         tree_closing_cost=16,
                         constraint_cost=7,
-                        derivation_depth_penalty=13,
+                        derivation_depth_penalty=20,
                         low_k_coverage_penalty=26,
                         low_global_k_path_coverage_penalty=20),
                     k=3),
@@ -298,7 +292,29 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
                     CostWeightVector(
                         tree_closing_cost=7,
                         constraint_cost=3.25,
-                        derivation_depth_penalty=12.06,
+                        derivation_depth_penalty=15,
+                        low_k_coverage_penalty=21.5,
+                        low_global_k_path_coverage_penalty=12.5),
+                    k=4),
+                gg.GrammarGraph.from_grammar(LANG_GRAMMAR)),
+            num_solutions=50)
+
+    def test_declared_before_used_concrete_simplified_syntax(self):
+        formula = """
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)
+"""
+
+        self.execute_generation_test(
+            formula,
+            structural_predicates={BEFORE_PREDICATE},
+            max_number_free_instantiations=1,
+            cost_computer=GrammarBasedBlackboxCostComputer(
+                CostSettings(
+                    CostWeightVector(
+                        tree_closing_cost=7,
+                        constraint_cost=3.25,
+                        derivation_depth_penalty=15,
                         low_k_coverage_penalty=21.5,
                         low_global_k_path_coverage_penalty=12.5),
                     k=4),

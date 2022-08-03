@@ -636,3 +636,22 @@ class lazystr:
 
     def __str__(self):
         return str(self.c())
+
+
+def replace_in_list(l: List[T], repl: S | List[S], idx: int) -> List[T | S]:
+    assert -len(l) <= idx < len(l)
+    if idx < 0:
+        idx = len(l) + idx
+    return l[0:idx] + (repl if isinstance(repl, list) else [repl]) + l[idx + 1:]
+
+
+def nth_occ(haystack: Sequence[T], needle: T, n: int) -> Optional[int]:
+    assert n >= 0
+    num_occs = 0
+    for idx, elem in enumerate(haystack):
+        if elem == needle:
+            if num_occs == n:
+                return idx
+            num_occs += 1
+
+    return None

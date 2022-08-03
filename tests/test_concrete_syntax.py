@@ -2,6 +2,7 @@ import string
 import unittest
 from typing import cast
 
+import pytest
 import z3
 from orderedset import OrderedSet
 
@@ -12,6 +13,7 @@ from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
 from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManager, used_variables_in_concrete_syntax
 from isla.z3_helpers import z3_eq
 from isla_formalizations import scriptsizec
+from isla_formalizations.tar import TAR_CHECKSUM_PREDICATE, TAR_GRAMMAR
 from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 from test_data import LANG_GRAMMAR
 
@@ -236,6 +238,140 @@ forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
         expected = parse_isla('forall <var> var in start: (= var "x")')
 
         self.assertEqual(expected, result)
+
+    def test_infix(self):
+        result = parse_isla('forall <var>: <var> = "x"')
+        expected = parse_isla('forall <var> var in start: (= var "x")')
+
+        self.assertEqual(expected, result)
+
+    def test_xpath_syntax_xml_simplified(self):
+        result = parse_isla('(= <xml-tree>.<xml-open-tag>.<id> "a")', grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
+
+        expected = parse_isla('''
+forall <xml-tree> xml-tree="<{<id> id} <xml-attribute>><inner-xml-tree><xml-close-tag>" in start:
+    (= id "a") and
+forall <xml-tree> xml-tree_0="<{<id> id_0}><inner-xml-tree><xml-close-tag>" in start:
+    (= id_0 "a")''')
+
+        self.assertEqual(expected, result)
+
+    def test_xpath_syntax_xml(self):
+        result = parse_isla(
+            '(= <xml-tree>.<xml-open-tag>.<id> <xml-tree>.<xml-close-tag>.<id>)',
+            grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
+
+        expected = parse_isla('''
+forall <xml-tree> xml-tree="<{<id> id} <xml-attribute>><inner-xml-tree></{<id> id_0}>" in start:
+    (= id id_0) and
+forall <xml-tree> xml-tree_0="<{<id> id_1}><inner-xml-tree></{<id> id_2}>" in start:
+    (= id_1 id_2)''')
+
+        self.assertEqual(expected, result)
+
+    def test_xpath_syntax_tar_checksum(self):
+        result = parse_isla('''
+forall <checksum> in <header>:
+  tar_checksum(<header>, <checksum>)''', semantic_predicates={TAR_CHECKSUM_PREDICATE})
+
+        expected = parse_isla('''
+forall <header> header in start:
+  forall <checksum> checksum in header:
+    tar_checksum(header, checksum)''', semantic_predicates={TAR_CHECKSUM_PREDICATE})
+
+        self.assertEqual(expected, result)
+
+    def test_xpath_for_bound_variable_assgn_lang_simplified(self):
+        result = parse_isla(
+            '''exists <assgn> assgn:
+                 (before(assgn, <assgn>) and (= <assgn>.<rhs>.<var> "x"))''',
+            grammar=LANG_GRAMMAR,
+            structural_predicates={BEFORE_PREDICATE})
+
+        expected = parse_isla('''
+forall <assgn> assgn_0="<var> := {<var> var}" in start:
+  exists <assgn> assgn in start:
+    (before(assgn, assgn_0) and (= var "x")))''', structural_predicates={BEFORE_PREDICATE})
+
+        self.assertEqual(expected, result)
+
+    def test_xpath_infix_for_bound_variable_assgn_lang(self):
+        result = parse_isla(
+            '''exists <assgn> assgn:
+                 (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)''',
+            grammar=LANG_GRAMMAR,
+            structural_predicates={BEFORE_PREDICATE})
+
+        expected = parse_isla('''
+forall <assgn> assgn_0="<var> := {<var> var}" in start:
+  exists <assgn> assgn="{<var> var_0} := <rhs>" in start:
+    (before(assgn, assgn_0) and (= var var_0)))''', structural_predicates={BEFORE_PREDICATE})
+
+        self.assertEqual(expected, result)
+
+    def test_xpath_syntax_xml_conflicting_xpaths(self):
+        self.assertRaises(
+            SyntaxError,
+            parse_isla,
+            '(= <xml-tree>.<xml-open-tag>.<id> <xml-tree>.<xml-open-tag>)',
+            XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
+
+    def test_xpath_already_existing_match_expression(self):
+        self.assertRaises(
+            SyntaxError,
+            parse_isla,
+            '''exists <assgn> assgn="<var> := <rhs>" in start:
+                 (before(assgn, <assgn>) and (= <assgn>.<rhs>.<var> assgn.<var>))''',
+            LANG_GRAMMAR,
+            {BEFORE_PREDICATE})
+
+    def test_xpath_infix_c_defuse(self):
+        result = parse_isla(
+            '''forall <id> in <expr>:
+                 exists <declaration>:
+                    <id> = <declaration>.<id>''',
+            grammar=scriptsizec.SCRIPTSIZE_C_GRAMMAR,
+            structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
+
+        expected = parse_isla('''
+forall <expr> expr in start:
+  forall <id> id in expr: (
+    exists <declaration> declaration="int {<id> id_0} = <expr>;" in start:
+       (= id id_0) or
+    exists <declaration> declaration_0="int {<id> id_1};" in start:
+       (= id id_1))''', structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
+
+        self.assertEqual(expected, result)
+
+    def test_infix_equation_xml(self):
+        result = parse_isla(
+            '<xml-tree>.<xml-open-tag>.<id> = <xml-tree>.<xml-close-tag>.<id>',
+            grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
+
+        expected = parse_isla('''
+    forall <xml-tree> xml-tree="<{<id> id} <xml-attribute>><inner-xml-tree></{<id> id_0}>" in start:
+        (= id id_0) and
+    forall <xml-tree> xml-tree_0="<{<id> id_1}><inner-xml-tree></{<id> id_2}>" in start:
+        (= id_1 id_2)''')
+
+        self.assertEqual(expected, result)
+
+    @pytest.mark.skip('Functionality yet to be implemented.')
+    def test_xpath_syntax_twodot_axis_tar_checksum(self):
+        result = parse_isla(
+            'tar_checksum(<header>, <header>..<checksum>)',
+            grammar=TAR_GRAMMAR,
+            semantic_predicates={TAR_CHECKSUM_PREDICATE})
+
+        expected = parse_isla('''
+    forall <header> header in start:
+      forall <checksum> checksum in header:
+        tar_checksum(header, checksum)''', semantic_predicates={TAR_CHECKSUM_PREDICATE})
+
+        # self.assertEqual(expected, result)
+        unparsed_result = ISLaUnparser(result).unparse()
+        unparsed_expected = ISLaUnparser(expected).unparse()
+        self.assertEqual(unparsed_expected, unparsed_result)
 
 
 if __name__ == '__main__':
