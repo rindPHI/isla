@@ -296,15 +296,15 @@ forall <assgn> assgn_0="<var> := {<var> var}" in start:
             structural_predicates={BEFORE_PREDICATE})
 
         expected = parse_isla('''
-forall <assgn> assgn_0="<var> := {<var> rhs}" in start:
-  exists <assgn> assgn="{<var> lhs} := <rhs>" in start:
-    (before(assgn, assgn_0) and (= rhs lhs)))''', structural_predicates={BEFORE_PREDICATE})
+forall <assgn> assgn_0="<var> := {<var> var}" in start:
+  exists <assgn> assgn="{<var> var_0} := <rhs>" in start:
+    (before(assgn, assgn_0) and (= var var_0)))''', structural_predicates={BEFORE_PREDICATE})
 
-        unparsed_result = ISLaUnparser(result).unparse()
-        unparsed_expected = ISLaUnparser(expected).unparse()
-        self.assertEqual(unparsed_expected, unparsed_result)
+        # unparsed_result = ISLaUnparser(result).unparse()
+        # unparsed_expected = ISLaUnparser(expected).unparse()
+        # self.assertEqual(unparsed_expected, unparsed_result)
 
-        # self.assertEqual(expected, result)
+        self.assertEqual(expected, result)
 
     # TODO: Add test case for conflicting XPath expressions. Example test_xpath_syntax_xml:
     #       `<xml-tree>.<xml-open-tag>` and `<xml-tree>.<xml-open-tag>.<id>`.

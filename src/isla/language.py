@@ -431,6 +431,70 @@ class FormulaVisitor:
         pass
 
 
+class FormulaTransformer(ABC):
+    def transform_predicate_formula(self, formula: 'StructuralPredicateFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_semantic_predicate_formula(self, formula: 'SemanticPredicateFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_negated_formula(self, formula: 'NegatedFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_conjunctive_formula(self, formula: 'ConjunctiveFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_disjunctive_formula(self, formula: 'DisjunctiveFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_smt_formula(self, formula: 'SMTFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_exists_formula(self, formula: 'ExistsFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_forall_formula(self, formula: 'ForallFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_exists_int_formula(self, formula: 'ExistsIntFormula') -> 'Formula':
+        raise NotImplementedError()
+
+    def transform_forall_int_formula(self, formula: 'ForallIntFormula') -> 'Formula':
+        raise NotImplementedError()
+
+
+class NoopFormulaTransformer(FormulaTransformer):
+    def transform_predicate_formula(self, formula: 'StructuralPredicateFormula') -> 'Formula':
+        return formula
+
+    def transform_semantic_predicate_formula(self, formula: 'SemanticPredicateFormula') -> 'Formula':
+        return formula
+
+    def transform_negated_formula(self, formula: 'NegatedFormula') -> 'Formula':
+        return formula
+
+    def transform_conjunctive_formula(self, formula: 'ConjunctiveFormula') -> 'Formula':
+        return formula
+
+    def transform_disjunctive_formula(self, formula: 'DisjunctiveFormula') -> 'Formula':
+        return formula
+
+    def transform_smt_formula(self, formula: 'SMTFormula') -> 'Formula':
+        return formula
+
+    def transform_exists_formula(self, formula: 'ExistsFormula') -> 'Formula':
+        return formula
+
+    def transform_forall_formula(self, formula: 'ForallFormula') -> 'Formula':
+        return formula
+
+    def transform_exists_int_formula(self, formula: 'ExistsIntFormula') -> 'Formula':
+        return formula
+
+    def transform_forall_int_formula(self, formula: 'ForallIntFormula') -> 'Formula':
+        return formula
+
+
 class Formula(ABC):
     # def __getstate__(self):
     #     return {f: pickle.dumps(v) for f, v in self.__dict__.items()} | {"cls": type(self).__name__}
@@ -457,6 +521,9 @@ class Formula(ABC):
         raise NotImplementedError()
 
     def accept(self, visitor: FormulaVisitor):
+        raise NotImplementedError()
+
+    def transform(self, transformer: FormulaTransformer) -> 'Formula':
         raise NotImplementedError()
 
     def __len__(self):
@@ -653,6 +720,9 @@ class StructuralPredicateFormula(Formula):
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_predicate_formula(self)
 
+    def transform(self, visitor: FormulaTransformer) -> Formula:
+        return visitor.transform_predicate_formula(self)
+
     def __len__(self):
         return 1
 
@@ -833,6 +903,9 @@ class SemanticPredicateFormula(Formula):
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_semantic_predicate_formula(self)
 
+    def transform(self, visitor: FormulaTransformer) -> Formula:
+        return visitor.transform_semantic_predicate_formula(self)
+
     def __len__(self):
         return 1
 
@@ -898,6 +971,9 @@ class NegatedFormula(PropositionalCombinator):
             for formula in self.args:
                 formula.accept(visitor)
 
+    def transform(self, transformer: FormulaTransformer) -> 'Formula':
+        return transformer.transform_negated_formula(NegatedFormula(self.args[0].transform(transformer)))
+
     def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> 'NegatedFormula':
         return NegatedFormula(*[arg.substitute_variables(subst_map) for arg in self.args])
 
@@ -930,6 +1006,10 @@ class ConjunctiveFormula(PropositionalCombinator):
             for formula in self.args:
                 formula.accept(visitor)
 
+    def transform(self, transformer: FormulaTransformer) -> 'Formula':
+        return transformer.transform_conjunctive_formula(
+            ConjunctiveFormula(*[arg.transform(transformer) for arg in self.args]))
+
     def __hash__(self):
         return hash((type(self).__name__, self.args))
 
@@ -957,6 +1037,10 @@ class DisjunctiveFormula(PropositionalCombinator):
         if visitor.do_continue(self):
             for formula in self.args:
                 formula.accept(visitor)
+
+    def transform(self, transformer: FormulaTransformer) -> 'Formula':
+        return transformer.transform_disjunctive_formula(
+            DisjunctiveFormula(*[arg.transform(transformer) for arg in self.args]))
 
     def __hash__(self):
         return hash((type(self).__name__, self.args))
@@ -1086,6 +1170,15 @@ class SMTFormula(Formula):
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_smt_formula(self)
 
+    def transform(self, transformer: FormulaTransformer) -> Formula:
+        return transformer.transform_smt_formula(
+            SMTFormula(
+                self.formula,
+                *self.free_variables_,
+                instantiated_variables=self.instantiated_variables,
+                substitutions=self.substitutions,
+                auto_eval=self.auto_eval))
+
     # NOTE: Combining SMT formulas with and/or is not that easy due to tree substitutions, see
     #       function "eliminate_semantic_formula" in solver.py. Problems: Name collisions, plus
     #       impedes clustering which improves solver efficiency. The conjunction and disjunction
@@ -1194,6 +1287,10 @@ class ExistsIntFormula(NumericQuantifiedFormula):
         if visitor.do_continue(self):
             self.inner_formula.accept(visitor)
 
+    def transform(self, transformer: FormulaTransformer) -> Formula:
+        return transformer.transform_exists_int_formula(
+            ExistsIntFormula(self.bound_variable, self.inner_formula.transform(transformer)))
+
     def __hash__(self):
         return hash((type(self).__name__, self.bound_variable, self.inner_formula))
 
@@ -1228,6 +1325,10 @@ class ForallIntFormula(NumericQuantifiedFormula):
         visitor.visit_forall_int_formula(self)
         if visitor.do_continue(self):
             self.inner_formula.accept(visitor)
+
+    def transform(self, transformer: FormulaTransformer) -> Formula:
+        return transformer.transform_forall_int_formula(
+            ForallIntFormula(self.bound_variable, self.inner_formula.transform(transformer)))
 
     def __hash__(self):
         return hash((type(self).__name__, self.bound_variable, self.inner_formula))
@@ -1390,6 +1491,16 @@ class ForallFormula(QuantifiedFormula):
         if visitor.do_continue(self):
             self.inner_formula.accept(visitor)
 
+    def transform(self, transformer: FormulaTransformer) -> Formula:
+        return transformer.transform_forall_formula(
+            ForallFormula(
+                self.bound_variable,
+                self.in_variable,
+                self.inner_formula.transform(transformer),
+                self.bind_expression,
+                self.already_matched,
+                id=self.id))
+
     def __str__(self):
         quote = '"'
         return f'∀ {"" if not self.bind_expression else quote + str(self.bind_expression) + quote + " = "}' \
@@ -1436,6 +1547,14 @@ class ExistsFormula(QuantifiedFormula):
         visitor.visit_exists_formula(self)
         if visitor.do_continue(self):
             self.inner_formula.accept(visitor)
+
+    def transform(self, transformer: FormulaTransformer) -> Formula:
+        return transformer.transform_exists_formula(
+            ExistsFormula(
+                self.bound_variable,
+                self.in_variable,
+                self.inner_formula.transform(transformer),
+                self.bind_expression))
 
     def __str__(self):
         quote = "'"
@@ -1958,6 +2077,55 @@ def univ_close_over_var_push_in(
     return ForallFormula(var, in_var, formula, bind_expression=mexpr)
 
 
+def add_mexpr_to_qfr_over_var(
+        formula: Formula,
+        qfd_var: BoundVariable,
+        mexprs: Iterable[BindExpression]) -> Formula:
+    class AddMexprTransformer(NoopFormulaTransformer):
+        def __init__(self, qfd_var: BoundVariable, mexprs: Iterable[BindExpression]):
+            super().__init__()
+            self.qfd_var: BoundVariable = qfd_var
+            self.mexprs: Iterable[BindExpression] = mexprs
+
+        def transform_forall_formula(self, formula: ForallFormula) -> Formula:
+            if formula.bound_variable != self.qfd_var:
+                return formula
+
+            if formula.bind_expression is not None:
+                raise RuntimeError(
+                    'Cannot add a match expression to formula with match expression, ' +
+                    f'formula: {formula}, match expressions: {self.mexprs}')
+
+            return reduce(Formula.__and__, [
+                ForallFormula(
+                    formula.bound_variable,
+                    formula.in_variable,
+                    formula.inner_formula,
+                    mexpr,
+                    formula.already_matched,
+                    id=formula.id)
+                for mexpr in self.mexprs])
+
+        def transform_exists_formula(self, formula: ExistsFormula) -> Formula:
+            if formula.bound_variable != self.qfd_var:
+                return formula
+
+            if formula.bind_expression is not None:
+                raise RuntimeError(
+                    'Cannot add a match expression to formula with match expression, ' +
+                    f'formula: {formula}, match expressions: {self.mexprs}')
+
+            return reduce(Formula.__or__, [
+                ExistsFormula(
+                    formula.bound_variable,
+                    formula.in_variable,
+                    formula.inner_formula,
+                    mexpr)
+                for mexpr in self.mexprs])
+
+    return formula.transform(AddMexprTransformer(qfd_var, mexprs))
+
+
 class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
     def __init__(
             self,
@@ -2106,7 +2274,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
                 is_existing_var = True
                 bound_var_type = bound_var.n_type
-                assert False, 'Not yet implemented'
+                # assert False, 'Not yet implemented'
 
             partial_mexpr_trees = {DerivationTree(bound_var_type): []}
             for xpath_segments, _ in group:
@@ -2130,10 +2298,13 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             #       When implementing the '..' axis, take care not to break things; additional
             #       quantifiers have to be put on a lower level. Well, that's actually also true
             #       for "free" initial qfrs.
-            formula = reduce(
-                Formula.__and__,
-                [univ_close_over_var_push_in(formula, bound_var, in_var=start_constant(), mexpr=match_expression)
-                 for match_expression in match_expressions])
+            if is_existing_var:
+                formula = add_mexpr_to_qfr_over_var(formula, bound_var, match_expressions)
+            else:
+                formula = reduce(
+                    Formula.__and__,
+                    [univ_close_over_var_push_in(formula, bound_var, in_var=start_constant(), mexpr=match_expression)
+                     for match_expression in match_expressions])
 
         return ensure_unique_bound_variables(formula)
 
@@ -2193,6 +2364,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
     def exitStart(self, ctx: IslaLanguageParser.StartContext):
         try:
             formula: Formula = self.mgr.create(self.formulas[ctx.formula()])
+            formula = ensure_unique_bound_variables(formula)
             self.used_variables.update({var.name for var in VariablesCollector.collect(formula)})
             self.result = \
                 self.close_over_xpath_expressions(
