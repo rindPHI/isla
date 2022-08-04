@@ -20,7 +20,7 @@ Small bugfix releases.
 ### Added
 
 - Brief descriptions of the built-in predicate added to the README.md file.
-- 
+  
 ### Changed
 
 - Project package information was extended to prepare for publishing at PyPi.
