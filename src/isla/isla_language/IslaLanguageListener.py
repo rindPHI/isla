@@ -1,4 +1,4 @@
-# Generated from IslaLanguage.g4 by ANTLR 4.7.1
+# Generated from IslaLanguage.g4 by ANTLR 4.10.1
 from antlr4 import *
 if __name__ is not None and "." in __name__:
     from .IslaLanguageParser import IslaLanguageParser
@@ -305,3 +305,5 @@ class IslaLanguageListener(ParseTreeListener):
         pass
 
 
+
+del IslaLanguageParser
