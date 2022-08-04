@@ -199,13 +199,14 @@ many `<raw-field>` occurrences in a `line`.
 ## Build, Run, Install
 
 ISLa depends on Python 3.10 and the Python header files. To compile all of ISLa's dependencies, you need
-gcc, g++ make, and cmake. To check out the current ISLa version, git will be needed. Additionally, for testing
+gcc, g++ make, and cmake. To check out the current ISLa version, git will be needed. Furthermore, 
+python3.10-venv is required to run ISLearn in a virtual environment. Additionally, for testing
 ISLa, clang and the `csvlint` executable are required (for the Scriptsize-C and CSV case studies).
 
 On *Alpine Linux*, all dependencies (but `csvlint`) can be installed using
 
 ```shell
-apk add python3-dev gcc g++ make cmake git clang
+apk add python3.10 python3.10-dev python3.10-venv gcc g++ make cmake git clang
 ```
 
 The `csvlint` executable can be obtained from
@@ -221,7 +222,8 @@ Then, move the file `/tmp/csvlint-v0.3.0-linux-amd64/csvlint` to some location i
 
 ### Docker
 
-For testing ISLa, we recommend using our provided Docker container, which already contains all dependencies.
+For testing ISLa without having to care about external dependencies like Python, we provide a Docker container,
+which already contains all dependencies.
 
 First, pull and run the Docker container:
 
@@ -240,11 +242,41 @@ cd isla/
 Now, you can perform an editable installation of ISLa and run the ISLa tests:
 
 ```shell
-pip3 install -e .[dev,test]
+pip install -e .[dev,test]
 python3.10 -m pytest -n 16 tests
 ```
 
-### Virtual Environment
+### Install
+
+If all external dependencies are available, a simple `pip install isla-solver` suffices. We recommend installing 
+ISLa inside a virtual environment (virtualenv):
+
+```shell
+python3.10 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install isla
+```
+
+### Build 
+
+ISLearn is built locally as follows:
+
+```shell
+git clone https://github.com/rindPHI/isla.git
+cd isla/
+
+python3.10 -m venv venv
+source venv/bin/activate
+
+pip install --upgrade pip
+pip install --upgrade build
+python3 -m build
+```
+
+Then, you will find the built wheel (`*.whl`) in the `dist/` directory.
+
+### Testing & Development
 
 For development, we recommend using ISLa inside a virtual environment (virtualenv). By thing the following steps in a
 standard shell (bash), one can run the ISLa tests:
@@ -256,24 +288,15 @@ cd isla/
 python3.10 -m venv venv
 source venv/bin/activate
 
-pip3 install --upgrade pip
-pip3 install -r requirements_test.txt
+pip install --upgrade pip
+pip install -r requirements_test.txt
 
 # Run tests
-pip3 install -e .[dev,test]
-python3.10 -m pytest -n 16 tests
+pip install -e .[dev,test]
+python3 -m pytest -n 16 tests
 ```
 
 Then you can, for instance, run `python3 tests/xml_demo.py` inside the virtual environment.
-
-### Global Installation
-
-To install ISLa globally (not recommended, less well tested), run
-
-```shell
-python3 -m build
-pip3 install dist/isla-0.2b3-py3-none-any.whl
-```
 
 ## Changelog
 

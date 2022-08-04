@@ -5,6 +5,12 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.8.4] - 2022-08-04
+
+### Changed
+
+- Updated build/test/install information in README.
+
 ## [0.8.1], [0.8.2], [0.8.3] - 2022-08-03 to 2022-08-04
 
 Small bugfix releases.
