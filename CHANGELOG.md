@@ -19,7 +19,7 @@ Small bugfix releases.
 
 ### Added
 
-- Brief descriptions of the built-in predicate added to the README.md file.
+- Brief descriptions of the built-in predicates added to the README.md file.
   
 ### Changed
 
