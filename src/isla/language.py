@@ -2438,6 +2438,8 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                  IslaLanguageParser.ForallMexprContext |
                  IslaLanguageParser.ExistsMexprContext,
             mexpr=False):
+        is_forall = str(ctx.children[0]) == 'forall'
+
         if mexpr:
             mexpr = self.parse_mexpr(
                 antlr_get_text_with_whitespace(ctx.STRING())[1:-1],
@@ -2466,9 +2468,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             in_var = start_constant()
 
         self.formulas[ctx] = (
-            ForallFormula
-            if (isinstance(ctx, IslaLanguageParser.ForallContext) or
-                isinstance(ctx, IslaLanguageParser.ForallMexprContext))
+            ForallFormula if is_forall
             else ExistsFormula
         )(
             self.get_var(var_id, var_type),
