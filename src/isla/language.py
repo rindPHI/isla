@@ -2405,6 +2405,10 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             self.result = \
                 self.close_over_xpath_expressions(
                     self.close_over_free_nonterminals(formula))
+
+            free_variables = [var for var in self.result.free_variables() if not isinstance(var, Constant)]
+            if free_variables:
+                raise SyntaxError('Unbound variables: ' + ', '.join(map(str, free_variables)))
         except RuntimeError as exc:
             raise SyntaxError(str(exc))
 

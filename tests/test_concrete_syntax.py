@@ -9,7 +9,7 @@ from orderedset import OrderedSet
 import isla.isla_shortcuts as sc
 from isla import language
 from isla.helpers import strip_ws, srange
-from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE
+from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, STANDARD_STRUCTURAL_PREDICATES
 from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManager, used_variables_in_concrete_syntax
 from isla.z3_helpers import z3_eq
 from isla_formalizations import scriptsizec
@@ -229,7 +229,7 @@ forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
         result = parse_isla('forall <expr> in start: exists <elem> in <var>: (= <elem> "x")')
         expected = parse_isla(
             'forall <var> var in start: '
-            'forall <expr> expr in start: exists <elem> elem in var: (= elem "x")')
+            '  forall <expr> expr in start: exists <elem> elem in var: (= elem "x")')
 
         self.assertEqual(expected, result)
 
@@ -295,17 +295,26 @@ forall <assgn> assgn_0="<var> := {<var> var}" in start:
 
         self.assertEqual(expected, result)
 
+    def test_xpath_infix_for_bound_variable_assgn_lang_unbound_identifier(self):
+        self.assertRaises(
+            SyntaxError,
+            parse_isla,
+            '''exists <assgn> assgn:
+                 before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>''',
+            LANG_GRAMMAR,
+            STANDARD_STRUCTURAL_PREDICATES)
+
     def test_xpath_infix_for_bound_variable_assgn_lang(self):
         result = parse_isla(
             '''exists <assgn> assgn:
                  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)''',
             grammar=LANG_GRAMMAR,
-            structural_predicates={BEFORE_PREDICATE})
+            structural_predicates=STANDARD_STRUCTURAL_PREDICATES)
 
         expected = parse_isla('''
 forall <assgn> assgn_0="<var> := {<var> var}" in start:
   exists <assgn> assgn="{<var> var_0} := <rhs>" in start:
-    (before(assgn, assgn_0) and (= var var_0)))''', structural_predicates={BEFORE_PREDICATE})
+    (before(assgn, assgn_0) and (= var var_0)))''', structural_predicates=STANDARD_STRUCTURAL_PREDICATES)
 
         self.assertEqual(expected, result)
 
