@@ -305,5 +305,14 @@ class IslaLanguageListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by IslaLanguageParser#smt_binary_op.
+    def enterSmt_binary_op(self, ctx:IslaLanguageParser.Smt_binary_opContext):
+        pass
+
+    # Exit a parse tree produced by IslaLanguageParser#smt_binary_op.
+    def exitSmt_binary_op(self, ctx:IslaLanguageParser.Smt_binary_opContext):
+        pass
+
+
 
 del IslaLanguageParser

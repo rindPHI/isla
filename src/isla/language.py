@@ -2612,7 +2612,11 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.smt_expressions[ctx] = parse_tree_text(ctx)
 
     def exitSexprPrefix(self, ctx: IslaLanguageParser.SexprPrefixContext):
-        self.smt_expressions[ctx] = f'({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr()]})'
+        if not ctx.sexpr():
+            self.smt_expressions[ctx] = parse_tree_text(ctx.op)
+        else:
+            self.smt_expressions[ctx] = \
+                f'({parse_tree_text(ctx.op)} {" ".join([self.smt_expressions[child] for child in ctx.sexpr()])})'
 
     def exitSexprInfixReStr(self, ctx: IslaLanguageParser.SexprInfixReStrContext):
         self.smt_expressions[ctx] = \

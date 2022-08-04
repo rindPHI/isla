@@ -5,11 +5,22 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.8.1], [0.8.2], [0.8.3] - 2022-08-03 to 2022-08-04
+
+Small bugfix releases.
+
+## [0.8] - 2022-08-03
+
 ### Added
 
 - Brief descriptions of the built-in predicate added to the README.md file.
+- 
+### Changed
 
-## [0.3b1] - 2022-08-03
+- Project package information was extended to prepare for publishing at PyPi.
+- Version jump to signal PyPi maturity :) We're planning for an 1.0 release soon!
+
+## [0.3] - 2022-08-03
 
 ### Added
 

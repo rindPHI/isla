@@ -23,25 +23,64 @@ formula:
   ;
 
 sexpr:
-    'true'                                  # SexprTrue
-  | 'false'                                 # SexprFalse
-  | INT                                     # SexprNum
-  | ID                                      # SexprId
-  | XPATHEXPR                               # SexprXPathExpr
-  | VAR_TYPE                                # SexprFreeId
-  | STRING                                  # SexprStr
-  | ('=' | GEQ | LEQ | GT | LT | 're.+' | 're.*' | 're.++' | 'str.++' | DIV | MUL | PLUS | MINUS)
-                                            # SexprOp
-  | op=('re.+' | 're.*') '(' sexpr ')'      # SexprPrefix
-  | sexpr op=('re.++' | 'str.++') sexpr     # SexprInfixReStr
-  | sexpr op=(PLUS | MINUS) sexpr           # SexprInfixPlusMinus
-  | sexpr op=(MUL | DIV) sexpr              # SexprInfixMulDiv
+    'true'                                     # SexprTrue
+  | 'false'                                    # SexprFalse
+  | INT                                        # SexprNum
+  | ID                                         # SexprId
+  | XPATHEXPR                                  # SexprXPathExpr
+  | VAR_TYPE                                   # SexprFreeId
+  | STRING                                     # SexprStr
+  | (SMT_NONBINARY_OP | smt_binary_op)         # SexprOp
+  | op=SMT_NONBINARY_OP '(' ( sexpr ( ',' sexpr ) * ) ? ')' # SexprPrefix
+  | sexpr op=SMT_INFIX_RE_STR sexpr            # SexprInfixReStr
+  | sexpr op=(PLUS | MINUS) sexpr              # SexprInfixPlusMinus
+  | sexpr op=(MUL | DIV) sexpr                 # SexprInfixMulDiv
   | sexpr op=('=' | GEQ | LEQ | GT | LT) sexpr # SexprInfixEq
-  | '(' sexpr ')'                           # SepxrParen
-  | '(' op=sexpr sexpr + ')'                # SepxrApp
+  | '(' sexpr ')'                              # SepxrParen
+  | '(' op=sexpr sexpr + ')'                   # SepxrApp
   ;
 
 predicateArg: ID | VAR_TYPE | INT | STRING | XPATHEXPR ;
+
+smt_binary_op:
+  '=' | GEQ | LEQ | GT | LT | DIV | MUL | PLUS | MINUS | SMT_INFIX_RE_STR;
+
+SMT_INFIX_RE_STR:
+      're.++'
+    | 'str.++'
+    | 'str.<='
+    ;
+
+SMT_NONBINARY_OP: 
+      're.+'
+    | 're.*'
+    | 'str.len'
+    | 'str.in_re'
+    | 'str.to_re'
+    | 're.none'
+    | 're.all'
+    | 're.allchar'
+    | 'str.at'
+    | 'str.substr'
+    | 'str.prefixof'
+    | 'str.suffixof'
+    | 'str.contains'
+    | 'str.indexof'
+    | 'str.replace'
+    | 'str.replace_all'
+    | 'str.replace_re'
+    | 'str.replace_re_all'
+    | 're.comp'
+    | 're.diff'
+    | 're.opt'
+    | 're.range'
+    | 're.loop'
+    | 'str.is_digit'
+    | 'str.to_code'
+    | 'str.from_code'
+    | 'str.to.int'
+    | 'str.from_int'
+    ;
 
 XPATHEXPR: (ID | VAR_TYPE) XPATHSEGMENT + ;
 

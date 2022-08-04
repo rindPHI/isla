@@ -365,6 +365,16 @@ forall <expr> expr in start:
 
         self.assertEqual(expected, result)
 
+    def test_prefix_multiple_args(self):
+        result = parse_isla('forall <a>: exists <b>: str.contains(a, b)')
+        expected = parse_isla('forall <a> a in start: exists <b> b in start: (str.contains a b)')
+        self.assertEqual(expected, result)
+
+    def test_prefix_no_args(self):
+        result = parse_isla('str.in_re("17", re.all())')
+        # expected = parse_isla('forall <a> a in start: exists <b> b in start: (str.contains a b)')
+        # self.assertEqual(expected, result)
+
     @pytest.mark.skip('Functionality yet to be implemented.')
     def test_xpath_syntax_twodot_axis_tar_checksum(self):
         result = parse_isla(
