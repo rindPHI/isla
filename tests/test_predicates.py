@@ -15,6 +15,7 @@ from isla.type_defs import Path
 from isla_formalizations import tar, rest, scriptsizec
 from isla_formalizations.csv import CSV_GRAMMAR
 from isla_formalizations.tar import TAR_GRAMMAR, octal_conv_grammar
+from isla_formalizations.xml_lang import XML_GRAMMAR
 
 
 class TestPredicates(unittest.TestCase):
@@ -245,9 +246,22 @@ forall <csv-record> row in start:
     def test_direct_child_predicate(self):
         formula = parse_isla(r'''
 forall <xml-open-tag> ot in <start>:
-    exists <xml-attribute> attr in <ot>:
+    exists <xml-attribute> attr in ot:
         (direct_child(attr, ot) and attr = "id=\"asdf\"")
 ''', structural_predicates={DIRECT_CHILD_PREDICATE})
+
+        good_tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse(
+            '<a id="asdf"><b c="d" id="asdf"/></a>'))[0])
+
+        self.assertTrue(evaluate(formula, good_tree, XML_GRAMMAR))
+
+        bad_tree_1 = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse(
+            '<a>b</a>'))[0])
+        bad_tree_2 = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse(
+            '<a><b c="d" id="asdf"/></a>'))[0])
+
+        self.assertTrue(evaluate(formula, bad_tree_1, XML_GRAMMAR).is_false())
+        self.assertTrue(evaluate(formula, bad_tree_2, XML_GRAMMAR).is_false())
 
     if __name__ == '__main__':
         unittest.main()
