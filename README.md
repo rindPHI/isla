@@ -150,7 +150,8 @@ use are explained below.
 | `consecutive(node_1, node_2)`              | `node_1` and `node_2` are consecutive leaves in the parse tree.                                                                                        |
 | `count(in_tree, NEEDLE, NUM)`              | There are `NUM` occurrences of the `NEEDLE` nonterminal in `in_tree`. `NEEDLE` is a String, `NUM` a numeric String or int variable.                    |
 | `different_position(node_1, node_2)`       | `node_1` and `node_2` occur at different positions (cannot be the same node).                                                                          |
-| `inside(node_1, node_2)`                   | `node_1` is a subtree of `node_2`. |
+| `direct_child(node_1, node_2)`             | `node_1` is a direct child of `node_2` in the derivation tree.                                                                                         |
+| `inside(node_1, node_2)`                   | `node_1` is a subtree of `node_2`.                                                                                                                     |
 | `level(PRED, NONTERMINAL, node_1, node_2)` | `node_1` and `node_2` are related relatively to each other as specified by `PRED` and `NONTERMINAL` (see below). `PRED` and `NONTERMINAL` are Strings. |
 | `nth(N, node_1, node_2)`                   | `node_1` is the `N`-th occurrence of a node with its nonterminal symbol within `node_2`. `N` is a numeric String.                                      |
 | `same_position(node_1, node_2)`            | `node_1` and `node_2` occur at the same position (have to be the same node).                                                                           |

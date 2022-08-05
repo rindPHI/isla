@@ -7,7 +7,8 @@ from isla import language
 from isla.derivation_tree import DerivationTree
 from isla.evaluator import evaluate
 from isla.helpers import delete_unreachable
-from isla.isla_predicates import embed_tree, mk_parser, level_check, OCTAL_TO_DEC_PREDICATE, is_nth, NTH_PREDICATE
+from isla.isla_predicates import embed_tree, mk_parser, level_check, OCTAL_TO_DEC_PREDICATE, is_nth, NTH_PREDICATE, \
+    DIRECT_CHILD_PREDICATE
 from isla.language import parse_isla
 from isla.parser import EarleyParser
 from isla.type_defs import Path
@@ -241,5 +242,12 @@ forall <csv-record> row in start:
     (nth("3", column, row) implies (= column "c"))""", CSV_GRAMMAR, structural_predicates={NTH_PREDICATE})
         self.assertFalse(evaluate(formula, csv_doc, CSV_GRAMMAR))
 
-        if __name__ == '__main__':
-            unittest.main()
+    def test_direct_child_predicate(self):
+        formula = parse_isla(r'''
+forall <xml-open-tag> ot in <start>:
+    exists <xml-attribute> attr in <ot>:
+        (direct_child(attr, ot) and attr = "id=\"asdf\"")
+''', structural_predicates={DIRECT_CHILD_PREDICATE})
+
+    if __name__ == '__main__':
+        unittest.main()

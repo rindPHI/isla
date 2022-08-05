@@ -2560,6 +2560,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
     def exitSMTFormula(self, ctx: IslaLanguageParser.SMTFormulaContext):
         formula_text = self.smt_expressions[ctx.sexpr()]
+        formula_text = formula_text.replace(r'\"', '""')
         try:
             z3_constr = z3.parse_smt2_string(
                 f"(assert {formula_text})",

@@ -5,6 +5,12 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.8.6] - 2022-08-05
+
+### Added
+
+- Implemented `direct_child` predicate upon request.
+
 ## [0.8.5] - 2022-08-04
 
 Small bugfix release.

@@ -521,11 +521,23 @@ OCTAL_TO_DEC_PREDICATE = lambda graph, octal_start, decimal_start: SemanticPredi
     binds_tree=False
 )
 
+
+def is_direct_child(_: Optional[DerivationTree], path_1: Path, path_2: Path) -> bool:
+    # Returns true iff `path_1` is a direct child of `path_2`
+    if len(path_1) != len(path_2) + 1:
+        return False
+
+    return path_1[:len(path_2)] == path_2
+
+
+DIRECT_CHILD_PREDICATE = StructuralPredicate("direct_child", 2, is_direct_child)
+
 STANDARD_STRUCTURAL_PREDICATES = {
     AFTER_PREDICATE,
     BEFORE_PREDICATE,
     CONSECUTIVE_PREDICATE,
     DIFFERENT_POSITION_PREDICATE,
+    DIRECT_CHILD_PREDICATE,
     IN_TREE_PREDICATE,
     LEVEL_PREDICATE,
     SAME_POSITION_PREDICATE,
