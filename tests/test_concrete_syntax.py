@@ -13,9 +13,9 @@ from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, STANDARD_STR
 from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManager, used_variables_in_concrete_syntax, \
     unparse_isla
 from isla.z3_helpers import z3_eq
-# from isla_formalizations import scriptsizec
-# from isla_formalizations.tar import TAR_CHECKSUM_PREDICATE, TAR_GRAMMAR
-# from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
+from isla_formalizations import scriptsizec
+from isla_formalizations.tar import TAR_CHECKSUM_PREDICATE, TAR_GRAMMAR
+from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 from test_data import LANG_GRAMMAR
 
 
