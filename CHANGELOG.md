@@ -15,6 +15,7 @@ This file contains the notable changes in the ISLa project since version 0.2a1
   also is the default if you omit an index.
 - Bug fix: ISLa's unparser returns correct result for nullary SMT-LIB functions (e.g., `re.all` instead of `(re.all)`).
 - Bug fix: SMT-LIBs `div` and `mod` operators work now (also in infix syntax).
+- Added mod to `evaluate_z3_expression` shortcut (which does not require Z3 solver calls).
 
 ## [0.8.6] - 2022-08-05
 

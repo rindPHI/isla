@@ -175,7 +175,10 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
         return construct_result(lambda args: args[0] * args[1], children_results)
 
     if z3.is_div(expr):
-        return construct_result(lambda args: int(args[0] / args[1]), children_results)
+        return construct_result(lambda args: int(float(args[0]) / float(args[1])), children_results)
+
+    if z3.is_mod(expr):
+        return construct_result(lambda args: args[0] % args[1], children_results)
 
     # String Operations
     if expr.decl().kind() == z3.Z3_OP_SEQ_LENGTH:
@@ -195,7 +198,7 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
             ], children_results)
 
     logger = logging.getLogger("Z3 evaluation")
-    logger.warning("Evaluation of expression %s not implemented.", expr)
+    logger.debug("Evaluation of expression %s not implemented.", expr)
     raise NotImplementedError(f"Evaluation of expression {expr} not implemented.")
 
 
