@@ -424,6 +424,9 @@ def smt_expr_to_str(f: z3.ExprRef, qfd_var_stack: Tuple[str, ...] = ()) -> str:
         else:
             op = f.decl().name()
 
+        if not f.children():
+            return op
+
         return f"({op} {' '.join(map(lambda c: smt_expr_to_str(c, qfd_var_stack), f.children()))}".strip() + ")"
 
     if isinstance(f, z3.QuantifierRef):

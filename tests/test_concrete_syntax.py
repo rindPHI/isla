@@ -10,7 +10,8 @@ import isla.isla_shortcuts as sc
 from isla import language
 from isla.helpers import strip_ws, srange
 from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, STANDARD_STRUCTURAL_PREDICATES
-from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManager, used_variables_in_concrete_syntax
+from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManager, used_variables_in_concrete_syntax, \
+    unparse_isla
 from isla.z3_helpers import z3_eq
 from isla_formalizations import scriptsizec
 from isla_formalizations.tar import TAR_CHECKSUM_PREDICATE, TAR_GRAMMAR
@@ -383,8 +384,13 @@ forall <expr> expr in start:
 
     def test_prefix_no_args(self):
         result = parse_isla('str.in_re("17", re.all())')
-        # expected = parse_isla('forall <a> a in start: exists <b> b in start: (str.contains a b)')
-        # self.assertEqual(expected, result)
+        expected_string = '(str.in_re "17" re.all)'
+        self.assertEqual(expected_string, unparse_isla(result))
+        expected = parse_isla('(str.in_re "17" re.all)')
+        self.assertEqual(expected, result)
+
+    def test_modulo(self):
+        result = parse_isla('(= (mod (str.to.int <pagesize>) 7) 0)')
 
     @pytest.mark.skip('Functionality yet to be implemented.')
     def test_xpath_syntax_twodot_axis_tar_checksum(self):
