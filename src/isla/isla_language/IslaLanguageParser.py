@@ -10,7 +10,7 @@ else:
 
 def serializedATN():
     return [
-        4,1,41,197,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,1,0,3,
+        4,1,43,197,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,1,0,3,
         0,14,8,0,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,2,1,2,1,2,1,2,3,2,28,
         8,2,1,2,1,2,1,2,3,2,33,8,2,3,2,35,8,2,1,2,1,2,1,2,1,2,1,2,3,2,42,
         8,2,1,2,1,2,1,2,3,2,47,8,2,3,2,49,8,2,1,2,1,2,1,2,1,2,1,2,3,2,56,
@@ -24,65 +24,66 @@ def serializedATN():
         156,9,3,3,3,158,8,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,4,3,168,8,3,
         11,3,12,3,169,1,3,1,3,3,3,174,8,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,
         3,1,3,1,3,1,3,1,3,5,3,188,8,3,10,3,12,3,191,9,3,1,4,1,4,1,5,1,5,
-        1,5,0,2,4,6,6,0,2,4,6,8,10,0,5,1,0,34,35,1,0,32,33,2,0,7,7,36,39,
-        1,0,22,26,3,0,7,7,20,20,32,39,236,0,13,1,0,0,0,2,17,1,0,0,0,4,113,
-        1,0,0,0,6,173,1,0,0,0,8,192,1,0,0,0,10,194,1,0,0,0,12,14,3,2,1,0,
-        13,12,1,0,0,0,13,14,1,0,0,0,14,15,1,0,0,0,15,16,3,4,2,0,16,1,1,0,
-        0,0,17,18,5,1,0,0,18,19,5,25,0,0,19,20,5,2,0,0,20,21,5,23,0,0,21,
-        22,5,3,0,0,22,3,1,0,0,0,23,24,6,2,-1,0,24,25,5,4,0,0,25,27,5,23,
-        0,0,26,28,5,25,0,0,27,26,1,0,0,0,27,28,1,0,0,0,28,34,1,0,0,0,29,
-        32,5,5,0,0,30,33,5,25,0,0,31,33,5,23,0,0,32,30,1,0,0,0,32,31,1,0,
-        0,0,33,35,1,0,0,0,34,29,1,0,0,0,34,35,1,0,0,0,35,36,1,0,0,0,36,37,
-        5,2,0,0,37,114,3,4,2,15,38,39,5,6,0,0,39,41,5,23,0,0,40,42,5,25,
-        0,0,41,40,1,0,0,0,41,42,1,0,0,0,42,48,1,0,0,0,43,46,5,5,0,0,44,47,
-        5,25,0,0,45,47,5,23,0,0,46,44,1,0,0,0,46,45,1,0,0,0,47,49,1,0,0,
-        0,48,43,1,0,0,0,48,49,1,0,0,0,49,50,1,0,0,0,50,51,5,2,0,0,51,114,
-        3,4,2,14,52,53,5,4,0,0,53,55,5,23,0,0,54,56,5,25,0,0,55,54,1,0,0,
-        0,55,56,1,0,0,0,56,57,1,0,0,0,57,58,5,7,0,0,58,64,5,24,0,0,59,62,
-        5,5,0,0,60,63,5,25,0,0,61,63,5,23,0,0,62,60,1,0,0,0,62,61,1,0,0,
-        0,63,65,1,0,0,0,64,59,1,0,0,0,64,65,1,0,0,0,65,66,1,0,0,0,66,67,
-        5,2,0,0,67,114,3,4,2,13,68,69,5,6,0,0,69,71,5,23,0,0,70,72,5,25,
-        0,0,71,70,1,0,0,0,71,72,1,0,0,0,72,73,1,0,0,0,73,74,5,7,0,0,74,80,
-        5,24,0,0,75,78,5,5,0,0,76,79,5,25,0,0,77,79,5,23,0,0,78,76,1,0,0,
-        0,78,77,1,0,0,0,79,81,1,0,0,0,80,75,1,0,0,0,80,81,1,0,0,0,81,82,
-        1,0,0,0,82,83,5,2,0,0,83,114,3,4,2,12,84,85,5,6,0,0,85,86,5,8,0,
-        0,86,87,5,25,0,0,87,88,5,2,0,0,88,114,3,4,2,11,89,90,5,4,0,0,90,
-        91,5,8,0,0,91,92,5,25,0,0,92,93,5,2,0,0,93,114,3,4,2,10,94,95,5,
-        9,0,0,95,114,3,4,2,9,96,97,5,25,0,0,97,98,5,15,0,0,98,103,3,8,4,
-        0,99,100,5,16,0,0,100,102,3,8,4,0,101,99,1,0,0,0,102,105,1,0,0,0,
-        103,101,1,0,0,0,103,104,1,0,0,0,104,106,1,0,0,0,105,103,1,0,0,0,
-        106,107,5,17,0,0,107,114,1,0,0,0,108,114,3,6,3,0,109,110,5,15,0,
-        0,110,111,3,4,2,0,111,112,5,17,0,0,112,114,1,0,0,0,113,23,1,0,0,
-        0,113,38,1,0,0,0,113,52,1,0,0,0,113,68,1,0,0,0,113,84,1,0,0,0,113,
-        89,1,0,0,0,113,94,1,0,0,0,113,96,1,0,0,0,113,108,1,0,0,0,113,109,
-        1,0,0,0,114,132,1,0,0,0,115,116,10,8,0,0,116,117,5,10,0,0,117,131,
-        3,4,2,9,118,119,10,7,0,0,119,120,5,11,0,0,120,131,3,4,2,8,121,122,
-        10,6,0,0,122,123,5,12,0,0,123,131,3,4,2,7,124,125,10,5,0,0,125,126,
-        5,13,0,0,126,131,3,4,2,6,127,128,10,4,0,0,128,129,5,14,0,0,129,131,
-        3,4,2,5,130,115,1,0,0,0,130,118,1,0,0,0,130,121,1,0,0,0,130,124,
-        1,0,0,0,130,127,1,0,0,0,131,134,1,0,0,0,132,130,1,0,0,0,132,133,
-        1,0,0,0,133,5,1,0,0,0,134,132,1,0,0,0,135,136,6,3,-1,0,136,174,5,
-        18,0,0,137,174,5,19,0,0,138,174,5,26,0,0,139,174,5,25,0,0,140,174,
-        5,22,0,0,141,174,5,23,0,0,142,174,5,24,0,0,143,146,5,21,0,0,144,
-        146,3,10,5,0,145,143,1,0,0,0,145,144,1,0,0,0,146,174,1,0,0,0,147,
-        148,5,21,0,0,148,157,5,15,0,0,149,154,3,6,3,0,150,151,5,16,0,0,151,
-        153,3,6,3,0,152,150,1,0,0,0,153,156,1,0,0,0,154,152,1,0,0,0,154,
-        155,1,0,0,0,155,158,1,0,0,0,156,154,1,0,0,0,157,149,1,0,0,0,157,
-        158,1,0,0,0,158,159,1,0,0,0,159,174,5,17,0,0,160,161,5,15,0,0,161,
-        162,3,6,3,0,162,163,5,17,0,0,163,174,1,0,0,0,164,165,5,15,0,0,165,
-        167,3,6,3,0,166,168,3,6,3,0,167,166,1,0,0,0,168,169,1,0,0,0,169,
-        167,1,0,0,0,169,170,1,0,0,0,170,171,1,0,0,0,171,172,5,17,0,0,172,
-        174,1,0,0,0,173,135,1,0,0,0,173,137,1,0,0,0,173,138,1,0,0,0,173,
-        139,1,0,0,0,173,140,1,0,0,0,173,141,1,0,0,0,173,142,1,0,0,0,173,
-        145,1,0,0,0,173,147,1,0,0,0,173,160,1,0,0,0,173,164,1,0,0,0,174,
-        189,1,0,0,0,175,176,10,6,0,0,176,177,5,20,0,0,177,188,3,6,3,7,178,
-        179,10,5,0,0,179,180,7,0,0,0,180,188,3,6,3,6,181,182,10,4,0,0,182,
-        183,7,1,0,0,183,188,3,6,3,5,184,185,10,3,0,0,185,186,7,2,0,0,186,
-        188,3,6,3,4,187,175,1,0,0,0,187,178,1,0,0,0,187,181,1,0,0,0,187,
-        184,1,0,0,0,188,191,1,0,0,0,189,187,1,0,0,0,189,190,1,0,0,0,190,
-        7,1,0,0,0,191,189,1,0,0,0,192,193,7,3,0,0,193,9,1,0,0,0,194,195,
-        7,4,0,0,195,11,1,0,0,0,24,13,27,32,34,41,46,48,55,62,64,71,78,80,
-        103,113,130,132,145,154,157,169,173,187,189
+        1,5,0,2,4,6,6,0,2,4,6,8,10,0,5,1,0,36,37,2,0,24,25,35,35,2,0,7,7,
+        38,41,2,0,22,23,27,29,4,0,7,7,20,20,24,25,35,41,236,0,13,1,0,0,0,
+        2,17,1,0,0,0,4,113,1,0,0,0,6,173,1,0,0,0,8,192,1,0,0,0,10,194,1,
+        0,0,0,12,14,3,2,1,0,13,12,1,0,0,0,13,14,1,0,0,0,14,15,1,0,0,0,15,
+        16,3,4,2,0,16,1,1,0,0,0,17,18,5,1,0,0,18,19,5,28,0,0,19,20,5,2,0,
+        0,20,21,5,23,0,0,21,22,5,3,0,0,22,3,1,0,0,0,23,24,6,2,-1,0,24,25,
+        5,4,0,0,25,27,5,23,0,0,26,28,5,28,0,0,27,26,1,0,0,0,27,28,1,0,0,
+        0,28,34,1,0,0,0,29,32,5,5,0,0,30,33,5,28,0,0,31,33,5,23,0,0,32,30,
+        1,0,0,0,32,31,1,0,0,0,33,35,1,0,0,0,34,29,1,0,0,0,34,35,1,0,0,0,
+        35,36,1,0,0,0,36,37,5,2,0,0,37,114,3,4,2,15,38,39,5,6,0,0,39,41,
+        5,23,0,0,40,42,5,28,0,0,41,40,1,0,0,0,41,42,1,0,0,0,42,48,1,0,0,
+        0,43,46,5,5,0,0,44,47,5,28,0,0,45,47,5,23,0,0,46,44,1,0,0,0,46,45,
+        1,0,0,0,47,49,1,0,0,0,48,43,1,0,0,0,48,49,1,0,0,0,49,50,1,0,0,0,
+        50,51,5,2,0,0,51,114,3,4,2,14,52,53,5,4,0,0,53,55,5,23,0,0,54,56,
+        5,28,0,0,55,54,1,0,0,0,55,56,1,0,0,0,56,57,1,0,0,0,57,58,5,7,0,0,
+        58,64,5,27,0,0,59,62,5,5,0,0,60,63,5,28,0,0,61,63,5,23,0,0,62,60,
+        1,0,0,0,62,61,1,0,0,0,63,65,1,0,0,0,64,59,1,0,0,0,64,65,1,0,0,0,
+        65,66,1,0,0,0,66,67,5,2,0,0,67,114,3,4,2,13,68,69,5,6,0,0,69,71,
+        5,23,0,0,70,72,5,28,0,0,71,70,1,0,0,0,71,72,1,0,0,0,72,73,1,0,0,
+        0,73,74,5,7,0,0,74,80,5,27,0,0,75,78,5,5,0,0,76,79,5,28,0,0,77,79,
+        5,23,0,0,78,76,1,0,0,0,78,77,1,0,0,0,79,81,1,0,0,0,80,75,1,0,0,0,
+        80,81,1,0,0,0,81,82,1,0,0,0,82,83,5,2,0,0,83,114,3,4,2,12,84,85,
+        5,6,0,0,85,86,5,8,0,0,86,87,5,28,0,0,87,88,5,2,0,0,88,114,3,4,2,
+        11,89,90,5,4,0,0,90,91,5,8,0,0,91,92,5,28,0,0,92,93,5,2,0,0,93,114,
+        3,4,2,10,94,95,5,9,0,0,95,114,3,4,2,9,96,97,5,28,0,0,97,98,5,15,
+        0,0,98,103,3,8,4,0,99,100,5,16,0,0,100,102,3,8,4,0,101,99,1,0,0,
+        0,102,105,1,0,0,0,103,101,1,0,0,0,103,104,1,0,0,0,104,106,1,0,0,
+        0,105,103,1,0,0,0,106,107,5,17,0,0,107,114,1,0,0,0,108,114,3,6,3,
+        0,109,110,5,15,0,0,110,111,3,4,2,0,111,112,5,17,0,0,112,114,1,0,
+        0,0,113,23,1,0,0,0,113,38,1,0,0,0,113,52,1,0,0,0,113,68,1,0,0,0,
+        113,84,1,0,0,0,113,89,1,0,0,0,113,94,1,0,0,0,113,96,1,0,0,0,113,
+        108,1,0,0,0,113,109,1,0,0,0,114,132,1,0,0,0,115,116,10,8,0,0,116,
+        117,5,10,0,0,117,131,3,4,2,9,118,119,10,7,0,0,119,120,5,11,0,0,120,
+        131,3,4,2,8,121,122,10,6,0,0,122,123,5,12,0,0,123,131,3,4,2,7,124,
+        125,10,5,0,0,125,126,5,13,0,0,126,131,3,4,2,6,127,128,10,4,0,0,128,
+        129,5,14,0,0,129,131,3,4,2,5,130,115,1,0,0,0,130,118,1,0,0,0,130,
+        121,1,0,0,0,130,124,1,0,0,0,130,127,1,0,0,0,131,134,1,0,0,0,132,
+        130,1,0,0,0,132,133,1,0,0,0,133,5,1,0,0,0,134,132,1,0,0,0,135,136,
+        6,3,-1,0,136,174,5,18,0,0,137,174,5,19,0,0,138,174,5,29,0,0,139,
+        174,5,28,0,0,140,174,5,22,0,0,141,174,5,23,0,0,142,174,5,27,0,0,
+        143,146,5,21,0,0,144,146,3,10,5,0,145,143,1,0,0,0,145,144,1,0,0,
+        0,146,174,1,0,0,0,147,148,5,21,0,0,148,157,5,15,0,0,149,154,3,6,
+        3,0,150,151,5,16,0,0,151,153,3,6,3,0,152,150,1,0,0,0,153,156,1,0,
+        0,0,154,152,1,0,0,0,154,155,1,0,0,0,155,158,1,0,0,0,156,154,1,0,
+        0,0,157,149,1,0,0,0,157,158,1,0,0,0,158,159,1,0,0,0,159,174,5,17,
+        0,0,160,161,5,15,0,0,161,162,3,6,3,0,162,163,5,17,0,0,163,174,1,
+        0,0,0,164,165,5,15,0,0,165,167,3,6,3,0,166,168,3,6,3,0,167,166,1,
+        0,0,0,168,169,1,0,0,0,169,167,1,0,0,0,169,170,1,0,0,0,170,171,1,
+        0,0,0,171,172,5,17,0,0,172,174,1,0,0,0,173,135,1,0,0,0,173,137,1,
+        0,0,0,173,138,1,0,0,0,173,139,1,0,0,0,173,140,1,0,0,0,173,141,1,
+        0,0,0,173,142,1,0,0,0,173,145,1,0,0,0,173,147,1,0,0,0,173,160,1,
+        0,0,0,173,164,1,0,0,0,174,189,1,0,0,0,175,176,10,6,0,0,176,177,5,
+        20,0,0,177,188,3,6,3,7,178,179,10,5,0,0,179,180,7,0,0,0,180,188,
+        3,6,3,6,181,182,10,4,0,0,182,183,7,1,0,0,183,188,3,6,3,5,184,185,
+        10,3,0,0,185,186,7,2,0,0,186,188,3,6,3,4,187,175,1,0,0,0,187,178,
+        1,0,0,0,187,181,1,0,0,0,187,184,1,0,0,0,188,191,1,0,0,0,189,187,
+        1,0,0,0,189,190,1,0,0,0,190,7,1,0,0,0,191,189,1,0,0,0,192,193,7,
+        3,0,0,193,9,1,0,0,0,194,195,7,4,0,0,195,11,1,0,0,0,24,13,27,32,34,
+        41,46,48,55,62,64,71,78,80,103,113,130,132,145,154,157,169,173,187,
+        189
     ]
 
 class IslaLanguageParser ( Parser ):
@@ -99,9 +100,10 @@ class IslaLanguageParser ( Parser ):
                      "'exists'", "'='", "'int'", "'not'", "'and'", "'or'", 
                      "'xor'", "'implies'", "'iff'", "'('", "','", "')'", 
                      "'true'", "'false'", "<INVALID>", "<INVALID>", "<INVALID>", 
-                     "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
-                     "<INVALID>", "'.'", "'..'", "'['", "']'", "'/'", "'*'", 
-                     "'+'", "'-'", "'>='", "'<='", "'>'", "'<'" ]
+                     "<INVALID>", "'div'", "'mod'", "'abs'", "<INVALID>", 
+                     "<INVALID>", "<INVALID>", "<INVALID>", "'.'", "'..'", 
+                     "'['", "']'", "'*'", "'+'", "'-'", "'>='", "'<='", 
+                     "'>'", "'<'" ]
 
     symbolicNames = [ "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
                       "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
@@ -109,9 +111,9 @@ class IslaLanguageParser ( Parser ):
                       "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
                       "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
                       "SMT_INFIX_RE_STR", "SMT_NONBINARY_OP", "XPATHEXPR", 
-                      "VAR_TYPE", "STRING", "ID", "INT", "ESC", "DOT", "TWODOTS", 
-                      "BROP", "BRCL", "DIV", "MUL", "PLUS", "MINUS", "GEQ", 
-                      "LEQ", "GT", "LT", "WS", "LINE_COMMENT" ]
+                      "VAR_TYPE", "DIV", "MOD", "ABS", "STRING", "ID", "INT", 
+                      "ESC", "DOT", "TWODOTS", "BROP", "BRCL", "MUL", "PLUS", 
+                      "MINUS", "GEQ", "LEQ", "GT", "LT", "WS", "LINE_COMMENT" ]
 
     RULE_start = 0
     RULE_constDecl = 1
@@ -147,24 +149,26 @@ class IslaLanguageParser ( Parser ):
     SMT_NONBINARY_OP=21
     XPATHEXPR=22
     VAR_TYPE=23
-    STRING=24
-    ID=25
-    INT=26
-    ESC=27
-    DOT=28
-    TWODOTS=29
-    BROP=30
-    BRCL=31
-    DIV=32
-    MUL=33
-    PLUS=34
-    MINUS=35
-    GEQ=36
-    LEQ=37
-    GT=38
-    LT=39
-    WS=40
-    LINE_COMMENT=41
+    DIV=24
+    MOD=25
+    ABS=26
+    STRING=27
+    ID=28
+    INT=29
+    ESC=30
+    DOT=31
+    TWODOTS=32
+    BROP=33
+    BRCL=34
+    MUL=35
+    PLUS=36
+    MINUS=37
+    GEQ=38
+    LEQ=39
+    GT=40
+    LT=41
+    WS=42
+    LINE_COMMENT=43
 
     def __init__(self, input:TokenStream, output:TextIO = sys.stdout):
         super().__init__(input, output)
@@ -1249,6 +1253,8 @@ class IslaLanguageParser ( Parser ):
             return self.getToken(IslaLanguageParser.MUL, 0)
         def DIV(self):
             return self.getToken(IslaLanguageParser.DIV, 0)
+        def MOD(self):
+            return self.getToken(IslaLanguageParser.MOD, 0)
 
         def enterRule(self, listener:ParseTreeListener):
             if hasattr( listener, "enterSexprInfixMulDiv" ):
@@ -1468,7 +1474,7 @@ class IslaLanguageParser ( Parser ):
                     self.state = 143
                     self.match(IslaLanguageParser.SMT_NONBINARY_OP)
                     pass
-                elif token in [IslaLanguageParser.T__6, IslaLanguageParser.SMT_INFIX_RE_STR, IslaLanguageParser.DIV, IslaLanguageParser.MUL, IslaLanguageParser.PLUS, IslaLanguageParser.MINUS, IslaLanguageParser.GEQ, IslaLanguageParser.LEQ, IslaLanguageParser.GT, IslaLanguageParser.LT]:
+                elif token in [IslaLanguageParser.T__6, IslaLanguageParser.SMT_INFIX_RE_STR, IslaLanguageParser.DIV, IslaLanguageParser.MOD, IslaLanguageParser.MUL, IslaLanguageParser.PLUS, IslaLanguageParser.MINUS, IslaLanguageParser.GEQ, IslaLanguageParser.LEQ, IslaLanguageParser.GT, IslaLanguageParser.LT]:
                     self.state = 144
                     self.smt_binary_op()
                     pass
@@ -1488,7 +1494,7 @@ class IslaLanguageParser ( Parser ):
                 self.state = 157
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if (((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.T__6) | (1 << IslaLanguageParser.T__14) | (1 << IslaLanguageParser.T__17) | (1 << IslaLanguageParser.T__18) | (1 << IslaLanguageParser.SMT_INFIX_RE_STR) | (1 << IslaLanguageParser.SMT_NONBINARY_OP) | (1 << IslaLanguageParser.XPATHEXPR) | (1 << IslaLanguageParser.VAR_TYPE) | (1 << IslaLanguageParser.STRING) | (1 << IslaLanguageParser.ID) | (1 << IslaLanguageParser.INT) | (1 << IslaLanguageParser.DIV) | (1 << IslaLanguageParser.MUL) | (1 << IslaLanguageParser.PLUS) | (1 << IslaLanguageParser.MINUS) | (1 << IslaLanguageParser.GEQ) | (1 << IslaLanguageParser.LEQ) | (1 << IslaLanguageParser.GT) | (1 << IslaLanguageParser.LT))) != 0):
+                if (((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.T__6) | (1 << IslaLanguageParser.T__14) | (1 << IslaLanguageParser.T__17) | (1 << IslaLanguageParser.T__18) | (1 << IslaLanguageParser.SMT_INFIX_RE_STR) | (1 << IslaLanguageParser.SMT_NONBINARY_OP) | (1 << IslaLanguageParser.XPATHEXPR) | (1 << IslaLanguageParser.VAR_TYPE) | (1 << IslaLanguageParser.DIV) | (1 << IslaLanguageParser.MOD) | (1 << IslaLanguageParser.STRING) | (1 << IslaLanguageParser.ID) | (1 << IslaLanguageParser.INT) | (1 << IslaLanguageParser.MUL) | (1 << IslaLanguageParser.PLUS) | (1 << IslaLanguageParser.MINUS) | (1 << IslaLanguageParser.GEQ) | (1 << IslaLanguageParser.LEQ) | (1 << IslaLanguageParser.GT) | (1 << IslaLanguageParser.LT))) != 0):
                     self.state = 149
                     self.sexpr(0)
                     self.state = 154
@@ -1538,7 +1544,7 @@ class IslaLanguageParser ( Parser ):
                     self.state = 169 
                     self._errHandler.sync(self)
                     _la = self._input.LA(1)
-                    if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.T__6) | (1 << IslaLanguageParser.T__14) | (1 << IslaLanguageParser.T__17) | (1 << IslaLanguageParser.T__18) | (1 << IslaLanguageParser.SMT_INFIX_RE_STR) | (1 << IslaLanguageParser.SMT_NONBINARY_OP) | (1 << IslaLanguageParser.XPATHEXPR) | (1 << IslaLanguageParser.VAR_TYPE) | (1 << IslaLanguageParser.STRING) | (1 << IslaLanguageParser.ID) | (1 << IslaLanguageParser.INT) | (1 << IslaLanguageParser.DIV) | (1 << IslaLanguageParser.MUL) | (1 << IslaLanguageParser.PLUS) | (1 << IslaLanguageParser.MINUS) | (1 << IslaLanguageParser.GEQ) | (1 << IslaLanguageParser.LEQ) | (1 << IslaLanguageParser.GT) | (1 << IslaLanguageParser.LT))) != 0)):
+                    if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.T__6) | (1 << IslaLanguageParser.T__14) | (1 << IslaLanguageParser.T__17) | (1 << IslaLanguageParser.T__18) | (1 << IslaLanguageParser.SMT_INFIX_RE_STR) | (1 << IslaLanguageParser.SMT_NONBINARY_OP) | (1 << IslaLanguageParser.XPATHEXPR) | (1 << IslaLanguageParser.VAR_TYPE) | (1 << IslaLanguageParser.DIV) | (1 << IslaLanguageParser.MOD) | (1 << IslaLanguageParser.STRING) | (1 << IslaLanguageParser.ID) | (1 << IslaLanguageParser.INT) | (1 << IslaLanguageParser.MUL) | (1 << IslaLanguageParser.PLUS) | (1 << IslaLanguageParser.MINUS) | (1 << IslaLanguageParser.GEQ) | (1 << IslaLanguageParser.LEQ) | (1 << IslaLanguageParser.GT) | (1 << IslaLanguageParser.LT))) != 0)):
                         break
 
                 self.state = 171
@@ -1600,7 +1606,7 @@ class IslaLanguageParser ( Parser ):
                         self.state = 182
                         localctx.op = self._input.LT(1)
                         _la = self._input.LA(1)
-                        if not(_la==IslaLanguageParser.DIV or _la==IslaLanguageParser.MUL):
+                        if not((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.DIV) | (1 << IslaLanguageParser.MOD) | (1 << IslaLanguageParser.MUL))) != 0)):
                             localctx.op = self._errHandler.recoverInline(self)
                         else:
                             self._errHandler.reportMatch(self)
@@ -1726,6 +1732,9 @@ class IslaLanguageParser ( Parser ):
         def MUL(self):
             return self.getToken(IslaLanguageParser.MUL, 0)
 
+        def MOD(self):
+            return self.getToken(IslaLanguageParser.MOD, 0)
+
         def PLUS(self):
             return self.getToken(IslaLanguageParser.PLUS, 0)
 
@@ -1758,7 +1767,7 @@ class IslaLanguageParser ( Parser ):
             self.enterOuterAlt(localctx, 1)
             self.state = 194
             _la = self._input.LA(1)
-            if not((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.T__6) | (1 << IslaLanguageParser.SMT_INFIX_RE_STR) | (1 << IslaLanguageParser.DIV) | (1 << IslaLanguageParser.MUL) | (1 << IslaLanguageParser.PLUS) | (1 << IslaLanguageParser.MINUS) | (1 << IslaLanguageParser.GEQ) | (1 << IslaLanguageParser.LEQ) | (1 << IslaLanguageParser.GT) | (1 << IslaLanguageParser.LT))) != 0)):
+            if not((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.T__6) | (1 << IslaLanguageParser.SMT_INFIX_RE_STR) | (1 << IslaLanguageParser.DIV) | (1 << IslaLanguageParser.MOD) | (1 << IslaLanguageParser.MUL) | (1 << IslaLanguageParser.PLUS) | (1 << IslaLanguageParser.MINUS) | (1 << IslaLanguageParser.GEQ) | (1 << IslaLanguageParser.LEQ) | (1 << IslaLanguageParser.GT) | (1 << IslaLanguageParser.LT))) != 0)):
                 self._errHandler.recoverInline(self)
             else:
                 self._errHandler.reportMatch(self)

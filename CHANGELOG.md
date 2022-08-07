@@ -14,6 +14,7 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 - Bug fix: Indexes in XPath expressions (like `<a>.<b>[2].<c>`) work now. Remember: Counting starts from 1, which
   also is the default if you omit an index.
 - Bug fix: ISLa's unparser returns correct result for nullary SMT-LIB functions (e.g., `re.all` instead of `(re.all)`).
+- Bug fix: SMT-LIBs `div` and `mod` operators work now (also in infix syntax).
 
 ## [0.8.6] - 2022-08-05
 

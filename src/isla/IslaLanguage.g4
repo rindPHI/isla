@@ -34,7 +34,7 @@ sexpr:
   | op=SMT_NONBINARY_OP '(' ( sexpr ( ',' sexpr ) * ) ? ')' # SexprPrefix
   | sexpr op=SMT_INFIX_RE_STR sexpr            # SexprInfixReStr
   | sexpr op=(PLUS | MINUS) sexpr              # SexprInfixPlusMinus
-  | sexpr op=(MUL | DIV) sexpr                 # SexprInfixMulDiv
+  | sexpr op=(MUL | DIV | MOD) sexpr           # SexprInfixMulDiv
   | sexpr op=('=' | GEQ | LEQ | GT | LT) sexpr # SexprInfixEq
   | '(' sexpr ')'                              # SepxrParen
   | '(' op=sexpr sexpr + ')'                   # SepxrApp
@@ -43,7 +43,7 @@ sexpr:
 predicateArg: ID | VAR_TYPE | INT | STRING | XPATHEXPR ;
 
 smt_binary_op:
-  '=' | GEQ | LEQ | GT | LT | DIV | MUL | PLUS | MINUS | SMT_INFIX_RE_STR;
+  '=' | GEQ | LEQ | GT | LT | MUL | DIV | MOD | PLUS | MINUS | SMT_INFIX_RE_STR;
 
 SMT_INFIX_RE_STR:
       're.++'
@@ -51,8 +51,9 @@ SMT_INFIX_RE_STR:
     | 'str.<='
     ;
 
-SMT_NONBINARY_OP: 
-      're.+'
+SMT_NONBINARY_OP:
+      ABS
+    | 're.+'
     | 're.*'
     | 'str.len'
     | 'str.in_re'
@@ -92,6 +93,10 @@ fragment XPATHSEGMENT:
 
 VAR_TYPE : LT ID GT ;
 
+DIV: 'div' ;
+MOD: 'mod' ;
+ABS: 'abs' ;
+
 STRING: '"' (ESC|.) *? '"';
 ID: ID_LETTER (ID_LETTER | DIGIT) * ;
 INT : DIGIT+ ;
@@ -102,7 +107,6 @@ TWODOTS : '..' ;
 BROP : '[' ;
 BRCL : ']' ;
 
-DIV: '/' ;
 MUL: '*' ;
 PLUS: '+' ;
 MINUS: '-' ;

@@ -2650,7 +2650,10 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.smt_expressions[ctx] = self.smt_expressions[ctx.sexpr()]
 
     def exitSepxrApp(self, ctx: IslaLanguageParser.SepxrAppContext):
-        self.smt_expressions[ctx] = antlr_get_text_with_whitespace(ctx)
+        if not ctx.sexpr():
+            self.smt_expressions[ctx] = parse_tree_text(ctx.op)
+        else:
+            self.smt_expressions[ctx] = '(' + " ".join([self.smt_expressions[child] for child in ctx.sexpr()]) + ')'
 
     def exitExistsInt(self, ctx: IslaLanguageParser.ExistsIntContext):
         var_id = parse_tree_text(ctx.ID())

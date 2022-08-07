@@ -13,9 +13,9 @@ from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, STANDARD_STR
 from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManager, used_variables_in_concrete_syntax, \
     unparse_isla
 from isla.z3_helpers import z3_eq
-from isla_formalizations import scriptsizec
-from isla_formalizations.tar import TAR_CHECKSUM_PREDICATE, TAR_GRAMMAR
-from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
+# from isla_formalizations import scriptsizec
+# from isla_formalizations.tar import TAR_CHECKSUM_PREDICATE, TAR_GRAMMAR
+# from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 from test_data import LANG_GRAMMAR
 
 
@@ -389,8 +389,10 @@ forall <expr> expr in start:
         expected = parse_isla('(str.in_re "17" re.all)')
         self.assertEqual(expected, result)
 
-    def test_modulo(self):
-        result = parse_isla('(= (mod (str.to.int <pagesize>) 7) 0)')
+    def test_modulo_infix(self):
+        result = parse_isla('(= (str.to.int <pagesize>) mod 7 0)')
+        expected = parse_isla('(= (mod (str.to.int <pagesize>) 7) 0)')
+        self.assertEqual(expected, result)
 
     @pytest.mark.skip('Functionality yet to be implemented.')
     def test_xpath_syntax_twodot_axis_tar_checksum(self):
