@@ -356,12 +356,15 @@ forall <expr> expr in start:
     def test_xpath_with_index(self):
         grammar = {
             '<start>': ['<A>'],
-            '<A>': ['<B><B><B>'],
+            '<A>': ['<B><B><B>', '<B><B><B>\n<A>'],
             '<B>': ['a', 'b']
         }
 
         result = parse_isla(r'<A>.<B>[2] = "a"', grammar)
-        expected = parse_isla('forall <A> A="<B>{<B> B}<B>" in start: (= B "a")')
+        expected = parse_isla('''forall <A> A="<B>{<B> B}<B>" in start:
+   (= B "a") and
+forall <A> A_0="<B>{<B> B_0}<B>\n<A>" in start:
+  (= B_0 "a"))''')
         self.assertEqual(expected, result)
 
     def test_infix_equation_xml(self):
