@@ -753,7 +753,7 @@ forall int colno:
         constraint = '<pagesize> = <bufsize>'
         solver = ISLaSolver(CONFIG_GRAMMAR, constraint)
 
-        self.assertTrue(solver.evaluate('pagesize=12\nbufsize=34'))
+        self.assertTrue(solver.evaluate('pagesize=12\nbufsize=12'))
 
 if __name__ == '__main__':
     unittest.main()
