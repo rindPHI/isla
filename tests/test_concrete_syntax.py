@@ -352,6 +352,17 @@ forall <expr> expr in start:
 
         self.assertEqual(expected, result)
 
+    def test_xpath_with_index(self):
+        grammar = {
+            '<start>': ['<A>'],
+            '<A>': ['<B><B><B>'],
+            '<B>': ['a', 'b']
+        }
+
+        result = parse_isla(r'<A>.<B>[2] = "a"', grammar)
+        expected = parse_isla('forall <A> A="<B>{<B> B}<B>" in start: (= B "a")')
+        self.assertEqual(expected, result)
+
     def test_infix_equation_xml(self):
         result = parse_isla(
             '<xml-tree>.<xml-open-tag>.<id> = <xml-tree>.<xml-close-tag>.<id>',

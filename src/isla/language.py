@@ -2208,6 +2208,11 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             return self.vars_for_xpath_expressions[xpath_expr]
 
         nonterminal = [seg_2 for seg_1 in xpath_expr.split('.') for seg_2 in seg_1.split('..')][-1]
+        indexed_nonterminal_re = re.compile(r'^(.*?)\[[1-9]+]$')
+
+        maybe_match = indexed_nonterminal_re.match(nonterminal)
+        if maybe_match:
+            nonterminal = maybe_match.group(1)
 
         assert nonterminal[0] == '<'
         assert nonterminal[-1] == '>'
@@ -2251,7 +2256,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
         preprocessed_xpath_exprs_with_vars: List[Tuple[List[List[Tuple[str, int]]], BoundVariable]] = [
             ([[(elem, 0) if '[' not in elem
-               else (elem.split('[')[0], elem.split('[')[1][:-1])
+               else (elem.split('[')[0], int(elem.split('[')[1][:-1]) - 1)
                for elem in seg.split('.')]
               for seg in xpath_expr.split('..')],
              bound_mexpr_var)
@@ -2316,7 +2321,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             if not partial_mexpr_trees:
                 raise RuntimeError(
                     'Could not convert XPath expressions to match expressions. ' +
-                    'Do you have conflicting XPath expressions in your formula?')
+                    'Please check the XPath expressions in your formula, including for conflicts.')
 
             match_expressions = []
             for expanded_match_expression, paths_to_bound_vars in partial_mexpr_trees.items():
@@ -2561,6 +2566,12 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
     def exitSMTFormula(self, ctx: IslaLanguageParser.SMTFormulaContext):
         formula_text = self.smt_expressions[ctx.sexpr()]
         formula_text = formula_text.replace(r'\"', '""')
+
+        # We have to replace XPath expressions in the formula, since they can break
+        # the parsing (e.g., with `<a>[2]` indexed expressions).
+        for xpath_expr in self.vars_for_xpath_expressions:
+            formula_text = formula_text.replace(xpath_expr, f'var_{abs(hash(xpath_expr))}')
+
         try:
             z3_constr = z3.parse_smt2_string(
                 f"(assert {formula_text})",
@@ -2568,7 +2579,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                         for var in self.known_var_names()} |
                        {nonterminal: z3.String(var.name)
                         for nonterminal, var in self.vars_for_free_nonterminals.items()} |
-                       {xpath_expr: z3.String(var.name)
+                       {f'var_{abs(hash(xpath_expr))}': z3.String(var.name)
                         for xpath_expr, var in self.vars_for_xpath_expressions.items()}))[0]
         except z3.Z3Exception as exp:
             raise SyntaxError(
@@ -2793,6 +2804,10 @@ class ISLaUnparser:
         child_result = self._unparse_constraint(formula.inner_formula)
         result += [self.indent + line for line in child_result]
         return result
+
+
+def unparse_isla(formula: Formula) -> str:
+    return ISLaUnparser(formula).unparse()
 
 
 def get_conjuncts(formula: Formula) -> List[Formula]:

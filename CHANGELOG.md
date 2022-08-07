@@ -5,6 +5,15 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Added
+
+- `isla.language.unparse_isla` shortcut to `ISLaUnparser` for getting the textual representation of an ISLa formula.
+
+### Changed
+
+- Bug fix: Indexes in XPath expressions (like `<a>.<b>[2].<c>`) work now. Remember: Counting starts from 1, which
+  also is the default if you omit an index.
+
 ## [0.8.6] - 2022-08-05
 
 ### Added
