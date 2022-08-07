@@ -5,6 +5,8 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.8.7]
+
 ### Added
 
 - `isla.language.unparse_isla` shortcut to `ISLaUnparser` for getting the textual representation of an ISLa formula.
