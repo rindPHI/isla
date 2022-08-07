@@ -713,5 +713,28 @@ forall int colno:
         else:
             return result
 
-    if __name__ == '__main__':
-        unittest.main()
+    def test_parse(self):
+        CONFIG_GRAMMAR: Grammar = {
+            "<start>": ["<config>"],
+            "<config>": [
+                "pagesize=<pagesize>\n"
+                "bufsize=<bufsize>"
+            ],
+            "<pagesize>": ["<int>"],
+            "<bufsize>": ["<int>"],
+            "<int>": ["<leaddigit><digits>"],
+            "<digits>": ["", "<digit><digits>"],
+            "<digit>": list("0123456789"),
+            "<leaddigit>": list("123456789")
+        }
+
+        constraint = '<pagesize> = <bufsize>'
+        solver = ISLaSolver(CONFIG_GRAMMAR, constraint)
+
+        self.assertTrue(
+            solver.parse('pagesize=12\nbufsize=34').structurally_equal(
+                solver.parse('pagesize=12\nbufsize=34', '<config>')))
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -1316,7 +1316,7 @@ class ISLaSolver:
                 tree_substitutions.get(constant, constant):
                     (
                         val := maybe_model[z3.String(constant.name)].as_string(),
-                        DerivationTree(val, []) if constant.is_numeric() else self.parse(constant.n_type, val)
+                        DerivationTree(val, []) if constant.is_numeric() else self.parse(val, constant.n_type)
                     )[-1]
                 for constant in constants
             }
@@ -1604,10 +1604,12 @@ class ISLaSolver:
 
         return z3_regex
 
-    def parse(self, nonterminal: str, input: str) -> DerivationTree:
+    def parse(self, input: str, nonterminal: str = '<start>') -> DerivationTree:
         grammar = copy.deepcopy(self.grammar)
-        grammar["<start>"] = [nonterminal]
-        delete_unreachable(grammar)
+        if nonterminal != '<start>':
+            grammar["<start>"] = [nonterminal]
+            delete_unreachable(grammar)
+
         parser = EarleyParser(grammar)
         return DerivationTree.from_parse_tree(list(parser.parse(input))[0][1][0])
 
