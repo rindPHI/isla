@@ -303,10 +303,13 @@ class ISLaSolver:
 
     def evaluate(
             self,
-            tree: DerivationTree,
+            inp: DerivationTree | str,
             structural_predicates: Set[language.StructuralPredicate] = STANDARD_STRUCTURAL_PREDICATES,
             semantic_predicates: Set[language.SemanticPredicate] = STANDARD_SEMANTIC_PREDICATES) -> ThreeValuedTruth:
-        return evaluate(self.formula, tree, self.grammar, structural_predicates, semantic_predicates)
+        if isinstance(inp, str):
+            inp = self.parse(inp)
+        assert isinstance(inp, DerivationTree)
+        return evaluate(self.formula, inp, self.grammar, structural_predicates, semantic_predicates)
 
     def solve(self) -> Generator[DerivationTree, None, None]:
         start_time = int(time.time())
