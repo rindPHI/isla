@@ -27,6 +27,7 @@ import isla.helpers
 import isla.isla_shortcuts as sc
 import isla.three_valued_truth
 from isla import language
+from isla.evaluator import evaluate
 from isla.existential_helpers import insert_tree, DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_ADDITION
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
@@ -37,6 +38,7 @@ from isla.language import VariablesCollector, split_conjunction, split_disjuncti
     convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, QuantifiedFormula
 from isla.derivation_tree import DerivationTree
 from isla.parser import EarleyParser
+from isla.three_valued_truth import ThreeValuedTruth
 from isla.type_defs import Grammar, Path
 from isla.z3_helpers import z3_solve, z3_subst, z3_eq
 
@@ -298,6 +300,13 @@ class ISLaSolver:
             self.costs[initial_state] = 0
             for state in initial_states:
                 self.costs[state] = self.compute_cost(state)
+
+    def evaluate(
+            self,
+            tree: DerivationTree,
+            structural_predicates: Set[language.StructuralPredicate] = STANDARD_STRUCTURAL_PREDICATES,
+            semantic_predicates: Set[language.SemanticPredicate] = STANDARD_SEMANTIC_PREDICATES) -> ThreeValuedTruth:
+        return evaluate(self.formula, tree, self.grammar, structural_predicates, semantic_predicates)
 
     def solve(self) -> Generator[DerivationTree, None, None]:
         start_time = int(time.time())

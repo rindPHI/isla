@@ -8,6 +8,7 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 ### Added
 
 - `isla.language.unparse_isla` shortcut to `ISLaUnparser` for getting the textual representation of an ISLa formula.
+- Added `ISLaSolver.evaluate(tree)` method to quickly evaluate inputs based on an existing ISLaSolver object.
 
 ### Changed
 
