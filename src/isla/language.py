@@ -2471,7 +2471,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
         if ctx.inId:
             in_var = self.get_var(parse_tree_text(ctx.inId))
-        elif ctx.inVarType:
+        elif ctx.inVarType and parse_tree_text(ctx.inVarType) != '<start>':
             in_var = self.register_var_for_free_nonterminal(parse_tree_text(ctx.inVarType))
         else:
             in_var = start_constant()

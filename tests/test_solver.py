@@ -19,7 +19,7 @@ from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_A
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, STANDARD_SEMANTIC_PREDICATES, \
     STANDARD_STRUCTURAL_PREDICATES
-from isla.language import VariablesCollector, parse_isla
+from isla.language import VariablesCollector, parse_isla, unparse_isla
 from isla.derivation_tree import DerivationTree
 from isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
     get_quantifier_chains, CostComputer, GrammarBasedBlackboxCostComputer, quantified_formula_might_match
@@ -754,6 +754,13 @@ forall int colno:
         solver = ISLaSolver(CONFIG_GRAMMAR, constraint)
 
         self.assertTrue(solver.evaluate('pagesize=12\nbufsize=12'))
+        self.assertFalse(solver.evaluate('pagesize=12\nbufsize=1200'))
+
+    def test_start_nonterminal(self):
+        result = parse_isla('forall <var> in <start>: <var> = "a"')
+        expected = parse_isla('forall <var> in start: (= <var> "a")')
+        self.assertEqual(expected, result)
+
 
 if __name__ == '__main__':
     unittest.main()

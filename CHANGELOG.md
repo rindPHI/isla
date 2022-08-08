@@ -5,6 +5,11 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Changed
+
+- Formulas like `forall <a> in <start>: ...` get now parsed like `forall <a> in start: ...`. Before, another quantifier
+  was added to close over `<start>`.
+
 ## [0.8.7]
 
 ### Added
