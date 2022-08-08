@@ -10,6 +10,8 @@ deterministic, heuristic-based search (with a configurable cost function).
 
 For more information on the ISLa language, take a look at the [ISLa Language Specification](https://rindphi.github.io/isla/islaspec/).
 
+We also offer an [interactive ISLa tutorial](https://www.fuzzingbook.org/beta/html/FuzzingWithConstraints.html) as part of the Fuzzing Book.
+
 ## Example
 
 Consider a grammar of a simple assignment programming language (e.g., "x := 1 ; y := x"):
