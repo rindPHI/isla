@@ -36,7 +36,6 @@ sexpr:
   | sexpr op=(PLUS | MINUS) sexpr              # SexprInfixPlusMinus
   | sexpr op=(MUL | DIV | MOD) sexpr           # SexprInfixMulDiv
   | sexpr op=('=' | GEQ | LEQ | GT | LT) sexpr # SexprInfixEq
-  /* | '(' sexpr ')'                              # SepxrParen */
   | '(' op=sexpr sexpr + ')'                   # SepxrApp
   ;
 
