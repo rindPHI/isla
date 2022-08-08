@@ -9,6 +9,7 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 - Formulas like `forall <a> in <start>: ...` get now parsed like `forall <a> in start: ...`. Before, another quantifier
   was added to close over `<start>`.
+- The `count` predicate now accepts a literal value as third argument, expected a variable before.
 
 ## [0.8.7]
 

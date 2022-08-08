@@ -207,12 +207,17 @@ def count(graph: GrammarGraph,
 
         return SemPredEvalResult({num: DerivationTree(str(result_num), None)})
 
-    assert not num.children
+    if isinstance(num, str):
+        num_value = num
+    else:
+        assert isinstance(num, DerivationTree)
+        assert not num.children
+        num_value = num.value
 
     try:
-        target_num_needle_occurrences = int(num.value)
+        target_num_needle_occurrences = int(num_value)
     except ValueError:
-        assert False, f"Value {num.value} cannot be converted to integer."
+        assert False, f"Value {num.value} cannot be converted to an integer."
 
     if target_num_needle_occurrences < 0 or num_needle_occurrences > target_num_needle_occurrences:
         return SemPredEvalResult(False)

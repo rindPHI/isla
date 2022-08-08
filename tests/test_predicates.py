@@ -11,11 +11,13 @@ from isla.isla_predicates import embed_tree, mk_parser, level_check, OCTAL_TO_DE
     DIRECT_CHILD_PREDICATE
 from isla.language import parse_isla
 from isla.parser import EarleyParser
+from isla.solver import ISLaSolver
 from isla.type_defs import Path
 from isla_formalizations import tar, rest, scriptsizec
 from isla_formalizations.csv import CSV_GRAMMAR
 from isla_formalizations.tar import TAR_GRAMMAR, octal_conv_grammar
 from isla_formalizations.xml_lang import XML_GRAMMAR
+from test_data import LANG_GRAMMAR
 
 
 class TestPredicates(unittest.TestCase):
@@ -263,5 +265,16 @@ forall <xml-open-tag> ot in <start>:
         self.assertTrue(evaluate(formula, bad_tree_1, XML_GRAMMAR).is_false())
         self.assertTrue(evaluate(formula, bad_tree_2, XML_GRAMMAR).is_false())
 
-    if __name__ == '__main__':
-        unittest.main()
+    def test_count_pred_var_as_third_arg(self):
+        solver = ISLaSolver(LANG_GRAMMAR, '''
+forall <rhs> in <assgn>:
+  exists <assgn> declaration:
+    (before(declaration, <assgn>) and
+    <rhs>.<var> = declaration.<var>) and
+count(start, "<assgn>", "5")''')
+        solution = next(solver.solve())
+        self.assertEqual(5, len(solution.filter(lambda n: n.value == '<assgn>')))
+
+
+if __name__ == '__main__':
+    unittest.main()
