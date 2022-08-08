@@ -37,9 +37,8 @@ before_script:
 
 test:
   script:
-    #- pip install tox
-    #- tox -e py310
     - pytest -n 16 --html=report.html --self-contained-html --cov=isla tests/ --cov-config=.coveragerc
+  coverage: '/TOTAL *\d+ *\d+ *\d+(\.\d+)?%/'
   artifacts:
     when: always
     paths:
