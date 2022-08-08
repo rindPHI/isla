@@ -8,7 +8,7 @@ from orderedset import OrderedSet
 
 import isla.isla_shortcuts as sc
 from isla import language
-from isla.helpers import strip_ws, srange
+from isla.helpers import strip_ws, srange, crange
 from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, STANDARD_STRUCTURAL_PREDICATES
 from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManager, used_variables_in_concrete_syntax, \
     unparse_isla
@@ -395,6 +395,29 @@ forall <A> A_0="<B>{<B> B_0}<B>\n<A>" in start:
     def test_modulo_infix(self):
         result = parse_isla('(= (str.to.int <pagesize>) mod 7 0)')
         expected = parse_isla('(= (mod (str.to.int <pagesize>) 7) 0)')
+        self.assertEqual(expected, result)
+
+    def test_length_prefixed_strings(self):
+        PASCAL_STRING_GRAMMAR = {
+            "<start>": ["<string>"],
+            "<string>": ["<length><chars>"],
+            "<length>": ["<high-byte><low-byte>"],
+            "<high-byte>": ["<byte>"],
+            "<low-byte>": ["<byte>"],
+            "<byte>": crange('\x00', '\xff'),
+            "<chars>": ["", "<char><chars>"],
+            "<char>": list(string.printable),
+        }
+
+        result = parse_isla('''
+str.to_code(<string>.<length>.<low-byte>) +
+str.to_code(<string>.<length>.<high-byte>) * 256 =
+str.len(<string>.<chars>)''', grammar=PASCAL_STRING_GRAMMAR)
+
+        expected = parse_isla('''
+forall <string> string="{<high-byte> high-byte}{<low-byte> low-byte}{<chars> chars}" in start:
+  (= (* (+ (str.to_code low-byte) (str.to_code high-byte)) 256) (str.len chars))''')
+
         self.assertEqual(expected, result)
 
     @pytest.mark.skip('Functionality yet to be implemented.')

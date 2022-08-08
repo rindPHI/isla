@@ -2388,7 +2388,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                             partial_tree.replace_path(
                                 path_to_expand,
                                 DerivationTree(
-                                    partial_tree.value,
+                                    partial_tree.get_subtree(path_to_expand).value,
                                     [DerivationTree(elem) if is_nonterminal(elem)
                                      else DerivationTree(elem, [])
                                      for elem in expansion]))] = \
