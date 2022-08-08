@@ -18,8 +18,7 @@ import pathos.multiprocessing as pmp
 from grammar_graph import gg
 
 import isla.derivation_tree
-from isla import language
-from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
+from isla.fuzzer import GrammarCoverageFuzzer
 from isla.helpers import tree_to_string
 from isla.solver import ISLaSolver
 from isla.type_defs import Grammar, ParseTree
