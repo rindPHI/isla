@@ -1,5 +1,5 @@
 #!/usr/bin/env fish
-if test -z "$VIRTUAL_ENV"; test -d venv
+if test -z "$VIRTUAL_ENV" -a -d venv
     source venv/bin/activate.fish
 end
 
