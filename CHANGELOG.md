@@ -5,6 +5,8 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.8.8] - 2022-08-08
+
 ### Changed
 
 - Formulas like `forall <a> in <start>: ...` get now parsed like `forall <a> in start: ...`. Before, another quantifier
@@ -13,7 +15,7 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 - Bug fix in handling of XPath expressions where at least two share a prefix (test case `test_length_prefixed_strings` in `test_concrete_syntax.py`).
 - Bug fix in extracting strings from Z3 models: Now also handling null characters ("\u{}") correctly.
 
-## [0.8.7]
+## [0.8.7] - 2022-08-07
 
 ### Added
 
