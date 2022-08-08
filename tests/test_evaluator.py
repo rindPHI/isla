@@ -176,7 +176,7 @@ class TestEvaluator(unittest.TestCase):
 
     def test_matches_xml_property(self):
         inp = "<b>k</b>"
-        tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse(inp))[0])
+        tree = DerivationTree.from_parse_tree(next(EarleyParser(XML_GRAMMAR).parse(inp)))
 
         mgr = VariableManager(XML_GRAMMAR)
         start = mgr.const("$start", "<start>")
@@ -285,9 +285,9 @@ class TestEvaluator(unittest.TestCase):
             mgr.smt(z3_eq(mgr.bv("$oid").to_smt(), mgr.bv("$cid").to_smt()))
         ))
 
-        correct_tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse("<b>k</b>"))[0])
+        correct_tree = DerivationTree.from_parse_tree(next(EarleyParser(XML_GRAMMAR).parse("<b>k</b>")))
         wrong_tree = DerivationTree.from_parse_tree(
-            list(EarleyParser(XML_GRAMMAR).parse("<a>asdf</r>"))[0])
+            next(EarleyParser(XML_GRAMMAR).parse("<a>asdf</r>")))
 
         self.assertTrue(evaluate(formula.substitute_expressions({start: correct_tree}), correct_tree, XML_GRAMMAR))
         self.assertFalse(evaluate(formula.substitute_expressions({start: wrong_tree}), wrong_tree, XML_GRAMMAR))
@@ -295,7 +295,7 @@ class TestEvaluator(unittest.TestCase):
     def test_xml_with_prefixes(self):
         inp = '<a xmlns:ns="salami"><ns:asdf>asdf</ns:asdf></a>'
         tree = isla.derivation_tree.DerivationTree.from_parse_tree(
-            list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
+            next(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp)))
         assert validate_xml(tree)
 
         self.assertTrue(evaluate(
@@ -432,7 +432,7 @@ XYZ;\" asdf \";ABC
 
         self.assertTrue(evaluate(
             property,
-            reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(valid_test_input))[0]),
+            reference_tree=DerivationTree.from_parse_tree(next(EarleyParser(CSV_GRAMMAR).parse(valid_test_input))),
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR
         ))
@@ -443,7 +443,7 @@ XYZ;\" asdf \"
 
         self.assertFalse(evaluate(
             property,
-            reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(invalid_test_input))[0]),
+            reference_tree=DerivationTree.from_parse_tree(next(EarleyParser(CSV_GRAMMAR).parse(invalid_test_input))),
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR
         ))
@@ -466,14 +466,14 @@ exists int colno_1:
 
         self.assertTrue(evaluate(
             property,
-            reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(valid_test_input))[0]),
+            reference_tree=DerivationTree.from_parse_tree(next(EarleyParser(CSV_GRAMMAR).parse(valid_test_input))),
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR
         ))
 
         self.assertFalse(evaluate(
             negated_property,
-            reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(valid_test_input))[0]),
+            reference_tree=DerivationTree.from_parse_tree(next(EarleyParser(CSV_GRAMMAR).parse(valid_test_input))),
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR
         ))
@@ -484,14 +484,14 @@ exists int colno_1:
 
         self.assertTrue(evaluate(
             negated_property,
-            reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(invalid_test_input))[0]),
+            reference_tree=DerivationTree.from_parse_tree(next(EarleyParser(CSV_GRAMMAR).parse(invalid_test_input))),
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR
         ))
 
         self.assertFalse(evaluate(
             property,
-            reference_tree=DerivationTree.from_parse_tree(list(EarleyParser(CSV_GRAMMAR).parse(invalid_test_input))[0]),
+            reference_tree=DerivationTree.from_parse_tree(next(EarleyParser(CSV_GRAMMAR).parse(invalid_test_input))),
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR
         ))
@@ -563,20 +563,20 @@ forall <csv-header> header in start:
         ))
 
     def test_rest_property_1(self):
-        tree = DerivationTree.from_parse_tree(list(EarleyParser(rest.REST_GRAMMAR).parse("0\n-\n\n"))[0])
+        tree = DerivationTree.from_parse_tree(next(EarleyParser(rest.REST_GRAMMAR).parse("0\n-\n\n")))
         self.assertTrue(evaluate(rest.LENGTH_UNDERLINE, tree, rest.REST_GRAMMAR))
 
     def test_rest_property_2(self):
         formula = rest.LENGTH_UNDERLINE
 
         inp = "123\n--\n"
-        tree = DerivationTree.from_parse_tree(list(EarleyParser(rest.REST_GRAMMAR).parse(inp))[0])
+        tree = DerivationTree.from_parse_tree(next(EarleyParser(rest.REST_GRAMMAR).parse(inp)))
         self.assertTrue(tree.filter(lambda n: n.value == "<section-title>"))
         self.assertFalse(evaluate(
             formula.substitute_expressions({Constant("start", "<start>"): tree}), tree, rest.REST_GRAMMAR))
 
         inp = "00\n--------\n"
-        tree = DerivationTree.from_parse_tree(list(EarleyParser(rest.REST_GRAMMAR).parse(inp))[0])
+        tree = DerivationTree.from_parse_tree(next(EarleyParser(rest.REST_GRAMMAR).parse(inp)))
         self.assertTrue(tree.filter(lambda n: n.value == "<section-title>"))
         self.assertTrue(evaluate(
             formula.substitute_expressions({Constant("start", "<start>"): tree}), tree, rest.REST_GRAMMAR))
@@ -602,32 +602,32 @@ forall <expr> expr in start:
       (= use_id def_id)))
 """
         inp = "{int c;c;}"
-        tree = DerivationTree.from_parse_tree(list(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp))[0])
+        tree = DerivationTree.from_parse_tree(next(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp)))
         self.assertTrue(evaluate(
             constr, tree, scriptsizec.SCRIPTSIZE_C_GRAMMAR, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE}))
 
         inp = "{int c;{c;}}"
-        tree = DerivationTree.from_parse_tree(list(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp))[0])
+        tree = DerivationTree.from_parse_tree(next(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp)))
         self.assertTrue(evaluate(
             constr, tree, scriptsizec.SCRIPTSIZE_C_GRAMMAR, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE}))
 
         inp = "{int c = 17;c;}"
-        tree = DerivationTree.from_parse_tree(list(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp))[0])
+        tree = DerivationTree.from_parse_tree(next(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp)))
         self.assertTrue(evaluate(
             constr, tree, scriptsizec.SCRIPTSIZE_C_GRAMMAR, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE}))
 
         inp = "{int c = 17;{c;}}"
-        tree = DerivationTree.from_parse_tree(list(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp))[0])
+        tree = DerivationTree.from_parse_tree(next(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp)))
         self.assertTrue(evaluate(
             constr, tree, scriptsizec.SCRIPTSIZE_C_GRAMMAR, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE}))
 
         inp = "{{int c;}c;}"
-        tree = DerivationTree.from_parse_tree(list(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp))[0])
+        tree = DerivationTree.from_parse_tree(next(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp)))
         self.assertFalse(evaluate(
             constr, tree, scriptsizec.SCRIPTSIZE_C_GRAMMAR, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE}))
 
         inp = "{{int c;}{c;}}"
-        tree = DerivationTree.from_parse_tree(list(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp))[0])
+        tree = DerivationTree.from_parse_tree(next(EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR).parse(inp)))
         self.assertFalse(evaluate(
             constr, tree, scriptsizec.SCRIPTSIZE_C_GRAMMAR, structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE}))
 

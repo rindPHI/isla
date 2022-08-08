@@ -326,7 +326,7 @@ class TestLanguage(unittest.TestCase):
         attr_grammar["<start>"] = ["<xml-attribute>"]
         delete_unreachable(attr_grammar)
 
-        tree = DerivationTree.from_parse_tree(list(EarleyParser(attr_grammar).parse('a="..." b="..."'))[0][1][0])
+        tree = DerivationTree.from_parse_tree(next(EarleyParser(attr_grammar).parse('a="..." b="..."'))[1][0])
         self.assertTrue(bind_expression.match(tree, XML_GRAMMAR))
 
     def test_bind_expr_match_lang_assgn_1(self):

@@ -68,8 +68,8 @@ class TestPredicates(unittest.TestCase):
         delete_unreachable(grammar)
         parser = EarleyParser(grammar)
 
-        orig_tree = DerivationTree.from_parse_tree(list(parser.parse("032251413 "))[0])
-        padded_tree = DerivationTree.from_parse_tree(list(parser.parse("0032251413 "))[0])
+        orig_tree = DerivationTree.from_parse_tree(next(parser.parse("032251413 ")))
+        padded_tree = DerivationTree.from_parse_tree(next(parser.parse("0032251413 ")))
 
         one_expected_match = {
             (0, 0, 1): (0, 0),
@@ -96,8 +96,8 @@ class TestPredicates(unittest.TestCase):
         delete_unreachable(grammar)
         parser = EarleyParser(grammar)
 
-        orig_tree = DerivationTree.from_parse_tree(list(parser.parse("0111111 "))[0])
-        padded_tree = DerivationTree.from_parse_tree(list(parser.parse("00111111 "))[0])
+        orig_tree = DerivationTree.from_parse_tree(next(parser.parse("0111111 ")))
+        padded_tree = DerivationTree.from_parse_tree(next(parser.parse("00111111 ")))
 
         one_expected_match = {
             (0, 0, 1): (0, 0),
@@ -138,7 +138,7 @@ class TestPredicates(unittest.TestCase):
 
         def to_tree(inp: str) -> DerivationTree:
             parser = EarleyParser(scriptsizec.SCRIPTSIZE_C_GRAMMAR)
-            return DerivationTree.from_parse_tree(list(parser.parse(inp))[0])
+            return DerivationTree.from_parse_tree(next(parser.parse(inp)))
 
         t = to_tree(correct_inp_1)
         x, a = get_x(t), get_assignment(t)
@@ -252,15 +252,15 @@ forall <xml-open-tag> ot in <start>:
         (direct_child(attr, ot) and attr = "id=\"asdf\"")
 ''', structural_predicates={DIRECT_CHILD_PREDICATE})
 
-        good_tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse(
-            '<a id="asdf"><b c="d" id="asdf"/></a>'))[0])
+        good_tree = DerivationTree.from_parse_tree(next(EarleyParser(XML_GRAMMAR).parse(
+            '<a id="asdf"><b c="d" id="asdf"/></a>')))
 
         self.assertTrue(evaluate(formula, good_tree, XML_GRAMMAR))
 
-        bad_tree_1 = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse(
-            '<a>b</a>'))[0])
-        bad_tree_2 = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse(
-            '<a><b c="d" id="asdf"/></a>'))[0])
+        bad_tree_1 = DerivationTree.from_parse_tree(next(EarleyParser(XML_GRAMMAR).parse(
+            '<a>b</a>')))
+        bad_tree_2 = DerivationTree.from_parse_tree(next(EarleyParser(XML_GRAMMAR).parse(
+            '<a><b c="d" id="asdf"/></a>')))
 
         self.assertTrue(evaluate(formula, bad_tree_1, XML_GRAMMAR).is_false())
         self.assertTrue(evaluate(formula, bad_tree_2, XML_GRAMMAR).is_false())

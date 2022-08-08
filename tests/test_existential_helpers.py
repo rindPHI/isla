@@ -193,7 +193,7 @@ class TestExistentialHelpers(unittest.TestCase):
         print(result_trees_str)
 
     def test_insert_xml_1(self):
-        tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse("<b>asdf</b>"))[0])
+        tree = DerivationTree.from_parse_tree(next(EarleyParser(XML_GRAMMAR).parse("<b>asdf</b>")))
         to_insert = DerivationTree("<xml-open-tag>", [
             DerivationTree("<", []),
             DerivationTree("<id>", [

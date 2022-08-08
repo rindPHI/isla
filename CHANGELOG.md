@@ -11,6 +11,7 @@ This file contains the notable changes in the ISLa project since version 0.2a1
   was added to close over `<start>`.
 - The `count` predicate now accepts a literal value as third argument, expected a variable before.
 - Bug fix in handling of XPath expressions where at least two share a prefix (test case `test_length_prefixed_strings` in `test_concrete_syntax.py`).
+- Bug fix in extracting strings from Z3 models: Now also handling null characters ("\u{}") correctly.
 
 ## [0.8.7]
 

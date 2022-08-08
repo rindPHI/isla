@@ -88,8 +88,8 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
     c_inp = "<a>asdf</a>"
     w_inp = "<a>asdf</b>"
 
-    c_tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse(c_inp))[0])
-    w_tree = DerivationTree.from_parse_tree(list(EarleyParser(XML_GRAMMAR).parse(w_inp))[0])
+    c_tree = DerivationTree.from_parse_tree(next(EarleyParser(XML_GRAMMAR).parse(c_inp)))
+    w_tree = DerivationTree.from_parse_tree(next(EarleyParser(XML_GRAMMAR).parse(w_inp)))
 
     print(evaluate(constraint, reference_tree=c_tree, grammar=XML_GRAMMAR))
     print(evaluate(constraint, reference_tree=w_tree, grammar=XML_GRAMMAR))

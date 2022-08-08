@@ -2882,7 +2882,7 @@ def bound_elements_to_tree(
     parser = EarleyParser(subgrammar)
 
     try:
-        return DerivationTree.from_parse_tree(list(parser.parse(inp))[0][1][0])
+        return DerivationTree.from_parse_tree(next(parser.parse(inp))[1][0])
     except SyntaxError as serr:
         raise RuntimeError(
             f"Could not transform bound elements {''.join(map(str, bound_elements))} "

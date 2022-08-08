@@ -2,6 +2,7 @@ import functools
 import logging
 import os
 import random
+import string
 import unittest
 from typing import cast, Optional, Dict, List, Callable, Union, Set
 from xml.dom import minidom
@@ -17,6 +18,7 @@ from isla import isla_shortcuts as sc
 from isla import language
 from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_ADDITION
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
+from isla.helpers import crange
 from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, STANDARD_SEMANTIC_PREDICATES, \
     STANDARD_STRUCTURAL_PREDICATES
 from isla.language import VariablesCollector, parse_isla, unparse_isla
@@ -760,6 +762,32 @@ forall int colno:
         result = parse_isla('forall <var> in <start>: <var> = "a"')
         expected = parse_isla('forall <var> in start: (= <var> "a")')
         self.assertEqual(expected, result)
+
+    def test_length_indexed_strings(self):
+        PASCAL_STRING_GRAMMAR = {
+            "<start>": ["<string>"],
+            "<string>": ["<length><chars>"],
+            "<length>": ["<high-byte><low-byte>"],
+            "<high-byte>": ["<byte>"],
+            "<low-byte>": ["<byte>"],
+            "<byte>": crange('\x00', '\xff'),
+            "<chars>": ["", "<char><chars>"],
+            "<char>": list(string.printable),
+        }
+
+        solver = ISLaSolver(PASCAL_STRING_GRAMMAR, '''
+str.to_code(<string>.<length>.<low-byte>) =
+str.len(<string>.<chars>) and 
+<string>.<length>.<high-byte> = str.from_code(0)''')
+
+        solution = next(solver.solve())
+
+        high_byte = solution.filter(lambda n: n.value == "<high-byte>")[0][1]
+        low_byte = solution.filter(lambda n: n.value == "<low-byte>")[0][1]
+        chars = solution.filter(lambda n: n.value == "<chars>")[0][1]
+
+        self.assertEqual(0, ord(str(high_byte)))
+        self.assertEqual(len(str(chars)), ord(str(low_byte)))
 
 
 if __name__ == '__main__':

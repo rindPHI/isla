@@ -1327,7 +1327,7 @@ class ISLaSolver:
             new_solution = {
                 tree_substitutions.get(constant, constant):
                     (
-                        val := maybe_model[z3.String(constant.name)].as_string(),
+                        val := maybe_model[z3.String(constant.name)].as_string().replace(r'\u{}', '\x00'),
                         DerivationTree(val, []) if constant.is_numeric() else self.parse(val, constant.n_type)
                     )[-1]
                 for constant in constants
@@ -1616,14 +1616,17 @@ class ISLaSolver:
 
         return z3_regex
 
-    def parse(self, input: str, nonterminal: str = '<start>') -> DerivationTree:
+    def parse(self, inp: str, nonterminal: str = '<start>') -> DerivationTree:
         grammar = copy.deepcopy(self.grammar)
         if nonterminal != '<start>':
             grammar["<start>"] = [nonterminal]
             delete_unreachable(grammar)
 
         parser = EarleyParser(grammar)
-        return DerivationTree.from_parse_tree(list(parser.parse(input))[0][1][0])
+        try:
+            return DerivationTree.from_parse_tree(next(parser.parse(inp))[1][0])
+        except SyntaxError as err:
+            raise RuntimeError(f'Error parsing "{inp}" as nonterminal "{nonterminal}"', err)
 
 
 class CostComputer(ABC):
