@@ -713,7 +713,7 @@ def evaluate_kpaths(
 
     def compute_k_paths(inp: isla.derivation_tree.DerivationTree) -> List[int]:
         try:
-            return [hash(path) for path in graph.k_paths_in_tree(inp.to_parse_tree(), k)]
+            return [hash(path) for path in graph.k_paths_in_tree(inp, k)]
         except SyntaxError as err:
             print(f"Could not compute {k}-paths, error: {err}")
             return []
