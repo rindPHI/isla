@@ -1,4 +1,4 @@
-#!/usr/local/bin/fish
+#!/usr/bin/env fish
 source venv/bin/activate.fish
 set -x PYTHONPATH (pwd)
 set -x PYTHONHASHSEED 0
