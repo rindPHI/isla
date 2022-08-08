@@ -260,7 +260,7 @@ ISLa inside a virtual environment (virtualenv):
 python3.10 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
-pip install isla
+pip install isla-solver
 ```
 
 ### Build 
