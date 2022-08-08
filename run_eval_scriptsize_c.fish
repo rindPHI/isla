@@ -1,5 +1,8 @@
 #!/usr/bin/env fish
-source venv/bin/activate.fish
+if test -d venv
+  source venv/bin/activate.fish
+end
+
 set -x PYTHONPATH (pwd)
 set -x PYTHONHASHSEED 0
 
