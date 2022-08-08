@@ -12,3 +12,7 @@ gen/
 venv/
 isla_evaluation.sqlite
 .coverage
+*playground*.py
+docker-access-token.txt
+isla_evaluation_*
+src/isla_solver.egg-info/
