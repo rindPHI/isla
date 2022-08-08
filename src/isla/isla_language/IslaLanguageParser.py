@@ -21,8 +21,8 @@ def serializedATN():
         114,8,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,
         1,2,5,2,131,8,2,10,2,12,2,134,9,2,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,
         3,1,3,1,3,3,3,146,8,3,1,3,1,3,1,3,1,3,1,3,5,3,153,8,3,10,3,12,3,
-        156,9,3,3,3,158,8,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,4,3,168,8,3,
-        11,3,12,3,169,1,3,1,3,3,3,174,8,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,
+        156,9,3,3,3,158,8,3,1,3,1,3,1,3,1,3,4,3,164,8,3,11,3,12,3,165,1,
+        3,1,3,1,3,1,3,1,3,1,3,3,3,174,8,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,
         3,1,3,1,3,1,3,1,3,5,3,188,8,3,10,3,12,3,191,9,3,1,4,1,4,1,5,1,5,
         1,5,0,2,4,6,6,0,2,4,6,8,10,0,5,1,0,37,38,2,0,25,26,36,36,2,0,7,7,
         39,42,2,0,17,18,28,30,6,0,7,7,15,15,19,20,22,23,25,26,36,42,236,
@@ -69,20 +69,20 @@ def serializedATN():
         154,3,6,3,0,150,151,5,11,0,0,151,153,3,6,3,0,152,150,1,0,0,0,153,
         156,1,0,0,0,154,152,1,0,0,0,154,155,1,0,0,0,155,158,1,0,0,0,156,
         154,1,0,0,0,157,149,1,0,0,0,157,158,1,0,0,0,158,159,1,0,0,0,159,
-        174,5,12,0,0,160,161,5,10,0,0,161,162,3,6,3,0,162,163,5,12,0,0,163,
-        174,1,0,0,0,164,165,5,10,0,0,165,167,3,6,3,0,166,168,3,6,3,0,167,
-        166,1,0,0,0,168,169,1,0,0,0,169,167,1,0,0,0,169,170,1,0,0,0,170,
-        171,1,0,0,0,171,172,5,12,0,0,172,174,1,0,0,0,173,135,1,0,0,0,173,
+        174,5,12,0,0,160,161,5,10,0,0,161,163,3,6,3,0,162,164,3,6,3,0,163,
+        162,1,0,0,0,164,165,1,0,0,0,165,163,1,0,0,0,165,166,1,0,0,0,166,
+        167,1,0,0,0,167,168,5,12,0,0,168,174,1,0,0,0,169,170,5,10,0,0,170,
+        171,3,6,3,0,171,172,5,12,0,0,172,174,1,0,0,0,173,135,1,0,0,0,173,
         137,1,0,0,0,173,138,1,0,0,0,173,139,1,0,0,0,173,140,1,0,0,0,173,
         141,1,0,0,0,173,142,1,0,0,0,173,145,1,0,0,0,173,147,1,0,0,0,173,
-        160,1,0,0,0,173,164,1,0,0,0,174,189,1,0,0,0,175,176,10,6,0,0,176,
+        160,1,0,0,0,173,169,1,0,0,0,174,189,1,0,0,0,175,176,10,6,0,0,176,
         177,5,15,0,0,177,188,3,6,3,7,178,179,10,5,0,0,179,180,7,0,0,0,180,
         188,3,6,3,6,181,182,10,4,0,0,182,183,7,1,0,0,183,188,3,6,3,5,184,
         185,10,3,0,0,185,186,7,2,0,0,186,188,3,6,3,4,187,175,1,0,0,0,187,
         178,1,0,0,0,187,181,1,0,0,0,187,184,1,0,0,0,188,191,1,0,0,0,189,
         187,1,0,0,0,189,190,1,0,0,0,190,7,1,0,0,0,191,189,1,0,0,0,192,193,
         7,3,0,0,193,9,1,0,0,0,194,195,7,4,0,0,195,11,1,0,0,0,24,13,27,32,
-        34,41,46,48,55,62,64,71,78,80,103,113,130,132,145,154,157,169,173,
+        34,41,46,48,55,62,64,71,78,80,103,113,130,132,145,154,157,165,173,
         187,189
     ]
 
@@ -1527,37 +1527,37 @@ class IslaLanguageParser ( Parser ):
                 pass
 
             elif la_ == 10:
-                localctx = IslaLanguageParser.SepxrParenContext(self, localctx)
+                localctx = IslaLanguageParser.SepxrAppContext(self, localctx)
                 self._ctx = localctx
                 _prevctx = localctx
                 self.state = 160
                 self.match(IslaLanguageParser.T__9)
                 self.state = 161
-                self.sexpr(0)
-                self.state = 162
-                self.match(IslaLanguageParser.T__11)
-                pass
-
-            elif la_ == 11:
-                localctx = IslaLanguageParser.SepxrAppContext(self, localctx)
-                self._ctx = localctx
-                _prevctx = localctx
-                self.state = 164
-                self.match(IslaLanguageParser.T__9)
-                self.state = 165
                 localctx.op = self.sexpr(0)
-                self.state = 167 
+                self.state = 163 
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
                 while True:
-                    self.state = 166
+                    self.state = 162
                     self.sexpr(0)
-                    self.state = 169 
+                    self.state = 165 
                     self._errHandler.sync(self)
                     _la = self._input.LA(1)
                     if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.T__6) | (1 << IslaLanguageParser.T__9) | (1 << IslaLanguageParser.T__12) | (1 << IslaLanguageParser.T__13) | (1 << IslaLanguageParser.SMT_INFIX_RE_STR) | (1 << IslaLanguageParser.SMT_NONBINARY_OP) | (1 << IslaLanguageParser.XPATHEXPR) | (1 << IslaLanguageParser.VAR_TYPE) | (1 << IslaLanguageParser.AND) | (1 << IslaLanguageParser.OR) | (1 << IslaLanguageParser.XOR) | (1 << IslaLanguageParser.IMPLIES_SMT) | (1 << IslaLanguageParser.DIV) | (1 << IslaLanguageParser.MOD) | (1 << IslaLanguageParser.STRING) | (1 << IslaLanguageParser.ID) | (1 << IslaLanguageParser.INT) | (1 << IslaLanguageParser.MUL) | (1 << IslaLanguageParser.PLUS) | (1 << IslaLanguageParser.MINUS) | (1 << IslaLanguageParser.GEQ) | (1 << IslaLanguageParser.LEQ) | (1 << IslaLanguageParser.GT) | (1 << IslaLanguageParser.LT))) != 0)):
                         break
 
+                self.state = 167
+                self.match(IslaLanguageParser.T__11)
+                pass
+
+            elif la_ == 11:
+                localctx = IslaLanguageParser.SepxrParenContext(self, localctx)
+                self._ctx = localctx
+                _prevctx = localctx
+                self.state = 169
+                self.match(IslaLanguageParser.T__9)
+                self.state = 170
+                self.sexpr(0)
                 self.state = 171
                 self.match(IslaLanguageParser.T__11)
                 pass
