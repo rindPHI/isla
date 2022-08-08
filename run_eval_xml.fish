@@ -1,5 +1,5 @@
 #!/usr/bin/env fish
-if test -d venv
+if test -z "$VIRTUAL_ENV"; test -d venv
   source venv/bin/activate.fish
 end
 
@@ -18,4 +18,4 @@ for j in $jobs
 end
 
 set jobargs (string join "," $jobs)
-python3 -O evaluations/evaluate_xml.py -v -p -n -1 --db "$db" -j "$jobargs"
+python3 -O evaluations/evaluate_xml.py -v -p -a -n -1 --db "$db" -j "$jobargs"

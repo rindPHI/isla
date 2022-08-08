@@ -1,6 +1,6 @@
 #!/usr/bin/env fish
-if test -d venv
-  source venv/bin/activate.fish
+if test -z "$VIRTUAL_ENV"; test -d venv
+    source venv/bin/activate.fish
 end
 
 set -x PYTHONPATH (pwd)
@@ -18,4 +18,4 @@ for j in $jobs
 end
     
 set jobargs (string join "," $jobs)
-python3 -O evaluations/evaluate_csv.py -v -p -n -1 --db "$db" -j "$jobargs"
+python3 -O evaluations/evaluate_csv.py -v -p -a -n -1 --db "$db" -j "$jobargs"
