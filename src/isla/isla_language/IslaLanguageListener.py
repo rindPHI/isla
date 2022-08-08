@@ -260,15 +260,6 @@ class IslaLanguageListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by IslaLanguageParser#SepxrParen.
-    def enterSepxrParen(self, ctx:IslaLanguageParser.SepxrParenContext):
-        pass
-
-    # Exit a parse tree produced by IslaLanguageParser#SepxrParen.
-    def exitSepxrParen(self, ctx:IslaLanguageParser.SepxrParenContext):
-        pass
-
-
     # Enter a parse tree produced by IslaLanguageParser#SexprStr.
     def enterSexprStr(self, ctx:IslaLanguageParser.SexprStrContext):
         pass

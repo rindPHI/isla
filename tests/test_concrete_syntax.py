@@ -420,6 +420,13 @@ forall <string> string="{<high-byte> high-byte}{<low-byte> low-byte}{<chars> cha
 
         self.assertEqual(expected, result)
 
+    def test_complex_expression_with_and(self):
+        # Should parse w/o errors
+        parse_isla('''
+forall <number> number_1:
+  forall <number> number_2:
+    ((= (str.to.int number_2) (+ (str.to.int number_1) 1)) and (> (str.to.int number_1) 0))''')
+
     @pytest.mark.skip('Functionality yet to be implemented.')
     def test_xpath_syntax_twodot_axis_tar_checksum(self):
         result = parse_isla(

@@ -2646,8 +2646,8 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.smt_expressions[ctx] = \
             f'({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})'
 
-    def exitSepxrParen(self, ctx: IslaLanguageParser.SepxrParenContext):
-        self.smt_expressions[ctx] = self.smt_expressions[ctx.sexpr()]
+    # def exitSepxrParen(self, ctx: IslaLanguageParser.SepxrParenContext):
+    #     self.smt_expressions[ctx] = self.smt_expressions[ctx.sexpr()]
 
     def exitSepxrApp(self, ctx: IslaLanguageParser.SepxrAppContext):
         if not ctx.sexpr():

@@ -18,8 +18,8 @@ formula:
   | formula IMPLIES_ISLA formula                                      # Implication
   | formula 'iff' formula                                          # Equivalence
   | ID '(' predicateArg (',' predicateArg) * ')'                   # PredicateAtom
-  | sexpr                                                          # SMTFormula
   | '(' formula ')'                                                # ParFormula
+  | sexpr                                                          # SMTFormula
   ;
 
 sexpr:
@@ -36,11 +36,19 @@ sexpr:
   | sexpr op=(PLUS | MINUS) sexpr              # SexprInfixPlusMinus
   | sexpr op=(MUL | DIV | MOD) sexpr           # SexprInfixMulDiv
   | sexpr op=('=' | GEQ | LEQ | GT | LT) sexpr # SexprInfixEq
+  /* | '(' sexpr ')'                              # SepxrParen */
   | '(' op=sexpr sexpr + ')'                   # SepxrApp
-  | '(' sexpr ')'                              # SepxrParen
   ;
 
 predicateArg: ID | VAR_TYPE | INT | STRING | XPATHEXPR ;
+
+AND: 'and' ;
+OR: 'or' ;
+NOT: 'not' ;
+
+XOR: 'xor' ;
+IMPLIES_SMT: '=>' ;
+IMPLIES_ISLA: 'implies' ;
 
 smt_binary_op:
   '=' | GEQ | LEQ | GT | LT | MUL | DIV | MOD | PLUS | MINUS | SMT_INFIX_RE_STR | AND | OR | IMPLIES_SMT | XOR;
@@ -92,14 +100,6 @@ fragment XPATHSEGMENT:
     ;
 
 VAR_TYPE : LT ID GT ;
-
-AND: 'and' ;
-OR: 'or' ;
-NOT: 'not' ;
-
-XOR: 'xor' ;
-IMPLIES_SMT: '=>' ;
-IMPLIES_ISLA: 'implies' ;
 
 DIV: 'div' ;
 MOD: 'mod' ;
