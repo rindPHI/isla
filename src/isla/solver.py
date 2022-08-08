@@ -163,6 +163,10 @@ STD_COST_SETTINGS = CostSettings(
 
 
 class ISLaSolver:
+    """
+    The solver class for ISLa formulas/constraints. Main methods: `solve()` and `evaluate()`.
+    """
+
     def __init__(self,
                  grammar: Grammar,
                  formula: Union[language.Formula, str],
@@ -181,17 +185,28 @@ class ISLaSolver:
                  fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = lambda grammar: GrammarCoverageFuzzer(grammar),
                  tree_insertion_methods=DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION):
         """
+        Constructs a new ISLaSolver object. Passing a grammar and a formula is mandatory.
+
         :param grammar: The underlying grammar.
-        :param formula: The formula to solve.
+        :param formula: The formula to solve; either a string or a readily parsed formula.
+        :param structural_predicates: Structural predicates to use when parsing a formula.
+        :param semantic_predicates: Semantic predicates to use when parsing a formula.
         :param max_number_free_instantiations: Number of times that nonterminals that are not bound by any formula
         should be expanded by a coverage-based fuzzer.
         :param max_number_smt_instantiations: Number of solutions of SMT formulas that should be produced.
+        :param max_number_tree_insertion_results: The maximum number of results when solving existential quantifiers
+        by tree insertion.
+        :param enforce_unique_trees_in_queue: If true, states with the same tree as an already existing tree in the
+        queue are discarded, irrespectively of the constraint.
         :param precompute_reachability: If true, the distances between all grammar nodes are pre-computed using
         Floyd-Warshall's algorithm. This makes sense if there are many expensive distance queries, e.g., in a big
         grammar and a constraint with relatively many universal quantifiers.
         :param debug: If true, debug information about the evolution of states is collected, notably in the
         field state_tree. The root of the tree is in the field state_tree_root. The field costs stores the computed
         cost values for all new nodes.
+        :param cost_computer: The `CostComputer` class for computing the cost relevant to placing states
+        in ISLa's queue.
+        :param timeout_seconds: Number of seconds after which the solver will terminate.
         :param global_fuzzer: If set to True, only one coverage-guided grammar fuzzer object is used to finish
         off unconstrained open derivation trees throughout the whole generation time. This may be beneficial for
         some targets; e.g., we experienced that CSV works significantly faster. However, the achieved k-path coverage
@@ -301,17 +316,24 @@ class ISLaSolver:
             for state in initial_states:
                 self.costs[state] = self.compute_cost(state)
 
-    def evaluate(
-            self,
-            inp: DerivationTree | str,
-            structural_predicates: Set[language.StructuralPredicate] = STANDARD_STRUCTURAL_PREDICATES,
-            semantic_predicates: Set[language.SemanticPredicate] = STANDARD_SEMANTIC_PREDICATES) -> ThreeValuedTruth:
+    def evaluate(self, inp: DerivationTree | str) -> ThreeValuedTruth:
+        """
+        Evaluates whether the given derivation tree satisfies the constraint passed to the solver.
+
+        :param inp: The input to evaluate, either readily parsed or as a string.
+        :return: A three-valued truth value.
+        """
         if isinstance(inp, str):
             inp = self.parse(inp)
         assert isinstance(inp, DerivationTree)
-        return evaluate(self.formula, inp, self.grammar, structural_predicates, semantic_predicates)
+        return evaluate(self.formula, inp, self.grammar)
 
     def solve(self) -> Generator[DerivationTree, None, None]:
+        """
+        Produces solutions to the constraint passed to the solver instance.
+        Take care to repeatedly call `next(...)` on the *same* generator object (don't call `solve()` repeatedly).
+        :return: A generator of solutions.
+        """
         start_time = int(time.time())
         fuzzer = self.fuzzer_factory(self.grammar)
 
