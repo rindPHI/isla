@@ -12,10 +12,10 @@ formula:
   | 'exists' 'int' ID ':' formula                                  # ExistsInt
   | 'forall' 'int' ID ':' formula                                  # ForallInt
   | 'not' formula                                                  # Negation
-  | formula 'and' formula                                          # Conjunction
-  | formula 'or' formula                                           # Disjunction
-  | formula 'xor' formula                                          # ExclusiveOr
-  | formula 'implies' formula                                      # Implication
+  | formula AND formula                                          # Conjunction
+  | formula OR formula                                           # Disjunction
+  | formula XOR formula                                          # ExclusiveOr
+  | formula IMPLIES_ISLA formula                                      # Implication
   | formula 'iff' formula                                          # Equivalence
   | ID '(' predicateArg (',' predicateArg) * ')'                   # PredicateAtom
   | sexpr                                                          # SMTFormula
@@ -43,7 +43,7 @@ sexpr:
 predicateArg: ID | VAR_TYPE | INT | STRING | XPATHEXPR ;
 
 smt_binary_op:
-  '=' | GEQ | LEQ | GT | LT | MUL | DIV | MOD | PLUS | MINUS | SMT_INFIX_RE_STR;
+  '=' | GEQ | LEQ | GT | LT | MUL | DIV | MOD | PLUS | MINUS | SMT_INFIX_RE_STR | AND | OR | IMPLIES_SMT | XOR;
 
 SMT_INFIX_RE_STR:
       're.++'
@@ -92,6 +92,14 @@ fragment XPATHSEGMENT:
     ;
 
 VAR_TYPE : LT ID GT ;
+
+AND: 'and' ;
+OR: 'or' ;
+NOT: 'not' ;
+
+XOR: 'xor' ;
+IMPLIES_SMT: '=>' ;
+IMPLIES_ISLA: 'implies' ;
 
 DIV: 'div' ;
 MOD: 'mod' ;

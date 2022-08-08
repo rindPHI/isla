@@ -5,6 +5,10 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Changed
+
+- Propositional combinators (and, or, ...) can not be used also on SMT level, i.e., in s-expression syntax.
+
 ## [0.8.8] - 2022-08-08
 
 ### Changed
