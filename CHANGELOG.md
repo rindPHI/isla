@@ -5,6 +5,18 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.8.13] - 2022-08-09
+
+### Changed
+
+- Bug fix in DerivationTree serialization.
+
+## [0.8.12] - 2022-08-09
+
+### Changed
+
+- More space-efficient serialization of DerivationTree objects.
+  
 ## [0.8.11] - 2022-08-09
 
 ### Changed

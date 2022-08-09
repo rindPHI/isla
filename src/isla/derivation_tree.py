@@ -58,7 +58,7 @@ class DerivationTree:
             for child in ser_children:
                 children.append(from_dict(child))
 
-            a_dict[children_key] = children
+            a_dict[children_key] = tuple(children)
 
             result.__dict__.update(a_dict)
 
