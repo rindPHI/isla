@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.8.10] - 2022-08-09
+
+### Changed
+
+- Linking new Fuzzing Book tutorial on ISLa in README.md.
+- Added evaluation scripts.
+
 ## [0.8.9] - 2022-08-08
 
 ### Changed
