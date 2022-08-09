@@ -1,0 +1,201 @@
+---
+title: "The ISLa Language Specification"
+permalink: /islaspec/
+---
+
+The Input Specification Language (ISLa) is a notation for formally specifying
+context-sensitive properties of strings structured by a context-free grammar.
+The purpose of this document is to precisely specify ISLa's syntax and
+semantics.
+
+## [Table of Contents](#toc)
+
+   * [<a href="#introduction">Introduction</a>](#introduction)
+   * [<a href="#isla-ebnf">ISLa EBNF</a>](#isla-ebnf)
+   * [<a href="#grammars">Grammars</a>](#grammars)
+   * [<a href="#semantics">Semantics</a>](#semantics)
+   * [<a href="#grammars">Atoms</a>](#atoms)
+      * [<a href="#smt-lib-expressions">SMT-LIB Expressions</a>](#smt-lib-expressions)
+      * [<a href="#strucural-predicates">Structural Predicates</a>](#structural-predicates)
+      * [<a href="#semantic-predicates">Semantic Predicates</a>](#semantic-predicates)
+   * [<a href="#propositional">Propositional Combinators</a>](#propositional-combinators)
+   * [<a href="#quantifiers">Quantifiers</a>](#quantifiers)
+
+## [Introduction](#introduction)
+
+Strings are the basic datatype for software testing and debugging at the system
+level: All programs inputs and outputs are strings, or can be straightforwardly
+represented as such. In parsing and fuzzing, Context-Free Grammars (CFGs) are a
+popular formalism to decompose unstructured strings of data.
+
+Consider, for example, a simple language of assignments such as `x := 1 ; y :=
+x`. The following grammar, here presented in [Extended Backus–Naur Form
+(EBNF)](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form), can be
+used to parse and produce syntactically valid assignment programs:
+
+```bnf
+stmt  = assgn, { " ; ", stmt } ;
+assgn = var, " := ", rhs ;
+rhs   = var | digit ;
+var   = "a" | "b" | "c" | ... ;
+digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+```
+
+Using this grammar, the input `x := 1 ; y := x` can be parsed into the following
+tree structure:
+
+```
+stmt
+├─ assgn
+│  ├─ var
+│  │  └─ "x"
+│  ├─ " := "
+│  └─ rhs
+│     └─ digit
+│        └─ "1"
+├─ " ; "
+└─ stmt
+   └─ assgn
+      ├─ var
+      │  └─ "y"
+      ├─ " := "
+      └─ rhs
+         └─ var
+            └─ "x"
+```
+
+In the context of parsing, such trees are called "parse trees;" in the fuzzing
+domain, the notion "derivation tree" is preferred. In this document, we will use
+the term "derivation tree."
+
+We call labels of the inner nodes of derivation trees such as `stmt` that have
+to be further *expanded* to produce or parse a string "nonterminal elements" or
+simply "nonterminals;" consequently, the leaves of the tree are labeled with
+"terminal elements" or "terminals." From a tree, we obtain a string by chaining
+the terminals in the order in which they are visited in a depth-first traversal
+of the tree. CFGs map nonterminals to one or more *expansion alternatives* or,
+simply, *expansions.* When using a grammar for fuzzing, we can expand a
+nonterminal using any alternative. During parsing, we have to find the right
+alternative for the given input (that is, *one* right alternative, since CFGs
+can be *ambiguous*).
+
+CFGs allow decomposing strings into their elements. However, they are&mdash;by
+definition&mdash;too coarse to capture *context-sensitive* language features. In
+the case of our assignment language, `x := 1 ; y := z` is not considered a valid
+element of the language, since the identifier `z` has not been assigned before
+(such that its value is `undefined`). Similarly, the program `x := x` is
+"illegal." This property, that all right-hand side variables must have been
+assigned in a previous assignment, could, in principle, be expressed in a less
+restricted grammar. Examples are context-sensitive or even unrestricted
+grammars, where left-hand sides can contain additional context in addition to a
+single nonterminal value. However, such grammars are tedious to use in
+specification, and we do not know any parsing or fuzzing tool based on more
+general grammar formalisms.
+
+Enter ISLa. ISLa specifications are based on a *reference grammar.* The
+nonterminals of that grammar determine the vocabulary of the grammar. They take
+the roles of variables in unit-level specification languages like
+[JML](https://www.cs.ucf.edu/~leavens/JML/jmlrefman/jmlrefman.html). The
+following ISLa constraint restricts the language of the reference grammar shown
+above to exactly those assignment programs using only previously assigned
+variables as right-hand sides:
+
+```
+forall <assgn> assgn:
+  exists <assgn> decl: (
+    before(decl, assgn) and 
+    assgn.<rhs>.<var> = decl.<var>
+  )
+```
+
+In ISLa language, nonterminals are surrounded by angular brackets (see also the
+[section on grammars](#grammars)). The above constraint specifies that 
+
+* **for all** `<assgn>` elements that have a `<var>` right-hand side (to
+  satisfy the `assgn.<rhs>.<var>`) and which we refer to with the name `assgn`,
+* there has to **exist** an `<assgn>` element that we will call `decl`,
+* such that `decl` appears **before** `assgn` in the input **and**
+* the variable in the right-hand side of `assgn` equals the variable in `decl`.
+ 
+Note that the `.` syntax allows accessing *immediate* children of elements in
+the parse tree; `decl.<var>` thus uniquely identifies the left-hand side of an
+assignment (since variables in right-hand sides appear as a child of a `<rhs>`
+nonterminal).
+
+In the remainder of this document, we 
+
+* provide a [context-free grammar of ISLa](#isla-ebnf) itself in EBNF form,
+* explain the format of ISLa's [reference grammars](#grammars), and
+* introduce the [semantics of ISLa formulas](#semantics) at a high level.
+
+Subsequently, we discuss the individual building blocks of the ISLa language:
+
+* The [atoms of the language](#atoms), which are [SMT-LIB expressions](#smt-lib-expressions), [structural predicates](#structural-predicates), and [semantic predicates](#semantic-predicates),
+* [propositional combinators](#propositional) such as `and` or `or`, and
+* [quantifiers](#quantifiers), i.e., `forall` and `exists`.
+
+## [ISLa EBNF](#isla-ebnf)
+
+Below, we provide a grammar of the ISLa language in
+[EBNF](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form).
+
+```bnf
+isla_formula = [ const_decl ], formula;
+
+const_decl = "const", ID, ":", VAR_TYPE, ";" ;
+
+formula =
+    "forall", VAR_TYPE, [ ID ],                  [ "in" (ID | VAR_TYPE) ], ":", formula
+  | "exists", VAR_TYPE, [ ID ],                  [ "in" (ID | VAR_TYPE) ], ":", formula
+  | "forall", VAR_TYPE, [ ID ], "=", MATCH_EXPR, [ "in" (ID | VAR_TYPE) ], ":", formula
+  | "exists", VAR_TYPE, [ ID ], "=", MATCH_EXPR, [ "in" (ID | VAR_TYPE) ], ":", formula
+  | "exists", "int", ID, ":", formula
+  | "forall", "int", ID, ":", formula
+  | "not", formula
+  | formula, AND, formula
+  | formula, OR, formula
+  | formula, XOR, formula
+  | formula, IMPLIES_ISLA, formula
+  | formula, "iff", formula
+  | ID, "(", predicate_arg, { ",", predicate_arg }, ")"
+  | "(", formula, ")"
+  | sexpr
+  ;
+
+sexpr =
+    "true"
+  | "false"
+  | INT
+  | ID
+  | XPATHEXPR
+  | VAR_TYPE
+  | STRING
+  | SMT_NONBINARY_OP 
+  | smt_binary_op
+  | SMT_NONBINARY_OP, "(", [ sexpr, { "," sexpr } ], ")"
+  | sexpr, SMT_INFIX_RE_STR, sexpr
+  | sexpr, ( PLUS | MINUS ), sexpr
+  | sexpr, ( MUL | DIV | MOD ), sexpr
+  | sexpr, ( "=" | GEQ | LEQ | GT | LT ), sexpr
+  | "(", sexpr, sexpr, { sexpr }, ")"
+  ;
+
+predicate_arg = ID | VAR_TYPE | INT | STRING | XPATHEXPR ;
+```
+
+## [Grammars](#grammars)
+
+## [Semantics](#semantics)
+
+## [Atoms](#grammars)
+
+### [SMT-LIB Expressions](#smt-lib-expressions)
+
+### [Structural Predicates](#strucural-predicates)
+
+### [Semantic Predicates](#semantic-predicates)
+
+## [Propositional Combinators](#propositional)
+
+## [Quantifiers](#quantifiers)
+
