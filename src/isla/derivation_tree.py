@@ -1,5 +1,6 @@
 import html
 import json
+import zlib
 from functools import lru_cache
 from typing import Optional, Sequence, Dict, Set, Tuple, List, Callable, Union, Generator
 
@@ -43,10 +44,10 @@ class DerivationTree:
         if children is None:
             self.__is_open = True
 
-    def __getstate__(self):
-        return json.dumps(self.__dict__, default=lambda o: o.__dict__, indent=4)
+    def __getstate__(self) -> bytes:
+        return zlib.compress(json.dumps(self.__dict__, default=lambda o: o.__dict__).encode('UTF-8'))
 
-    def __setstate__(self, state):
+    def __setstate__(self, state: bytes):
         def from_dict(a_dict: dict) -> 'DerivationTree':
             result = DerivationTree.__new__(DerivationTree)
 
@@ -68,8 +69,8 @@ class DerivationTree:
 
             return result
 
-        assert isinstance(state, str)
-        self.__dict__.update(from_dict(json.loads(state)).__dict__)
+        assert isinstance(state, bytes)
+        self.__dict__.update(from_dict(json.loads(zlib.decompress(state).decode('UTF-8'))).__dict__)
 
     @property
     def children(self) -> Tuple['DerivationTree']:
