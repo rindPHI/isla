@@ -1,4 +1,5 @@
 import html
+import json
 from functools import lru_cache
 from typing import Optional, Sequence, Dict, Set, Tuple, List, Callable, Union, Generator
 
@@ -42,12 +43,33 @@ class DerivationTree:
         if children is None:
             self.__is_open = True
 
+    def __getstate__(self):
+        return json.dumps(self.__dict__, default=lambda o: o.__dict__, indent=4)
+
     def __setstate__(self, state):
-        # To ensure that when resuming from a checkpoint during debugging,
-        # ID uniqueness constraints are maintained.
-        self.__dict__.update(state)
-        if self.id >= DerivationTree.next_id:
-            DerivationTree.next_id = self.id + 1
+        def from_dict(a_dict: dict) -> 'DerivationTree':
+            result = DerivationTree.__new__(DerivationTree)
+
+            children_key = '_DerivationTree__children'
+            ser_children = a_dict[children_key]
+
+            children = []
+            for child in ser_children:
+                children.append(from_dict(child))
+
+            a_dict[children_key] = children
+
+            result.__dict__.update(a_dict)
+
+            # To ensure that when resuming from a checkpoint during debugging,
+            # ID uniqueness constraints are maintained.
+            if result.id >= DerivationTree.next_id:
+                DerivationTree.next_id = result.id + 1
+
+            return result
+
+        assert isinstance(state, str)
+        self.__dict__.update(from_dict(json.loads(state)).__dict__)
 
     @property
     def children(self) -> Tuple['DerivationTree']:

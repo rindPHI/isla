@@ -1,10 +1,11 @@
+import pickle
 import random
 import unittest
 from typing import List
 
+from isla.derivation_tree import DerivationTree
 from isla.fuzzer import GrammarFuzzer
 from isla.helpers import parent_or_child
-from isla.derivation_tree import DerivationTree
 from isla_formalizations.xml_lang import XML_GRAMMAR
 from test_data import LANG_GRAMMAR
 from test_helpers import parse
@@ -219,6 +220,24 @@ class TestDerivationTree(unittest.TestCase):
             tree = fuzzer.expand_tree(DerivationTree.from_parse_tree(tree)).to_parse_tree()
             dtree = DerivationTree.from_parse_tree(tree)
             self.assertEqual(tree, dtree.to_parse_tree())
+
+    def test_serialization_1(self):
+        tree = DerivationTree.from_parse_tree(("1", [
+            ("2", [("4", [])]),
+            ("3", [
+                ("5", [("7", [])]),
+                ("6", [])
+            ])
+        ]))
+
+        self.assertEqual(str(tree), str(pickle.loads(pickle.dumps(tree))))
+
+    def test_serialization_2(self):
+        fuzzer = GrammarFuzzer(XML_GRAMMAR, max_nonterminals=50, min_nonterminals=10)
+
+        for _ in range(20):
+            tree = fuzzer.fuzz_tree()
+            self.assertEqual(str(tree), str(pickle.loads(pickle.dumps(tree))))
 
 
 if __name__ == '__main__':
