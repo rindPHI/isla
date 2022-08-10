@@ -308,7 +308,7 @@ smt_binary_op:
 
 ### [Match Expression Lexer Rules](#match-expr-lexer)
 
-```antlr
+```
 lexer grammar MexprLexer;
 
 BRAOP : '{' -> pushMode(VAR_DECL) ;
@@ -334,6 +334,22 @@ OPTTXT : (~ ']') + ;
 ```
 
 ### [Match Expression Parser Rules](#match-expr-lexer)
+
+```
+parser grammar MexprParser;
+
+options { tokenVocab=MexprLexer; }
+
+matchExpr: matchExprElement + ;
+
+matchExprElement:
+    BRAOP varType ID BRACL # MatchExprVar
+  | OPTOP OPTTXT OPTCL     # MatchExprOptional
+  | TEXT                   # MatchExprChars
+  ;
+
+varType : LT ID GT ;
+```
 
 ## [Grammars](#grammars)
 

@@ -8,7 +8,7 @@ supports universal and existential quantifiers as well as structural (e.g., "occ
 insertion for eliminating existential quantifiers. Universal quantifiers and structural predicates are solved by a
 deterministic, heuristic-based search (with a configurable cost function).
 
-For more information on the ISLa language, take a look at the [ISLa Language Specification](https://rindphi.github.io/isla/islaspec/).
+For more information on the ISLa language, take a look at the [ISLa Language Specification](islaspec/).
 
 We also offer an [interactive ISLa tutorial](https://www.fuzzingbook.org/beta/html/FuzzingWithConstraints.html) as part of the Fuzzing Book.
 
