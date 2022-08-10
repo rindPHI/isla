@@ -400,7 +400,96 @@ this format (we abbreviated the definition of `<var>`):
 
 ## [Semantics](#semantics)
 
-$ sdaf $
+In this section, we briefly sketch the basics of ISLa's *semantics*, i.e., what
+an ISLa specification *means*. Clearly, there has to be a relation between ISLa
+formulas and strings, since ISLa is a specification language for strings.
+However, it is more convenient to define the semantics of an ISLa formula as the
+set of *derivation trees* it represents.
+
+On a high level, we define the semantics of a context-free grammar as the set of
+derivation trees that can be (transitively) derived from its start symbol. In
+the subsequent sections, we define (for each ISLa syntax element) a relation
+\\(t\models{}\varphi\\) that holds if, and only if, the derivation tree \\(t\\)
+*satisfies* the ISLa formula \\(\varphi\\). Finally, the semantics of an ISLa
+formula \\(\varphi\\) are all derivation trees represented by the reference
+grammar that satisfy \\(\varphi\\).
+
+The *language* of CFGs, i.e., the strings they represent, is thoroughly defined
+in the standard literature.[^2] We follow the same style. We assume a relation
+\\(t\Rightarrow{}t'\\) between derivation trees that holds if \\(t'\\) can be
+*derived* from \\(t\\) by adding to some leaf node in \\(t\\) labeled with a
+nonterminal symbol \\(n\\) new children nodes corresponding to some expansion
+alternative for \\(n\\). For example, consider the following derivation tree:
+
+[^2]: For example, 	John E. Hopcroft, Rajeev Motwani, Jeffrey D. Ullman: *Introduction to Automata Theory, Languages, and Computation, 3rd Edition*. Pearson international edition, Addison-Wesley 2007, ISBN 978-0-321-47617-3.
+
+```
+<stmt>
+├─ <assgn>
+│  ├─ <var>
+│  │  └─ "x"
+│  ├─ " := "
+│  └─ <rhs>
+│     └─ <digit>
+│        └─ "1"
+├─ " ; "
+└─ <stmt>
+```
+
+Using the expansion alternative `<stmt> ::= <assgn>` from the [(BNF) grammar for
+our assignment language](#grammars), we can expand the open `<stmt>` node by
+adding an `<assgn>` child. The result looks as follows:
+
+```
+<stmt>
+├─ <assgn>
+│  ├─ <var>
+│  │  └─ "x"
+│  ├─ " := "
+│  └─ <rhs>
+│     └─ <digit>
+│        └─ "1"
+├─ " ; "
+└─ <stmt>
+   └─ <assgn>
+```
+
+This is not the only option: We can also expand `<stmt>` with the expansion
+alternative `<stmt> ::= <assgn> " ; " <stmt>`, which results in
+
+```
+<stmt>
+├─ <assgn>
+│  ├─ <var>
+│  │  └─ "x"
+│  ├─ " := "
+│  └─ <rhs>
+│     └─ <digit>
+│        └─ "1"
+├─ " ; "
+└─ <stmt>
+   ├─ <assgn>
+   ├─ " ; "
+   └─ <stmt>
+```
+
+If \\(t\\) is the initial tree and \\(t_1\\) and \\(t_2\\) are the two
+expansions, then both \\(t\Rightarrow{}t_1\\) and \\(t\Rightarrow{}t_2\\) hold.
+Now, let \\(\Rightarrow^\star\\) be the reflexive and transitive closure of
+\\(\Rightarrow\\). Then, the set of derivation trees \\(T(G)\\) represented by a
+CFG \\(G\\) is defined as \\(T(G):=\\{t\,\vert\,t_0\Rightarrow^\star{}t\\}\\),
+where \\(t_0\\) is a derivation tree consisting only of the grammar's start
+symbol.
+
+Assuming the relation \\(\models\\) has been defined, we define the semantics
+\\([\\![\varphi]\\!]\\) of an ISLa formula \\(\varphi\\) as
+\\([\\![\varphi]\\!]:=\\{t\in{}T(G)\,\vert\,t\models\varphi\wedge\mathit{closed}(\varphi)\\}\\), 
+where \\(G\\) is the reference grammar for \\(\varphi\\) and
+the predicate \\(\mathit{closed}\\) holds for all derivation trees whose leaves
+are labeled with *terminals*.
+
+In the remainder of this document, we define the relation \\(\models\\),
+individually for each ISLa syntax element.
 
 ## [Atoms](#grammars)
 
