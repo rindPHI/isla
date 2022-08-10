@@ -3,21 +3,6 @@ title: "The ISLa Language Specification"
 permalink: /islaspec/
 ---
 
-<!-- Hack fixing the <sup> tag styling, which was broken (CSS conflicts) at
-     least in the Chrome browser. Also, we remove the margin of unorderd lists,
-     since this screws up the TOC. -->
-<script>
-var css = 'sup { font-size: smaller; vertical-align: super; } ul { margin-bottom: 0px; }',
-    head = document.head || document.getElementsByTagName('head')[0],
-    style = document.createElement('style');
-
-head.appendChild(style);
-
-style.type = 'text/css';
-style.appendChild(document.createTextNode(css));
-</script>
-
-
 The Input Specification Language (ISLa) is a notation for formally specifying
 context-sensitive properties of strings structured by a context-free grammar.
 The purpose of this document is to precisely specify ISLa's syntax and
@@ -414,6 +399,8 @@ this format (we abbreviated the definition of `<var>`):
 ```
 
 ## [Semantics](#semantics)
+
+$ sdaf $
 
 ## [Atoms](#grammars)
 
