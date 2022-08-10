@@ -10,16 +10,25 @@ semantics.
 
 ## [Table of Contents](#toc)
 
-   * [<a href="#introduction">Introduction</a>](#introduction)
-   * [<a href="#isla-ebnf">ISLa EBNF</a>](#isla-ebnf)
-   * [<a href="#grammars">Grammars</a>](#grammars)
-   * [<a href="#semantics">Semantics</a>](#semantics)
-   * [<a href="#grammars">Atoms</a>](#atoms)
-      * [<a href="#smt-lib-expressions">SMT-LIB Expressions</a>](#smt-lib-expressions)
-      * [<a href="#strucural-predicates">Structural Predicates</a>](#structural-predicates)
-      * [<a href="#semantic-predicates">Semantic Predicates</a>](#semantic-predicates)
-   * [<a href="#propositional">Propositional Combinators</a>](#propositional-combinators)
-   * [<a href="#quantifiers">Quantifiers</a>](#quantifiers)
+
+<!-- vim-markdown-toc GFM -->
+
+- [Introduction](#introduction)
+- [ISLa EBNF](#isla-ebnf)
+  - [Lexer Rules](#lexer-rules)
+  - [Parser Rules](#parser-rules)
+  - [Match Expression Lexer Rules](#match-expression-lexer-rules)
+  - [Match Expression Parser Rules](#match-expression-parser-rules)
+- [Grammars](#grammars)
+- [Semantics](#semantics)
+- [Atoms](#atoms)
+  - [SMT-LIB Expressions](#smt-lib-expressions)
+  - [Structural Predicates](#structural-predicates)
+  - [Semantic Predicates](#semantic-predicates)
+- [Propositional Combinators](#propositional-combinators)
+- [Quantifiers](#quantifiers)
+
+<!-- vim-markdown-toc -->
 
 ## [Introduction](#introduction)
 
@@ -146,13 +155,13 @@ introduction of the [parser rules](#parser-rules).
 
 ISLa's lexer grammar is shown below. In addition of the rules shown, ISLa knows
 Python-style line comments starting with `#`. These comments as well as
-whitespace between tokens is ignored during lexing. The only string delimiter
+whitespace between tokens are ignored during lexing. The only string delimiter
 known to ISLa are double quotes `"`. Inside strings, double quotes are escaped
 using a backslash character: `\"`. Most notably, this also holds for [SMT-LIB
-expressions](#smt-lib-expressions)), which is a deviation from the SMT-LIB
+expressions](#smt-lib-expressions), which is a deviation from the SMT-LIB
 standard where quotes are escaped by doubling them. In standard SMT-LIB, a
 quotation mark inside double quotes is expressed (`""""`), whereas in ISLa, one
-write `"\""`.
+writes `"\""`.
 
 ```
 AND = "and" ;
@@ -237,8 +246,6 @@ ID_LETTER  = "a".."z" | "A".."Z" | "_" | "\\" | "-" | "." | "^" ;
 DIGIT  = "0".."9" ;
 ```
 
-
-
 ### [Parser Rules](#parser-rules)
 
 Below, you find ISLa's parser grammar. [SMT-LIB
@@ -255,8 +262,9 @@ predicates](#semantic-predicates). In future versions of the grammar, we might
 relax this constraint.
 
 Match expressions (see the section on [quantifiers](#quantifiers)) are hidden
-inside the underspecified nonterminal `MATCH_EXPR`. We describe the grammar for
-match expressions further below.
+inside the underspecified nonterminal `MATCH_EXPR`. We describe the
+[lexer](#match-expression-lexer-rules) and [parser](#match-expression-parser-rules) grammars
+for match expressions further below.
 
 ```
 isla_formula = [ const_decl ], formula;
@@ -306,11 +314,14 @@ smt_binary_op:
   '=' | GEQ | LEQ | GT | LT | MUL | DIV | MOD | PLUS | MINUS | SMT_INFIX_RE_STR | AND | OR | IMPLIES_SMT | XOR ;
 ```
 
-### [Match Expression Lexer Rules](#match-expr-lexer)
+### [Match Expression Lexer Rules](#match-expression-lexer-rules)
+
+We show the actual ANTLR rules of the match expression lexer, since they use
+ANTLR "modes" to parse variable declarations and optional match expression
+elements into tokens. For details on match expressions, we refer to the [section
+on quantifiers](#quantifiers).
 
 ```
-lexer grammar MexprLexer;
-
 BRAOP : '{' -> pushMode(VAR_DECL) ;
 
 OPTOP : '[' -> pushMode(OPTIONAL) ;
@@ -333,19 +344,17 @@ OPTCL : ']' -> popMode ;
 OPTTXT : (~ ']') + ;
 ```
 
-### [Match Expression Parser Rules](#match-expr-lexer)
+### [Match Expression Parser Rules](#match-expression-parser-rules)
+
+The parser rules for match expressions are depicted below in the EBNF format.
 
 ```
-parser grammar MexprParser;
+matchExpr = matchExprElement, { matchExprElement } ;
 
-options { tokenVocab=MexprLexer; }
-
-matchExpr: matchExprElement + ;
-
-matchExprElement:
-    BRAOP varType ID BRACL # MatchExprVar
-  | OPTOP OPTTXT OPTCL     # MatchExprOptional
-  | TEXT                   # MatchExprChars
+matchExprElement =
+    BRAOP, varType, ID, BRACL
+  | OPTOP, OPTTXT, OPTCL
+  | TEXT
   ;
 
 varType : LT ID GT ;
