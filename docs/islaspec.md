@@ -3,6 +3,21 @@ title: "The ISLa Language Specification"
 permalink: /islaspec/
 ---
 
+<!-- Hack fixing the <sup> tag styling, which was broken (CSS conflicts) at
+     least in the Chrome browser. Also, we remove the margin of unorderd lists,
+     since this screws up the TOC. -->
+<script>
+var css = 'sup { font-size: smaller; vertical-align: super; } ul { margin-bottom: 0px; }',
+    head = document.head || document.getElementsByTagName('head')[0],
+    style = document.createElement('style');
+
+head.appendChild(style);
+
+style.type = 'text/css';
+style.appendChild(document.createTextNode(css));
+</script>
+
+
 The Input Specification Language (ISLa) is a notation for formally specifying
 context-sensitive properties of strings structured by a context-free grammar.
 The purpose of this document is to precisely specify ISLa's syntax and
@@ -361,6 +376,42 @@ varType : LT ID GT ;
 ```
 
 ## [Grammars](#grammars)
+
+ISLa's reference grammars are simple CFGs, i.e., without repetition etc. Valid
+ISLa grammars are exactly those that can be expressed in [Backus-Naur Form
+(BNF)](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form).[^1] The only
+addition is that grammar rules have to end with a semi-colon `;`, which
+facilitates the definition of rules spanning multiple lines.
+
+[^1]: From [ISLa 0.8.14](https://github.com/rindPHI/isla/blob/v0.8.14/CHANGELOG.md) on, the `ISLaSolver` and the `evaluate` function both accept grammars in concrete syntax in addition to the Python dictionary format of the [Fuzzing Book](https://www.fuzzingbook.org/html/Grammars.html).
+
+The EBNF grammar for the concrete syntax of ISLa reference grammars looks as
+follows, where `NO_ANGLE_BRACKET` represents any character but `<` and `>`:
+
+```
+bnf_grammar = derivation_rule, { derivation_rule } ;
+
+derivation_rule = NONTERMINAL, "::=", alternative, { "|", alternative }, ";" ;
+
+alternative = ( STRING | NONTERMINAL ) { STRING | NONTERMINAL } ;
+
+NONTERMINAL = "<", NO_ANGLE_BRACKET, { NO_ANGLE_BRACKET }, ">" ;
+
+STRING = '"' { ESC|. }? '"';
+ESC = '\\' ("b" | "t" | "n" | "r" | '"' | "\\") ;
+```
+
+Here's how our example grammar from the [introduction](#introduction) looks in
+this format (we abbreviated the definition of `<var>`):
+
+```
+<start> ::= <stmt> ;
+<stmt> ::= <assgn> | <assgn> " ; " <stmt> ;
+<assgn> ::= <var> " := " <rhs> ;
+<rhs> ::= <var> | <digit> ;
+<var> ::= "a" | "b" | "c" | ... ;
+<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+```
 
 ## [Semantics](#semantics)
 
