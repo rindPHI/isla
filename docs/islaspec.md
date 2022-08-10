@@ -14,19 +14,19 @@ semantics.
 <!-- vim-markdown-toc GFM -->
 
 - [Introduction](#introduction)
-- [ISLa EBNF](#isla-ebnf)
+- [Syntax](#syntax)
+  - [Grammars](#grammars)
   - [Lexer Rules](#lexer-rules)
   - [Parser Rules](#parser-rules)
   - [Match Expression Lexer Rules](#match-expression-lexer-rules)
   - [Match Expression Parser Rules](#match-expression-parser-rules)
-- [Grammars](#grammars)
 - [Semantics](#semantics)
-- [Atoms](#atoms)
-  - [SMT-LIB Expressions](#smt-lib-expressions)
-  - [Structural Predicates](#structural-predicates)
-  - [Semantic Predicates](#semantic-predicates)
-- [Propositional Combinators](#propositional-combinators)
-- [Quantifiers](#quantifiers)
+  - [Atoms](#atoms)
+    - [SMT-LIB Expressions](#smt-lib-expressions)
+    - [Structural Predicates](#structural-predicates)
+    - [Semantic Predicates](#semantic-predicates)
+  - [Propositional Combinators](#propositional-combinators)
+  - [Quantifiers](#quantifiers)
 
 <!-- vim-markdown-toc -->
 
@@ -131,25 +131,56 @@ the parse tree; `decl.<var>` thus uniquely identifies the left-hand side of an
 assignment (since variables in right-hand sides appear as a child of a `<rhs>`
 nonterminal).
 
-In the remainder of this document, we 
+In the remainder of this document, we specify the [syntax](#syntax) and
+[semantics](#semantics) of ISLa formulas.
 
-* provide a [context-free grammar of ISLa](#isla-ebnf) itself in EBNF form,
-* explain the format of ISLa's [reference grammars](#grammars), and
-* introduce the [semantics of ISLa formulas](#semantics) at a high level.
+## [Syntax](#syntax)
 
-Subsequently, we discuss the individual building blocks of the ISLa language:
+In this section, we describe the [syntax of ISLa's reference
+grammars](#grammars) and the syntax of ISLa formulas themselves. We introduce
+the ISLa syntax on a high level by providing grammars in
+[EBNF](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form). In the
+[section on ISLa's semantics](#semantics), we discuss the individual ISLa syntax
+elements in more details and explain their meaning formally and based on
+examples.
 
-* The [atoms of the language](#atoms), which are [SMT-LIB expressions](#smt-lib-expressions), [structural predicates](#structural-predicates), and [semantic predicates](#semantic-predicates),
-* [propositional combinators](#propositional) such as `and` or `or`, and
-* [quantifiers](#quantifiers), i.e., `forall` and `exists`.
+### [Grammars](#grammars)
 
-## [ISLa EBNF](#isla-ebnf)
+ISLa's uses simple CFGs as reference grammars, i.e., without repetition etc.
+Valid ISLa grammars are exactly those that can be expressed in [Backus-Naur Form
+(BNF)](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form).[^1] The only
+syntactical addition is that ISLa's grammar rules have to end with a semi-colon
+`;`, which facilitates the definition of rules spanning multiple lines.
 
-In this section, we provide a grammar of the ISLa language in
-[EBNF](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form). We
-obtained this grammar form ISLa's ANTLR grammar used for parsing its concrete
-syntax. We start by discussing [lexical features](#lexer-rules), followed by an
-introduction of the [parser rules](#parser-rules).
+[^1]: From [ISLa 0.8.14](https://github.com/rindPHI/isla/blob/v0.8.14/CHANGELOG.md) on, the `ISLaSolver` and the `evaluate` function both accept grammars in concrete syntax in addition to the Python dictionary format of the [Fuzzing Book](https://www.fuzzingbook.org/html/Grammars.html).
+
+The EBNF grammar for the concrete syntax of ISLa reference grammars looks as
+follows, where `NO_ANGLE_BRACKET` represents any character but `<` and `>`:
+
+```
+bnf_grammar = derivation_rule, { derivation_rule } ;
+
+derivation_rule = NONTERMINAL, "::=", alternative, { "|", alternative }, ";" ;
+
+alternative = ( STRING | NONTERMINAL ) { STRING | NONTERMINAL } ;
+
+NONTERMINAL = "<", NO_ANGLE_BRACKET, { NO_ANGLE_BRACKET }, ">" ;
+
+STRING = '"' { ESC|. }? '"';
+ESC = '\\' ("b" | "t" | "n" | "r" | '"' | "\\") ;
+```
+
+Here's how our example grammar from the [introduction](#introduction) looks in
+this format (we abbreviated the definition of `<var>`):
+
+```
+<start> ::= <stmt> ;
+<stmt> ::= <assgn> | <assgn> " ; " <stmt> ;
+<assgn> ::= <var> " := " <rhs> ;
+<rhs> ::= <var> | <digit> ;
+<var> ::= "a" | "b" | "c" | ... ;
+<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+```
 
 ### [Lexer Rules](#lexer-rules)
 
@@ -360,51 +391,13 @@ matchExprElement =
 varType : LT ID GT ;
 ```
 
-## [Grammars](#grammars)
-
-ISLa's reference grammars are simple CFGs, i.e., without repetition etc. Valid
-ISLa grammars are exactly those that can be expressed in [Backus-Naur Form
-(BNF)](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form).[^1] The only
-addition is that grammar rules have to end with a semi-colon `;`, which
-facilitates the definition of rules spanning multiple lines.
-
-[^1]: From [ISLa 0.8.14](https://github.com/rindPHI/isla/blob/v0.8.14/CHANGELOG.md) on, the `ISLaSolver` and the `evaluate` function both accept grammars in concrete syntax in addition to the Python dictionary format of the [Fuzzing Book](https://www.fuzzingbook.org/html/Grammars.html).
-
-The EBNF grammar for the concrete syntax of ISLa reference grammars looks as
-follows, where `NO_ANGLE_BRACKET` represents any character but `<` and `>`:
-
-```
-bnf_grammar = derivation_rule, { derivation_rule } ;
-
-derivation_rule = NONTERMINAL, "::=", alternative, { "|", alternative }, ";" ;
-
-alternative = ( STRING | NONTERMINAL ) { STRING | NONTERMINAL } ;
-
-NONTERMINAL = "<", NO_ANGLE_BRACKET, { NO_ANGLE_BRACKET }, ">" ;
-
-STRING = '"' { ESC|. }? '"';
-ESC = '\\' ("b" | "t" | "n" | "r" | '"' | "\\") ;
-```
-
-Here's how our example grammar from the [introduction](#introduction) looks in
-this format (we abbreviated the definition of `<var>`):
-
-```
-<start> ::= <stmt> ;
-<stmt> ::= <assgn> | <assgn> " ; " <stmt> ;
-<assgn> ::= <var> " := " <rhs> ;
-<rhs> ::= <var> | <digit> ;
-<var> ::= "a" | "b" | "c" | ... ;
-<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
-```
-
 ## [Semantics](#semantics)
 
-In this section, we briefly sketch the basics of ISLa's *semantics*, i.e., what
-an ISLa specification *means*. Clearly, there has to be a relation between ISLa
-formulas and strings, since ISLa is a specification language for strings.
-However, it is more convenient to define the semantics of an ISLa formula as the
-set of *derivation trees* it represents.
+In this section, we discuss ISLa's *semantics*, i.e., what an ISLa specification
+*means*. Clearly, there has to be a relation between ISLa formulas and strings,
+since ISLa is a specification language for strings.  However, it is more
+convenient to define the semantics of an ISLa formula as the set of *derivation
+trees* it represents.
 
 On a high level, we define the semantics of a context-free grammar as the set of
 derivation trees that can be (transitively) derived from its start symbol. In
@@ -488,18 +481,30 @@ where \\(G\\) is the reference grammar for \\(\varphi\\) and
 the predicate \\(\mathit{closed}\\) holds for all derivation trees whose leaves
 are labeled with *terminals*.
 
-In the remainder of this document, we define the relation \\(\models\\),
-individually for each ISLa syntax element.
+In the remainder of this section, we discuss each element of the ISLa syntax and
+define the relation \\(\models\\) along the way.
 
-## [Atoms](#grammars)
+### [Atoms](#grammars)
 
-### [SMT-LIB Expressions](#smt-lib-expressions)
+(work in progress)
 
-### [Structural Predicates](#strucural-predicates)
+#### [SMT-LIB Expressions](#smt-lib-expressions)
 
-### [Semantic Predicates](#semantic-predicates)
+(work in progress)
 
-## [Propositional Combinators](#propositional)
+#### [Structural Predicates](#strucural-predicates)
 
-## [Quantifiers](#quantifiers)
+(work in progress)
+
+#### [Semantic Predicates](#semantic-predicates)
+
+(work in progress)
+
+### [Propositional Combinators](#propositional)
+
+(work in progress)
+
+### [Quantifiers](#quantifiers)
+
+(work in progress)
 
