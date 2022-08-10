@@ -3,6 +3,8 @@ title: "The ISLa Language Specification"
 permalink: /islaspec/
 ---
 
+# The ISLa Language Specification
+
 The Input Specification Language (ISLa) is a notation for formally specifying
 context-sensitive properties of strings structured by a context-free grammar.
 The purpose of this document is to precisely specify ISLa's syntax and
