@@ -35,7 +35,8 @@ from isla.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
     split_str_with_nonterminals, cluster_by_common_elements, is_nonterminal, canonical, lazyjoin, lazystr, is_prefix
 from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES, COUNT_PREDICATE
 from isla.language import VariablesCollector, split_conjunction, split_disjunction, \
-    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, QuantifiedFormula
+    convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, QuantifiedFormula, \
+    parse_bnf
 from isla.derivation_tree import DerivationTree
 from isla.parser import EarleyParser
 from isla.three_valued_truth import ThreeValuedTruth
@@ -168,7 +169,7 @@ class ISLaSolver:
     """
 
     def __init__(self,
-                 grammar: Grammar,
+                 grammar: Grammar | str,
                  formula: Union[language.Formula, str],
                  structural_predicates: Set[language.StructuralPredicate] = STANDARD_STRUCTURAL_PREDICATES,
                  semantic_predicates: Set[language.SemanticPredicate] = STANDARD_SEMANTIC_PREDICATES,
@@ -187,7 +188,7 @@ class ISLaSolver:
         """
         Constructs a new ISLaSolver object. Passing a grammar and a formula is mandatory.
 
-        :param grammar: The underlying grammar.
+        :param grammar: The underlying grammar; either, as a "Fuzzing Book" dictionary or in BNF syntax.
         :param formula: The formula to solve; either a string or a readily parsed formula.
         :param structural_predicates: Structural predicates to use when parsing a formula.
         :param semantic_predicates: Semantic predicates to use when parsing a formula.
@@ -236,9 +237,13 @@ class ISLaSolver:
             f"ISLa requires at least z3 4.8.13.0, present: {z3_version}. " \
             f"Please install a newer z3 version, e.g., using 'pip install z3-solver==4.8.14.0'."
 
-        self.grammar = grammar
-        self.graph = GrammarGraph.from_grammar(grammar)
-        self.canonical_grammar = canonical(grammar)
+        if isinstance(grammar, str):
+            self.grammar = parse_bnf(grammar)
+        else:
+            self.grammar = grammar
+
+        self.graph = GrammarGraph.from_grammar(self.grammar)
+        self.canonical_grammar = canonical(self.grammar)
         self.timeout_seconds = timeout_seconds
         self.global_fuzzer = global_fuzzer
         self.fuzzer_factory = fuzzer_factory
@@ -250,7 +255,7 @@ class ISLaSolver:
             else GrammarBasedBlackboxCostComputer(STD_COST_SETTINGS, self.graph))
 
         if isinstance(formula, str):
-            formula = parse_isla(formula, grammar, structural_predicates, semantic_predicates)
+            formula = parse_isla(formula, self.grammar, structural_predicates, semantic_predicates)
 
         self.formula = ensure_unique_bound_variables(formula)
         top_constants: Set[language.Constant] = set(

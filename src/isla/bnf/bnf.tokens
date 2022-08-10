@@ -1,0 +1,11 @@
+T__0=1
+T__1=2
+T__2=3
+NONTERMINAL=4
+STRING=5
+ESC=6
+WS=7
+LINE_COMMENT=8
+'::='=1
+'|'=2
+';'=3

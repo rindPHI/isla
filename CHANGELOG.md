@@ -5,6 +5,22 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.8.14] - 2022-08-10
+
+### Added
+
+- Added parser for concrete BNF syntax. One can now call the ISLaSolver and the evaluate function
+  with a string representation of the grammar, e.g.,
+  
+  ```bnf
+   <start> ::= <stmt> ;
+   <stmt> ::= <assgn> | <assgn> " ; " <stmt> ;
+   <assgn> ::= <var> " := " <rhs> ;
+   <rhs> ::= <var> | <digit> ;
+   <var> ::= "a" | "b" | "c" ;
+   <digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ; 
+  ```
+
 ## [0.8.13] - 2022-08-09
 
 ### Changed

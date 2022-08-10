@@ -16,7 +16,7 @@ from isla.language import Formula, StructuralPredicate, SemanticPredicate, parse
     SemanticPredicateFormula, Variable, replace_formula, \
     BoundVariable, ExistsIntFormula, ForallIntFormula, QuantifiedFormula, PropositionalCombinator, \
     ConjunctiveFormula, ForallFormula, ExistsFormula, NegatedFormula, \
-    DisjunctiveFormula, BindExpression, split_conjunction, split_disjunction, DummyVariable
+    DisjunctiveFormula, BindExpression, split_conjunction, split_disjunction, DummyVariable, parse_bnf
 from isla.derivation_tree import DerivationTree
 from isla.three_valued_truth import ThreeValuedTruth
 from isla.type_defs import Grammar, Path, CanonicalGrammar
@@ -37,15 +37,18 @@ def propositionally_unsatisfiable(formula: Formula) -> bool:
 
 
 def evaluate(
-        formula: Union[Formula, str],
+        formula: Formula | str,
         reference_tree: DerivationTree,
-        grammar: Grammar,
+        grammar: Grammar | str,
         structural_predicates: Set[StructuralPredicate] = STANDARD_STRUCTURAL_PREDICATES,
         semantic_predicates: Set[SemanticPredicate] = STANDARD_SEMANTIC_PREDICATES,
         assumptions: Optional[Set[Formula]] = None,
         subtrees_trie: Optional[datrie.Trie] = None,
         graph: Optional[gg.GrammarGraph] = None) -> ThreeValuedTruth:
     assumptions = assumptions or set()
+
+    if isinstance(grammar, str):
+        grammar = parse_bnf(grammar)
 
     assert reference_tree is not None
     assert isinstance(reference_tree, DerivationTree)
@@ -314,7 +317,7 @@ def well_formed(formula: Formula,
 
 def evaluate_legacy(
         formula: Formula,
-        grammar: Grammar,
+        grammar: Grammar | str,
         assignments: Dict[Variable, Tuple[Path, DerivationTree]],
         reference_tree: DerivationTree,
         vacuously_satisfied: Optional[Set[Formula]] = None,
@@ -336,6 +339,9 @@ def evaluate_legacy(
     """
     assert reference_tree is not None
     assert isinstance(reference_tree, DerivationTree)
+
+    if isinstance(grammar, str):
+        grammar = parse_bnf(grammar)
 
     if graph is None:
         graph = gg.GrammarGraph.from_grammar(grammar)

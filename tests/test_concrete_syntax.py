@@ -11,7 +11,7 @@ from isla import language
 from isla.helpers import strip_ws, srange, crange
 from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, STANDARD_STRUCTURAL_PREDICATES
 from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManager, used_variables_in_concrete_syntax, \
-    unparse_isla
+    unparse_isla, parse_bnf
 from isla.z3_helpers import z3_eq
 from isla_formalizations import scriptsizec
 from isla_formalizations.tar import TAR_CHECKSUM_PREDICATE, TAR_GRAMMAR
@@ -443,6 +443,30 @@ forall <number> number_1:
         unparsed_result = ISLaUnparser(result).unparse()
         unparsed_expected = ISLaUnparser(expected).unparse()
         self.assertEqual(unparsed_expected, unparsed_result)
+
+    def test_bnf_syntax(self):
+        result = parse_bnf(f'''
+<start> ::= <stmt> ;
+<stmt> ::= <assgn> | <assgn> " ; " <stmt> ;
+<assgn> ::= <var> " := " <rhs> ;
+<rhs> ::= <var> | <digit> ;
+<var> ::= {' | '.join(map(lambda c: f'"{c}"', string.ascii_lowercase))} ;
+<digit> ::= {' | '.join(map(lambda c: f'"{c}"', string.digits))} ;''')
+
+        expected = {
+            "<start>":
+                ["<stmt>"],
+            "<stmt>":
+                ["<assgn>", "<assgn> ; <stmt>"],
+            "<assgn>":
+                ["<var> := <rhs>"],
+            "<rhs>":
+                ["<var>", "<digit>"],
+            "<var>": list(string.ascii_lowercase),
+            "<digit>": list(string.digits)
+        }
+
+        self.assertEqual(expected, result)
 
 
 if __name__ == '__main__':

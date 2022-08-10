@@ -307,8 +307,16 @@ exists <assgn> assgn:
   (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)
 """
 
+        grammar = f'''<start> ::= <stmt> ;
+<stmt> ::= <assgn> | <assgn> " ; " <stmt> ;
+<assgn> ::= <var> " := " <rhs> ;
+<rhs> ::= <var> | <digit> ;
+<var> ::= {' | '.join(map(lambda c: f'"{c}"', string.ascii_lowercase))} ;
+<digit> ::= {' | '.join(map(lambda c: f'"{c}"', string.digits))} ;'''
+
         self.execute_generation_test(
             formula,
+            grammar=grammar,
             structural_predicates={BEFORE_PREDICATE},
             max_number_free_instantiations=1,
             cost_computer=GrammarBasedBlackboxCostComputer(

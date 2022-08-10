@@ -26,6 +26,9 @@ from isla.helpers import RE_NONTERMINAL, is_nonterminal, assertions_activated, \
 from isla.helpers import replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, \
     immutable_to_grammar, \
     nested_list_to_tuple
+from isla.bnf import bnfListener
+from isla.bnf.bnfLexer import bnfLexer
+from isla.bnf.bnfParser import bnfParser
 from isla.isla_language import IslaLanguageListener
 from isla.isla_language.IslaLanguageLexer import IslaLanguageLexer
 from isla.isla_language.IslaLanguageParser import IslaLanguageParser
@@ -2157,7 +2160,7 @@ def add_mexpr_to_qfr_over_var(
 class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
     def __init__(
             self,
-            grammar: Optional[Grammar] = None,
+            grammar: Optional[Grammar | str] = None,
             structural_predicates: Optional[Set[StructuralPredicate]] = None,
             semantic_predicates: Optional[Set[SemanticPredicate]] = None):
         self.structural_predicates_map = {} if not structural_predicates else {p.name: p for p in structural_predicates}
@@ -2168,11 +2171,18 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.formulas = {}
         self.smt_expressions: Dict[ParserRuleContext, str] = {}
         self.predicate_args = {}
-        self.grammar = grammar
-        if grammar:
-            self.canonical_grammar = canonical(grammar)
 
-        self.mgr = VariableManager(grammar)
+        if grammar:
+            if isinstance(grammar, str):
+                self.grammar = parse_bnf(grammar)
+            else:
+                self.grammar = grammar
+
+            self.canonical_grammar = canonical(self.grammar)
+        else:
+            self.grammar = None
+
+        self.mgr = VariableManager(self.grammar)
         self.used_variables: Optional[OrderedSet[str]] = None
         self.vars_for_free_nonterminals: Dict[str, BoundVariable] = {}
         self.vars_for_xpath_expressions: Dict[str, BoundVariable] = {}
@@ -2707,6 +2717,41 @@ def parse_isla(
     isla_emitter = ISLaEmitter(grammar, structural_predicates, semantic_predicates)
     antlr4.ParseTreeWalker().walk(isla_emitter, parser.start())
     return isla_emitter.result
+
+
+class BnfEmitter(bnfListener.bnfListener):
+    def __init__(self):
+        self.result: Optional[Grammar] = None
+        self.partial_results = {}
+
+    def exitBnf_grammar(self, ctx: bnfParser.Bnf_grammarContext):
+        self.result = {}
+        for derivation_rule_ctx in ctx.derivation_rule():
+            derivation_rule = self.partial_results[derivation_rule_ctx]
+            assert isinstance(derivation_rule[0], str)
+            assert isinstance(derivation_rule[1], list)
+            assert all(isinstance(alternative, str) for alternative in derivation_rule[1])
+            self.result[derivation_rule[0]] = derivation_rule[1]
+
+    def exitDerivation_rule(self, ctx: bnfParser.Derivation_ruleContext):
+        self.partial_results[ctx] = (
+            parse_tree_text(ctx.NONTERMINAL()),
+            [self.partial_results[alternative] for alternative in ctx.alternative()])
+
+    def exitAlternative(self, ctx: bnfParser.AlternativeContext):
+        elems = []
+        for child in ctx.children:
+            elems.append(parse_tree_text(child).strip('"'))
+        self.partial_results[ctx] = ''.join(elems)
+
+
+def parse_bnf(inp: str) -> Grammar:
+    lexer = bnfLexer(InputStream(inp))
+    parser = bnfParser(antlr4.CommonTokenStream(lexer))
+    parser._errHandler = BailPrintErrorStrategy()
+    bnf_emitter = BnfEmitter()
+    antlr4.ParseTreeWalker().walk(bnf_emitter, parser.bnf_grammar())
+    return bnf_emitter.result
 
 
 class ISLaUnparser:
