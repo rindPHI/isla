@@ -33,7 +33,7 @@ x`. The following grammar, here presented in [Extended Backus–Naur Form
 (EBNF)](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form), can be
 used to parse and produce syntactically valid assignment programs:
 
-```bnf
+```
 stmt  = assgn, { " ; ", stmt } ;
 assgn = var, " := ", rhs ;
 rhs   = var | digit ;
@@ -136,10 +136,129 @@ Subsequently, we discuss the individual building blocks of the ISLa language:
 
 ## [ISLa EBNF](#isla-ebnf)
 
-Below, we provide a grammar of the ISLa language in
-[EBNF](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form).
+In this section, we provide a grammar of the ISLa language in
+[EBNF](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form). We
+obtained this grammar form ISLa's ANTLR grammar used for parsing its concrete
+syntax. We start by discussing [lexical features](#lexer-rules), followed by an
+introduction of the [parser rules](#parser-rules).
 
-```bnf
+### [Lexer Rules](#lexer-rules)
+
+ISLa's lexer grammar is shown below. In addition of the rules shown, ISLa knows
+Python-style line comments starting with `#`. These comments as well as
+whitespace between tokens is ignored during lexing. The only string delimiter
+known to ISLa are double quotes `"`. Inside strings, double quotes are escaped
+using a backslash character: `\"`. Most notably, this also holds for [SMT-LIB
+expressions](#smt-lib-expressions)), which is a deviation from the SMT-LIB
+standard where quotes are escaped by doubling them. In standard SMT-LIB, a
+quotation mark inside double quotes is expressed (`""""`), whereas in ISLa, one
+write `"\""`.
+
+```
+AND = "and" ;
+OR = "or" ;
+NOT = "not" ;
+
+XOR = "xor" ;
+IMPLIES_SMT = "=>" ;
+IMPLIES_ISLA = "implies" ;
+
+SMT_INFIX_RE_STR =
+      "re.++"
+    | "str.++"
+    | "str.<="
+    ;
+
+SMT_NONBINARY_OP =
+      ABS
+    | "re.+"
+    | "re.*"
+    | "str.len"
+    | "str.in_re"
+    | "str.to_re"
+    | "re.none"
+    | "re.all"
+    | "re.allchar"
+    | "str.at"
+    | "str.substr"
+    | "str.prefixof"
+    | "str.suffixof"
+    | "str.contains"
+    | "str.indexof"
+    | "str.replace"
+    | "str.replace_all"
+    | "str.replace_re"
+    | "str.replace_re_all"
+    | "re.comp"
+    | "re.diff"
+    | "re.opt"
+    | "re.range"
+    | "re.loop"
+    | "str.is_digit"
+    | "str.to_code"
+    | "str.from_code"
+    | "str.to.int"
+    | "str.from_int"
+    ;
+
+XPATHEXPR = (ID | VAR_TYPE), XPATHSEGMENT, { XPATHSEGMENT } ;
+
+XPATHSEGMENT =
+      DOT, VAR_TYPE
+    | DOT, VAR_TYPE, BROP, INT, BRCL
+    | TWODOTS, VAR_TYPE
+    ;
+
+VAR_TYPE  = LT, ID, GT ;
+
+DIV = "div" ;
+MOD = "mod" ;
+ABS = "abs" ;
+
+STRING = '"', { ESC | . }?, '"';
+ID = ID_LETTER, { ID_LETTER | DIGIT } ;
+INT  = DIGIT, { DIGIT } ;
+ESC  = "\\", ( "b" | "t" | "n" | "r" | '"' | "\\" ) ;
+
+DOT  = "." ;
+TWODOTS  = ".." ;
+BROP  = "[" ;
+BRCL  = "]" ;
+
+MUL = "*" ;
+PLUS = "+" ;
+MINUS = "-" ;
+GEQ = ">=" ;
+LEQ = "<=" ;
+GT = ">" ;
+LT = "<" ;
+
+ID_LETTER  = "a".."z" | "A".."Z" | "_" | "\\" | "-" | "." | "^" ;
+DIGIT  = "0".."9" ;
+```
+
+
+
+### [Parser Rules](#parser-rules)
+
+Below, you find ISLa's parser grammar. [SMT-LIB
+expressions](#smt-lib-expressions) are usually expressed in a Lisp-like
+S-expression syntax, e.g., `(= x (+ y 13))`. This is fully supported by ISLa,
+and is robust to extensions in the SMT-LIB format as long as new function
+symbols can be parsed as alphanumeric identifiers. Our prefix and infix syntax
+that we added on top of S-expressions, as well as expressions using operators
+with special characters, are only parsed correctly if the operators appear in
+the [lexer grammar](#lexer-rules). This is primarily to distinguish expressions
+in prefix syntax (`op(arg1, arg1, ...)`) from
+[structural](#strucural-predicates) and [semantic
+predicates](#semantic-predicates). In future versions of the grammar, we might
+relax this constraint.
+
+Match expressions (see the section on [quantifiers](#quantifiers)) are hidden
+inside the underspecified nonterminal `MATCH_EXPR`. We describe the grammar for
+match expressions further below.
+
+```
 isla_formula = [ const_decl ], formula;
 
 const_decl = "const", ID, ":", VAR_TYPE, ";" ;
@@ -181,7 +300,40 @@ sexpr =
   ;
 
 predicate_arg = ID | VAR_TYPE | INT | STRING | XPATHEXPR ;
+
+
+smt_binary_op:
+  '=' | GEQ | LEQ | GT | LT | MUL | DIV | MOD | PLUS | MINUS | SMT_INFIX_RE_STR | AND | OR | IMPLIES_SMT | XOR ;
 ```
+
+### [Match Expression Lexer Rules](#match-expr-lexer)
+
+```antlr
+lexer grammar MexprLexer;
+
+BRAOP : '{' -> pushMode(VAR_DECL) ;
+
+OPTOP : '[' -> pushMode(OPTIONAL) ;
+
+TEXT : (~ [{[]) + ;
+
+NL : '\n' + -> skip ;
+
+mode VAR_DECL;
+BRACL : '}' -> popMode ;
+ID: ID_LETTER (ID_LETTER | DIGIT) * ;
+fragment ID_LETTER : 'a'..'z'|'A'..'Z' | [_\-.] ;
+fragment DIGIT : '0'..'9' ;
+GT: '>' ;
+LT: '<' ;
+WS : [ \t\n\r]+ -> skip ;
+
+mode OPTIONAL;
+OPTCL : ']' -> popMode ;
+OPTTXT : (~ ']') + ;
+```
+
+### [Match Expression Parser Rules](#match-expr-lexer)
 
 ## [Grammars](#grammars)
 
