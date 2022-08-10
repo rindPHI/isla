@@ -188,7 +188,7 @@ this format (we abbreviated the definition of `<var>`):
 
 ### [Lexer Rules](#lexer-rules)
 
-ISLa's lexer grammar is shown below. In addition of the rules shown, ISLa knows
+ISLa's lexer grammar is shown below. In addition to the rules shown, ISLa knows
 Python-style line comments starting with `#`. These comments as well as
 whitespace between tokens are ignored during lexing. The only string delimiter
 known to ISLa are double quotes `"`. Inside strings, double quotes are escaped
@@ -484,7 +484,7 @@ symbol.
 
 Assuming the relation \\(\models\\) has been defined, we define the semantics
 \\([\\![\varphi]\\!]\\) of an ISLa formula \\(\varphi\\) as
-\\([\\![\varphi]\\!]:=\\{t\in{}T(G)\,\vert\,t\models\varphi\wedge\mathit{closed}(\varphi)\\}\\), 
+\\([\\![\varphi]\\!]:=\\{t\in{}T(G)\,\vert\,t\models\varphi\wedge\mathit{closed}(t)\\}\\), 
 where \\(G\\) is the reference grammar for \\(\varphi\\) and
 the predicate \\(\mathit{closed}\\) holds for all derivation trees whose leaves
 are labeled with *terminals*.
