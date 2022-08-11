@@ -85,8 +85,7 @@ SCRIPTSIZE_C_DEF_USE_CONSTR = parse_isla(
 SCRIPTSIZE_C_NO_REDEF_TEXT = """
 forall <declaration> declaration="int {<id> def_id}[ = <expr>];" in start:
    forall <declaration> other_declaration="int {<id> other_def_id}[ = <expr>];" in start:
-     (same_position(declaration, other_declaration) or
-      (not same_position(declaration, other_declaration) and not (= def_id other_def_id)))"""
+     (same_position(declaration, other_declaration) xor not (= def_id other_def_id))"""
 
 SCRIPTSIZE_C_NO_REDEF_CONSTR = parse_isla(
     SCRIPTSIZE_C_NO_REDEF_TEXT,

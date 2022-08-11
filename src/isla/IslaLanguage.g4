@@ -12,10 +12,10 @@ formula:
   | 'exists' 'int' ID ':' formula                                  # ExistsInt
   | 'forall' 'int' ID ':' formula                                  # ForallInt
   | 'not' formula                                                  # Negation
-  | formula AND formula                                          # Conjunction
-  | formula OR formula                                           # Disjunction
-  | formula XOR formula                                          # ExclusiveOr
-  | formula IMPLIES_ISLA formula                                      # Implication
+  | formula AND formula                                            # Conjunction
+  | formula OR formula                                             # Disjunction
+  | formula XOR formula                                            # ExclusiveOr
+  | formula IMPLIES_ISLA formula                                   # Implication
   | formula 'iff' formula                                          # Equivalence
   | ID '(' predicateArg (',' predicateArg) * ')'                   # PredicateAtom
   | '(' formula ')'                                                # ParFormula
