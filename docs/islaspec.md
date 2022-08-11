@@ -37,6 +37,7 @@ if there were recent additions.
   - [Quantifiers](#quantifiers)
     - [Tree Quantifiers](#tree-quantifiers)
     - [Numeric Quantifiers](#numeric-quantifiers)
+- [Footnotes](#footnotes)
 
 <!-- vim-markdown-toc -->
 
@@ -721,18 +722,44 @@ for predicates like `level` we additionally need to retrieve labels of subtrees
 
 #### [Semantic Predicates](#semantic-predicates)
 
-(work in progress)
+Semantic predicates were introduced mainly to compensate shortcomings of SMT-LIB
+expressions. A classic example would be a constraint involving a checksum
+computation. For example, the [checksum for TAR
+archives](https://en.wikipedia.org/wiki/Tar_(computing)#File_format) involves
+setting the original checksum to spaces, summing up the TAR header, and
+converting the results to an octal number. Even if this was expressible in
+SMT-LIB, it would probably result in solver timeouts in many cases. When using
+semantic predicates in input generation, they not only can evaluate to a Boolean
+value, but also change the reference derivation tree. For example, they might
+assign the part of the tree corresponding to the checksum value with a tree
+representing the correct checksum.
 
-For example, `count(in_tree, "<line>", "3")` holds if, and only if, there exist
-exactly three children labeled with the `<line>` nonterminal inside the
-derivation tree `in_tree`. In certain cases, it is possible to either pass a
-variable *or* a string literal as an argument. For `count`, the third argument
-can be a *numeric* variable (see the section [on numeric
-quantifiers](#numeric-quantifiers)).
+The below table displays the semantic predicates currently supported by ISLa.
+For special purposes, it is possible to add dedicated semantic predicates (e.g.,
+for checksum computation in binary formats) that must be implemented in Python.
 
 | Predicate                                  | Intuitive Meaning                                                                                                                                      |
 |--------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `count(in_tree, NEEDLE, NUM)`              | There are `NUM` occurrences of the `NEEDLE` nonterminal in `in_tree`. `NEEDLE` is a String, `NUM` a numeric String or int variable.                    |
+
+The currently only standard semantic ISLa predicate is `count`. For example,
+`count(in_tree, "<line>", "3")` holds if, and only if, there exist exactly three
+children labeled with the `<line>` nonterminal inside the derivation tree
+`in_tree`. What distinguishes `count` from a structural predicate is, e.g., that
+it is possible to pass a *numeric variable* (see the section [on numeric
+quantifiers](#numeric-quantifiers)) instead of a string literal as the third
+argument. Structural predicates could not handle this: Whether the predicate
+holds or not would depend on the actual&mdash;not present&mdash;value of that
+variable. The semantic predicate `count` can, however, count the `<line>`
+occurrences in `in_tree` and assign the resulting number to the variable.
+
+**Free variables and semantics.** For the purpose of defining the semantics of
+semantic predicates, we can, however, re-use the definitions from the section on
+[structural predicates](#structural-predicates). Since the variable assignment
+\\(\beta\\) must assign values to all variables, there do not occur any
+remaining "free" variables in the arguments of a semantic predicates. Thus, also
+a semantic predicate atom can either hold or not hold for a given variable
+assignment and list of arguments.
 
 ### [Propositional Combinators](#propositional)
 
@@ -748,3 +775,4 @@ quantifiers](#numeric-quantifiers)).
 
 (work in progress)
 
+## [Footnotes](#footnotes)
