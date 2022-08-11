@@ -934,11 +934,11 @@ stmt
    └─ assgn
 ```
 
-We assume a function \\(\mathit{match}(t, t', P)\\) taking a derivation tree
+We need a function \\(\mathit{match}(t, t', P)\\) taking a derivation tree
 \\(t\\) and a pair \\(t',P\\) computed by \\(\mathit{mexprTrees}\\) and
 returning (1) \\(\bot\\) if \\(t'\\) does not match \\(t\\), or otherwise (2) a
-*variable assignment* mapping variables in \\(P\\) to the corresponding subtrees
-in \\(t\\).
+*variable assignment* mapping variables in \\(P\\) to the corresponding
+subtrees in \\(t\\).
 
 We now recursively define \\(\mathit{match}\\). Thereby,
 
