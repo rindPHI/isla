@@ -22,9 +22,11 @@ semantics.
   - [Parser Rules](#parser-rules)
   - [Match Expression Lexer Rules](#match-expression-lexer-rules)
   - [Match Expression Parser Rules](#match-expression-parser-rules)
+- [Simplified Syntax](#simplified-syntax)
 - [Semantics](#semantics)
   - [Atoms](#atoms)
     - [SMT-LIB Expressions](#smt-lib-expressions)
+      - [Infix and Prefix Notation](#infix-and-prefix-notation)
     - [Structural Predicates](#structural-predicates)
     - [Semantic Predicates](#semantic-predicates)
   - [Propositional Combinators](#propositional-combinators)
@@ -393,6 +395,10 @@ matchExprElement =
 varType : LT ID GT ;
 ```
 
+## [Simplified Syntax](#simplified-syntax)
+
+(work in progress)
+
 ## [Semantics](#semantics)
 
 In this section, we discuss ISLa's *semantics*, i.e., what an ISLa specification
@@ -483,16 +489,100 @@ where \\(G\\) is the reference grammar for \\(\varphi\\) and
 the predicate \\(\mathit{closed}\\) holds for all derivation trees whose leaves
 are labeled with *terminals*.
 
-In the remainder of this section, we discuss each element of the ISLa syntax and
-define the relation \\(\models\\) along the way.
+In the remaining parts of this section, we discuss each element of the ISLa
+syntax and define the relation \\(\models\\) along the way.
 
-### [Atoms](#grammars)
+When doing so, we also need (and define step by step) a function
+\\(\mathit{freeVars}(\varphi)\\) that returns the *free variables* of a formula
+\\(\varphi\\). Those are the variables that are not bound by a
+[quantifier](#quantifiers). 
 
-(work in progress)
+In ISLa, all variables are of "string" sort. This is especially important when
+writing [SMT-LIB expressions](#smt-lib-expressions), since appropriate
+conversions have to be added when, e.g., comparing a variable *representing* an
+integer to an actual integer.
+
+To define \\(\models\\) for formulas with free variables, we use an additional
+*variable assignment* \\(\beta\\) associating variables with derivation trees.
+We write \\(\beta\models\varphi\\) to express that \\(\varphi\\) holds when
+instantiating free variables in \\(\varphi\\) according to the assignments in
+\\(\beta\\).
+
+The notation \\(t\models\varphi\\) used above, where \\(t\\) is a derivation
+tree, is a *shortcut*. When specifying an ISLa formula, we can declare a *global
+constant* using the syntax `const constant_name: <constant_type>;` (cf. the
+[ISLa grammar](#parser-rules)). The declaration is optional; if it is not
+present, a constant `start` of type `<start>` will be assumed. Assuming `c` is
+this constant, then \\(t\models\varphi\\) is 
+
+* *undefined* if \\(\mathit{freeVars}(\varphi)\neq\\{c\\}\\).
+* equivalent to \\([c\mapsto{}t]\models\varphi\\), where \\([c\mapsto{}t]\\) is a variable
+  assignment mapping \\(c\\) to \\(t\\). 
+
+### [Atoms](#atoms)
+
+The name ISLa has a double meaning: First, it is an acronym for "Input
+specification language;" and second, "isla" is the Spanish word for "island."
+The reason for this second meaning is that ISLa embeds the [SMT-LIB
+language](https://smtlib.cs.uiowa.edu/) as an *island language.* Around this
+embedded language, ISLa essentially adds quantifiers aware of the structure of
+context-free grammars. Thus, SMT-LIB expressions are the heart and the most
+important *atomic* ISLa formulas. Atomic means that they do not contain
+additional ISLa subformulas. ISLa also knows another type of atomic formula:
+*predicate formulas.* Here, we distinguish *structural* and *semantic*
+predicates. Structural predicates allow addressing structural relations such as
+"before" of "inside;" semantic predicates complement SMT-LIB and allow
+expressing complex constraints that are out of reach of the SMT-LIB language.
+This section address all three types of ISLa atoms.
 
 #### [SMT-LIB Expressions](#smt-lib-expressions)
 
-(work in progress)
+ISLa embeds the SMT-LIB language. Since all ISLa variables are strings, the
+[SMT-LIB string
+theory](https://smtlib.cs.uiowa.edu/theories-UnicodeStrings.shtml) is the most
+relevant theory in the ISLa context. The function `str.to.int`[^3] converts
+strings to integers, such that integer operations using the [integer
+theory](https://smtlib.cs.uiowa.edu/theories-Ints.shtml) are possible. A typical
+SMT-LIB ISLa constraint (inspired by our [ISLa
+tutorial](https://www.fuzzingbook.org/beta/html/FuzzingWithConstraints.html)) is
+`(>= (str.to.int pagesize) 100)`. For this to work, all derivation trees that
+can be substituted for the `pagesize` variable have to be *positive* integers
+(cf. the response by Z3's lead developer Nikolaj Bjorner in [this GitHub
+issue](https://github.com/Z3Prover/z3/issues/1846#issuecomment-424809364)).
+SMT-LIB uses a Lisp-like S-expression syntax. We abstain from discussing this
+syntax here and instead refer to the [SMT-LIB
+documentation](https://smtlib.cs.uiowa.edu/language.shtml).
+
+[^3]: In the SMT-LIB standard, this function is called `str.to_int`. ISLa, however, uses the Z3 SMT solver, where the corresponding function has the name `str.to.int`. Obviously, [Z3 supported `str.to.int` before `str.to_int` became an official standard](https://stackoverflow.com/questions/46524843/missing-str-to-int-s-in-z3-4-5-1#answer-46528332).
+
+**Free variables.** The set \\(freeVars(\varphi)\\) for an SMT-LIB expression
+\\(\varphi\\) consists of all symbols not part of the [SMT-LIB
+language](https://smtlib.cs.uiowa.edu/papers/smt-lib-reference-v2.6-r2021-05-12.pdf)
+and not contained in one of the (built-in) [SMT-LIB
+theories](https://smtlib.cs.uiowa.edu/theories.shtml), in particular the
+[integer](https://smtlib.cs.uiowa.edu/theories-UnicodeStrings.shtml) and
+[string](https://smtlib.cs.uiowa.edu/theories-UnicodeStrings.shtml) theories.
+
+We assume a function \\(\mathit{sat}\\) mapping an SMT-LIB formula (expression
+of Boolean type) to the values \\(\mathit{SAT}\\), \\(\mathit{UNSAT}\\), or
+\\(\mathit{UNDEFINED}\\). \\(\mathit{SAT}\\) means that there exists a variable
+assignment for which the formula holds. A returned \\(\mathit{UNSAT}\\) value
+implies that there does not exist any such an assignment. Furthermore, the
+\\(\mathit{UNDEFINED}\\) value is issued if no definitive decision could be made
+(e.g., due to a timeout or a prover insufficiency). We will not define
+\\(\mathit{sat}\\) formally in this document, since it is no original
+contribution of ISLa. The ISLa solver implements \\(\mathit{sat}\\) by calling
+the [Z3 theorem prover](https://github.com/Z3Prover/z3).
+
+**Semantics.** Let \\(\beta\\) be a variable assignment and \\(\varphi\\) an
+SMT-LIB formula.  Furthermore, let \\(\varphi'\\) be a formula resulting from
+*negating* the *instantiation* of \\(\varphi\\) according to \\(\beta\\). Then,
+\\(\beta\models\varphi\\) holds if, and only if,
+\\(\mathit{sat}(\varphi')=\mathit{UNSAT}\\). When instantiating \\(\varphi\\),
+we have to convert the derivation trees in \\(\beta\\) to strings first, since
+SMT and Z3 do not know derivation trees.
+
+##### [Infix and Prefix Notation](#infix-and-prefix-notation)
 
 #### [Structural Predicates](#strucural-predicates)
 
