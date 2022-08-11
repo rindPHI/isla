@@ -763,7 +763,35 @@ assignment and list of arguments.
 
 ### [Propositional Combinators](#propositional)
 
-(work in progress)
+Propositional combinators allow combining ISLa formulas to more complex
+specifications. ISLa supports `not`, `and`, and `or`. Additionally, one can use
+the derived combinators `xor`, `implies`, and `iff`. The formula `A xor B` is
+translated to `(A and (not B)) or (B and (not A))`; `A implies B` is translated
+to `(not A) or B`; and `A iff B` is translated to `(A and B) or ((not A) and
+(not B))`.
+
+In many cases, we can omit parentheses based on the *operator precedence* of
+propositional combinators. This precedence is specified by the order of the
+combinators in the [ISLa parser grammar](#parser-rules). The list of operators
+ordered by their binding strength in increasing order is `not`, `and`, `or`,
+`xor`, `implies`, `iff`. Thus, `(A and (not B)) or (B and (not A))` (the
+encoding of `A xor B`) is equivalent to `A and not B or B and not A`&mdash;we do
+not need any parentheses.
+
+**Free variables.** For `not`, we define
+\\(\mathit{freeVars}(\mathtt{not}~\varphi):=\mathit{freeVars}(\varphi)\\). Let
+\\(\circ\\) be one of the binary propositional combinators and
+\\(\varphi,\,\psi\\) be two ISLa formulas. Then,
+\\(\mathit{freeVars}(\varphi\circ\psi):=\mathit{freeVars}(\varphi)\cup\mathit{freeVars}(\psi)\\).
+
+**Semantics.** We define the semantics for `not`, `and`, and `or` as follows:
+
+* \\(\beta\models\mathtt{not}~\varphi\\) holds if, and only if,
+  \\(\beta\models\varphi\\) does *not* hold.
+* \\(\beta\models\varphi~\mathtt{and}~\psi\\) holds if, and only if, 
+  \\(\beta\models\varphi\\) and \\(\beta\models\psi\\) *both* hold.
+* \\(\beta\models\varphi~\mathtt{or}~\psi\\) holds if, and only if, 
+  at least one of \\(\beta\models\varphi\\) *or* \\(\beta\models\psi\\) hold.
 
 ### [Quantifiers](#quantifiers)
 
