@@ -10,6 +10,11 @@ context-sensitive properties of strings structured by a context-free grammar.
 The purpose of this document is to precisely specify ISLa's syntax and
 semantics.
 
+The ISLa version considered in this document is ISLa
+[0.8.14](https://github.com/rindPHI/isla/tree/v0.8.14). Please consult the [ISLa
+CHANGELOG](https://github.com/rindPHI/isla/blob/main/CHANGELOG.md) to find out
+if there were recent additions.
+
 ## [Table of Contents](#toc)
 
 
@@ -26,11 +31,12 @@ semantics.
 - [Semantics](#semantics)
   - [Atoms](#atoms)
     - [SMT-LIB Expressions](#smt-lib-expressions)
-      - [Infix and Prefix Notation](#infix-and-prefix-notation)
     - [Structural Predicates](#structural-predicates)
     - [Semantic Predicates](#semantic-predicates)
   - [Propositional Combinators](#propositional-combinators)
   - [Quantifiers](#quantifiers)
+    - [Tree Quantifiers](#tree-quantifiers)
+    - [Numeric Quantifiers](#numeric-quantifiers)
 
 <!-- vim-markdown-toc -->
 
@@ -582,21 +588,163 @@ SMT-LIB formula.  Furthermore, let \\(\varphi'\\) be a formula resulting from
 we have to convert the derivation trees in \\(\beta\\) to strings first, since
 SMT and Z3 do not know derivation trees.
 
-##### [Infix and Prefix Notation](#infix-and-prefix-notation)
-
 #### [Structural Predicates](#strucural-predicates)
 
-(work in progress)
+Consider the assignment language from [the introduction](#introduction). The
+relevant semantic property for this language is that for each right-hand side
+variable, there has to exist a *preceding* assignment to that variable. SMT-LIB
+expressions are insufficient for expressing such structural relations because
+they are unaware of grammatical structure. In simple cases, we could in
+principle express them using string functions (e.g., comparing indices). Too
+many such constraints, however, often result in solver timeouts. More
+complex use cases (e.g., some element has to occur *inside* or as the *n-th
+child* of another one) can even be impossible to express using SMT-LIB alone. To
+that end, ISLa introduces so-called *structural predicates*. These predicates
+mostly reason about the relative positions of elements in a parse tree. An
+example is the `before` predicate used for the assignment language example:
+
+```
+forall <assgn> assgn:
+  exists <assgn> decl: (
+    before(decl, assgn) and 
+    assgn.<rhs>.<var> = decl.<var>
+  )
+```
+
+This predicate accepts two variables as arguments, and holds if, and only if,
+the first argument occurs earlier in the *reference tree* than the second one.
+The reference tree is the instantiation of the global constant (implicitly)
+declared in an ISLa specification. Structural predicates might also accept
+string literals as arguments. For example, `level("GE", "<block>", decl, expr)`,
+inspired by the definition-use constraint of a C-like language, expresses that
+the declaration `decl` has to occur at the same or a greater `<block>` level
+than `expr`, as in {% raw %}`{int x; {int y = x;}}`{% endraw %}, where `expr`
+would be the `x` in `int y = x;` and `decl` the `int x;` declaration. The
+program {% raw %}`{{int x;} int y = x;}`{% endraw %} would not satisfy this constraint. 
+
+In the following table, we informally describe the meaning of the ISLa built-in
+structural predicates.
+
+| Predicate                                  | Intuitive Meaning                                                                                                                                      |
+|--------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `after(node_1, node_2)`                    | `node_1` occurs after `node_2` (not below) in the parse tree.                                                                                          |
+| `before(node_1, node_2)`                   | `node_1` occurs before `node_2` (not below) in the parse tree.                                                                                         |
+| `consecutive(node_1, node_2)`              | `node_1` and `node_2` are consecutive leaves in the parse tree.                                                                                        |
+| `different_position(node_1, node_2)`       | `node_1` and `node_2` occur at different positions (cannot be the same node).                                                                          |
+| `direct_child(node_1, node_2)`             | `node_1` is a direct child of `node_2` in the derivation tree.                                                                                         |
+| `inside(node_1, node_2)`                   | `node_1` is a subtree of `node_2`.                                                                                                                     |
+| `level(PRED, NONTERMINAL, node_1, node_2)` | `node_1` and `node_2` are related relatively to each other as specified by `PRED` and `NONTERMINAL` (see below). `PRED` and `NONTERMINAL` are Strings. |
+| `nth(N, node_1, node_2)`                   | `node_1` is the `N`-th occurrence of a node with its nonterminal symbol within `node_2`. `N` is a numeric String.                                      |
+| `same_position(node_1, node_2)`            | `node_1` and `node_2` occur at the same position (have to be the same node).                                                                           |
+
+**Free variables.** All structural predicate atoms \\(\varphi\\) are of the form
+\\(\mathit{pred}(a_1,a_2,\dots,a_n)\\). The free variables
+\\(\mathit{free_vars}(\varphi)\\) of \\(\varphi\\) consists of all those
+\\(a_i\\) that are not string literals.
+
+**Semantics.** To evaluate structural predicates, we need to access elements in
+the derivation tree assigned to the global ISLa constant \\(c\\) in the variable
+assignment \\(\beta\\). Thus, we assume that we know \\(c\\).[^4] The semantics
+of structural predicate atoms can only be defined for each predicate
+individually. Below, we demonstrate this along the example of `before`.
+
+[^4]: In the ISLa implementation, we distinguish two types of variables: *bound variables* (bound by [quantifiers](#quantifiers)) and *constants*. Thus, we can always extract reference trees from variable assignments.
+
+**Semantics of `before`.** Since `before` reasons about *relative positions* of
+derivation trees, we need to encode these positions. To that end, we introduce
+the notion of *paths* in derivation trees. A path is a (potentially empty) tuple
+of natural numbers \\((n_1,n_2,\dots,n_2)\\). In a tree \\(t\\), the empty path
+\\(()\\) points to the tree itself, the path \\((n)\\) to the \\(n\\)-th child
+of \\(t\\)'s root, the path \\((n,m)\\) to the \\(m\\)-th child of the
+\\(n\\)-th child of the root, and so on. Counting start from 0, so \\((0)\\) is
+the path of the root's first child. Below, we indicate the paths of each subtree
+in the derivation tree from the [introduction](#introduction):
+```
+<stmt>                 <- ()
+├─ <assgn>             <- (0)
+│  ├─ <var>            <- (0,0)
+│  │  └─ "x"           <- (0,0,0)
+│  ├─ " := "           <- (0,1)
+│  └─ <rhs>            <- (0,2)
+│     └─ <digit>       <- (0,2,0)
+│        └─ "1"        <- (0,2,0,0)
+├─ " ; "               <- (1)
+└─ <stmt>              <- (2)
+   └─ <assgn>          <- (2,0)
+      ├─ <var>         <- (2,0,0)
+      │  └─ "y"        <- (2,0,0,0)
+      ├─ " := "        <- (2,0,1)
+      └─ <rhs>         <- (2,0,2)
+         └─ <var>      <- (2,0,2,0)
+            └─ "x"     <- (2,0,2,0,0)
+```
+
+The subtree with path \\((2,0,2)\\) in this tree, for example, is the tree
+
+```
+<rhs>
+└─ <var>
+   └─ "x"
+```
+
+We assume a partial function \\(\mathit{path}(t_1, t_2)\\) that returns that
+path pointing to \\(t_1\\) in the tree \\(t_2\\).[^5] The function is defined
+if, and only if, \\(t_1\\) occurs in \\(t_1\\). For example, if \\(t_1\\) is the
+`<rhs>`-tree above and \\(t_2\\) the `<stmt>` tree from which we extracted it, 
+\\(\mathit{path}(t_1, t_2)=(0,2,0)\\).
+
+[^5]: In the ISLa system, derivation trees have unique identifiers, such that we can distinguish trees with identical structure.
+
+Let \\(\beta\\) be a variable assignment, \\(c\\) the global constant from the
+ISLa specification, and \\(p_i\\) be the paths \\(\mathit{path}(t_i, \beta(c))\\)
+for \\(i=1,2\\). Now, \\(\beta\models\mathit{before}(t_1, t_2)\\) holds if, and
+only if, the function \\(\mathit{isBefore}(p_1, p_2)\\) returns \\(\top\\). We
+recursively define \\(\mathit{isBefore}\\) as follows:
+
+$$
+\mathit{isBefore}(p_1, p_2) =
+\begin{cases}
+  \bot                                              & \text{if } p_1 = () \text{ or } p_2 = () \\
+  \bot                                              & \text{if } p_2^1 < p_1^1 \\
+  \top                                              & \text{if } p_1^1 < p_2^1 \\
+  isBefore((\mathit{tail}(p_1), \mathit{tail}(p_2)) & \text{otherwise}
+\end{cases}
+$$
+
+where \\(p^1\\) is the first element of the tuple \\(p\\) and
+\\(\mathit{tail}(p)\\) is the (possibly empty) tuple resulting from removing the
+first element of \\(p\\).
+
+The remaining structural predicates can be defined in a similar fashion. Only
+for predicates like `level` we additionally need to retrieve labels of subtrees
+(grammar symbols) in addition to paths.
 
 #### [Semantic Predicates](#semantic-predicates)
 
 (work in progress)
+
+For example, `count(in_tree, "<line>", "3")` holds if, and only if, there exist
+exactly three children labeled with the `<line>` nonterminal inside the
+derivation tree `in_tree`. In certain cases, it is possible to either pass a
+variable *or* a string literal as an argument. For `count`, the third argument
+can be a *numeric* variable (see the section [on numeric
+quantifiers](#numeric-quantifiers)).
+
+| Predicate                                  | Intuitive Meaning                                                                                                                                      |
+|--------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `count(in_tree, NEEDLE, NUM)`              | There are `NUM` occurrences of the `NEEDLE` nonterminal in `in_tree`. `NEEDLE` is a String, `NUM` a numeric String or int variable.                    |
 
 ### [Propositional Combinators](#propositional)
 
 (work in progress)
 
 ### [Quantifiers](#quantifiers)
+
+#### [Tree Quantifiers](#tree-quantifiers)
+
+(work in progress)
+
+#### [Numeric Quantifiers](#numeric-quantifiers)
 
 (work in progress)
 
