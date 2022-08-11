@@ -651,7 +651,7 @@ assignment \\(\beta\\). Thus, we assume that we know \\(c\\).[^4] The semantics
 of structural predicate atoms can only be defined for each predicate
 individually. Below, we demonstrate this along the example of `before`.
 
-[^4]: In the ISLa implementation, we distinguish two types of variables: *bound variables* (bound by [quantifiers](#quantifiers)) and *constants*. Thus, we can always extract reference trees from variable assignments.
+[^4]: In the ISLa implementation, we distinguish two types (in the sense of object-oriented classes) of variables: *bound variables* (bound by [quantifiers](#quantifiers)) and *constants*. Thus, we can always extract reference trees from variable assignments.
 
 **Semantics of `before`.** Since `before` reasons about *relative positions* of
 derivation trees, we need to encode these positions. To that end, we introduce
@@ -827,21 +827,21 @@ from this set, since it is *bound* by the quantifier. Let \\(Q\\) be either
 `forall` or `exists`. We define
 
 $$
-\mathit{freeVars}(Q~\mathtt{\langle{}type\rangle}~\mathit{name}~\mathtt{in}~\mathit{tree}:~\varphi)
-:=\left(\mathit{freeVars}(\varphi)\cup\{\mathit{tree}\}\right)\setminus\{\mathit{name}\}
+\mathit{freeVars}(Q~T~v~\mathtt{in}~\mathit{t}:~\varphi)
+:=\left(\mathit{freeVars}(\varphi)\cup\{t\}\right)\setminus\{v\}
 $$
 
-**Semantics.** Let \\(\mathit{subtrees}_N(t)\\) be the subtrees of the
+**Semantics.** Let \\(\mathit{subtrees}(N, t)\\) be the subtrees of the
 derivation tree \\(t\\) labeled with the nonterminal symbol \\(N\\). Then, we
 define the semantics of quantified formulas without match expressions as
 follows:
 
 * \\(\beta\models\mathtt{forall}~T~v~\mathtt{in}~t:\,\varphi\\) holds if, and
   only if, \\(\beta[v\mapsto{}t']\models\varphi\\) holds for all
-  \\(t'\in\mathit{subtrees}_T(\beta(t))\\)
+  \\(t'\in\mathit{subtrees}(T, \beta(t))\\)
 * \\(\beta\models\mathtt{exists}~T~v~\mathtt{in}~t:\,\varphi\\) holds if, and
   only if, \\(\beta[v\mapsto{}t']\models\varphi\\) holds for some
-  \\(t'\in\mathit{subtrees}_T(\beta(t))\\)
+  \\(t'\in\mathit{subtrees}(T, \beta(t))\\)
 
 where \\(\beta[v\mapsto{}t']\\) is the variable assignment mapping variable
 \\(v\\) to the derivation tree \\(t'\\) and all other variables to their mapping
@@ -849,7 +849,138 @@ in \\(\beta\\).
 
 ##### [Tree Quantifiers with Match Expressions](#tree-quantifiers-with-match-expressions)
 
+A *match expression* is an abstract word from the language of the reference
+grammar. For example, `x := y` is a concrete word from our assignment language
+(see [introduction](#introduction)); `<var> := y` would be a valid match
+expression. Additionally, match expressions allow binding elements of that
+"abstract" word to variables, as in `{<var> myvar} := y`. By using match
+expressions in quantifiers, we can (1) restrict the possible instantiations of
+the bound variable to those that match the match expression, and (2) access
+elements of these instantiations by giving them names that can be referred in
+the quantified formula.
+
+To increase the flexibility of match expressions, they can contain *optional*
+elements inside square brackets `[...]`. Elements inside these optionals cannot
+be bound to variables: Only plain terminal and nonterminal symbols may occur
+there. For example, `<assgn>[ ; <stmt>]` is a possible match expression for a
+`<stmt>` nonterminal in the assignment language. It matches statements
+consisting of a single assignment and one with an assignment followed by a
+statement. Match expressions can also go "deeper." The expression 
+`<assgn>[ ; <assgn>]` is also a valid match expression for a `<stmt>`, matching
+any statement consisting of exactly one *or* two assignments.
+
+**Free variables.** For a match expression \\(\mathit{mexpr}\\), let
+\\(\mathit{freeVars}(\mathit{mexpr})\\) be the variables specified in curly
+braces inside \\(\mathit{mexpr}\\). Let \\(Q\\) be `forall` or `exists`. Then,
+we define 
+
+$$
+\mathit{freeVars}(Q~T~v\mathtt{=}\text{"$\mathit{mexpr}$"}~\mathtt{in}~\mathit{t}:~\varphi)
+:=\left(\mathit{freeVars}(\varphi)\cup\mathit{freeVars}(\mathit{mexpr})\cup\{t\}\right)\setminus\{v\}
+$$
+
+To define the *semantics* of quantifiers with match expressions, we parse the
+match expression into a set of (typically open, i.e., containing nonterminal
+leaves) derivation trees. We can get more than one result: Either because
+optionals are used, or because the reference grammar is ambiguous. If the match
+expression contains variables, we record the paths from the root of these trees
+to the nodes corresponding to the bound elements. Then, we continue as for
+[quantified formulas without match
+expressions](#tree-quantifiers-without-match-expressions): If `Q <type>
+var="mexpr" in tree: A` is the formula (`Q` being either `forall` or `exists`),
+we collect subtrees from `tree` with roots labeled with `<type>`. Then, however,
+we select only those of which the some derivation tree for the match expression
+is a *prefix*. Then, we instantiate `var` and all variables in `mexpr` according
+to the found match, and check whether `A` holds for all/one of these
+instantiations.
+
+To make this&mdash;slightly&mdash;more formal, we "define" a function
+\\(\mathit{mexprTrees}\\) by example.  The result of
+\\(\mathit{mexprTrees}(T,\mathit{mexpr})\\), for a nonterminal symbol \\(T\\)
+match expression \\(\mathit{mexpr}\\), is a set of pairs \\((t,P)\\) of (1) a
+derivation tree \\(t\\) corresponding to the parsed match expression, where
+\\(T\\) is used as a start symbol (such that the root of \\(t\\) is labeled with
+\\(T\\)), and (2) a mapping \\(P\\) of variables bound in match expressions to
+the paths where the corresponding tree elements occur in \\(t\\).
+
+Consider again the assignment language and let the match expression
+\\(\mathit{mexpr}\\) be `{<var> lhs} := {<var> rhs}[ ; <assgn>]`. We visualize
+the result of
+\\(\mathit{mexprTrees}(\mathtt{\langle{}stmt\rangle},\mathit{mexpr})\\) by
+indicating the mapping \\(P\\) in the textual representation of the two
+resulting derivation trees. The first element of the result set, where the
+optional part has been left out, is
+
+```
+stmt
+└─ assgn
+   ├─ var      lhs ↦ (0,0)
+   ├─ " := "
+   └─ rhs
+      └─ var   rhs ↦ (0,2,0)
+```
+
+The second element, which contains the optional second assignment, is
+
+```
+stmt
+├─ assgn
+│  ├─ var      lhs ↦ (0,0)
+│  ├─ " := "
+│  └─ rhs
+│     └─ var   rhs ↦ (0,2,0)
+├─ " ; "
+└─ stmt
+   └─ assgn
+```
+
+We assume a function \\(\mathit{match}(t, t', P)\\) taking a derivation tree
+\\(t\\) and a pair \\(t',P\\) computed by \\(\mathit{mexprTrees}\\) and
+returning (1) \\(\bot\\) if \\(t'\\) does not match \\(t\\), or otherwise (2) a
+*variable assignment* mapping variables in \\(P\\) to the corresponding subtrees
+in \\(t\\).
+
+We now recursively define \\(\mathit{match}\\). Thereby,
+
+* \\(l\\) and \\(l'\\) are the labels of \\(t\\) and \\(t'\\), respectively;
+* all alternatives in the definition are *mutually exclusive* (the first
+  applicable one is applied);
+* by \\(\mathit{numc}(t)\\) we denote the number of  children of the derivation
+  tree \\(t\\);
+* by \\(\mathit{child}(t, i)\\) we denote the \\(i\\)-th child of t, starting
+  with 1; 
+* \\(P_i\\) is computed from a mapping \\(P\\) from variables to paths by
+  discarding all paths in \\(P\\) not starting with \\(i\\) and taking the
+  *tail* (discarding the first element) for all other paths; and
+* we use standard set union notation \\(\bigcup_{i=1}^n\beta_i\\) for combining 
+  variable assignments \\(\beta_i\\).
+
+$$
+\mathit{match}(t, t', P) :=
+\begin{cases}
+\bot                                                                                  & \text{if }l\neq{}l'\vee(\mathit{numc}(t')>0\wedge \\
+                                                                                      & \qquad\mathit{numc}(t)\neq\mathit{numc}(t')) \\
+[v\mapsto{}t]                                                                         & \text{if }P=[v\mapsto{}()]\text{ for some }v \\
+\bot                                                                                  & \text{if }\mathit{match}(\mathit{child}(t, i), \mathit{child}(t', i), P_i)=\bot \\
+                                                                                      & \qquad\text{for any }i\in[1,\dots,\mathit{numc}(t)] \\
+\bigcup_{i=1}^{\mathit{numc}(t)}\mathit{match}(\mathit{child}(t, i),                  & \\
+\hphantom{\bigcup_{i=1}^{\mathit{numc}(t)}\mathit{match}(}\mathit{child}(t', i), P_i) & \text{otherwise} \\
+\end{cases}
+$$
+
 (work in progress)
+
+<!--
+**Semantics.** We define the semantics of quantified formulas with match
+expressions as follows:
+
+* \\(\beta\models\mathtt{forall}~T~v\mathtt{=}\text{"$\mathit{mexpr}$"}~\mathtt{in}~t:\,\varphi\\)
+  holds if, and only if, \\(\beta[v\mapsto{}t']\models\varphi\\) holds for all
+  \\(t'\in\mathit{subtrees}(T, \beta(t))\\)
+* \\(\beta\models\mathtt{exists}~T~v\mathtt{=}\text{"$\mathit{mexpr}$"}~\mathtt{in}~t:\,\varphi\\)
+  holds if, and only if, \\(\beta[v\mapsto{}t']\models\varphi\\) holds for some
+  \\(t'\in\mathit{subtrees}(T, \beta(t))\\)
+-->
 
 #### [Numeric Quantifiers](#numeric-quantifiers)
 

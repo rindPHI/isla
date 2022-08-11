@@ -3022,3 +3022,60 @@ def set_smt_auto_eval(formula: Formula, auto_eval: bool = False):
             formula.auto_eval = auto_eval
 
     formula.accept(AutoEvalVisitor())
+
+
+def match(
+        t: DerivationTree,
+        mexpr_tree: DerivationTree,
+        mexpr_var_paths: Dict[BoundVariable, Path]) -> Optional[Dict[BoundVariable, DerivationTree]]:
+    """
+    This function is described in the [ISLa language specification](https://rindphi.github.io/isla/islaspec/).
+    It is based on the assumption that we can parse a match expression into a set of derivation trees and mappings
+    of bound variables to their paths inside those trees. We implemented this function as a demonstrator
+    of this part of the language specification, and will integrate it with the match expression matching
+    once that the preliminaries are done.
+
+    :param t: The derivation tree to match.
+    :param mexpr_tree: One derivation tree resulting from parsing the match expression.
+    :param mexpr_var_paths: A mapping from variables bound in the match expression to their paths in `mexpr_tree`.
+    :return: `None` if there is no match, or a mapping of variables in the match expression to their
+    matching subtrees in `t`.
+    """
+
+    if t.value != mexpr_tree.value:
+        return None
+
+    # If the match expression does not have children, we have a match!
+    if not mexpr_tree.children:
+        assert 0 <= len(mexpr_var_paths) <= 1
+        assert not mexpr_var_paths or not mexpr_var_paths[next(iter(mexpr_var_paths.keys()))]
+
+        # `mexpr_var_paths` will have the form `{bv: ()}` iff this position is associated to a
+        # bound variable; associate the current tree `t` to `bv` then. Otherwise, we return
+        # an empty mapping (which signals success, just not binding!).
+        return {bv: t for bv in mexpr_var_paths if not mexpr_var_paths[bv]}
+
+    assert not mexpr_var_paths or all(mexpr_var_paths[var] for var in mexpr_var_paths)
+
+    # On the other hand, if the numbers of children differ (and `mexpr_tree` *does* have children),
+    # this cannot possibly be a match.
+    if len(t.children or []) != len(mexpr_tree.children or []):
+        return None
+
+    assert t.children and mexpr_tree.children
+
+    # Otherwise, proceed by matching the children.
+    result = {}
+    for idx in range(len(t.children)):
+        maybe_match = match(
+            t.children[idx],
+            mexpr_tree.children[idx],
+            {bv: path[1:]
+             for bv, path in mexpr_var_paths.items()
+             if path[0] == idx})
+        if maybe_match is None:
+            return None
+
+        result |= maybe_match
+
+    return result
