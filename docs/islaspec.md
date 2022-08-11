@@ -36,6 +36,8 @@ if there were recent additions.
   - [Propositional Combinators](#propositional-combinators)
   - [Quantifiers](#quantifiers)
     - [Tree Quantifiers](#tree-quantifiers)
+      - [Tree Quantifiers without Match Expressions](#tree-quantifiers-without-match-expressions)
+      - [Tree Quantifiers with Match Expressions](#tree-quantifiers-with-match-expressions)
     - [Numeric Quantifiers](#numeric-quantifiers)
 - [Footnotes](#footnotes)
 
@@ -782,7 +784,10 @@ not need any parentheses.
 \\(\mathit{freeVars}(\mathtt{not}~\varphi):=\mathit{freeVars}(\varphi)\\). Let
 \\(\circ\\) be one of the binary propositional combinators and
 \\(\varphi,\,\psi\\) be two ISLa formulas. Then,
-\\(\mathit{freeVars}(\varphi\circ\psi):=\mathit{freeVars}(\varphi)\cup\mathit{freeVars}(\psi)\\).
+
+$$
+\mathit{freeVars}(\varphi\circ\psi):=\mathit{freeVars}(\varphi)\cup\mathit{freeVars}(\psi)
+$$
 
 **Semantics.** We define the semantics for `not`, `and`, and `or` as follows:
 
@@ -795,7 +800,54 @@ not need any parentheses.
 
 ### [Quantifiers](#quantifiers)
 
+Quantifiers come in two flavors in ISLa. First, we have quantifiers over
+derivation trees, e.g., `forall <type> name in tree: ...`. In the
+[introduction](#introduction), we have shown examples for those. A second type
+of quantifier are the quantifiers over *integers*. They have the form `forall
+int name: ...` or `exists int name: ...`. The variable `name` is, as all ISLa
+variables, of string sort, but ranges over numeric values.
+
 #### [Tree Quantifiers](#tree-quantifiers)
+
+There are four types of tree quantifiers in ISLa, as universal quantifiers
+(`forall`) and existential quantifiers (`exists`) can come with or without a
+specified *match expression*. We first discuss the semantics of tree quantifiers
+without match expressions, and then focus on those with match expressions.
+
+##### [Tree Quantifiers without Match Expressions](#tree-quantifiers-without-match-expressions)
+
+Intuitively, a formula `forall <type> name in tree: A` is true if A holds *for
+all* subtrees in `tree` labeled with `<type>`. Conversely, `exists <type> name
+in tree: A` holds if there is just *some* such subtree in `tree`.
+
+**Free variables.** In a quantified tree formula without match expression, the
+free variables are the free variables of the formula in the core of the
+quantifier as well as the variable after `in`; the variable `name` is excluded
+from this set, since it is *bound* by the quantifier. Let \\(Q\\) be either
+`forall` or `exists`. We define
+
+$$
+\mathit{freeVars}(Q~\mathtt{\langle{}type\rangle}~\mathit{name}~\mathtt{in}~\mathit{tree}:~\varphi)
+:=\left(\mathit{freeVars}(\varphi)\cup\{\mathit{tree}\}\right)\setminus\{\mathit{name}\}
+$$
+
+**Semantics.** Let \\(\mathit{subtrees}_N(t)\\) be the subtrees of the
+derivation tree \\(t\\) labeled with the nonterminal symbol \\(N\\). Then, we
+define the semantics of quantified formulas without match expressions as
+follows:
+
+* \\(\beta\models\mathtt{forall}~T~v~\mathtt{in}~t:\,\varphi\\) holds if, and
+  only if, \\(\beta[v\mapsto{}t']\models\varphi\\) holds for all
+  \\(t'\in\mathit{subtrees}_T(\beta(t))\\)
+* \\(\beta\models\mathtt{exists}~T~v~\mathtt{in}~t:\,\varphi\\) holds if, and
+  only if, \\(\beta[v\mapsto{}t']\models\varphi\\) holds for some
+  \\(t'\in\mathit{subtrees}_T(\beta(t))\\)
+
+where \\(\beta[v\mapsto{}t']\\) is the variable assignment mapping variable
+\\(v\\) to the derivation tree \\(t'\\) and all other variables to their mapping
+in \\(\beta\\).
+
+##### [Tree Quantifiers with Match Expressions](#tree-quantifiers-with-match-expressions)
 
 (work in progress)
 
