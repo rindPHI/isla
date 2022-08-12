@@ -598,7 +598,7 @@ def matches_for_quantified_formula(
         if node == qfd_var.n_type:
             if bind_expr is not None:
                 maybe_match: Optional[Tuple[Tuple[BoundVariable, Tuple[Path, DerivationTree]]], ...]
-                maybe_match = bind_expr.match(tree, grammar, subtrees_trie=subtrees_trie)
+                maybe_match = bind_expr.match(tree, grammar)
 
                 if maybe_match is not None:
                     maybe_match = dict(maybe_match)
