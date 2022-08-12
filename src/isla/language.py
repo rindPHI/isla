@@ -1,9 +1,11 @@
 import copy
+import functools
 import itertools
 import logging
 import operator
 import pickle
 import re
+import string
 from abc import ABC
 from functools import reduce, lru_cache
 from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Set, Iterable, Sequence, Protocol, \
@@ -22,7 +24,7 @@ import isla.mexpr_parser.MexprParserListener as MexprParserListener
 from isla.derivation_tree import DerivationTree
 from isla.fuzzer import GrammarCoverageFuzzer
 from isla.helpers import RE_NONTERMINAL, is_nonterminal, assertions_activated, \
-    copy_trie, canonical, nth_occ, replace_in_list
+    copy_trie, canonical, nth_occ, replace_in_list, srange, grammar_to_mutable
 from isla.helpers import replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, \
     immutable_to_grammar, \
     nested_list_to_tuple
@@ -195,175 +197,98 @@ class BindExpression:
             return [(opt[0].new_ids(), opt[1]) for opt in cached]
 
         result: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]] = []
+        immutable_grammar = grammar_to_immutable(grammar)
+        parser = EarleyParser(grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar))
 
         for bound_elements in flatten_bound_elements(
                 nested_list_to_tuple(self.bound_elements),
-                grammar_to_immutable(grammar),
+                immutable_grammar,
                 in_nonterminal=in_nonterminal):
-            tree = bound_elements_to_tree(bound_elements, grammar_to_immutable(grammar), in_nonterminal)
+            flattened_bind_expr_str = ''.join(map(
+                lambda elem: f'{{{elem.n_type} {elem.name}}}' if type(elem) == BoundVariable else str(elem),
+                bound_elements))
+            # TODO: Ambiguities?
+            try:
+                tree = DerivationTree.from_parse_tree(next(parser.parse(flattened_bind_expr_str))).children[0]
+            except SyntaxError:
+                language_core_logger.debug(
+                    f'Parsing match expression string "%s" caused a syntax error. If this is not a '
+                    f'test case where this behavior is intended, it should probably be investigated.',
+                    flattened_bind_expr_str)
+                continue
 
-            match_result = self.match_with_backtracking(tree.trie(), list(bound_elements))
-            if match_result:
-                positions: Dict[BoundVariable, Path] = {}
-                for bound_element in bound_elements:
-                    if bound_element not in match_result:
-                        assert isinstance(bound_element, DummyVariable) and not is_nonterminal(bound_element.n_type)
-                        continue
+            assert tree.value == in_nonterminal
 
-                    elem_match_result = match_result[bound_element]
-                    tree = tree.replace_path(
-                        elem_match_result[0],
-                        DerivationTree(
-                            elem_match_result[1].value,
-                            None if is_nonterminal(bound_element.n_type) else ()))
+            split_bound_elements = []
+            dummy_var_map: Dict[DummyVariable, List[DummyVariable]] = {}
+            for elem in bound_elements:
+                if not isinstance(elem, DummyVariable) or is_nonterminal(elem.n_type):
+                    split_bound_elements.append(elem)
+                    continue
 
-                    positions[bound_element] = elem_match_result[0]
+                new_dummies = [DummyVariable(char) for char in elem.n_type]
+                split_bound_elements.extend(new_dummies)
+                dummy_var_map[elem] = new_dummies
 
-                result.append((tree, positions))
+            match_expr_tree = tree
+            match_expr_matches: Dict[BoundVariable, Path] = {}
+            skip_paths_below = set()
+            remaining_bound_elements = list(split_bound_elements)
+
+            def search(path: Path, child: DerivationTree):
+                nonlocal match_expr_tree
+                if any(len(path) > len(skip_path) and path[:len(skip_path)] == skip_path
+                       for skip_path in skip_paths_below):
+                    return
+
+                if (len(child.children) == 7 and
+                        child.children[0].value == '{' and
+                        child.children[1].value == '<LANGLE>'):
+                    assert is_nonterminal(child.value)
+                    skip_paths_below.add(path)
+                    match_expr_tree = match_expr_tree.replace_path(path, DerivationTree(child.value, None))
+                    var_n_type = '<' + child.children[2].value + '>'
+                    var_name = str(child.children[5])
+
+                    var = next(var for var in remaining_bound_elements if var.name == var_name)
+                    assert var.n_type == var_n_type
+                    remaining_bound_elements.remove(var)
+                    match_expr_matches[var] = path
+                elif str(child) == child.value:
+                    match_expr_tree = match_expr_tree.replace_path(
+                        path, DerivationTree(child.value, None if is_nonterminal(child.value) else ()))
+                    skip_paths_below.add(path)
+
+                    for char in ([child.value] if is_nonterminal(child.value) else list(child.value)):
+                        var = next(var for var in remaining_bound_elements if var.n_type == char)
+                        assert isinstance(var, DummyVariable)
+                        remaining_bound_elements.remove(var)
+                        match_expr_matches[var] = path
+
+            tree.traverse(search, abort_condition=lambda p, t: not remaining_bound_elements)
+
+            # In the result, we have to combine all terminals that point to the same path.
+            consolidated_matches = consolidate_match_expression_matches(match_expr_matches)
+            result.append((match_expr_tree, consolidated_matches))
+
+            assert all(var in consolidated_matches for var in bound_elements if not isinstance(var, DummyVariable))
+            assert all(any(
+                len(match_path) <= len(leaf_path) and
+                leaf_path[:len(match_path)] == match_path
+                for match_path in consolidated_matches.values())
+                       for leaf_path, _ in tree.leaves())
 
         self.prefixes[in_nonterminal] = result
         return result
 
-    def match(
-            self,
-            tree: DerivationTree,
-            grammar: Grammar,
-            subtrees_trie: Optional[datrie.Trie] = None) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
-        if not subtrees_trie:
-            subtrees_trie = tree.trie()
-
-        leaves = [
-            (path, subtree)
-            for path, subtree in tree.paths()
-            if not subtree.children]
-
-        for combination in reversed(flatten_bound_elements(
-                nested_list_to_tuple(self.bound_elements),
-                grammar_to_immutable(grammar),
-                in_nonterminal=tree.value)):
-
-            maybe_result = self.match_with_backtracking(subtrees_trie, list(combination))
-            if maybe_result is not None:
-                maybe_result = dict(maybe_result)
-
-                # NOTE: We also have to check if the match was complete; the current
-                #       combination could not have been adequate (containing nonexisting
-                #       input elements), such that they got matched to wrong elements, but
-                #       there remain tree elements that were not matched.
-                if all(any(match_path == leaf_path[:len(match_path)]
-                           for match_path, _ in maybe_result.values())
-                       for leaf_path, _ in leaves):
-                    return maybe_result
+    def match(self, tree: DerivationTree, grammar: Grammar) -> \
+            Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
+        for mexpr_tree, mexpr_var_matches in self.to_tree_prefix(tree.value, grammar):
+            possible_match = match(tree, mexpr_tree, mexpr_var_matches)
+            if possible_match:
+                return possible_match
 
         return None
-
-    @staticmethod
-    def match_with_backtracking(
-            subtrees_trie: datrie.Trie,
-            bound_variables: List[BoundVariable],
-            excluded_matches: Tuple[Tuple[Path, BoundVariable], ...] = ()
-    ) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
-        if not bound_variables:
-            return None
-
-        result: Dict[BoundVariable, Tuple[Path, DerivationTree]] = {}
-
-        if BindExpression.match_without_backtracking(
-                copy_trie(subtrees_trie),
-                list(bound_variables),
-                result,
-                excluded_matches):
-            return result
-
-        # In the case of nested structures with recursive nonterminals, we might have matched
-        # to greedily in the first place; e.g., an XML <attribute> might contain other XML
-        # <attribute>s that we should rather match. Thus, we might have to backtrack.
-        if not excluded_matches:
-            for excluded_matches in itertools.chain.from_iterable(
-                    itertools.combinations({p: v for v, (p, t) in result.items()}.items(), k)
-                    for k in range(1, len(result) + 1)):
-                curr_elem: BoundVariable
-                backtrack_result = BindExpression.match_with_backtracking(
-                    subtrees_trie,
-                    bound_variables,
-                    cast(Tuple[Tuple[Path, BoundVariable], ...], excluded_matches)
-                )
-
-                if backtrack_result is not None:
-                    return backtrack_result
-
-        return None
-
-    @staticmethod
-    def match_without_backtracking(
-            subtrees_trie: datrie.Trie,
-            bound_variables: List[BoundVariable],
-            result: Dict[BoundVariable, Tuple[Path, DerivationTree]],
-            excluded_matches: Tuple[Tuple[Path, BoundVariable], ...] = ()) -> bool:
-        orig_bound_variables = list(bound_variables)
-
-        curr_elem = bound_variables.pop(0)
-        curr_elem_is_terminal = isinstance(curr_elem, DummyVariable) and not curr_elem.is_nonterminal
-        elem_matched = False
-        path_key = None
-        last_subtree_was_leaf = False
-
-        while subtrees_trie and curr_elem:
-            if (path_key is not None
-                    and not elem_matched
-                    and last_subtree_was_leaf):
-                # The last subtree was a leaf and was not matched.
-                # This means that the current result is only partial. Fail early.
-                return False
-
-            path_key = next(iter(subtrees_trie))
-            path, subtree = subtrees_trie[path_key]
-            last_subtree_was_leaf = len(subtrees_trie.suffixes(path_key)) == 1
-            del subtrees_trie[path_key]
-
-            elem_matched = False
-            subtree_str = str(subtree)
-
-            if (curr_elem_is_terminal and
-                    curr_elem.n_type != subtree_str and
-                    curr_elem.n_type.startswith(subtree_str)):
-                # Divide terminal dummy variables if they only can be unified with *different*
-                # subtrees; e.g., we have a dummy variable with n_type "xmlns:" for an XML grammar,
-                # and have to unify an ID prefix with "xmlns", leaving the ":" for the next subtree.
-                # NOTE: If we split here, this cannot be recovered, because we only need to split
-                # in the first place since the grammar does not allow for a graceful division of
-                # the considered terminal symbols. In the XML example, ":" is in a sibling tree; there
-                # is no common super tree to match *only* "xmlns:".
-                remainder_var = DummyVariable(curr_elem.n_type[len(subtree_str):])
-                next_var = DummyVariable(subtree_str)
-
-                bound_variables.insert(0, remainder_var)
-
-                curr_elem = next_var
-                curr_elem_is_terminal = isinstance(curr_elem, DummyVariable) and not curr_elem.is_nonterminal
-                # Don't `continue` here! The next `if` has to be entered before we pop a new subtree.
-
-            if ((path, curr_elem) not in excluded_matches and
-                    ((curr_elem_is_terminal and
-                      subtree_str == curr_elem.n_type) or
-                     subtree.value == curr_elem.n_type)):
-                elem_matched = True
-                result[curr_elem] = (path, subtree)
-                curr_elem = pop(bound_variables, default=None)
-                curr_elem_is_terminal = isinstance(curr_elem, DummyVariable) and not curr_elem.is_nonterminal
-
-                if not path:
-                    break
-                else:
-                    for sub_path_key in subtrees_trie.keys(path_key):
-                        del subtrees_trie[sub_path_key]
-
-        # We did only split dummy variables
-        assert subtrees_trie or curr_elem or \
-               {v for v in orig_bound_variables if type(v) is BoundVariable} == \
-               {v for v in result.keys() if type(v) is BoundVariable}
-
-        return not subtrees_trie and not curr_elem
 
     def __repr__(self):
         return f'BindExpression({", ".join(map(repr, self.bound_elements))})'
@@ -396,6 +321,82 @@ class BindExpression:
         return (isinstance(other, BindExpression) and
                 list(map(BindExpression.__dummy_vars_to_str, self.bound_elements)) ==
                 list(map(BindExpression.__dummy_vars_to_str, other.bound_elements)))
+
+
+def consolidate_match_expression_matches(match_expr_matches: Dict[BoundVariable, Path]) -> Dict[BoundVariable, Path]:
+    """
+    Groups together `DummyVariable`s in `match_expr_matches` that point to the same path.
+    This is needed since we have tosplit dummy variables into individual characters when
+    creating prefix trees for match expressions.
+
+    :param match_expr_matches: The matches to consolidate.
+    :return: The consolidated matches; all paths are unique.
+    """
+    consolidated_matches: Dict[BoundVariable, Path] = {}
+    last_dummy_elem = None
+    last_dummy_path = None
+    for var, path in match_expr_matches.items():
+        if not isinstance(var, DummyVariable) or is_nonterminal(var.n_type):
+            consolidated_matches[var] = path
+            continue
+
+        if last_dummy_path is None or last_dummy_path != path:
+            last_dummy_path = path
+            last_dummy_elem = var
+            consolidated_matches[var] = path
+            continue
+
+        del consolidated_matches[last_dummy_elem]
+        new_dummy = DummyVariable(last_dummy_elem.n_type + var.n_type)
+        consolidated_matches[new_dummy] = path
+        last_dummy_elem = new_dummy
+    return consolidated_matches
+
+
+@functools.lru_cache(10)
+def grammar_to_match_expr_grammar(start_symbol: str, grammar: ImmutableGrammar) -> Grammar:
+    new_grammar = grammar_to_mutable(grammar)
+    if start_symbol != '<start>':
+        new_grammar['<start>'] = [start_symbol]
+        delete_unreachable(new_grammar)
+
+    def fresh_nonterminal(suggestion: str) -> str:
+        if suggestion[1:-1] not in new_grammar:
+            return suggestion
+        idx = 0
+        while f'<{suggestion[1:-1]}_{idx}>' in new_grammar:
+            idx += 1
+        return f'<{suggestion[1:-1]}_{idx}>'
+
+    id_nonterminal = fresh_nonterminal('<ID>')
+    letter_nonterminal = fresh_nonterminal('<LETTER>')
+    letter_or_digit_nonterminal = fresh_nonterminal('<LETTER_OR_DIGIT>')
+    id_chars = fresh_nonterminal('<id_chars>')
+    langle_nonterminal = fresh_nonterminal('<LANGLE>')
+    rangle_nonterminal = fresh_nonterminal('<RANGLE>')
+
+    for nonterminal in new_grammar:
+        if nonterminal == '<start>':
+            continue
+        new_grammar[nonterminal].append(f'{langle_nonterminal}{nonterminal[1:-1]}{rangle_nonterminal}')
+        new_grammar[nonterminal].append(f'{{{langle_nonterminal}{nonterminal[1:-1]}{rangle_nonterminal} <ID>}}')
+
+    new_grammar[langle_nonterminal] = ['<']
+    new_grammar[rangle_nonterminal] = ['>']
+    new_grammar[letter_nonterminal] = srange(string.ascii_letters)
+    new_grammar[letter_or_digit_nonterminal] = srange(string.digits) + srange(string.ascii_letters)
+    new_grammar[id_chars] = [
+        '',
+        f'_{id_chars}',
+        f'-{id_chars}',
+        f'{letter_or_digit_nonterminal}{id_chars}',
+    ]
+    new_grammar[id_nonterminal] = [
+        f'{letter_nonterminal}{id_chars}',
+        f'${letter_nonterminal}{id_chars}',
+    ]
+
+    return new_grammar
 
 
 class FormulaVisitor:
@@ -3027,33 +3028,59 @@ def set_smt_auto_eval(formula: Formula, auto_eval: bool = False):
 def match(
         t: DerivationTree,
         mexpr_tree: DerivationTree,
-        mexpr_var_paths: Dict[BoundVariable, Path]) -> Optional[Dict[BoundVariable, DerivationTree]]:
+        mexpr_var_paths: Dict[BoundVariable, Path],
+        path_in_t: Path = ()) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
     """
     This function is described in the [ISLa language specification](https://rindphi.github.io/isla/islaspec/).
-    It is based on the assumption that we can parse a match expression into a set of derivation trees and mappings
-    of bound variables to their paths inside those trees. We implemented this function as a demonstrator
-    of this part of the language specification, and will integrate it with the match expression matching
-    once that the preliminaries are done.
+    It takes a derivation tree corresponding to a match expression and a mapping from bound variables to their
+    paths inside those trees. The result is a mapping from variables to their positions in the given tree `t`,
+    or None if there is no match.
 
     :param t: The derivation tree to match.
     :param mexpr_tree: One derivation tree resulting from parsing the match expression.
     :param mexpr_var_paths: A mapping from variables bound in the match expression to their paths in `mexpr_tree`.
+    :param path_in_t: The path in the original tree t (at the beginning of recursion).
     :return: `None` if there is no match, or a mapping of variables in the match expression to their
     matching subtrees in `t`.
     """
+
+    def is_complete_match(t: DerivationTree, match_paths: Dict[BoundVariable, Tuple[Path, DerivationTree]]) -> bool:
+        nonlocal path_in_t
+        return all(any(
+            (sub_path := match_path[len(path_in_t):],
+             len(sub_path) <= len(leaf_path) and
+             leaf_path[:len(sub_path)] == sub_path)[-1]
+            for match_path, _ in match_paths.values())
+                   for leaf_path, _ in t.leaves())
 
     if t.value != mexpr_tree.value:
         return None
 
     # If the match expression does not have children, we have a match!
     if not mexpr_tree.children:
+        assert not mexpr_var_paths or all(not path for path in mexpr_var_paths.values())
+
+        if not is_nonterminal(t.value):
+            # We matched a terminal symbol.
+            # In that case, the concatenation of all dummy variables remaining in the mexpr_var_paths
+            # should equal the current tree symbol. The join is due to the split of dummies we perform
+            # in tree prefix creation; this is needed for certain grammars where nonterminals sequences
+            # are not "bundled," but occur in different subtrees.
+            assert all(isinstance(var, DummyVariable) for var in mexpr_var_paths)
+            assert not mexpr_var_paths or ''.join(map(lambda var: var.n_type, mexpr_var_paths.keys())) == t.value
+
+            if len(mexpr_var_paths) == 1:
+                return {bv: (path_in_t, t) for bv in mexpr_var_paths if not mexpr_var_paths[bv]}
+            else:
+                new_dummy = DummyVariable(''.join(map(lambda var: var.n_type, mexpr_var_paths)))
+                return {new_dummy: (path_in_t, t) for bv in mexpr_var_paths if not mexpr_var_paths[bv]}
+
         assert 0 <= len(mexpr_var_paths) <= 1
-        assert not mexpr_var_paths or not mexpr_var_paths[next(iter(mexpr_var_paths.keys()))]
 
         # `mexpr_var_paths` will have the form `{bv: ()}` iff this position is associated to a
         # bound variable; associate the current tree `t` to `bv` then. Otherwise, we return
         # an empty mapping (which signals success, just not binding!).
-        return {bv: t for bv in mexpr_var_paths if not mexpr_var_paths[bv]}
+        return {bv: (path_in_t, t) for bv in mexpr_var_paths if not mexpr_var_paths[bv]}
 
     assert not mexpr_var_paths or all(mexpr_var_paths[var] for var in mexpr_var_paths)
 
@@ -3072,10 +3099,12 @@ def match(
             mexpr_tree.children[idx],
             {bv: path[1:]
              for bv, path in mexpr_var_paths.items()
-             if path[0] == idx})
+             if path[0] == idx},
+            path_in_t + (idx,))
         if maybe_match is None:
             return None
 
         result |= maybe_match
 
+    assert is_complete_match(t, result)
     return result

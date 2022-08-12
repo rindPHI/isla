@@ -194,9 +194,11 @@ def weighted_geometric_mean(seq: Sequence[float], weights: Sequence[float]) -> f
 
 
 def grammar_to_immutable(grammar: Grammar) -> ImmutableGrammar:
-    return cast(
-        Tuple[Tuple[str, Tuple[str, ...]]],
-        tuple({k: tuple(v) for k, v in grammar.items()}.items()))
+    return cast(ImmutableGrammar, tuple({k: tuple(v) for k, v in grammar.items()}.items()))
+
+
+def grammar_to_mutable(grammar: ImmutableGrammar) -> Grammar:
+    return {nonterminal: list(expansion) for nonterminal, expansion in grammar}
 
 
 def immutable_to_grammar(immutable: ImmutableGrammar) -> Grammar:

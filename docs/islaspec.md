@@ -963,8 +963,9 @@ $$
 [v\mapsto{}t]                                                                         & \text{if }P=[v\mapsto{}()]\text{ for some }v \\
 \bot                                                                                  & \text{if }\mathit{match}(\mathit{child}(t, i), \mathit{child}(t', i), P_i)=\bot \\
                                                                                       & \qquad\text{for any }i\in[1,\dots,\mathit{numc}(t)] \\
-\bigcup_{i=1}^{\mathit{numc}(t)}\mathit{match}(\mathit{child}(t, i),                  & \\
-\hphantom{\bigcup_{i=1}^{\mathit{numc}(t)}\mathit{match}(}\mathit{child}(t', i), P_i) & \text{otherwise} \\
+\bigcup_{i=1}^{\mathit{numc}(t)}\Big( & \\
+\quad\mathit{match}\big(\mathit{child}(t, i),                  & \\
+\quad\hphantom{\mathit{match}\big(}\mathit{child}(t', i), P_i\big)\Big) & \text{otherwise} \\
 \end{cases}
 $$
 
