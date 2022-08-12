@@ -1,4 +1,5 @@
 import copy
+import functools
 import itertools
 import logging
 import operator
@@ -23,7 +24,7 @@ import isla.mexpr_parser.MexprParserListener as MexprParserListener
 from isla.derivation_tree import DerivationTree
 from isla.fuzzer import GrammarCoverageFuzzer
 from isla.helpers import RE_NONTERMINAL, is_nonterminal, assertions_activated, \
-    copy_trie, canonical, nth_occ, replace_in_list, srange
+    copy_trie, canonical, nth_occ, replace_in_list, srange, grammar_to_mutable
 from isla.helpers import replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, \
     immutable_to_grammar, \
     nested_list_to_tuple
@@ -189,50 +190,6 @@ class BindExpression:
             for var in alternative
             if isinstance(var, BoundVariable)])
 
-    def __to_extended_grammar(self, start_symbol: str, grammar: Grammar) -> Grammar:
-        new_grammar = copy.deepcopy(grammar)
-        if start_symbol != '<start>':
-            new_grammar['<start>'] = [start_symbol]
-            delete_unreachable(new_grammar)
-
-        def fresh_nonterminal(suggestion: str) -> str:
-            if suggestion[1:-1] not in new_grammar:
-                return suggestion
-            idx = 0
-            while f'<{suggestion[1:-1]}_{idx}>' in new_grammar:
-                idx += 1
-            return f'<{suggestion[1:-1]}_{idx}>'
-
-        id_nonterminal = fresh_nonterminal('<ID>')
-        letter_nonterminal = fresh_nonterminal('<LETTER>')
-        letter_or_digit_nonterminal = fresh_nonterminal('<LETTER_OR_DIGIT>')
-        id_chars = fresh_nonterminal('<id_chars>')
-        langle_nonterminal = fresh_nonterminal('<LANGLE>')
-        rangle_nonterminal = fresh_nonterminal('<RANGLE>')
-
-        for nonterminal in new_grammar:
-            if nonterminal == '<start>':
-                continue
-            new_grammar[nonterminal].append(f'{langle_nonterminal}{nonterminal[1:-1]}{rangle_nonterminal}')
-            new_grammar[nonterminal].append(f'{{{langle_nonterminal}{nonterminal[1:-1]}{rangle_nonterminal} <ID>}}')
-
-        new_grammar[langle_nonterminal] = ['<']
-        new_grammar[rangle_nonterminal] = ['>']
-        new_grammar[letter_nonterminal] = srange(string.ascii_letters)
-        new_grammar[letter_or_digit_nonterminal] = srange(string.digits) + srange(string.ascii_letters)
-        new_grammar[id_chars] = [
-            '',
-            f'_{id_chars}',
-            f'-{id_chars}',
-            f'{letter_or_digit_nonterminal}{id_chars}',
-        ]
-        new_grammar[id_nonterminal] = [
-            f'{letter_nonterminal}{id_chars}',
-            f'${letter_nonterminal}{id_chars}',
-        ]
-
-        return new_grammar
-
     def to_tree_prefix(self, in_nonterminal: str, grammar: Grammar) -> \
             List[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
         if in_nonterminal in self.prefixes:
@@ -240,12 +197,12 @@ class BindExpression:
             return [(opt[0].new_ids(), opt[1]) for opt in cached]
 
         result: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]] = []
-
-        parser = EarleyParser(self.__to_extended_grammar(in_nonterminal, grammar))
+        immutable_grammar = grammar_to_immutable(grammar)
+        parser = EarleyParser(grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar))
 
         for bound_elements in flatten_bound_elements(
                 nested_list_to_tuple(self.bound_elements),
-                grammar_to_immutable(grammar),
+                immutable_grammar,
                 in_nonterminal=in_nonterminal):
             flattened_bind_expr_str = ''.join(map(
                 lambda elem: f'{{{elem.n_type} {elem.name}}}' if type(elem) == BoundVariable else str(elem),
@@ -381,6 +338,52 @@ class BindExpression:
         return (isinstance(other, BindExpression) and
                 list(map(BindExpression.__dummy_vars_to_str, self.bound_elements)) ==
                 list(map(BindExpression.__dummy_vars_to_str, other.bound_elements)))
+
+
+@functools.lru_cache(10)
+def grammar_to_match_expr_grammar(start_symbol: str, grammar: ImmutableGrammar) -> Grammar:
+    new_grammar = grammar_to_mutable(grammar)
+    if start_symbol != '<start>':
+        new_grammar['<start>'] = [start_symbol]
+        delete_unreachable(new_grammar)
+
+    def fresh_nonterminal(suggestion: str) -> str:
+        if suggestion[1:-1] not in new_grammar:
+            return suggestion
+        idx = 0
+        while f'<{suggestion[1:-1]}_{idx}>' in new_grammar:
+            idx += 1
+        return f'<{suggestion[1:-1]}_{idx}>'
+
+    id_nonterminal = fresh_nonterminal('<ID>')
+    letter_nonterminal = fresh_nonterminal('<LETTER>')
+    letter_or_digit_nonterminal = fresh_nonterminal('<LETTER_OR_DIGIT>')
+    id_chars = fresh_nonterminal('<id_chars>')
+    langle_nonterminal = fresh_nonterminal('<LANGLE>')
+    rangle_nonterminal = fresh_nonterminal('<RANGLE>')
+
+    for nonterminal in new_grammar:
+        if nonterminal == '<start>':
+            continue
+        new_grammar[nonterminal].append(f'{langle_nonterminal}{nonterminal[1:-1]}{rangle_nonterminal}')
+        new_grammar[nonterminal].append(f'{{{langle_nonterminal}{nonterminal[1:-1]}{rangle_nonterminal} <ID>}}')
+
+    new_grammar[langle_nonterminal] = ['<']
+    new_grammar[rangle_nonterminal] = ['>']
+    new_grammar[letter_nonterminal] = srange(string.ascii_letters)
+    new_grammar[letter_or_digit_nonterminal] = srange(string.digits) + srange(string.ascii_letters)
+    new_grammar[id_chars] = [
+        '',
+        f'_{id_chars}',
+        f'-{id_chars}',
+        f'{letter_or_digit_nonterminal}{id_chars}',
+    ]
+    new_grammar[id_nonterminal] = [
+        f'{letter_nonterminal}{id_chars}',
+        f'${letter_nonterminal}{id_chars}',
+    ]
+
+    return new_grammar
 
 
 class FormulaVisitor:
