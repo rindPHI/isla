@@ -189,47 +189,7 @@ class BindExpression:
             for var in alternative
             if isinstance(var, BoundVariable)])
 
-    def to_tree_prefix_legacy(self, in_nonterminal: str, grammar: Grammar) -> \
-            List[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
-        # This method is kept if the new to_tree_prefix based on extended grammars should prove to not
-        # work as well as expected. It should be removed if, sufficiently late after 2022/08/12,
-        # no problem has occurred.
-        print('WARNING: The function `to_tree_prefix_legacy` is deprecated. Use to_tree_prefix instead.')
-        if in_nonterminal in self.prefixes:
-            cached = self.prefixes[in_nonterminal]
-            return [(opt[0].new_ids(), opt[1]) for opt in cached]
-
-        result: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]] = []
-
-        for bound_elements in flatten_bound_elements(
-                nested_list_to_tuple(self.bound_elements),
-                grammar_to_immutable(grammar),
-                in_nonterminal=in_nonterminal):
-            tree = bound_elements_to_tree(bound_elements, grammar_to_immutable(grammar), in_nonterminal)
-
-            match_result = self.match_with_backtracking(tree.trie(), list(bound_elements))
-            if match_result:
-                positions: Dict[BoundVariable, Path] = {}
-                for bound_element in bound_elements:
-                    if bound_element not in match_result:
-                        assert isinstance(bound_element, DummyVariable) and not is_nonterminal(bound_element.n_type)
-                        continue
-
-                    elem_match_result = match_result[bound_element]
-                    tree = tree.replace_path(
-                        elem_match_result[0],
-                        DerivationTree(
-                            elem_match_result[1].value,
-                            None if is_nonterminal(bound_element.n_type) else ()))
-
-                    positions[bound_element] = elem_match_result[0]
-
-                result.append((tree, positions))
-
-        self.prefixes[in_nonterminal] = result
-        return result
-
-    def to_extended_grammar(self, start_symbol: str, grammar: Grammar) -> Grammar:
+    def __to_extended_grammar(self, start_symbol: str, grammar: Grammar) -> Grammar:
         new_grammar = copy.deepcopy(grammar)
         if start_symbol != '<start>':
             new_grammar['<start>'] = [start_symbol]
@@ -281,7 +241,7 @@ class BindExpression:
 
         result: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]] = []
 
-        parser = EarleyParser(self.to_extended_grammar(in_nonterminal, grammar))
+        parser = EarleyParser(self.__to_extended_grammar(in_nonterminal, grammar))
 
         for bound_elements in flatten_bound_elements(
                 nested_list_to_tuple(self.bound_elements),
@@ -389,152 +349,6 @@ class BindExpression:
             return result
 
         return None
-
-    def match_legacy(
-            self,
-            tree: DerivationTree,
-            grammar: Grammar,
-            subtrees_trie: Optional[datrie.Trie] = None) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
-        # This method is kept if the new match based on tree prefixes should prove to not
-        # work as well as expected. It should be removed if, sufficiently late after 2022/08/12,
-        # no problem has occurred.
-        print('WARNING: The function `match_legacy` is deprecated. Use `match` instead.')
-
-        if not subtrees_trie:
-            subtrees_trie = tree.trie()
-
-        leaves = [
-            (path, subtree)
-            for path, subtree in tree.paths()
-            if not subtree.children]
-
-        for combination in reversed(flatten_bound_elements(
-                nested_list_to_tuple(self.bound_elements),
-                grammar_to_immutable(grammar),
-                in_nonterminal=tree.value)):
-
-            maybe_result = self.match_with_backtracking(subtrees_trie, list(combination))
-            if maybe_result is not None:
-                maybe_result = dict(maybe_result)
-
-                # NOTE: We also have to check if the match was complete; the current
-                #       combination could not have been adequate (containing nonexisting
-                #       input elements), such that they got matched to wrong elements, but
-                #       there remain tree elements that were not matched.
-                if all(any(match_path == leaf_path[:len(match_path)]
-                           for match_path, _ in maybe_result.values())
-                       for leaf_path, _ in leaves):
-                    return maybe_result
-
-        return None
-
-    @staticmethod
-    def match_with_backtracking(
-            subtrees_trie: datrie.Trie,
-            bound_variables: List[BoundVariable],
-            excluded_matches: Tuple[Tuple[Path, BoundVariable], ...] = ()
-    ) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
-        if not bound_variables:
-            return None
-
-        result: Dict[BoundVariable, Tuple[Path, DerivationTree]] = {}
-
-        if BindExpression.match_without_backtracking(
-                copy_trie(subtrees_trie),
-                list(bound_variables),
-                result,
-                excluded_matches):
-            return result
-
-        # In the case of nested structures with recursive nonterminals, we might have matched
-        # to greedily in the first place; e.g., an XML <attribute> might contain other XML
-        # <attribute>s that we should rather match. Thus, we might have to backtrack.
-        if not excluded_matches:
-            for excluded_matches in itertools.chain.from_iterable(
-                    itertools.combinations({p: v for v, (p, t) in result.items()}.items(), k)
-                    for k in range(1, len(result) + 1)):
-                curr_elem: BoundVariable
-                backtrack_result = BindExpression.match_with_backtracking(
-                    subtrees_trie,
-                    bound_variables,
-                    cast(Tuple[Tuple[Path, BoundVariable], ...], excluded_matches)
-                )
-
-                if backtrack_result is not None:
-                    return backtrack_result
-
-        return None
-
-    @staticmethod
-    def match_without_backtracking(
-            subtrees_trie: datrie.Trie,
-            bound_variables: List[BoundVariable],
-            result: Dict[BoundVariable, Tuple[Path, DerivationTree]],
-            excluded_matches: Tuple[Tuple[Path, BoundVariable], ...] = ()) -> bool:
-        orig_bound_variables = list(bound_variables)
-
-        curr_elem = bound_variables.pop(0)
-        curr_elem_is_terminal = isinstance(curr_elem, DummyVariable) and not curr_elem.is_nonterminal
-        elem_matched = False
-        path_key = None
-        last_subtree_was_leaf = False
-
-        while subtrees_trie and curr_elem:
-            if (path_key is not None
-                    and not elem_matched
-                    and last_subtree_was_leaf):
-                # The last subtree was a leaf and was not matched.
-                # This means that the current result is only partial. Fail early.
-                return False
-
-            path_key = next(iter(subtrees_trie))
-            path, subtree = subtrees_trie[path_key]
-            last_subtree_was_leaf = len(subtrees_trie.suffixes(path_key)) == 1
-            del subtrees_trie[path_key]
-
-            elem_matched = False
-            subtree_str = str(subtree)
-
-            if (curr_elem_is_terminal and
-                    curr_elem.n_type != subtree_str and
-                    curr_elem.n_type.startswith(subtree_str)):
-                # Divide terminal dummy variables if they only can be unified with *different*
-                # subtrees; e.g., we have a dummy variable with n_type "xmlns:" for an XML grammar,
-                # and have to unify an ID prefix with "xmlns", leaving the ":" for the next subtree.
-                # NOTE: If we split here, this cannot be recovered, because we only need to split
-                # in the first place since the grammar does not allow for a graceful division of
-                # the considered terminal symbols. In the XML example, ":" is in a sibling tree; there
-                # is no common super tree to match *only* "xmlns:".
-                remainder_var = DummyVariable(curr_elem.n_type[len(subtree_str):])
-                next_var = DummyVariable(subtree_str)
-
-                bound_variables.insert(0, remainder_var)
-
-                curr_elem = next_var
-                curr_elem_is_terminal = isinstance(curr_elem, DummyVariable) and not curr_elem.is_nonterminal
-                # Don't `continue` here! The next `if` has to be entered before we pop a new subtree.
-
-            if ((path, curr_elem) not in excluded_matches and
-                    ((curr_elem_is_terminal and
-                      subtree_str == curr_elem.n_type) or
-                     subtree.value == curr_elem.n_type)):
-                elem_matched = True
-                result[curr_elem] = (path, subtree)
-                curr_elem = pop(bound_variables, default=None)
-                curr_elem_is_terminal = isinstance(curr_elem, DummyVariable) and not curr_elem.is_nonterminal
-
-                if not path:
-                    break
-                else:
-                    for sub_path_key in subtrees_trie.keys(path_key):
-                        del subtrees_trie[sub_path_key]
-
-        # We did only split dummy variables
-        assert subtrees_trie or curr_elem or \
-               {v for v in orig_bound_variables if type(v) is BoundVariable} == \
-               {v for v in result.keys() if type(v) is BoundVariable}
-
-        return not subtrees_trie and not curr_elem
 
     def __repr__(self):
         return f'BindExpression({", ".join(map(repr, self.bound_elements))})'
