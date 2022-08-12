@@ -974,15 +974,15 @@ quantified formulas with match expressions.
 
 * \\(\beta\models\mathtt{forall}~T~v\mathtt{=}\text{"$\mathit{mexpr}$"}~\mathtt{in}~t:\,\varphi\\)
   holds if, and only if, 
-  * for all \\(t_1\in\mathit{subtrees}(T, \beta(t))\\) and 
-  * for all \\((t_2,P) \in \mathit{mexprTrees}(T, \mathit{mexpr})\\), it holds that
-  * \\(\mathit{match}(t_1, t_2, P)\neq\bot\\) implies that
+  * **for all** \\(t_1\in\mathit{subtrees}(T, \beta(t))\\) and 
+  * **for all** \\((t_2,P) \in \mathit{mexprTrees}(T, \mathit{mexpr})\\), it holds that
+  * \\(\mathit{match}(t_1, t_2, P)\neq\bot\\) **implies that**
   * \\(\beta[v\mapsto{}t_1]\cup\mathit{match}(t_1, t_2, P)\models\varphi\\).
 * \\(\beta\models\mathtt{exists}~T~v\mathtt{=}\text{"$\mathit{mexpr}$"}~\mathtt{in}~t:\,\varphi\\)
   holds if, and only if, 
-  * there is a \\(t_1\in\mathit{subtrees}(T, \beta(t))\\) and 
-  * there is a \\((t_2,P) \in \mathit{mexprTrees}(T, \mathit{mexpr})\\) such that
-  * \\(\mathit{match}(t_1, t_2, P)\neq\bot\\) and
+  * **there is a** \\(t_1\in\mathit{subtrees}(T, \beta(t))\\) and 
+  * **there is a** \\((t_2,P) \in \mathit{mexprTrees}(T, \mathit{mexpr})\\) such that
+  * \\(\mathit{match}(t_1, t_2, P)\neq\bot\\) **and**
   * \\(\beta[v\mapsto{}t_1]\cup\mathit{match}(t_1, t_2, P)\models\varphi\\).
 
 
