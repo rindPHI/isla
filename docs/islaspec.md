@@ -988,6 +988,53 @@ quantified formulas with match expressions.
 
 #### [Numeric Quantifiers](#numeric-quantifiers)
 
-(work in progress)
+Numeric quantifiers are of the form `forall int var; A` or `exists int var; A`.
+They allow introducing a fresh variable, unconnected to the reference grammar,
+ranging over strings representing *positive* integers. We only allow positive
+integers since the SMT solver used by ISLa, Z3, does not support converting
+converting negative numeric strings to integers and back (see [this GitHub
+issue](https://github.com/Z3Prover/z3/issues/1846#issuecomment-424809364)). The
+main use case of numeric quantifiers is connecting several semantic predicates.
+Consider, for example, the following ISLa constraint for CSV files:
+
+```
+exists int colno: (
+  str.to.int(colno) >= 3 and 
+  str.to.int(colno) <= 5 and 
+  count(<csv-header>, "<column>", colno) and 
+  forall <csv-record> line:
+    count(line, "<column>", colno))
+```
+
+This constraint expresses that the number of columns in the `<csv-header>` field
+of a CSV header is between 3 and 5, and that all lines after the header have to
+share the same number of columns. If it was possible to express the `count`
+predicate using pure SMT-LIB expressions, we could have expressed this
+constraint without semantic predicates and, consequently, without the
+existential integer quantifier by forming an equation of the number of columns
+in the header and the number of columns in each line.
+
+The `forall int` quantifier expresses that a property has to hold *for all*
+possible positive integers. In our experience, it is not often used in practice.
+However, if we wanted to *negate* the above property for CSV files, the result
+would contain such a quantifier.
+
+**Free variables.** The free variables set is computed similarly as for [tree
+quantifiers](#tree-quantifiers). Let \\(Q\\) be `forall` or `exists`. We define
+
+$$
+\mathit{freeVars}(Q~\mathtt{int}~v:~\varphi):=\mathit{freeVars}(\varphi)\setminus\{v\}
+$$
+
+**Semantics.** Let \\(N\\) be the set of all derivation trees whose string
+representation correspond to that of a positive integer, e.g., "0", 1", "17",
+etc. We define the semantics of quantified integer formulas as follows:
+
+* \\(\beta\models\mathtt{forall~int}~v:\,\varphi\\) holds if, and
+  only if, \\(\beta[v\mapsto{}n]\models\varphi\\) holds for all
+  \\(n\in{}N\\)
+* \\(\beta\models\mathtt{exists~int}~v:\,\varphi\\) holds if, and
+  only if, \\(\beta[v\mapsto{}n]\models\varphi\\) holds for some
+  \\(n\in{}N\\)
 
 ## [Footnotes](#footnotes)
