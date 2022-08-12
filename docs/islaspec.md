@@ -28,6 +28,12 @@ if there were recent additions.
   - [Match Expression Lexer Rules](#match-expression-lexer-rules)
   - [Match Expression Parser Rules](#match-expression-parser-rules)
 - [Simplified Syntax](#simplified-syntax)
+  - [Simplified Syntax by Example](#simplified-syntax-by-example)
+  - [Omission of `in start`](#omission-of-in-start)
+  - [Generalized SMT-LIB syntax](#generalized-smt-lib-syntax)
+  - [Free Nonterminals](#free-nonterminals)
+  - [Omission of Bound Variable Names](#omission-of-bound-variable-names)
+  - [X-Path Expressions](#x-path-expressions)
 - [Semantics](#semantics)
   - [Atoms](#atoms)
     - [SMT-LIB Expressions](#smt-lib-expressions)
@@ -405,6 +411,97 @@ varType : LT ID GT ;
 ```
 
 ## [Simplified Syntax](#simplified-syntax)
+
+[ISLa 0.3](https://github.com/rindPHI/isla/blob/v0.3/CHANGELOG.md) added a
+simplified syntax layer allowing to specify ISLa constraints much more concisely
+in many cases. Furthermore, [SMT-LIB expressions](#smt-lib-expressions) can be
+expressed in the more common prefix or infix instead of S-expression syntax. All
+the additions described in this section are "syntactic sugar;" they are
+*translated to core ISLa* during parsing.
+
+### [Simplified Syntax by Example](#simplified-syntax-by-example)
+
+Before we describe the syntactic additions one by one, we demonstrate most of
+them along the example of the assignment language from the
+[introduction](#introduction). The definition-use constraint discussed there is
+expressed as follows in core ISLa:
+
+```
+forall <assgn> assgn="<var> := {<var> rhs}" in start:
+  exists <assgn> decl="{<var> lhs} := <rhs>" in start: (
+    before(decl, assgn) and 
+    (= lhs rhs)
+  )
+```
+
+As a first simplification step, we can remove the `in start`, which is the
+default (since `start` is the default "global" constant; cf. the explanations in
+the [semantics](#semantics) section): 
+
+```
+forall <assgn> assgn="<var> := {<var> rhs}":
+  exists <assgn> decl="{<var> lhs} := <rhs>": (
+    before(decl, assgn) and 
+    (= lhs rhs)
+  )
+```
+
+Binary SMT-LIB expressions can be written in infix syntax:
+
+```
+forall <assgn> assgn="<var> := {<var> rhs}":
+  exists <assgn> decl="{<var> lhs} := <rhs>": (
+    before(decl, assgn) and 
+    lhs = rhs
+  )
+```
+
+While match expressions such as `"<var> := {<var> rhs}"` permit a lot of
+flexibility for pattern matching and binding variables in subtrees, it is often
+easier (but subject to individual taste) to use ISLa's "XPath" syntax. This
+syntax allows addressing children of variables using a dot notation. It is
+inspired by the [XPath abbreviated
+syntax](https://www.w3.org/TR/1999/REC-xpath-19991116/#path-abbrev), but uses
+dots `.` instead of slashes `/`. Our assignment language constraint can be
+equivalently expressed as
+
+```
+forall <assgn> assgn:
+  exists <assgn> decl: (
+    before(decl, assgn) and 
+    assgn.<rhs>.<var> = decl.<var>
+  )
+```
+
+Finally, we can omit the universal quantifiers, and instead use its *nonterminal
+symbol* in the quantified formula. Such "free nonterminals" are during parsing
+replaced by a new variable bound by an added top-level universal quantifier.
+Thus, the most concise formulation of the definition-use constraint is
+
+```
+exists <assgn> decl: (
+  before(decl, <assgn>) and 
+  <assgn>.<rhs>.<var> = decl.<var>
+)
+```
+
+### [Omission of `in start`](#omission-of-in-start)
+
+(work in progress)
+
+### [Generalized SMT-LIB syntax](#generalized-smt-lib-syntax)
+
+(work in progress)
+
+### [Free Nonterminals](#free-nonterminals)
+
+(work in progress)
+
+### [Omission of Bound Variable Names](#omission-of-bound-variable-names)
+
+(work in progress)
+
+### [X-Path Expressions](#x-path-expressions)
 
 (work in progress)
 
