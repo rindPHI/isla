@@ -268,27 +268,15 @@ class BindExpression:
             tree.traverse(search, abort_condition=lambda p, t: not remaining_bound_elements)
 
             # In the result, we have to combine all terminals that point to the same path.
-            consolidated_matches: Dict[BoundVariable, Path] = {}
-            last_dummy_elem = None
-            last_dummy_path = None
-            for var, path in match_expr_matches.items():
-                if not isinstance(var, DummyVariable) or is_nonterminal(var.n_type):
-                    consolidated_matches[var] = path
-                    continue
-
-                if last_dummy_path is None or last_dummy_path != path:
-                    last_dummy_path = path
-                    last_dummy_elem = var
-                    consolidated_matches[var] = path
-                    continue
-
-                del consolidated_matches[last_dummy_elem]
-                new_dummy = DummyVariable(last_dummy_elem.n_type + var.n_type)
-                consolidated_matches[new_dummy] = path
-                last_dummy_elem = new_dummy
-
+            consolidated_matches = consolidate_match_expression_matches(match_expr_matches)
             result.append((match_expr_tree, consolidated_matches))
+
             assert all(var in consolidated_matches for var in bound_elements if not isinstance(var, DummyVariable))
+            assert all(any(
+                len(match_path) <= len(leaf_path) and
+                leaf_path[:len(match_path)] == match_path
+                for match_path in consolidated_matches.values())
+                       for leaf_path, _ in tree.leaves())
 
         self.prefixes[in_nonterminal] = result
         return result
@@ -297,13 +285,8 @@ class BindExpression:
             Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
         for mexpr_tree, mexpr_var_matches in self.to_tree_prefix(tree.value, grammar):
             possible_match = match(tree, mexpr_tree, mexpr_var_matches)
-            if not possible_match:
-                continue
-
-            result = {}
-            for var, subtree in possible_match.items():
-                result[var] = (tree.find_node(subtree), subtree)
-            return result
+            if possible_match:
+                return possible_match
 
         return None
 
@@ -338,6 +321,36 @@ class BindExpression:
         return (isinstance(other, BindExpression) and
                 list(map(BindExpression.__dummy_vars_to_str, self.bound_elements)) ==
                 list(map(BindExpression.__dummy_vars_to_str, other.bound_elements)))
+
+
+def consolidate_match_expression_matches(match_expr_matches: Dict[BoundVariable, Path]) -> Dict[BoundVariable, Path]:
+    """
+    Groups together `DummyVariable`s in `match_expr_matches` that point to the same path.
+    This is needed since we have tosplit dummy variables into individual characters when
+    creating prefix trees for match expressions.
+
+    :param match_expr_matches: The matches to consolidate.
+    :return: The consolidated matches; all paths are unique.
+    """
+    consolidated_matches: Dict[BoundVariable, Path] = {}
+    last_dummy_elem = None
+    last_dummy_path = None
+    for var, path in match_expr_matches.items():
+        if not isinstance(var, DummyVariable) or is_nonterminal(var.n_type):
+            consolidated_matches[var] = path
+            continue
+
+        if last_dummy_path is None or last_dummy_path != path:
+            last_dummy_path = path
+            last_dummy_elem = var
+            consolidated_matches[var] = path
+            continue
+
+        del consolidated_matches[last_dummy_elem]
+        new_dummy = DummyVariable(last_dummy_elem.n_type + var.n_type)
+        consolidated_matches[new_dummy] = path
+        last_dummy_elem = new_dummy
+    return consolidated_matches
 
 
 @functools.lru_cache(10)
@@ -3015,7 +3028,8 @@ def set_smt_auto_eval(formula: Formula, auto_eval: bool = False):
 def match(
         t: DerivationTree,
         mexpr_tree: DerivationTree,
-        mexpr_var_paths: Dict[BoundVariable, Path]) -> Optional[Dict[BoundVariable, DerivationTree]]:
+        mexpr_var_paths: Dict[BoundVariable, Path],
+        path_in_t: Path = ()) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
     """
     This function is described in the [ISLa language specification](https://rindphi.github.io/isla/islaspec/).
     It takes a derivation tree corresponding to a match expression and a mapping from bound variables to their
@@ -3025,9 +3039,19 @@ def match(
     :param t: The derivation tree to match.
     :param mexpr_tree: One derivation tree resulting from parsing the match expression.
     :param mexpr_var_paths: A mapping from variables bound in the match expression to their paths in `mexpr_tree`.
+    :param path_in_t: The path in the original tree t (at the beginning of recursion).
     :return: `None` if there is no match, or a mapping of variables in the match expression to their
     matching subtrees in `t`.
     """
+
+    def is_complete_match(t: DerivationTree, match_paths: Dict[BoundVariable, Tuple[Path, DerivationTree]]) -> bool:
+        nonlocal path_in_t
+        return all(any(
+            (sub_path := match_path[len(path_in_t):],
+             len(sub_path) <= len(leaf_path) and
+             leaf_path[:len(sub_path)] == sub_path)[-1]
+            for match_path, _ in match_paths.values())
+                   for leaf_path, _ in t.leaves())
 
     if t.value != mexpr_tree.value:
         return None
@@ -3046,17 +3070,17 @@ def match(
             assert not mexpr_var_paths or ''.join(map(lambda var: var.n_type, mexpr_var_paths.keys())) == t.value
 
             if len(mexpr_var_paths) == 1:
-                return {bv: t for bv in mexpr_var_paths if not mexpr_var_paths[bv]}
+                return {bv: (path_in_t, t) for bv in mexpr_var_paths if not mexpr_var_paths[bv]}
             else:
                 new_dummy = DummyVariable(''.join(map(lambda var: var.n_type, mexpr_var_paths)))
-                return {new_dummy: t for bv in mexpr_var_paths if not mexpr_var_paths[bv]}
+                return {new_dummy: (path_in_t, t) for bv in mexpr_var_paths if not mexpr_var_paths[bv]}
 
         assert 0 <= len(mexpr_var_paths) <= 1
 
         # `mexpr_var_paths` will have the form `{bv: ()}` iff this position is associated to a
         # bound variable; associate the current tree `t` to `bv` then. Otherwise, we return
         # an empty mapping (which signals success, just not binding!).
-        return {bv: t for bv in mexpr_var_paths if not mexpr_var_paths[bv]}
+        return {bv: (path_in_t, t) for bv in mexpr_var_paths if not mexpr_var_paths[bv]}
 
     assert not mexpr_var_paths or all(mexpr_var_paths[var] for var in mexpr_var_paths)
 
@@ -3075,10 +3099,12 @@ def match(
             mexpr_tree.children[idx],
             {bv: path[1:]
              for bv, path in mexpr_var_paths.items()
-             if path[0] == idx})
+             if path[0] == idx},
+            path_in_t + (idx,))
         if maybe_match is None:
             return None
 
         result |= maybe_match
 
+    assert is_complete_match(t, result)
     return result

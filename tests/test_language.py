@@ -546,14 +546,21 @@ forall <xml-tree> tree="<<id>><inner-xml-tree></<id>>" in start:
                     ('<rhs>', [('<var>', None)])]),
                 (' ; ', []),
                 ('<stmt>', [('<assgn>', None)])]))
-        mexpr_var_paths = {lhs: (0, 0), rhs: (0, 2, 0)}
+        mexpr_var_paths = {
+            lhs: (0, 0),
+            DummyVariable(' := '): (0, 1),
+            rhs: (0, 2, 0),
+            DummyVariable(' ; '): (1,),
+            DummyVariable('<assgn>'): (2, 0)
+        }
 
         def parse(inp: str) -> DerivationTree:
             return DerivationTree.from_parse_tree(next(EarleyParser(LANG_GRAMMAR).parse(inp)))
 
-        inp: DerivationTree = parse('a := b ; c := d')
-        result = match(inp.children[0], mexpr_tree, mexpr_var_paths)
-        self.assertEqual({lhs: inp.get_subtree((0, 0, 0)), rhs: inp.get_subtree((0, 0, 2, 0))}, result)
+        inp: DerivationTree = parse('a := b ; c := d').children[0]
+        result = match(inp, mexpr_tree, mexpr_var_paths)
+        self.assertEqual(((0, 0), inp.get_subtree((0, 0))), result[lhs])
+        self.assertEqual(((0, 2, 0), inp.get_subtree((0, 2, 0))), result[rhs])
 
         inp: DerivationTree = parse('a := b')
         result = match(inp.children[0], mexpr_tree, mexpr_var_paths)
@@ -566,22 +573,28 @@ forall <xml-tree> tree="<<id>><inner-xml-tree></<id>>" in start:
                 (' := ', []),
                 ('<rhs>', [('<var>', None)])]))
 
-        mexpr_var_paths = {lhs: (0,), rhs: (2, 0)}
+        mexpr_var_paths = {
+            lhs: (0,),
+            DummyVariable(' := '): (1,),
+            rhs: (2, 0)}
 
-        inp: DerivationTree = parse('a := b ; c := d')
-        result = match(inp.get_subtree((0, 0)), mexpr_tree, mexpr_var_paths)
-        self.assertEqual({lhs: inp.get_subtree((0, 0, 0)), rhs: inp.get_subtree((0, 0, 2, 0))}, result)
+        inp: DerivationTree = parse('a := b ; c := d').get_subtree((0, 0))
+        result = match(inp, mexpr_tree, mexpr_var_paths)
+        self.assertEqual(((0,), inp.get_subtree((0,))), result[lhs])
+        self.assertEqual(((2, 0), inp.get_subtree((2, 0))), result[rhs])
 
-        inp: DerivationTree = parse('a := b')
-        result = match(inp.get_subtree((0, 0)), mexpr_tree, mexpr_var_paths)
-        self.assertEqual({lhs: inp.get_subtree((0, 0, 0)), rhs: inp.get_subtree((0, 0, 2, 0))}, result)
+        inp: DerivationTree = parse('a := b').get_subtree((0, 0))
+        result = match(inp, mexpr_tree, mexpr_var_paths)
+        self.assertEqual(((0,), inp.get_subtree((0,))), result[lhs])
+        self.assertEqual(((2, 0), inp.get_subtree((2, 0))), result[rhs])
 
-        inp: DerivationTree = parse('a := b ; c := d')
-        result = match(inp.get_subtree((0, 2, 0)), mexpr_tree, mexpr_var_paths)
-        self.assertEqual({lhs: inp.get_subtree((0, 2, 0, 0)), rhs: inp.get_subtree((0, 2, 0, 2, 0))}, result)
+        inp: DerivationTree = parse('a := b ; c := d').get_subtree((0, 2, 0))
+        result = match(inp, mexpr_tree, mexpr_var_paths)
+        self.assertEqual(((0,), inp.get_subtree((0,))), result[lhs])
+        self.assertEqual(((2, 0), inp.get_subtree((2, 0))), result[rhs])
 
-        inp: DerivationTree = parse('a := b ; c := d')
-        result = match(inp.get_subtree((0, 2)), mexpr_tree, mexpr_var_paths)
+        inp: DerivationTree = parse('a := b ; c := d').get_subtree((0,2))
+        result = match(inp, mexpr_tree, mexpr_var_paths)
         self.assertEqual(None, result)
 
 
