@@ -5,6 +5,12 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Changed
+
+- Consolidated match expression matching and the conversion of match expression to tree prefixes; now conforms to the
+  state described in the 
+  [ISLa Language Specification](https://rindphi.github.io/isla/islaspec/#tree-quantifiers-with-match-expressions).
+
 ## [0.8.14] - 2022-08-10
 
 ### Added
