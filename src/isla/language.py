@@ -282,9 +282,6 @@ class BindExpression:
         result: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]] = []
 
         parser = EarleyParser(self.to_extended_grammar(in_nonterminal, grammar))
-        opbr = re.escape('{')
-        clbr = re.escape('}')
-        dollar = re.escape('$')
 
         for bound_elements in flatten_bound_elements(
                 nested_list_to_tuple(self.bound_elements),
@@ -327,14 +324,14 @@ class BindExpression:
                        for skip_path in skip_paths_below):
                     return
 
-                regex = re.compile(f'{opbr}({re.escape(child.value)}) ({dollar}?[a-zA-Z][a-zA-Z0-9_-]*){clbr}')
-                maybe_match = regex.match(str(child))
-                if maybe_match:
+                if (len(child.children) == 7 and
+                        child.children[0].value == '{' and
+                        child.children[1].value == '<LANGLE>'):
                     assert is_nonterminal(child.value)
                     skip_paths_below.add(path)
                     match_expr_tree = match_expr_tree.replace_path(path, DerivationTree(child.value, None))
-                    var_n_type = maybe_match.group(1)
-                    var_name = maybe_match.group(2)
+                    var_n_type = '<' + child.children[2].value + '>'
+                    var_name = str(child.children[5])
 
                     var = next(var for var in remaining_bound_elements if var.name == var_name)
                     assert var.n_type == var_n_type
