@@ -942,7 +942,7 @@ subtrees in \\(t\\).
 
 We now recursively define \\(\mathit{match}\\). Thereby,
 
-* \\(l\\) and \\(l'\\) are the labels of \\(t\\) and \\(t'\\), respectively;
+* \\(l(t)\\) is the label of the tree \\(t\\);
 * all alternatives in the definition are *mutually exclusive* (the first
   applicable one is applied);
 * by \\(\mathit{numc}(t)\\) we denote the number of  children of the derivation
@@ -958,7 +958,7 @@ We now recursively define \\(\mathit{match}\\). Thereby,
 $$
 \mathit{match}(t, t', P) :=
 \begin{cases}
-\bot                                                                                  & \text{if }l\neq{}l'\vee(\mathit{numc}(t')>0\wedge \\
+\bot                                                                                  & \text{if }l(t)\neq{}l(t')\vee(\mathit{numc}(t')>0\wedge \\
                                                                                       & \qquad\mathit{numc}(t)\neq\mathit{numc}(t')) \\
 [v\mapsto{}t]                                                                         & \text{if }P=[v\mapsto{}()]\text{ for some }v \\
 \bot                                                                                  & \text{if }\mathit{match}(\mathit{child}(t, i), \mathit{child}(t', i), P_i)=\bot \\
@@ -969,19 +969,22 @@ $$
 \end{cases}
 $$
 
-(work in progress)
-
-<!--
-**Semantics.** We define the semantics of quantified formulas with match
-expressions as follows:
+Based on \\(match\\) and \\(mexprTrees\\), we can now define the semantics of
+quantified formulas with match expressions.
 
 * \\(\beta\models\mathtt{forall}~T~v\mathtt{=}\text{"$\mathit{mexpr}$"}~\mathtt{in}~t:\,\varphi\\)
-  holds if, and only if, \\(\beta[v\mapsto{}t']\models\varphi\\) holds for all
-  \\(t'\in\mathit{subtrees}(T, \beta(t))\\)
+  holds if, and only if, 
+  * for all \\(t_1\in\mathit{subtrees}(T, \beta(t))\\) and 
+  * for all \\((t_2,P) \in \mathit{mexprTrees}(T, \mathit{mexpr})\\), it holds that
+  * \\(\mathit{match}(t_1, t_2, P)\neq\bot\\) implies that
+  * \\(\beta[v\mapsto{}t_1]\cup\mathit{match}(t_1, t_2, P)\models\varphi\\).
 * \\(\beta\models\mathtt{exists}~T~v\mathtt{=}\text{"$\mathit{mexpr}$"}~\mathtt{in}~t:\,\varphi\\)
-  holds if, and only if, \\(\beta[v\mapsto{}t']\models\varphi\\) holds for some
-  \\(t'\in\mathit{subtrees}(T, \beta(t))\\)
--->
+  holds if, and only if, 
+  * there is a \\(t_1\in\mathit{subtrees}(T, \beta(t))\\) and 
+  * there is a \\((t_2,P) \in \mathit{mexprTrees}(T, \mathit{mexpr})\\) such that
+  * \\(\mathit{match}(t_1, t_2, P)\neq\bot\\) and
+  * \\(\beta[v\mapsto{}t_1]\cup\mathit{match}(t_1, t_2, P)\models\varphi\\).
+
 
 #### [Numeric Quantifiers](#numeric-quantifiers)
 
