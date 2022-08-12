@@ -144,10 +144,13 @@ class DerivationTree:
         return not self.is_open()
 
     @lru_cache(maxsize=20)
-    def get_subtree(self, path: Path) -> 'DerivationTree':
+    def get_subtree(self, path: Path) -> Optional['DerivationTree']:
         """Access a subtree based on `path` (a list of children numbers)"""
         curr_node = self
         while path:
+            if not curr_node.children:
+                return None
+
             curr_node = curr_node.children[path[0]]
             path = path[1:]
 
@@ -468,25 +471,9 @@ class DerivationTree:
                    for idx, _ in enumerate(self.children))
 
     def is_potential_prefix(self, other: 'DerivationTree') -> bool:
-        """Returns `True` iff this the `other` tree can be extended such that this tree
-        is a prefix of the `other` tree."""
-        if self.value != other.value:
-            return False
-
-        if not self.children:
-            return self.children is None or (not other.children and other.children is not None)
-
-        if not other.children:
-            return other.children is None
-
-        assert self.children
-        assert other.children
-
-        if len(self.children) != len(other.children):
-            return False
-
-        return all(self.children[idx].is_potential_prefix(other.children[idx])
-                   for idx, _ in enumerate(self.children))
+        # It's a potential prefix if for all common paths of the two trees, the leaves are equal.
+        common_paths = {path for path, _ in other.paths()}.intersection({path for path, _ in self.paths()})
+        return all(self.get_subtree(path).value == other.get_subtree(path).value for path in common_paths)
 
     @staticmethod
     def from_parse_tree(tree: ParseTree):

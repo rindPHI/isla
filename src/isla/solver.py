@@ -1797,6 +1797,7 @@ def quantified_formula_might_match(
         grammar: Grammar,
         reachable: Callable[[str, str], bool]) -> bool:
     node = tree.get_subtree(path_to_nonterminal)
+    assert not node.children
 
     if qfd_formula.in_variable.find_node(node) is None:
         return False
@@ -1807,7 +1808,7 @@ def quantified_formula_might_match(
                    for path, _ in node.paths() if path)
 
     qfd_nonterminal = qfd_formula.bound_variable.n_type
-    if qfd_nonterminal == node.value or reachable(node.value, qfd_nonterminal):
+    if not node.children and (qfd_nonterminal == node.value or reachable(node.value, qfd_nonterminal)):
         return True
 
     if qfd_formula.bind_expression is None:
