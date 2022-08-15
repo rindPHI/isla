@@ -618,6 +618,12 @@ checksum(<header>, <header>..<checksum>)
 It specifies that a `checksum` predicate should hold for a `<header>` element
 and all `<checksum>` elements somewhere below `<header>`.
 
+During parsing, XPath segments are translated into match expressions. If more
+than one possible such translation is possible, we build a conjunction (for
+universal formulas) or disjunction (for existential formulas). We illustrate
+this along the example of an XML constraint. The example is based on the
+following grammar:
+
 (work in progress)
 
 ## [Semantics](#semantics)

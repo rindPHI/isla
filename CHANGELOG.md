@@ -5,11 +5,20 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.8.15] - 2022-08-15
+
+### Added
+
+- We added an `unparse_grammar` function that produces a string in concrete BNF syntax from a Python grammar.
+
 ### Changed
 
 - Consolidated match expression matching and the conversion of match expression to tree prefixes; now conforms to the
   state described in the 
   [ISLa Language Specification](https://rindphi.github.io/isla/islaspec/#tree-quantifiers-with-match-expressions).
+- We removed the mandatory semicolons as line terminators from the concrete grammar syntax; they are not necessary
+  for parsing in our syntax, even with multi-line expansions. Now, the syntax is identical to classical BNF.
+  Adding semicolon line terminators remains possible, but is optional (and superfluous).
 
 ## [0.8.14] - 2022-08-10
 

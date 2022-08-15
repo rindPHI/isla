@@ -24,7 +24,7 @@ import isla.mexpr_parser.MexprParserListener as MexprParserListener
 from isla.derivation_tree import DerivationTree
 from isla.fuzzer import GrammarCoverageFuzzer
 from isla.helpers import RE_NONTERMINAL, is_nonterminal, assertions_activated, \
-    copy_trie, canonical, nth_occ, replace_in_list, srange, grammar_to_mutable
+    copy_trie, canonical, nth_occ, replace_in_list, srange, grammar_to_mutable, unreachable_nonterminals, start_symbol
 from isla.helpers import replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, \
     immutable_to_grammar, \
     nested_list_to_tuple
@@ -2857,6 +2857,17 @@ class ISLaUnparser:
 
 def unparse_isla(formula: Formula) -> str:
     return ISLaUnparser(formula).unparse()
+
+
+def unparse_grammar(grammar: Grammar) -> str:
+    return '\n'.join(
+        f'{symbol} ::= ' + ' | '.join(
+            ' '.join(
+                elem if is_nonterminal(elem)
+                else f'"{elem}"'
+                for elem in expansion)
+            for expansion in expansions)
+        for symbol, expansions in canonical(grammar).items())
 
 
 def get_conjuncts(formula: Formula) -> List[Formula]:

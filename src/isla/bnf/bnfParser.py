@@ -10,15 +10,15 @@ else:
 
 def serializedATN():
     return [
-        4,1,8,29,2,0,7,0,2,1,7,1,2,2,7,2,1,0,4,0,8,8,0,11,0,12,0,9,1,1,1,
-        1,1,1,1,1,1,1,5,1,17,8,1,10,1,12,1,20,9,1,1,1,1,1,1,2,4,2,25,8,2,
-        11,2,12,2,26,1,2,0,0,3,0,2,4,0,1,1,0,4,5,28,0,7,1,0,0,0,2,11,1,0,
-        0,0,4,24,1,0,0,0,6,8,3,2,1,0,7,6,1,0,0,0,8,9,1,0,0,0,9,7,1,0,0,0,
-        9,10,1,0,0,0,10,1,1,0,0,0,11,12,5,4,0,0,12,13,5,1,0,0,13,18,3,4,
-        2,0,14,15,5,2,0,0,15,17,3,4,2,0,16,14,1,0,0,0,17,20,1,0,0,0,18,16,
-        1,0,0,0,18,19,1,0,0,0,19,21,1,0,0,0,20,18,1,0,0,0,21,22,5,3,0,0,
-        22,3,1,0,0,0,23,25,7,0,0,0,24,23,1,0,0,0,25,26,1,0,0,0,26,24,1,0,
-        0,0,26,27,1,0,0,0,27,5,1,0,0,0,3,9,18,26
+        4,1,7,27,2,0,7,0,2,1,7,1,2,2,7,2,1,0,4,0,8,8,0,11,0,12,0,9,1,1,1,
+        1,1,1,1,1,1,1,5,1,17,8,1,10,1,12,1,20,9,1,1,2,4,2,23,8,2,11,2,12,
+        2,24,1,2,0,0,3,0,2,4,0,1,1,0,3,4,26,0,7,1,0,0,0,2,11,1,0,0,0,4,22,
+        1,0,0,0,6,8,3,2,1,0,7,6,1,0,0,0,8,9,1,0,0,0,9,7,1,0,0,0,9,10,1,0,
+        0,0,10,1,1,0,0,0,11,12,5,3,0,0,12,13,5,1,0,0,13,18,3,4,2,0,14,15,
+        5,2,0,0,15,17,3,4,2,0,16,14,1,0,0,0,17,20,1,0,0,0,18,16,1,0,0,0,
+        18,19,1,0,0,0,19,3,1,0,0,0,20,18,1,0,0,0,21,23,7,0,0,0,22,21,1,0,
+        0,0,23,24,1,0,0,0,24,22,1,0,0,0,24,25,1,0,0,0,25,5,1,0,0,0,3,9,18,
+        24
     ]
 
 class bnfParser ( Parser ):
@@ -31,10 +31,10 @@ class bnfParser ( Parser ):
 
     sharedContextCache = PredictionContextCache()
 
-    literalNames = [ "<INVALID>", "'::='", "'|'", "';'" ]
+    literalNames = [ "<INVALID>", "'::='", "'|'" ]
 
-    symbolicNames = [ "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
-                      "NONTERMINAL", "STRING", "ESC", "WS", "LINE_COMMENT" ]
+    symbolicNames = [ "<INVALID>", "<INVALID>", "<INVALID>", "NONTERMINAL", 
+                      "STRING", "ESC", "WS", "LINE_COMMENT" ]
 
     RULE_bnf_grammar = 0
     RULE_derivation_rule = 1
@@ -45,12 +45,11 @@ class bnfParser ( Parser ):
     EOF = Token.EOF
     T__0=1
     T__1=2
-    T__2=3
-    NONTERMINAL=4
-    STRING=5
-    ESC=6
-    WS=7
-    LINE_COMMENT=8
+    NONTERMINAL=3
+    STRING=4
+    ESC=5
+    WS=6
+    LINE_COMMENT=7
 
     def __init__(self, input:TokenStream, output:TextIO = sys.stdout):
         super().__init__(input, output)
@@ -173,8 +172,6 @@ class bnfParser ( Parser ):
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
 
-            self.state = 21
-            self.match(bnfParser.T__2)
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -224,22 +221,24 @@ class bnfParser ( Parser ):
         self._la = 0 # Token type
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 24 
+            self.state = 22 
             self._errHandler.sync(self)
-            _la = self._input.LA(1)
-            while True:
-                self.state = 23
-                _la = self._input.LA(1)
-                if not(_la==bnfParser.NONTERMINAL or _la==bnfParser.STRING):
-                    self._errHandler.recoverInline(self)
+            _alt = 1
+            while _alt!=2 and _alt!=ATN.INVALID_ALT_NUMBER:
+                if _alt == 1:
+                    self.state = 21
+                    _la = self._input.LA(1)
+                    if not(_la==bnfParser.NONTERMINAL or _la==bnfParser.STRING):
+                        self._errHandler.recoverInline(self)
+                    else:
+                        self._errHandler.reportMatch(self)
+                        self.consume()
+
                 else:
-                    self._errHandler.reportMatch(self)
-                    self.consume()
-                self.state = 26 
+                    raise NoViableAltException(self)
+                self.state = 24 
                 self._errHandler.sync(self)
-                _la = self._input.LA(1)
-                if not (_la==bnfParser.NONTERMINAL or _la==bnfParser.STRING):
-                    break
+                _alt = self._interp.adaptivePredict(self._input,2,self._ctx)
 
         except RecognitionException as re:
             localctx.exception = re
