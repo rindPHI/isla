@@ -537,12 +537,41 @@ name in start:` and `exists <type> name in start:` during parsing.
 
 ### [Omission of Bound Variable Names](#omission-of-bound-variable-names)
 
-(work in progress)
+ISLa permits the omission of a name for the bound variable in quantifiers. In
+that case, the nonterminal type of the bound variable may be used to address
+that variable, as in
+
+```
+exists <assgn>: <assgn> = "x := y"
+```
+
+Formulas of this or similar shape translate to
+
+```
+exists <assgn> assgn in start: (= assgn "x := y")
+```
+
+More formally, in all formulas `Q <type> in v: formula`, where `Q` is `forall`
+or `exists`, we choose a "fresh" variable name `name` and replace the formula 
+`Q <type> name in v: formula'`,
+where `formula'` results from `formula` by replacing all occurrences of `<typ>`
+appearing at places where a variable may appear `name`. Fresh means that the
+name `name` is not used anywhere in that formula.
 
 ### [Free Nonterminals](#free-nonterminals)
 
-(work in progress)
+In an ISLa formula, you can use a nonterminal from the reference grammar at
+every position where a variable may occur, also if that nonterminal [is not
+bound by a quantifier](#omission-of-bound-variable-names). Those nonterminals
+represent *universally bound variables.* A formula `formula` with at least one
+unbound occurrence of a nonterminal symbol `<type>` is turned into a formula
+`forall <type> name in start: formula'`, where 
 
+* `name` is a fresh variable name not occurring in `formula`, and
+* `formula'` results from `formula` by replacing all the `<type>` occurrences by
+  `name`,
+* `start` is the constant specified in the `const` part of an ISLa
+  specification, or `start` if no such specification is given.
 
 ### [X-Path Expressions](#x-path-expressions)
 
