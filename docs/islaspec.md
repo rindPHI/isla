@@ -29,8 +29,8 @@ if there were recent additions.
   - [Match Expression Parser Rules](#match-expression-parser-rules)
 - [Simplified Syntax](#simplified-syntax)
   - [Simplified Syntax by Example](#simplified-syntax-by-example)
-  - [Omission of `in start`](#omission-of-in-start)
   - [Generalized SMT-LIB syntax](#generalized-smt-lib-syntax)
+  - [Omission of `in start`](#omission-of-in-start)
   - [Free Nonterminals](#free-nonterminals)
   - [Omission of Bound Variable Names](#omission-of-bound-variable-names)
   - [X-Path Expressions](#x-path-expressions)
@@ -485,11 +485,41 @@ exists <assgn> decl: (
 )
 ```
 
-### [Omission of `in start`](#omission-of-in-start)
-
-(work in progress)
-
 ### [Generalized SMT-LIB syntax](#generalized-smt-lib-syntax)
+
+At the core of ISLa are SMT-LIB expressions; quantifiers and predicate formulas
+are are constructed around those. In the [SMT-LIB
+language](https://smtlib.cs.uiowa.edu/language.shtml), all expressions are
+written in the S-expression format `(op arg1 arg2)` known from languages like
+LISP and Scheme. In addition to this syntax, ISLa supports the prefix notation
+`op(arg1, arg2)` more commonly used in mathematics and programming languages
+and, for binary operators, the infix notation `arg1 op arg2`. Thus, one may
+write 
+
+```
+17 + str.to.int(y) = str.to.int(x)
+```
+
+instead of 
+
+```
+(= (+ 17 (str.to.int y)) (str.to.int x))
+```
+
+in ISLa. When parsing an ISLa formula, all such prefix and infix expressions are
+translated to S-expressions, which is why S-expressions are printed when
+unparsing a formula, regardless of whether you used the generalized syntax to
+specify the formula originally or not.
+
+**Name conflicts with ISLa predicates.** To distinguish SMT-LIB expressions in
+prefix syntax from ISLa predicates, the ISLa parser checks whether the provided
+operator is an SMT-LIB function. If so, the expression is parsed as an SMT-LIB
+expression. This implies that if an operator name is used both in an SMT-LIB
+theory and for an ISLa predicate, the SMT-LIB operator always "wins;" it will
+not be possible to parse the predicate. Thus, name clashes with SMT-LIB
+operators should be avoided when defining a new ISla predicate.
+
+### [Omission of `in start`](#omission-of-in-start)
 
 (work in progress)
 
