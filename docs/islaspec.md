@@ -31,8 +31,8 @@ if there were recent additions.
   - [Simplified Syntax by Example](#simplified-syntax-by-example)
   - [Generalized SMT-LIB syntax](#generalized-smt-lib-syntax)
   - [Omission of `in start`](#omission-of-in-start)
-  - [Free Nonterminals](#free-nonterminals)
   - [Omission of Bound Variable Names](#omission-of-bound-variable-names)
+  - [Free Nonterminals](#free-nonterminals)
   - [X-Path Expressions](#x-path-expressions)
 - [Semantics](#semantics)
   - [Atoms](#atoms)
@@ -302,19 +302,26 @@ Below, you find ISLa's parser grammar. [SMT-LIB
 expressions](#smt-lib-expressions) are usually expressed in a Lisp-like
 S-expression syntax, e.g., `(= x (+ y 13))`. This is fully supported by ISLa,
 and is robust to extensions in the SMT-LIB format as long as new function
-symbols can be parsed as alphanumeric identifiers. Our prefix and infix syntax
-that we added on top of S-expressions, as well as expressions using operators
-with special characters, are only parsed correctly if the operators appear in
-the [lexer grammar](#lexer-rules). This is primarily to distinguish expressions
-in prefix syntax (`op(arg1, arg1, ...)`) from
+symbols can be parsed as alphanumeric identifiers. Our [prefix and infix syntax
+that we added on top of S-expressions](#generalized-smt-lib-syntax), as well as
+expressions using operators with special characters, are only parsed correctly
+if the operators appear in the [lexer grammar](#lexer-rules). This is primarily
+to distinguish expressions in prefix syntax (`op(arg1, arg1, ...)`) from
 [structural](#strucural-predicates) and [semantic
 predicates](#semantic-predicates). In future versions of the grammar, we might
 relax this constraint.
 
+The *top-level constant declaration* `const my_const: <my_type>;` is optional.
+We default to `const start: <start>;`. Consequently, if no top-level constant is
+provided, the start symbol of the [reference grammar](#grammars) must be
+`<start>` and all [quantified formulas](#tree-quantifiers) without an explicit
+`in ...` specification [address elements `in start`](#omission-of-in-start).
+
 Match expressions (see the section on [quantifiers](#quantifiers)) are hidden
 inside the underspecified nonterminal `MATCH_EXPR`. We describe the
-[lexer](#match-expression-lexer-rules) and [parser](#match-expression-parser-rules) grammars
-for match expressions further below.
+[lexer](#match-expression-lexer-rules) and
+[parser](#match-expression-parser-rules) grammars for match expressions further
+below.
 
 ```
 isla_formula = [ const_decl ], formula;
@@ -521,15 +528,21 @@ operators should be avoided when defining a new ISla predicate.
 
 ### [Omission of `in start`](#omission-of-in-start)
 
+Let `const my_const: <my_type>; formula` be an ISLa specification; if the
+`const` declaration is omitted, we assume a specification `const start: <start>;`
+as a default. Then, all subformulas `forall <type> name:` and `exists <type>
+name:` in `formula` (where [the `name` part is
+optional](#omission-of-bound-variable-names)) are translated to `forall <type>
+name in start:` and `exists <type> name in start:` during parsing.
+
+### [Omission of Bound Variable Names](#omission-of-bound-variable-names)
+
 (work in progress)
 
 ### [Free Nonterminals](#free-nonterminals)
 
 (work in progress)
 
-### [Omission of Bound Variable Names](#omission-of-bound-variable-names)
-
-(work in progress)
 
 ### [X-Path Expressions](#x-path-expressions)
 
