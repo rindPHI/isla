@@ -657,8 +657,8 @@ nonterminal. Thus, we create a match expression for both of these alternative,
 and obtain the following conjunction of two quantified formulas:
 
 ```
-forall <xml-open-tag>="<{<id> id}>" optag in start: id = "a" and
-forall <xml-open-tag>="<{<id> id} <xml-attribute>>" optag in start: id = "a"
+forall <xml-open-tag> optag="<{<id> id}>" in start: id = "a" and
+forall <xml-open-tag> optag="<{<id> id} <xml-attribute>>" in start: id = "a"
 ```
 
 We can also allow longer identifiers, but restrict the allowed letters to "a."
@@ -667,18 +667,18 @@ This can be concisely expressed with the descendant axis `..`:
 ISLa, we start from the outside and obtain
 
 ```
-forall <xml-open-tag>="<{<id> id}>" optag in start: id..<LETTER> = "a" and
-forall <xml-open-tag>="<{<id> id} <xml-attribute>>" optag in start: id..<LETTER> = "a"
+forall <xml-open-tag> optag="<{<id> id}>" in start: id..<LETTER> = "a" and
+forall <xml-open-tag> optag="<{<id> id} <xml-attribute>>" in start: id..<LETTER> = "a"
 ```
 
 Next, we "eliminate" the first XPath segment by introducing a universal
 quantifier inside the already added one:
 
 ```
-forall <xml-open-tag>="<{<id> id}>" optag in start: 
+forall <xml-open-tag> optag="<{<id> id}>" in start: 
   forall <LETTER> letter in id:
     letter = "a" and
-forall <xml-open-tag>="<{<id> id} <xml-attribute>>" optag in start:
+forall <xml-open-tag> optag="<{<id> id} <xml-attribute>>" in start:
   forall <LETTER> letter in id:
     letter = "a"
 ```
