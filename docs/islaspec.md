@@ -589,9 +589,11 @@ first segment) or `<type>.<type1>[pos1].<type2>[pos2]` (for the second and later
 segments). Note that the second form can also be used when specifying an ISLa
 constraint, but is translated to the first form by [universally closing over the
 free nonterminal `<type>`](#free-nonterminals). Segments are connected using the
-`..` operator (descendent axis). Each segment consists of one of more child axis
-usages connected by `.`. The `[pos]` specifiers are optional and default to
+`..` operator (descendent axis).[^6] Each segment consists of one of more child
+axis usages connected by `.`. The `[pos]` specifiers are optional and default to
 `[1]`.
+
+[^6]: The descendent axis is not yet supported by the ISLa solver as of version 0.8.15.
 
 Semantically, `var.<type1>[pos1]` refers to the `pos1`-th *direct* child of type
 `<type1>` in the derivation tree associated to `var`, where counting starts from
@@ -616,13 +618,79 @@ checksum(<header>, <header>..<checksum>)
 It specifies that a `checksum` predicate should hold for a `<header>` element
 and all `<checksum>` elements somewhere below `<header>`.
 
-During parsing, XPath segments are translated into match expressions. If more
-than one possible such translation is possible, we build a conjunction (for
-universal formulas) or disjunction (for existential formulas). We illustrate
-this along the example of an XML constraint. The example is based on the
-following grammar:
+**Translation of XPath expressions.** During parsing, XPath segments are
+translated into match expressions. If more than one possible such translation is
+possible, we build a conjunction (for universal formulas) or disjunction (for
+existential formulas). We illustrate this along the example of an XML
+constraint. The example is based on the following grammar:
 
-(work in progress)
+```
+<start> ::= <xml-tree>
+<xml-tree> ::=   <text> 
+               | <xml-open-tag> <xml-tree> <xml-close-tag> 
+               | <xml-tree> <xml-tree>
+<xml-open-tag> ::= "<" <id> ">" | "<" <id> " " <xml-attribute> ">"
+<xml-close-tag> ::= "</" <id> ">"
+<xml-attribute> ::= <id> "=" <id> | <xml-attribute> " " <xml-attribute>
+<id> ::= <LETTER> | <id> <LETTER>
+<text> ::= <text> <LETTER_SPACE> | <LETTER_SPACE>
+<LETTER> ::= "a" | "b" | "c" | ... | "0" | "1" | ... | "\"" | "'" | "."
+<LETTER_SPACE> ::= "a" | "b" | "c" | ... | "\"" | "'" | " " | "\t"
+```
+
+Now, consider the constraint `<xml-open-tag>.<id> = "a"` specifying that
+identifiers in opening tags should equal the letter `a`. First, we introduce a
+new variable for `<xml-open-tag>` which we bind in a universal quantifier (as
+described in the section on [free nonterminals](#free-nonterminals)):
+
+```
+forall <xml-open-tag> optag in start: optag.<id> = "a"
+```
+
+Next, we search the reference grammar for expansions of `<xml-open-tag>`
+containing at least one `<id>` nonterminal, which are both expansions for that
+nonterminal. Thus, we create a match expression for both of these alternative,
+and obtain the following conjunction of two quantified formulas:
+
+```
+forall <xml-open-tag>="<<id>>" optag in start: optag = "a" and
+forall <xml-open-tag>="<<id> <xml-attribute>>" optag in start: optag = "a"
+```
+
+We can also allow longer identifiers, but restrict the allowed letters to "a."
+This can be concisely expressed with the descendant axis `..`:
+`<xml-open-tag>.<id>..<LETTER> = "a"`. When translating this formula to core
+ISLa, we start from the outside and obtain
+
+```
+forall <xml-open-tag>="<{<id> id}>" optag in start: id..<LETTER> = "a" and
+forall <xml-open-tag>="<{<id> id} <xml-attribute>>" optag in start: id..<LETTER> = "a"
+```
+
+Observe that we now bind the `<id>` nonterminal in the match expression to the
+variable name `id`. Next, we "eliminate" the first XPath segment by introducing
+a universal quantifier inside the already added one:
+
+```
+forall <xml-open-tag>="<{<id> id}>" optag in start: 
+  forall <LETTER> letter in id:
+    letter = "a" and
+forall <xml-open-tag>="<{<id> id} <xml-attribute>>" optag in start:
+  forall <LETTER> letter in id:
+    letter = "a"
+```
+
+In summary,
+
+* Individual XPath segments are translated to match expressions. The child axis
+  `.` allows addressing *direct* children of a nonterminal that appear in at
+  least one expansion alternative. If more than one occurrence of a nonterminal
+  symbol appear in the same expansion alternative, indices `<type>[idx]` can be
+  use to choose the one to constrain.
+* For each segment chain consisting of more than one segment, we eliminate the
+  segments from left to right by introducing universal quantifiers.
+* XPath expressions *do not add expressiveness* to ISLa: They are translated to
+  match expressions and quantifiers during parsing.
 
 ## [Semantics](#semantics)
 
