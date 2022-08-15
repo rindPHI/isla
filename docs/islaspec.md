@@ -11,7 +11,7 @@ The purpose of this document is to precisely specify ISLa's syntax and
 semantics.
 
 The ISLa version considered in this document is ISLa
-[0.8.14](https://github.com/rindPHI/isla/tree/v0.8.14). Please consult the [ISLa
+[0.8.15](https://github.com/rindPHI/isla/tree/v0.8.15). Please consult the [ISLa
 CHANGELOG](https://github.com/rindPHI/isla/blob/main/CHANGELOG.md) to find out
 if there were recent additions.
 
@@ -167,9 +167,7 @@ examples.
 
 ISLa's uses simple CFGs as reference grammars, i.e., without repetition etc.
 Valid ISLa grammars are exactly those that can be expressed in [Backus-Naur Form
-(BNF)](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form).[^1] The only
-syntactical addition is that ISLa's grammar rules have to end with a semi-colon
-`;`, which facilitates the definition of rules spanning multiple lines.
+(BNF)](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form).[^1] 
 
 [^1]: From [ISLa 0.8.14](https://github.com/rindPHI/isla/blob/v0.8.14/CHANGELOG.md) on, the `ISLaSolver` and the `evaluate` function both accept grammars in concrete syntax in addition to the Python dictionary format of the [Fuzzing Book](https://www.fuzzingbook.org/html/Grammars.html).
 
@@ -179,7 +177,7 @@ follows, where `NO_ANGLE_BRACKET` represents any character but `<` and `>`:
 ```
 bnf_grammar = derivation_rule, { derivation_rule } ;
 
-derivation_rule = NONTERMINAL, "::=", alternative, { "|", alternative }, ";" ;
+derivation_rule = NONTERMINAL, "::=", alternative, { "|", alternative } ;
 
 alternative = ( STRING | NONTERMINAL ) { STRING | NONTERMINAL } ;
 
@@ -193,12 +191,12 @@ Here's how our example grammar from the [introduction](#introduction) looks in
 this format (we abbreviated the definition of `<var>`):
 
 ```
-<start> ::= <stmt> ;
-<stmt> ::= <assgn> | <assgn> " ; " <stmt> ;
-<assgn> ::= <var> " := " <rhs> ;
-<rhs> ::= <var> | <digit> ;
-<var> ::= "a" | "b" | "c" | ... ;
-<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+<start> ::= <stmt>
+<stmt> ::= <assgn> | <assgn> " ; " <stmt>
+<assgn> ::= <var> " := " <rhs>
+<rhs> ::= <var> | <digit>
+<var> ::= "a" | "b" | "c" | ...
+<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
 ```
 
 ### [Lexer Rules](#lexer-rules)

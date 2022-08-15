@@ -2860,11 +2860,14 @@ def unparse_isla(formula: Formula) -> str:
 
 
 def unparse_grammar(grammar: Grammar) -> str:
+    def escape(elem: str) -> str:
+        return elem.replace('"', r'\"').replace('\n', r'\n').replace('\r', r'\r').replace('\t', r'\t')
+
     return '\n'.join(
         f'{symbol} ::= ' + ' | '.join(
             ' '.join(
                 elem if is_nonterminal(elem)
-                else f'"{elem}"'
+                else f'"{escape(elem)}"'
                 for elem in expansion)
             for expansion in expansions)
         for symbol, expansions in canonical(grammar).items())

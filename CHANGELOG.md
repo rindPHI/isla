@@ -5,6 +5,10 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Changed
+
+- Escaping in unparsing of grammars.
+
 ## [0.8.15] - 2022-08-15
 
 ### Added
