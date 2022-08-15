@@ -2242,20 +2242,8 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         return fresh_var
 
     def close_over_free_nonterminals(self, formula: Formula) -> Formula:
-        # We skip "free nonterminals" that are also part of XPath expressions,
-        # as in `(before(assgn, <assgn>) and (= <assgn>.<rhs>.<var> "x"))`. Otherwise,
-        # We get one spurious quantifier over `<assgn>` alone, where we only need one
-        # also containing the match expression from the XPath specifier.
-
-        first_nonterminals_in_xpath_expressions = {
-            xpath_expr.split('.')[0]
-            for xpath_expr in self.vars_for_xpath_expressions
-            if is_nonterminal(xpath_expr.split('.')[0])
-        }
-
         for var_name, var in reversed(list(self.vars_for_free_nonterminals.items())):
-            if var_name not in first_nonterminals_in_xpath_expressions:
-                formula = univ_close_over_var_push_in(formula, var)
+            formula = univ_close_over_var_push_in(formula, var)
 
         return formula
 
