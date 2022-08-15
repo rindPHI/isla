@@ -1,16 +1,25 @@
 ISLa: Input Specification Language
 ==================================
 
-ISLa is a grammar-aware String constraint solver with its own specification language. The language is a superset of
-SMT-LIB for String constraints, and adds the power of structural quantifiers over derivation trees on top. ISLa
-supports universal and existential quantifiers as well as structural (e.g., "occurs before") and semantic (e.g.,
-"is a checksum") predicates. Its generation mechanism uses feedback from Z3 to solve SMT-LIB formulas, and constructive
-insertion for eliminating existential quantifiers. Universal quantifiers and structural predicates are solved by a
-deterministic, heuristic-based search (with a configurable cost function).
+ISLa is a grammar-aware String constraint solver with its own specification
+language. The language is a superset of SMT-LIB for String constraints, and adds
+the power of structural quantifiers over derivation trees on top. ISLa supports
+universal and existential quantifiers as well as structural (e.g., "occurs
+before") and semantic (e.g., "is a checksum") predicates. Its generation
+mechanism uses feedback from Z3 to solve SMT-LIB formulas, and constructive
+insertion for eliminating existential quantifiers. Universal quantifiers and
+structural predicates are solved by a deterministic, heuristic-based search
+(with a configurable cost function).
 
-For more information on the ISLa language, take a look at the [ISLa Language Specification](islaspec/).
+For more information on the ISLa language, take a look at the [**ISLa Language
+Specification**](https://rindphi.github.io/isla/islaspec/). The specification
+contains a list of [supported default
+predicates](https://rindphi.github.io/isla/islaspec/#structural-predicates),
+which might be useful in many cases.
 
-We also offer an [interactive ISLa tutorial](https://www.fuzzingbook.org/beta/html/FuzzingWithConstraints.html) as part of the Fuzzing Book.
+We also offer an [**interactive ISLa
+tutorial**](https://www.fuzzingbook.org/beta/html/FuzzingWithConstraints.html)
+as part of the Fuzzing Book.
 
 ## Example
 
@@ -137,58 +146,6 @@ semantic SMT formulas can be configured (`max_number_smt_instantiations`).
 In certain cases, ISLa will only produce a finite amount of solutions. This holds in particular for simple existential
 constraints. The existential quantifier will be eliminated and the solution output; the search terminates then. Usually,
 though, the stream of solutions will be infinite (given that the grammar contains recursions).
-
-## Build-In Predicates
-
-ISLa comes with a number of built-in predicates that can be used to specify constraints. We distinguish *structural*
-predicates over the positions of elements in a derivation tree, and *semantic* predicates reasoning about the values
-of derivation tree elements or manipulating derivation trees. The currently built-in predicates suitable for general
-use are explained below.
-
-### Structural Predicates
-
-| Predicate                                  | Intuitive Meaning                                                                                                                                      |
-|--------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `after(node_1, node_2)`                    | `node_1` occurs after `node_2` (not below) in the parse tree.                                                                                          |
-| `before(node_1, node_2)`                   | `node_1` occurs before `node_2` (not below) in the parse tree.                                                                                         |
-| `consecutive(node_1, node_2)`              | `node_1` and `node_2` are consecutive leaves in the parse tree.                                                                                        |
-| `count(in_tree, NEEDLE, NUM)`              | There are `NUM` occurrences of the `NEEDLE` nonterminal in `in_tree`. `NEEDLE` is a String, `NUM` a numeric String or int variable.                    |
-| `different_position(node_1, node_2)`       | `node_1` and `node_2` occur at different positions (cannot be the same node).                                                                          |
-| `direct_child(node_1, node_2)`             | `node_1` is a direct child of `node_2` in the derivation tree.                                                                                         |
-| `inside(node_1, node_2)`                   | `node_1` is a subtree of `node_2`.                                                                                                                     |
-| `level(PRED, NONTERMINAL, node_1, node_2)` | `node_1` and `node_2` are related relatively to each other as specified by `PRED` and `NONTERMINAL` (see below). `PRED` and `NONTERMINAL` are Strings. |
-| `nth(N, node_1, node_2)`                   | `node_1` is the `N`-th occurrence of a node with its nonterminal symbol within `node_2`. `N` is a numeric String.                                      |
-| `same_position(node_1, node_2)`            | `node_1` and `node_2` occur at the same position (have to be the same node).                                                                           |
-
-#### The `level` Predicate
-
-The `level` predicate is quite flexible. For example, the constraint `level("GE", "<block>", decl, expr)`, taken from a
-definition-use constraint for a C-like language, means that `decl` is at the same, or higher, level of `<block>`
-nonterminals as `expr`. In other words, `expr` occurs in the same block or a deeper nested one than `decl`. Instead of
-the `"GE"` predicate, you have a choice of `"LE"`, `"LT"`, `"GT"`, and `"EQ"`, with the obvious meanings. If we change
-`"GE"` to `"EQ"` in our `level` constraint, then `decl` and `expr` have to occur in the same `<block>`.
-
-### Semantic Predicates
-
-While structural predicates only evaluate to true or false, taking only into account the structure of derivation trees
-(the positions of contained elements), semantic predicates can return *assignments*, i.e., manipulate derivation trees.
-In that respect, they are similar to SMT formulas (such as `<var> = "x"`). However, they are not as well composable and
-their order in a constraint can matter: From those semantic predicates signalling "ready to evaluate," the first ones
-are evaluated (and their resulting assignments/derivation tree changes applied) first.
-
-| Predicate                                  | Intuitive Meaning                                                                                                                              |
-|--------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
-| `count(in_tree, NEEDLE, NUM)`              | There are `NUM` occurrences of the `NEEDLE` nonterminal in `in_tree`. `NEEDLE` is a String, `NUM` a numeric String or int variable. See below. |
-
-#### The `count` Predicate
-
-If `NUM` is either a literal or an integer variable with fixed value, then the `count` predicate evaluates to an
-assignment of `in_tree` such that the assigned derivation tree contains exactly `NUM` `NEEDLE` nonterminals. This is
-if `in_tree` is not already a closed tree, or cannot be changed to make that possible; in that case, the predicate
-simply evaluate to false. Should `in_tree` be a closed derivation tree and `NUM` a variable without a value yet
-assigned, the number of `NEEDLE` occurrences in `in_tree` is assigned to `NUM`. An example for a use of the `count`
-predicate is `count(line, "<raw-field>", colno)` from a CSV constraint: There have to be `colno` (number of columns)
-many `<raw-field>` occurrences in a `line`.
 
 ## Resources / Important Files
 
