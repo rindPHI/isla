@@ -657,8 +657,8 @@ nonterminal. Thus, we create a match expression for both of these alternative,
 and obtain the following conjunction of two quantified formulas:
 
 ```
-forall <xml-open-tag>="<<id>>" optag in start: optag = "a" and
-forall <xml-open-tag>="<<id> <xml-attribute>>" optag in start: optag = "a"
+forall <xml-open-tag>="<{<id> id}>" optag in start: id = "a" and
+forall <xml-open-tag>="<{<id> id} <xml-attribute>>" optag in start: id = "a"
 ```
 
 We can also allow longer identifiers, but restrict the allowed letters to "a."
@@ -671,9 +671,8 @@ forall <xml-open-tag>="<{<id> id}>" optag in start: id..<LETTER> = "a" and
 forall <xml-open-tag>="<{<id> id} <xml-attribute>>" optag in start: id..<LETTER> = "a"
 ```
 
-Observe that we now bind the `<id>` nonterminal in the match expression to the
-variable name `id`. Next, we "eliminate" the first XPath segment by introducing
-a universal quantifier inside the already added one:
+Next, we "eliminate" the first XPath segment by introducing a universal
+quantifier inside the already added one:
 
 ```
 forall <xml-open-tag>="<{<id> id}>" optag in start: 
