@@ -422,10 +422,11 @@ simplified syntax layer allowing to specify ISLa constraints much more concisely
 in many cases. Furthermore, [SMT-LIB expressions](#smt-lib-expressions) can be
 expressed in the more common prefix or infix instead of S-expression syntax. All
 the additions described in this section are "syntactic sugar;" they are
-*translated to core ISLa* during parsing. In the [semantics](#semantics), we
-thus exclusively focus on core ISLa (with explicit variable names, without "free
-nonterminals" and XPath expressions, etc.), assuming that all features described
-in this section are translated to the cores as described.
+*translated to core ISLa* during parsing. In the [semantics](#semantics)
+section, we thus exclusively focus on "core ISLa" (with explicit variable names,
+without "free nonterminals" and XPath expressions, etc.), assuming that all
+features described in this section are translated to that language core as
+described here.
 
 ### [Simplified Syntax by Example](#simplified-syntax-by-example)
 
