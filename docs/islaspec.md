@@ -575,6 +575,49 @@ unbound occurrence of a nonterminal symbol `<type>` is turned into a formula
 
 ### [X-Path Expressions](#x-path-expressions)
 
+As an alternative to [match
+expressions](#tree-quantifiers-with-match-expressions), ISLa supports accessing
+derivation tree children using a notation inspired by the [XPath abbreviated
+syntax](https://www.w3.org/TR/1999/REC-xpath-19991116/#path-abbrev). In
+particular, it supports the "child" and "descendant" axes, i.e., referring
+direct children and "deeper" descendants of those. In contrast to the original
+XPath syntax, we use dots `.` instead of slashes `/`. We still use the term
+"XPath expression" to refer to such expressions.
+
+At any position in an ISLa formula where a variable may occur, one may
+alternatively use an XPath expression. An XPath expression in ISLa consists of
+one ore more *segments* of the form `var.<type1>[pos1].<type2>[pos2]` (for the
+first segment) or `<type>.<type1>[pos1].<type2>[pos2]` (for the second and later
+segments). Note that the second form can also be used when specifying an ISLa
+constraint, but is translated to the first form by [universally closing over the
+free nonterminal `<type>`](#free-nonterminals). Segments are connected using the
+`..` operator (descendent axis). Each segment consists of one of more child axis
+usages connected by `.`. The `[pos]` specifiers are optional and default to
+`[1]`.
+
+Semantically, `var.<type1>[pos1]` refers to the `pos1`-th *direct* child of type
+`<type1>` in the derivation tree associated to `var`, where counting starts from
+1; `var.<type1>[pos1].<type2>[pos2]` to the `pos2`-th child of type `<type2>` of
+*that* element, and so on.
+
+Using the descendent axis, we can address derivation tree children at a greater
+distance (than 1). The exact distance cannot be specified. An XPath expression
+`var.<type1>[pos1]..<type2>.<type3>[pos3]` refers to 
+
+* the `pos3`-th *direct* child with type `<type3>` 
+* of *all* `<type2>` elements that are (indirect) children 
+* of the `pos1`-th *direct* child with type `<type1>` 
+* of the derivation tree associated with `var`.
+
+An simple example for the use of the `..` axis is the formula
+
+```
+checksum(<header>, <header>..<checksum>)
+```
+
+It specifies that a `checksum` predicate should hold for a `<header>` element
+and all `<checksum>` elements somewhere below `<header>`.
+
 (work in progress)
 
 ## [Semantics](#semantics)
