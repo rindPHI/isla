@@ -2166,8 +2166,6 @@ def add_mexpr_to_qfr_over_var(
                 return formula
 
             if formula.bind_expression is not None:
-                # TODO: Convert all match expressions to trees. Retain those "new" trees that go well
-                #       together with the old one, i.e., one is a prefix of the other. Merge those.
                 mexprs = []
 
                 orig_trees_and_paths = formula.bind_expression.to_tree_prefix(formula.bound_variable.n_type, grammar)
@@ -2302,8 +2300,6 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         self.mgr = VariableManager(self.grammar)
         self.used_variables: Optional[OrderedSet[str]] = None
 
-        # TODO: Free nonterminals and XPath expressions should be contextualized,
-        #       such that `...<A>... and (exists <A>: ...<A>...)` is possible!
         self.vars_for_free_nonterminals: Dict[str, BoundVariable] = {}
         self.vars_for_xpath_expressions: Dict[ParsedXPathExpr, BoundVariable] = {}
 
@@ -2489,8 +2485,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             BoundVariable,
             find_var(xpath_expr[0][0][0], f'Unknown variable {xpath_expr[0][0][0]} in XPath expression.'))
 
-        # TODO: Simplify expand_mexpr_trees; we only need to expand one now.
-        partial_mexpr_trees = self.expand_mexpr_trees({DerivationTree(first_var.n_type): [()]}, xpath_expr[0])
+        partial_mexpr_trees = self.expand_mexpr_trees(first_var.n_type, xpath_expr[0])
 
         if not partial_mexpr_trees:
             raise RuntimeError(
@@ -2533,230 +2528,42 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         # 4. Proceed recursively.
         return self.close_over_xpath_expressions(formula)
 
-    def close_over_xpath_expressions_old(self, formula: Formula) -> Formula:
-        if not self.vars_for_xpath_expressions:
-            return formula
+    def expand_mexpr_trees(self, start_nonterminal: str, xpath_segment: ImmutableList[Tuple[str, int]]):
+        result: Dict[DerivationTree, List[Path]] = {DerivationTree(start_nonterminal): [()]}
 
-        assert self.grammar is not None, 'You need to pass a grammar to process "XPath" expressions in formulas.'
-
-        preprocessed_xpath_exprs_with_vars: List[Tuple[List[List[Tuple[str, int]]], BoundVariable]] = [
-            ([[(elem, 0) if '[' not in elem
-               else (elem.split('[')[0], int(elem.split('[')[1][:-1]) - 1)
-               for elem in seg.split('.')]
-              for seg in xpath_expr.split('..')],
-             bound_mexpr_var)
-            for xpath_expr, bound_mexpr_var in self.vars_for_xpath_expressions.items()
-        ]
-
-        # We need to group XPath expressions by the first element of the first segment,
-        # such that, e.g., `<xml-tree>.<xml-open-tag>.<id>` and `<xml-tree>.<xml-close-tag>.<id>`
-        # refer to the same `<xml-tree>`-typed variable (similarly if the first element of the first
-        # segment is a named variable).
-        groups: Dict[str, List[Tuple[List[List[Tuple[str, int]]], BoundVariable]]] = {}
-        for xpath_segments, bound_mexpr_var in preprocessed_xpath_exprs_with_vars:
-            groups.setdefault(xpath_segments[0][0][0], []).append((xpath_segments, bound_mexpr_var))
-
-        group: List[Tuple[List[List[Tuple[str, int]]], BoundVariable]]
-        for final_bound_var_name_or_type, group in groups.items():
-            assert all(len(xpath_segments) > 0 for xpath_segments, _ in group)
-            assert all(len(xpath_segments) > 1 or len(xpath_segments[0]) > 1 for xpath_segments, _ in group)
-            assert all(
-                all((idx == 0 or is_nonterminal(elem)) and
-                    (idx > 0 or pos == 0)
-                    for idx, (elem, pos) in enumerate(xpath_segment))
-                for xpath_segments, _ in group
-                for xpath_segment in xpath_segments)
-
-            # We first eliminate XPath expressions of the shape `var..segments`, where var is
-            # an existing variable in the formula. Then, we recursively continue.
-            simple_descendant_xpath_exprs = [
-                (segments, bound_mexpr_var)
-                for segments, bound_mexpr_var in preprocessed_xpath_exprs_with_vars
-                if len(segments) > 1 and len(segments[0]) == 1 and not is_nonterminal(segments[0][0][0])
-            ]
-
-            if simple_descendant_xpath_exprs:
-                for segments, bound_mexpr_var in simple_descendant_xpath_exprs:
-                    var_name = segments[0][0][0]
-                    assert segments[1][0][1] == 0, \
-                        'You cannot use an indexed expression after the `..` descendant axis.'
-                    bound_var_type = segments[1][0][0]
-                    assert is_nonterminal(bound_var_type), 'A .. axis invocation must be followed by a nonterminal.'
-
-                    if len(segments) == 2 and len(segments[1]) == 1:
-                        # Expression after `..` refers to the already introduced variable present in the subformula.
-                        bound_var = bound_mexpr_var
-
-                        # We can eliminate this XPath expression entirely;
-                        # remove it from the dictionary to stop recursion.
-                        self.vars_for_xpath_expressions = {
-                            xpath_expr: var
-                            for xpath_expr, var in self.vars_for_xpath_expressions.items()
-                            if var != bound_var
-                        }
-                    else:
-                        bound_var_name = bound_var_type[1:-1]
-                        bound_var = fresh_bound_variable(
-                            self.used_variables,
-                            BoundVariable(bound_var_name, bound_var_type),
-                            add=False)
-                        self.used_variables.add(bound_var.name)
-
-                        # We can simplify this XPath expression: `var..<bound_var_type>...` gets `bound_var...`.
-                        # Update the dictionary to ensure termination of recursion.
-                        # TODO: Implement this, write test case (nontrivial following segment)
-                        raise NotImplementedError()
-                        self.vars_for_xpath_expressions = {
-                            xpath_expr: var
-                            for xpath_expr, var in self.vars_for_xpath_expressions.items()
-                            if var != bound_var
-                        }
-
-                    class AddQuantifierTransformer(NoopFormulaTransformer):
-                        def transform_qfd_formula(self, subformula: QuantifiedFormula) -> Formula:
-                            bound_variable_in_subformula = [
-                                var for var in subformula.bound_variables() if var.name == var_name]
-                            if not bound_variable_in_subformula:
-                                return subformula
-                            assert len(bound_variable_in_subformula) == 1
-
-                            return type(subformula)(
-                                subformula.bound_variable,
-                                subformula.in_variable,
-                                ForallFormula(
-                                    bound_var,
-                                    bound_variable_in_subformula[0],
-                                    subformula.inner_formula),
-                                subformula.bind_expression)
-
-                        def transform_exists_formula(self, subformula: ExistsFormula) -> Formula:
-                            return self.transform_qfd_formula(subformula)
-
-                        def transform_forall_formula(self, subformula: ForallFormula) -> Formula:
-                            return self.transform_qfd_formula(subformula)
-
-                    formula = formula.transform(AddQuantifierTransformer())
-
-                return self.close_over_xpath_expressions(formula)
-
-            # Only as intermediate simplification:
-            # TODO: Handle nontrivial XPath descendent expressions
-            assert all(len(xpath_segments) == 1 for xpath_segments, _ in group), 'The .. axis is not yet supported'
-
-            is_existing_var = False
-            if is_nonterminal(
-                    final_bound_var_name_or_type) and final_bound_var_name_or_type in self.vars_for_free_nonterminals:
-                bound_var = self.vars_for_free_nonterminals[final_bound_var_name_or_type]
-                bound_var_type = bound_var.n_type
-                is_existing_var = bound_var in BoundVariablesCollector.collect(formula)
-            elif is_nonterminal(final_bound_var_name_or_type):
-                bound_var_type = final_bound_var_name_or_type
-                bound_var_name = bound_var_type[1:-1]
-                bound_var = fresh_bound_variable(
-                    self.used_variables,
-                    BoundVariable(bound_var_name, bound_var_type),
-                    add=False)
-                self.used_variables.add(bound_var.name)
-            else:
-                try:
-                    bound_var = next(
-                        var for var in VariablesCollector.collect(formula)
-                        if var.name == final_bound_var_name_or_type)
-                except StopIteration:
-                    raise RuntimeError(
-                        f'Unknown variable {final_bound_var_name_or_type} in '
-                        f'XPath expression {group[0][0]}')
-
-                is_existing_var = True
-                bound_var_type = bound_var.n_type
-                # assert False, 'Not yet implemented'
-
-            partial_mexpr_trees = {DerivationTree(bound_var_type): []}
-            for xpath_segments, _ in group:
-                partial_mexpr_trees = self.expand_mexpr_trees(
-                    {tree: paths + [()] for tree, paths in partial_mexpr_trees.items()},
-                    xpath_segments[0])
-
-            if not partial_mexpr_trees:
-                raise RuntimeError(
-                    'Could not convert XPath expressions to match expressions. ' +
-                    'Please check the XPath expressions in your formula, including for conflicts.')
-
-            match_expressions = []
-            for expanded_match_expression, paths_to_bound_vars in partial_mexpr_trees.items():
-                paths_to_bound_vars_map = dict(zip(paths_to_bound_vars, [var for _, var in group]))
-                mexpr_elems = []
-                for path, leaf in expanded_match_expression.leaves():
-                    if path in paths_to_bound_vars_map:
-                        mexpr_elems.append(paths_to_bound_vars_map[path])
-                    else:
-                        mexpr_elems.append(leaf.value)
-
-                match_expressions.append(BindExpression(*mexpr_elems))
-
-            # TODO: Add match expression to existing quantifier if `is_existing_var` is True.
-            #       When implementing the '..' axis, take care not to break things; additional
-            #       quantifiers have to be put on a lower level. Well, that's actually also true
-            #       for "free" initial qfrs.
-            if is_existing_var:
-                formula = add_mexpr_to_qfr_over_var(formula, bound_var, match_expressions, self.grammar)
-            else:
-                formula = reduce(
-                    Formula.__and__,
-                    [univ_close_over_var_push_in(formula, bound_var, in_var=start_constant(), mexpr=match_expression)
-                     for match_expression in match_expressions])
-
-        return ensure_unique_bound_variables(formula)
-
-    def expand_mexpr_trees(
-            self, partial_mexpr_trees: Dict[DerivationTree, List[Path]], xpath_segment: ImmutableList[Tuple[str, int]]):
         for nonterminal, position in xpath_segment[1:]:
-            old_partial_mexpr_trees = dict(partial_mexpr_trees)
-            partial_mexpr_trees: Dict[DerivationTree, List[Path]] = {}
+            old_partial_mexpr_trees = dict(result)
+            result: Dict[DerivationTree, List[Path]] = {}
 
             for partial_tree, paths in old_partial_mexpr_trees.items():
                 path_to_expand = paths[-1]
                 subtree = partial_tree.get_subtree(path_to_expand)
 
-                assert subtree.children is None or subtree.children
+                assert subtree.children is None
 
-                # If `path_to_expand` is an inner node, check if there are `position` many `nonterminal`
-                # children; if so, update the last path. Otherwise, continue (this expansion is discarded
-                # since it conflicts with the current `xpath_segment`).
-                if subtree.children:
-                    indices = [idx for idx, node in enumerate(subtree.children) if node.value == nonterminal]
-                    if len(indices) < position + 1:
-                        continue
+                # Find expansions of including more than `position` occurrences of `nonterminal`.
+                expansions = [
+                    expansion for expansion in self.canonical_grammar[subtree.value]
+                    if sum([1 if elem == nonterminal else 0 for elem in expansion]) > position]
 
-                    partial_mexpr_trees[partial_tree] = paths[:-1] + [path_to_expand + (indices[position],)]
-                else:
-                    previous_nonterminal = subtree.value
-
-                    # Find expansions of `previous_nonterminal` which include more than `position`
-                    # occurrences of `nonterminal`.
-                    expansions = [
-                        expansion for expansion in self.canonical_grammar[previous_nonterminal]
-                        if sum([1 if elem == nonterminal else 0 for elem in expansion]) > position]
-
-                    # Replace the indicated position in each `partial_mexpr_trees` list
-                    # with the new expansion; the new position points to the `nonterminal` element
-                    # that should be expanded next.
-
-                    for expansion in expansions:
-                        partial_mexpr_trees[
-                            partial_tree.replace_path(
-                                path_to_expand,
-                                DerivationTree(
-                                    partial_tree.get_subtree(path_to_expand).value,
-                                    [DerivationTree(elem) if is_nonterminal(elem)
-                                     else DerivationTree(elem, [])
-                                     for elem in expansion]))] = \
-                            paths[:-1] + [path_to_expand + (nth_occ(expansion, nonterminal, position),)]
+                # Replace the indicated position in each `partial_mexpr_trees` list
+                # with the new expansion; the new position points to the `nonterminal` element
+                # that should be expanded next.
+                for expansion in expansions:
+                    result[
+                        partial_tree.replace_path(
+                            path_to_expand,
+                            DerivationTree(
+                                partial_tree.get_subtree(path_to_expand).value,
+                                [DerivationTree(elem) if is_nonterminal(elem)
+                                 else DerivationTree(elem, [])
+                                 for elem in expansion]))] = \
+                        paths[:-1] + [path_to_expand + (nth_occ(expansion, nonterminal, position),)]
 
                 assert all(tree.get_subtree(paths[-1]).value == nonterminal
-                           for tree, paths in partial_mexpr_trees.items())
+                           for tree, paths in result.items())
 
-        return partial_mexpr_trees
+        return result
 
     def enterStart(self, ctx: IslaLanguageParser.StartContext):
         self.used_variables = used_variables_in_concrete_syntax(ctx)
