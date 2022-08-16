@@ -430,13 +430,11 @@ forall <string> string="{<high-byte> high-byte}{<low-byte> low-byte}{<chars> cha
         self.assertEqual(expected, result)
 
     def test_complex_expression_with_and(self):
-        # Should parse w/o errors
         parse_isla('''
 forall <number> number_1:
   forall <number> number_2:
     ((= (str.to.int number_2) (+ (str.to.int number_1) 1)) and (> (str.to.int number_1) 0))''')
 
-    @pytest.mark.skip('Functionality yet to be implemented.')
     def test_xpath_syntax_twodot_axis_tar_checksum(self):
         result = parse_isla(
             'tar_checksum(<header>, <header>..<checksum>)',
@@ -444,14 +442,11 @@ forall <number> number_1:
             semantic_predicates={TAR_CHECKSUM_PREDICATE})
 
         expected = parse_isla('''
-    forall <header> header in start:
-      forall <checksum> checksum in header:
-        tar_checksum(header, checksum)''', semantic_predicates={TAR_CHECKSUM_PREDICATE})
+    forall <header> header_0 in start:
+      forall <checksum> checksum in header_0:
+        tar_checksum(header_0, checksum)''', semantic_predicates={TAR_CHECKSUM_PREDICATE})
 
-        # self.assertEqual(expected, result)
-        unparsed_result = ISLaUnparser(result).unparse()
-        unparsed_expected = ISLaUnparser(expected).unparse()
-        self.assertEqual(unparsed_expected, unparsed_result)
+        self.assertEqual(expected, result)
 
     def test_bnf_syntax(self):
         result = parse_bnf(f'''
@@ -562,6 +557,28 @@ forall <config> config in start:
      (= digit "7")''')
 
         self.assertEqual(unparse_isla(expected), unparse_isla(result))
+
+    def test_scriptsize_c_most_condensed(self):
+        preds = {BEFORE_PREDICATE, LEVEL_PREDICATE}
+        result = parse_isla('''
+exists <declaration>:
+  (before(<declaration>, <expr>) and 
+   level("GE", "<block>", <declaration>, <expr>) and 
+   <expr>..<id> = <declaration>.<id>)''', scriptsizec.SCRIPTSIZE_C_GRAMMAR, structural_predicates=preds)
+
+        expected = parse_isla('''
+forall <expr> expr_0 in start:
+  forall <id> id in expr_0:
+    (exists <declaration> declaration="int {<id> id_0} = <expr>;" in start:
+       (before(declaration, expr_0) and
+        level("GE", "<block>", declaration, expr_0) and
+        (= id id_0)) or
+    exists <declaration> declaration_0="int {<id> id_1};" in start:
+      (before(declaration_0, expr_0) and
+       level("GE", "<block>", declaration_0, expr_0) and
+       (= id id_1)))')''', structural_predicates=preds)
+
+        self.assertEqual(expected, result)
 
 
 if __name__ == '__main__':
