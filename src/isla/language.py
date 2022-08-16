@@ -2335,7 +2335,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
     def register_var_for_xpath_expression(self, xpath_expr: str) -> BoundVariable:
         parsed_xpath_expr = self.parse_xpath_expr(xpath_expr)
-        if xpath_expr in self.vars_for_xpath_expressions:
+        if parsed_xpath_expr in self.vars_for_xpath_expressions:
             return self.vars_for_xpath_expressions[parsed_xpath_expr]
 
         last_nonterminal: str = parsed_xpath_expr[-1][-1][0]
@@ -2773,7 +2773,9 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
             free_variables = [var for var in self.result.free_variables() if not isinstance(var, Constant)]
             if free_variables:
-                raise SyntaxError('Unbound variables: ' + ', '.join(map(str, free_variables)))
+                raise SyntaxError(
+                    'Unbound variables: ' + ', '.join(map(str, free_variables)) +
+                    f' in formula\n{unparse_isla(formula)}')
         except RuntimeError as exc:
             raise SyntaxError(str(exc))
 
@@ -2972,7 +2974,6 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             self.get_var(id_text)  # Simply register variable
 
     def exitSexprXPathExpr(self, ctx: IslaLanguageParser.SexprXPathExprContext):
-        # TODO: Handle XPath expressions in predicates?
         new_var = self.register_var_for_xpath_expression(parse_tree_text(ctx))
         self.smt_expressions[ctx] = new_var.name
 
