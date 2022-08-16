@@ -5,3 +5,4 @@
   whether this is already supported. But at least in one combination of the
   elements of the propositional combination, it probably fails (a free variable
   remains).
+- Support & test XPath expressions in ISLa predicates.
