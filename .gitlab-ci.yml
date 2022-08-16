@@ -32,7 +32,6 @@ before_script:
   - virtualenv venv
   - source venv/bin/activate
   - pip install docutils
-    #- pip install --no-deps -r requirements.txt
   - pip install -e .[dev,test]
 
 test:
@@ -54,14 +53,3 @@ build:
     paths:
       - dist/*.whl
       - dist/*.tar.gz
-
-#pages:
-#  script:
-#    - pip install sphinx sphinx-rtd-theme
-#    - cd doc ; make html
-#    - mv build/html/ ../public/
-#  artifacts:
-#    paths:
-#      - public
-#  rules:
-#    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

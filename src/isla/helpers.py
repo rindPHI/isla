@@ -10,7 +10,7 @@ from typing import Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, 
 
 import datrie
 
-from isla.type_defs import Path, Grammar, ParseTree, ImmutableGrammar, CanonicalGrammar
+from isla.type_defs import Path, Grammar, ParseTree, ImmutableGrammar, CanonicalGrammar, ImmutableList
 
 S = TypeVar('S')
 T = TypeVar('T')
@@ -657,3 +657,7 @@ def nth_occ(haystack: Sequence[T], needle: T, n: int) -> Optional[int]:
             num_occs += 1
 
     return None
+
+
+def list_set(ilist: ImmutableList[T], repl_idx: int, new_elem: T) -> ImmutableList[T]:
+    return tuple([new_elem if idx == repl_idx else elem for idx, elem in enumerate(ilist)])
