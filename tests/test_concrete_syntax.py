@@ -580,6 +580,32 @@ forall <expr> expr_0 in start:
 
         self.assertEqual(expected, result)
 
+    def test_length_indexed_strings(self):
+        pascal_string_grammar = {
+            "<start>": ["<string>"],
+            "<string>": ["<length><chars>"],
+            "<length>": ["<high-byte><low-byte>"],
+            "<high-byte>": ["<byte>"],
+            "<low-byte>": ["<byte>"],
+            "<byte>": crange('\x00', '\xff'),
+            "<chars>": ["", "<char><chars>"],
+            "<char>": list(string.printable),
+        }
+
+        result = parse_isla('''
+str.to_code(<string>.<length>.<low-byte>) =
+str.len(<string>.<chars>) and 
+<string>.<length>.<high-byte> = str.from_code(0)''', pascal_string_grammar)
+
+        expected = parse_isla('''
+forall <string> string="{<high-byte> high-byte}{<low-byte> low-byte}{<chars> chars}" in start: (
+  str.to_code(low-byte) = str.len(chars) and 
+  high-byte = str.from_code(0)
+)''')
+
+        self.assertEqual(unparse_isla(expected), unparse_isla(result))
+
+
 
 if __name__ == '__main__':
     unittest.main()

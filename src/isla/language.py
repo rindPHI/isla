@@ -2096,7 +2096,7 @@ def univ_close_over_var_push_in(
         var: BoundVariable,
         in_var: Variable = start_constant(),
         mexpr: Optional[BindExpression] = None,
-        qfd_var: Optional[BoundVariable] = None) -> Formula:
+        qfd_vars: Optional[BoundVariable | Iterable[BoundVariable]] = None) -> Formula:
     """
     Adds a universal quantifier over `var` with match expression `mexpr` and "in" variable `in_var`
     in `formula`, such that, if `formula` is a propositional combination or a universal quantifier,
@@ -2112,38 +2112,36 @@ def univ_close_over_var_push_in(
     :param var: The bound variable of the new universal quantifier.
     :param in_var: The container ("in") variable of the new universal quantifier.
     :param mexpr: The match expression of the new universal quantifier.
-    :param qfd_var: A variable to decide whether pushing in is possible or not. Defaults to `var`.
+    :param qfd_vars: A variable to decide whether pushing in is possible or not. Defaults to `var`.
     :return: A formula with an added quantifier, or the original formula if `qfd_var` does
     not occur freely in `formula`.
     """
 
-    if qfd_var is None:
-        qfd_var = var
+    if qfd_vars is None:
+        qfd_vars = {var}
+    elif isinstance(qfd_vars, BoundVariable):
+        qfd_vars = {qfd_vars}
+    else:
+        qfd_vars = set(qfd_vars)
 
     mexpr_vars = (set() if not mexpr else mexpr.bound_variables())
-    all_new_bound_vars = {qfd_var} | mexpr_vars
+    all_new_bound_vars = qfd_vars | mexpr_vars
 
     if not all_new_bound_vars.intersection(formula.free_variables()):
         return formula
 
     if isinstance(formula, PropositionalCombinator):
-        if (any(qfd_var not in arg.free_variables() for arg in formula.args) or
+        if (any(not qfd_vars.intersection(arg.free_variables()) for arg in formula.args) or
                 any(in_var in BoundVariablesCollector().collect(arg) for arg in formula.args)):
             return type(formula)(*map(
-                lambda arg: univ_close_over_var_push_in(arg, var, in_var, mexpr, qfd_var),
+                lambda arg: univ_close_over_var_push_in(arg, var, in_var, mexpr, qfd_vars),
                 formula.args))
-
-    if (isinstance(formula, PropositionalCombinator) and
-            any(qfd_var not in arg.free_variables() for arg in formula.args)):
-        return type(formula)(*map(
-            lambda arg: univ_close_over_var_push_in(arg, var, in_var, mexpr, qfd_var),
-            formula.args))
 
     if isinstance(formula, ForallFormula) and var != formula.in_variable:
         return ForallFormula(
             formula.bound_variable,
             formula.in_variable,
-            univ_close_over_var_push_in(formula.inner_formula, var, in_var, mexpr, qfd_var),
+            univ_close_over_var_push_in(formula.inner_formula, var, in_var, mexpr, qfd_vars),
             formula.bind_expression)
 
     return ForallFormula(var, in_var, formula, bind_expression=mexpr)
@@ -2230,6 +2228,9 @@ def add_mexpr_to_qfr_over_var(
 
                                 resulting_tree = resulting_tree.replace_path(
                                     valid_path, new_tree.get_subtree(valid_path))
+
+                                if not isinstance(new_var, DummyVariable):
+                                    resulting_paths[new_path] = new_var
 
                         if conflict:
                             continue
@@ -2386,30 +2387,42 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         for var in reversed(free_nonterminal_vars):
             formula = univ_close_over_var_push_in(formula, var)
 
-        fresh_vars: Dict[str, BoundVariable] = {}
+        # We group segments by their first element such that we introduce quantifiers
+        # correctly. For example, if we have expressions `<string>.<length>.<low-byte>`
+        # and `<string>.<length>.<high-byte>` in different atoms, both need to be put
+        # into the scope of a single new quantifier over `<string>`. For this, we have
+        # to collect the fresh variables introduced for both expressions.
+        # [(k, list(g)) for k, g in itertools.groupby(
+        #     sorted(tuple(self.vars_for_xpath_expressions.items())),
+        #     lambda p: p[0][0][0]
+        # )]
 
-        for segments, bound_variable in list(self.vars_for_xpath_expressions.items()):
-            if is_nonterminal(segments[0][0][0]):
-                var_type = segments[0][0][0]
-                if var_type in fresh_vars:
-                    var = fresh_vars[var_type]
-                else:
-                    var = fresh_bound_variable(
-                        self.used_variables,
-                        BoundVariable(var_type[1:-1], var_type),
-                        add=False)
-                    fresh_vars[var_type] = var
-                    self.used_variables.add(var.name)
+        # fresh_vars: Dict[str, BoundVariable] = {}
 
-                    if var_type in free_nonterminal_vars_also_in_xpath_expr:
-                        formula = formula.substitute_variables(
-                            {free_nonterminal_vars_also_in_xpath_expr[var_type]: var})
+        # for segments, bound_variable in list(self.vars_for_xpath_expressions.items()):
+        for first_segment_elem, group in itertools.groupby(
+                sorted(tuple(self.vars_for_xpath_expressions.items())),
+                lambda p: p[0][0][0]):
+            if is_nonterminal(first_segment_elem[0]):
+                var_type = first_segment_elem[0]
+                var = fresh_bound_variable(
+                    self.used_variables,
+                    BoundVariable(var_type[1:-1], var_type),
+                    add=False)
+                self.used_variables.add(var.name)
 
-                    formula = univ_close_over_var_push_in(formula, var, qfd_var=bound_variable)
+                if var_type in free_nonterminal_vars_also_in_xpath_expr:
+                    formula = formula.substitute_variables(
+                        {free_nonterminal_vars_also_in_xpath_expr[var_type]: var})
 
-                new_segments = list_set(segments, 0, list_set(segments[0], 0, (var.name, 0)))
-                del self.vars_for_xpath_expressions[segments]
-                self.vars_for_xpath_expressions[new_segments] = bound_variable
+                group_xpath_exprs = list(group)
+                qfd_vars = {var for _, var in group_xpath_exprs}
+                formula = univ_close_over_var_push_in(formula, var, qfd_vars=qfd_vars)
+
+                for segments, bound_variable in group_xpath_exprs:
+                    new_segments = list_set(segments, 0, list_set(segments[0], 0, (var.name, 0)))
+                    del self.vars_for_xpath_expressions[segments]
+                    self.vars_for_xpath_expressions[new_segments] = bound_variable
 
         return formula
 
@@ -2456,7 +2469,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                 xpath_expr = list_set(xpath_expr[1:], 0, list_set(xpath_expr[1], 0, (bound_var.name, 0)))
                 self.vars_for_xpath_expressions[xpath_expr] = final_bound_variable
 
-            formula = univ_close_over_var_push_in(formula, bound_var, in_var=in_var, qfd_var=final_bound_variable)
+            formula = univ_close_over_var_push_in(formula, bound_var, in_var=in_var, qfd_vars=final_bound_variable)
 
             return self.close_over_xpath_expressions(formula)
 
