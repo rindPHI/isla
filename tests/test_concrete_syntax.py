@@ -15,7 +15,7 @@ from isla.language import DummyVariable, parse_isla, ISLaUnparser, VariableManag
 from isla.z3_helpers import z3_eq
 from isla_formalizations import scriptsizec
 from isla_formalizations.tar import TAR_CHECKSUM_PREDICATE, TAR_GRAMMAR
-from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
+from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, XML_GRAMMAR
 from test_data import LANG_GRAMMAR
 
 
@@ -255,7 +255,7 @@ forall <xml-tree> xml-tree="<{<id> id} <xml-attribute>><inner-xml-tree><xml-clos
 forall <xml-tree> xml-tree_0="<{<id> id_0}><inner-xml-tree><xml-close-tag>" in start:
     (= id_0 "a")''')
 
-        self.assertEqual(expected, result)
+        self.assertEqual(unparse_isla(expected), unparse_isla(result))
 
     def test_xpath_syntax_xml(self):
         result = parse_isla(
@@ -290,9 +290,9 @@ forall <header> header in start:
             structural_predicates={BEFORE_PREDICATE})
 
         expected = parse_isla('''
-forall <assgn> assgn_0="<var> := {<var> var}" in start:
+forall <assgn> assgn_1="<var> := {<var> var}" in start:
   exists <assgn> assgn in start:
-    (before(assgn, assgn_0) and (= var "x")))''', structural_predicates={BEFORE_PREDICATE})
+    (before(assgn, assgn_1) and (= var "x")))''', structural_predicates={BEFORE_PREDICATE})
 
         self.assertEqual(expected, result)
 
@@ -313,9 +313,9 @@ forall <assgn> assgn_0="<var> := {<var> var}" in start:
             structural_predicates=STANDARD_STRUCTURAL_PREDICATES)
 
         expected = parse_isla('''
-forall <assgn> assgn_0="<var> := {<var> var}" in start:
+forall <assgn> assgn_1="<var> := {<var> var}" in start:
   exists <assgn> assgn="{<var> var_0} := <rhs>" in start:
-    (before(assgn, assgn_0) and (= var var_0)))''', structural_predicates=STANDARD_STRUCTURAL_PREDICATES)
+    (before(assgn, assgn_1) and (= var var_0)))''', structural_predicates=STANDARD_STRUCTURAL_PREDICATES)
 
         self.assertEqual(expected, result)
 
@@ -327,13 +327,20 @@ forall <assgn> assgn_0="<var> := {<var> var}" in start:
             XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
 
     def test_xpath_already_existing_match_expression(self):
-        self.assertRaises(
-            SyntaxError,
-            parse_isla,
+        result = parse_isla(
             '''exists <assgn> assgn="<var> := <rhs>" in start:
                  (before(assgn, <assgn>) and (= <assgn>.<rhs>.<var> assgn.<var>))''',
             LANG_GRAMMAR,
             {BEFORE_PREDICATE})
+
+        expected = parse_isla(
+            '''forall <assgn> assgn_1="<var> := {<var> var}" in start:
+                 exists <assgn> assgn="{<var> var_0} := <rhs>" in start:
+                   (before(assgn, assgn_1) and (= var var_0))''',
+            LANG_GRAMMAR,
+            {BEFORE_PREDICATE})
+
+        self.assertEqual(expected, result)
 
     def test_xpath_infix_c_defuse(self):
         result = parse_isla(
@@ -351,7 +358,7 @@ forall <expr> expr in start:
     exists <declaration> declaration_0="int {<id> id_1};" in start:
        (= id id_1))''', structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
 
-        self.assertEqual(expected, result)
+        self.assertEqual(unparse_isla(expected), unparse_isla(result))
 
     def test_xpath_with_index(self):
         grammar = {
@@ -378,7 +385,7 @@ forall <A> A_0="<B>{<B> B_0}<B>\n<A>" in start:
     forall <xml-tree> xml-tree_0="<{<id> id_1}><inner-xml-tree></{<id> id_2}>" in start:
         (= id_1 id_2)''')
 
-        self.assertEqual(expected, result)
+        self.assertEqual(unparse_isla(expected), unparse_isla(result))
 
     def test_prefix_multiple_args(self):
         result = parse_isla('forall <a>: exists <b>: str.contains(a, b)')
@@ -492,6 +499,39 @@ forall <number> number_1:
         })
 
         self.assertEqual(expected, result)
+
+    def test_simple_xml_descendant_axis(self):
+        result = parse_isla(
+            'forall <xml-open-tag> optag="<{<id> id}>" in start: id..<id-char> = "a"',
+            grammar=XML_GRAMMAR)
+
+        expected = parse_isla('''
+forall <xml-open-tag> optag="<{<id> id}>" in start: 
+  forall <id-char> id-char in id:
+    id-char = "a" ''')
+
+        self.assertEqual(unparse_isla(expected), unparse_isla(result))
+
+    def test_simple_xml_descendant_axis_disjunction(self):
+        result = parse_isla(
+            'forall <xml-open-tag> optag="<{<id> id}>" in start: (id..<id-char> = "a" or id..<id-char> = "b")',
+            grammar=XML_GRAMMAR)
+        expected = parse_isla('''
+forall <xml-open-tag> optag="<{<id> id}>" in start: 
+  forall <id-char> id-char in id:
+    (id-char = "a" or id-char = "b")''')
+        self.assertEqual(expected, result)
+
+    def test_xml_descendant_axis(self):
+        result = parse_isla('<xml-open-tag>.<id>..<id-char> = "a"', grammar=XML_GRAMMAR)
+        expected = parse_isla('''
+forall <xml-open-tag> xml-open-tag="<{<id> id}>" in start: 
+  forall <id-char> id-char in id:
+    id-char = "a" and
+forall <xml-open-tag> xml-open-tag_0="<{<id> id_0} <xml-attribute>>" in start:
+  forall <id-char> id-char_0 in id_0:
+    id-char_0 = "a"''')
+        self.assertEqual(unparse_isla(expected), unparse_isla(result))
 
 
 if __name__ == '__main__':

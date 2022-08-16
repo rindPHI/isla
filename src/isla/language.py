@@ -24,7 +24,8 @@ import isla.mexpr_parser.MexprParserListener as MexprParserListener
 from isla.derivation_tree import DerivationTree
 from isla.fuzzer import GrammarCoverageFuzzer
 from isla.helpers import RE_NONTERMINAL, is_nonterminal, assertions_activated, \
-    copy_trie, canonical, nth_occ, replace_in_list, srange, grammar_to_mutable, unreachable_nonterminals, start_symbol
+    copy_trie, canonical, nth_occ, replace_in_list, srange, grammar_to_mutable, unreachable_nonterminals, start_symbol, \
+    list_set, is_prefix
 from isla.helpers import replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, \
     immutable_to_grammar, \
     nested_list_to_tuple
@@ -37,7 +38,7 @@ from isla.isla_language.IslaLanguageParser import IslaLanguageParser
 from isla.mexpr_lexer.MexprLexer import MexprLexer
 from isla.mexpr_parser.MexprParser import MexprParser
 from isla.parser import EarleyParser
-from isla.type_defs import Path, Grammar, ImmutableGrammar
+from isla.type_defs import Path, Grammar, ImmutableGrammar, ImmutableList, Pair
 from isla.z3_helpers import is_valid, z3_push_in_negations, z3_subst, get_symbols, smt_expr_to_str
 
 SolutionState = List[Tuple['Constant', 'Formula', 'DerivationTree']]
@@ -2094,17 +2095,23 @@ def univ_close_over_var_push_in(
         formula: Formula,
         var: BoundVariable,
         in_var: Variable = start_constant(),
-        mexpr: Optional[BindExpression] = None) -> Formula:
+        mexpr: Optional[BindExpression] = None,
+        qfd_var: Optional[BoundVariable] = None) -> Formula:
     """Adds a universal quantifier over `var` with match expression `mexpr` and "in" variable `in_var`
     in `formula`, such that, if `formula` is a propositional combination, the new quantifier is pushed
-    inside as much as possible."""
+    inside as much as possible. To decide whether pushing in is possible, we check if `qfd_var` occurs
+    inside a formula, and push in if it does not. If `qfd_var` is None, it is set to `var`."""
+    if qfd_var is None:
+        qfd_var = var
 
-    if not ({var} | (set() if not mexpr else mexpr.bound_variables())).intersection(formula.free_variables()):
+    if not ({qfd_var} | (set() if not mexpr else mexpr.bound_variables())).intersection(formula.free_variables()):
         return formula
 
     if (isinstance(formula, PropositionalCombinator) and
-            any(var not in arg.free_variables() for arg in formula.args)):
-        return type(formula)(*map(lambda arg: univ_close_over_var_push_in(arg, var, in_var, mexpr), formula.args))
+            any(qfd_var not in arg.free_variables() for arg in formula.args)):
+        return type(formula)(*map(
+            lambda arg: univ_close_over_var_push_in(arg, var, in_var, mexpr, qfd_var),
+            formula.args))
 
     return ForallFormula(var, in_var, formula, bind_expression=mexpr)
 
@@ -2112,50 +2119,126 @@ def univ_close_over_var_push_in(
 def add_mexpr_to_qfr_over_var(
         formula: Formula,
         qfd_var: BoundVariable,
-        mexprs: Iterable[BindExpression]) -> Formula:
+        mexprs: Iterable[BindExpression],
+        grammar: Grammar) -> Formula:
     class AddMexprTransformer(NoopFormulaTransformer):
-        def __init__(self, qfd_var: BoundVariable, mexprs: Iterable[BindExpression]):
+        def __init__(self, qfd_var: BoundVariable, mexprs: Iterable[BindExpression], grammar: Grammar):
             super().__init__()
             self.qfd_var: BoundVariable = qfd_var
             self.mexprs: Iterable[BindExpression] = mexprs
+            self.grammar = grammar
 
-        def transform_forall_formula(self, formula: ForallFormula) -> Formula:
+        def transform_quantified_formula(self, formula: QuantifiedFormula) -> Formula:
             if formula.bound_variable != self.qfd_var:
                 return formula
 
             if formula.bind_expression is not None:
-                raise RuntimeError(
-                    'Cannot add a match expression to formula with match expression, ' +
-                    f'formula: {formula}, match expressions: {self.mexprs}')
+                # TODO: Convert all match expressions to trees. Retain those "new" trees that go well
+                #       together with the old one, i.e., one is a prefix of the other. Merge those.
+                mexprs = []
 
-            return reduce(Formula.__and__, [
-                ForallFormula(
-                    formula.bound_variable,
-                    formula.in_variable,
-                    formula.inner_formula,
-                    mexpr,
-                    formula.already_matched,
-                    id=formula.id)
-                for mexpr in self.mexprs])
+                orig_trees_and_paths = formula.bind_expression.to_tree_prefix(formula.bound_variable.n_type, grammar)
+                for mexpr in self.mexprs:
+                    new_trees_and_paths = mexpr.to_tree_prefix(formula.bound_variable.n_type, grammar)
 
-        def transform_exists_formula(self, formula: ExistsFormula) -> Formula:
-            if formula.bound_variable != self.qfd_var:
-                return formula
+                    orig_tree: DerivationTree
+                    new_tree: DerivationTree
+                    orig_paths: Dict[BoundVariable, Path]
+                    new_paths: Dict[BoundVariable, Path]
+                    for (orig_tree, orig_paths), (new_tree, new_paths) in \
+                            itertools.product(orig_trees_and_paths, new_trees_and_paths):
+                        # The two paths maps conflict if (1) two paths bind different variables or
+                        # (2) one path to a bound variable is the prefix of another one.
+                        if any(is_prefix(path, other_path) or
+                               is_prefix(other_path, path) or
+                               path == other_path and var != other_var
+                               for var, path in orig_paths.items()
+                               if not isinstance(var, DummyVariable)
+                               for other_var, other_path in new_paths.items()
+                               if not isinstance(other_var, DummyVariable)):
+                            continue
 
-            if formula.bind_expression is not None:
-                raise RuntimeError(
-                    'Cannot add a match expression to formula with match expression, ' +
-                    f'formula: {formula}, match expressions: {self.mexprs}')
+                        # Merge the trees
+                        resulting_tree = orig_tree
+                        resulting_paths: Dict[Path, BoundVariable] = {
+                            path: var
+                            for var, path in orig_paths.items()
+                            if not isinstance(var, DummyVariable)}
 
-            return reduce(Formula.__or__, [
-                ExistsFormula(
+                        conflict = False
+                        for new_var, new_path in new_paths.items():
+                            # Take the more specific path. They should not conflict,
+                            # i.e., have a common sub-path pointing to the same nonterminal.
+                            if resulting_tree.is_valid_path(new_path):
+                                # `resulting_tree` has a longer (or as long) path.
+                                if any(resulting_tree.get_subtree(new_path[:idx]).value !=
+                                       new_tree.get_subtree(new_path[:idx]).value
+                                       for idx in range(len(new_path))):
+                                    conflict = True
+                                    break
+
+                                if not isinstance(new_var, DummyVariable):
+                                    if resulting_tree.get_subtree(new_path).children:
+                                        conflict = True
+                                        break
+
+                                    resulting_paths[new_path] = new_var
+                            else:
+                                # `new_tree` has a longer (or as long) path.
+                                # First, find the valid prefix in `resulting_tree`.
+                                assert new_path
+                                valid_path = new_path[:-1]
+                                while valid_path and not resulting_tree.is_valid_path(valid_path):
+                                    valid_path = valid_path[:-1]
+
+                                if any(resulting_tree.get_subtree(valid_path[:idx]).value !=
+                                       new_tree.get_subtree(valid_path[:idx]).value
+                                       for idx in range(len(valid_path))):
+                                    conflict = True
+                                    break
+
+                                resulting_tree = resulting_tree.replace_path(
+                                    valid_path, new_tree.get_subtree(valid_path))
+
+                        if conflict:
+                            continue
+
+                        mexpr_elems = []
+                        for path, leaf in resulting_tree.leaves():
+                            if path in resulting_paths:
+                                mexpr_elems.append(resulting_paths[path])
+                            else:
+                                mexpr_elems.append(leaf.value)
+
+                        mexprs.append(BindExpression(*mexpr_elems))
+
+                if not mexprs:
+                    raise RuntimeError(
+                        'Could not merge the match expression of a formula with new match expressions ' +
+                        f'(there were conflicts), formula: {formula}, match expressions: {self.mexprs}')
+            else:
+                mexprs = self.mexprs
+
+            return reduce(
+                Formula.__and__ if isinstance(formula, ForallFormula)
+                else Formula.__or__,
+                [type(formula)(
                     formula.bound_variable,
                     formula.in_variable,
                     formula.inner_formula,
                     mexpr)
-                for mexpr in self.mexprs])
+                    for mexpr in mexprs])
 
-    return formula.transform(AddMexprTransformer(qfd_var, mexprs))
+        def transform_forall_formula(self, formula: ForallFormula) -> Formula:
+            return self.transform_quantified_formula(formula)
+
+        def transform_exists_formula(self, formula: ExistsFormula) -> Formula:
+            return self.transform_quantified_formula(formula)
+
+    return formula.transform(AddMexprTransformer(qfd_var, mexprs, grammar))
+
+
+ParsedXPathExpr = ImmutableList[ImmutableList[Pair[str, int]]]
 
 
 class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
@@ -2185,8 +2268,11 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
         self.mgr = VariableManager(self.grammar)
         self.used_variables: Optional[OrderedSet[str]] = None
+
+        # TODO: Free nonterminals and XPath expressions should be contextualized,
+        #       such that `...<A>... and (exists <A>: ...<A>...)` is possible!
         self.vars_for_free_nonterminals: Dict[str, BoundVariable] = {}
-        self.vars_for_xpath_expressions: Dict[str, BoundVariable] = {}
+        self.vars_for_xpath_expressions: Dict[ParsedXPathExpr, BoundVariable] = {}
 
     def parse_mexpr(self, inp: str, mgr: VariableManager) -> BindExpression:
         lexer = MexprLexer(InputStream(inp))
@@ -2215,39 +2301,186 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         return fresh_var
 
     def register_var_for_xpath_expression(self, xpath_expr: str) -> BoundVariable:
+        parsed_xpath_expr = self.parse_xpath_expr(xpath_expr)
         if xpath_expr in self.vars_for_xpath_expressions:
-            return self.vars_for_xpath_expressions[xpath_expr]
+            return self.vars_for_xpath_expressions[parsed_xpath_expr]
 
-        nonterminal = [seg_2 for seg_1 in xpath_expr.split('.') for seg_2 in seg_1.split('..')][-1]
-        indexed_nonterminal_re = re.compile(r'^(.*?)\[[1-9]+]$')
-
-        maybe_match = indexed_nonterminal_re.match(nonterminal)
-        if maybe_match:
-            nonterminal = maybe_match.group(1)
-
-        assert nonterminal[0] == '<'
-        assert nonterminal[-1] == '>'
-        assert len(nonterminal) > 2
+        last_nonterminal: str = parsed_xpath_expr[-1][-1][0]
+        assert is_nonterminal(last_nonterminal)
 
         fresh_var = fresh_bound_variable(
             self.used_variables |
             {var.name for var in self.vars_for_free_nonterminals.values()} |
             {var.name for var in self.vars_for_xpath_expressions.values()},
-            BoundVariable(nonterminal[1:-1], nonterminal),
+            BoundVariable(last_nonterminal[1:-1], last_nonterminal),
             add=False)
 
         self.mgr.bv(fresh_var.name, fresh_var.n_type)
-        self.vars_for_xpath_expressions[xpath_expr] = fresh_var
+        self.vars_for_xpath_expressions[parsed_xpath_expr] = fresh_var
 
         return fresh_var
 
+    @staticmethod
+    @lru_cache(100)
+    def parse_xpath_expr(xpath_expr: str) -> ParsedXPathExpr:
+        """
+        The returned list contains one element per XPath "segment," i.e., a chain
+        that is not interrupted by `..`. Each sub list contains one element for
+        each `.`-separated chain of an XPath expression consisting of the name of
+        the accessed element and an index. Indices are counted from 0, as opposed
+        to 1 in the concrete syntax.
+
+        :param xpath_expr:  The XPath expression to process.
+        :return: The result of parsing the XPath expression.
+        """
+        return tuple([
+            tuple([
+                (elem, 0) if '[' not in elem
+                else (elem.split('[')[0], int(elem.split('[')[1][:-1]) - 1)
+                for elem in seg.split('.')])
+            for seg in xpath_expr.split('..')])
+
     def close_over_free_nonterminals(self, formula: Formula) -> Formula:
-        for var_name, var in reversed(list(self.vars_for_free_nonterminals.items())):
+        # When closing over "free nonterminals", we exclude those (for the simple first run)
+        # who appear as a first element in an XPath expression. Those are quantified over
+        # afterward; else we'd obtain spurious quantifiers.
+        free_nonterminal_vars = [
+            var for nonterminal, var in self.vars_for_free_nonterminals.items()
+            if all(not segments or not segments[0] or segments[0][0][0] != nonterminal
+                   for segments in self.vars_for_xpath_expressions.keys())]
+
+        free_nonterminal_vars_also_in_xpath_expr = {
+            nonterminal: var
+            for nonterminal, var in self.vars_for_free_nonterminals.items()
+            if var not in free_nonterminal_vars}
+
+        for var in reversed(free_nonterminal_vars):
             formula = univ_close_over_var_push_in(formula, var)
+
+        fresh_vars: Dict[str, BoundVariable] = {}
+
+        for segments, bound_variable in list(self.vars_for_xpath_expressions.items()):
+            if is_nonterminal(segments[0][0][0]):
+                var_type = segments[0][0][0]
+                if var_type in fresh_vars:
+                    var = fresh_vars[var_type]
+                else:
+                    var = fresh_bound_variable(
+                        self.used_variables,
+                        BoundVariable(var_type[1:-1], var_type),
+                        add=False)
+                    fresh_vars[var_type] = var
+                    self.used_variables.add(var.name)
+
+                    if var_type in free_nonterminal_vars_also_in_xpath_expr:
+                        formula = formula.substitute_variables(
+                            {free_nonterminal_vars_also_in_xpath_expr[var_type]: var})
+
+                    formula = univ_close_over_var_push_in(formula, var, qfd_var=bound_variable)
+
+                new_segments = list_set(segments, 0, list_set(segments[0], 0, (var.name, 0)))
+                del self.vars_for_xpath_expressions[segments]
+                self.vars_for_xpath_expressions[new_segments] = bound_variable
 
         return formula
 
     def close_over_xpath_expressions(self, formula: Formula) -> Formula:
+        if not self.vars_for_xpath_expressions:
+            return formula
+
+        assert self.grammar is not None, 'You need to pass a grammar to process "XPath" expressions in formulas.'
+
+        # We assume all XPath expressions start with a variable, e.g., `var.nt1[1].nt2[1]..nt3.nt4[0]`.
+        # If one started with a nonterminal, it should have been existentially quantified over.
+        assert all(not is_nonterminal(parsed_xpath_expr[0][0][0])
+                   for parsed_xpath_expr in self.vars_for_xpath_expressions)
+
+        # We reduce the first XPath expression and proceed recursively until `self.var_for_xpath_expressions`
+        # is empty. Consequently, it's crucial that we update this map as we proceed.
+
+        xpath_expr: ParsedXPathExpr = next(iter(self.vars_for_xpath_expressions))
+        assert xpath_expr
+        final_bound_variable = self.vars_for_xpath_expressions[xpath_expr]
+        del self.vars_for_xpath_expressions[xpath_expr]
+
+        # Either, the first XPath segment consists of multiple elements, or we have more than one segment.
+        assert len(xpath_expr) > 1 or len(xpath_expr[0]) > 1
+
+        if len(xpath_expr) > 1 and len(xpath_expr[0]) == 1:
+            # If the first of more than one XPath segments is a variable, we can eliminate
+            # that segment by introducing a quantifier.
+            raise NotImplementedError()
+
+        # TODO: Update strategy for the case that we have multiple match expressions
+        #       whose first segments point to the same variable! Then, we might have
+        #       to update also other dictionary entries.
+        # We eliminate the first XPath segment by
+        #
+        # 1. Creating a suitable match expression. If there is only one XPath segment,
+        #    the match expression binds `final_bound_variable`; otherwise, it binds
+        #    a fresh variable.
+        # 2. We attach the match expression to the corresponding quantifier, which might
+        #    involve "merging" match expressions.
+        # 3. We update `self.vars_for_xpath_expressions if more XPath segments remain.
+        #    Then, we replace the first remaining segment to point by the new bound variable.
+        # 4. Finally, we proceed recursively until `self.vars_for_xpath_expressions` is empty.
+
+        # 1. Create a suitable match expression.
+
+        def find_var(var_name: str, error_message: str) -> Variable:
+            try:
+                return next(
+                    var for var in VariablesCollector.collect(formula)
+                    if var.name == var_name)
+            except StopIteration:
+                raise RuntimeError(error_message)
+
+        first_var = cast(
+            BoundVariable,
+            find_var(xpath_expr[0][0][0], f'Unknown variable {xpath_expr[0][0][0]} in XPath expression.'))
+
+        # TODO: Simplify expand_mexpr_trees; we only need to expand one now.
+        partial_mexpr_trees = self.expand_mexpr_trees({DerivationTree(first_var.n_type): [()]}, xpath_expr[0])
+
+        if not partial_mexpr_trees:
+            raise RuntimeError(
+                'Could not convert XPath expressions to match expressions. ' +
+                'Please check the XPath expressions in your formula, including for conflicts.')
+
+        if len(xpath_expr) == 1:
+            bound_var = final_bound_variable
+        else:
+            bound_var_type = xpath_expr[0][-1][0]
+            assert is_nonterminal(bound_var_type)
+            bound_var = fresh_bound_variable(self.used_variables, bound_var_type[1:-1], add=False)
+            self.used_variables.add(bound_var.name)
+
+        match_expressions = []
+        for expanded_match_expression, paths_to_bound_vars in partial_mexpr_trees.items():
+            assert len(paths_to_bound_vars) == 1
+            paths_to_bound_vars_map = dict(zip(paths_to_bound_vars, [bound_var]))
+            mexpr_elems = []
+            for path, leaf in expanded_match_expression.leaves():
+                if path in paths_to_bound_vars_map:
+                    mexpr_elems.append(paths_to_bound_vars_map[path])
+                else:
+                    mexpr_elems.append(leaf.value)
+
+            match_expressions.append(BindExpression(*mexpr_elems))
+
+        # 2. Attach match expression to existing quantifier
+        formula = add_mexpr_to_qfr_over_var(formula, first_var, match_expressions, self.grammar)
+
+        # 3. Update `self.vars_for_xpath_expressions if more XPath segments remain.
+        if len(xpath_expr) > 1:
+            self.vars_for_xpath_expressions[list_set(
+                xpath_expr[1:], 0,
+                list_set(xpath_expr[1:], 0, (bound_var.name, 0)))] = final_bound_variable
+
+        # 4. Proceed recursively.
+        return self.close_over_xpath_expressions(formula)
+
+    def close_over_xpath_expressions_old(self, formula: Formula) -> Formula:
         if not self.vars_for_xpath_expressions:
             return formula
 
@@ -2271,7 +2504,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             groups.setdefault(xpath_segments[0][0][0], []).append((xpath_segments, bound_mexpr_var))
 
         group: List[Tuple[List[List[Tuple[str, int]]], BoundVariable]]
-        for bound_var_name_or_type, group in groups.items():
+        for final_bound_var_name_or_type, group in groups.items():
             assert all(len(xpath_segments) > 0 for xpath_segments, _ in group)
             assert all(len(xpath_segments) > 1 or len(xpath_segments[0]) > 1 for xpath_segments, _ in group)
             assert all(
@@ -2281,16 +2514,90 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                 for xpath_segments, _ in group
                 for xpath_segment in xpath_segments)
 
+            # We first eliminate XPath expressions of the shape `var..segments`, where var is
+            # an existing variable in the formula. Then, we recursively continue.
+            simple_descendant_xpath_exprs = [
+                (segments, bound_mexpr_var)
+                for segments, bound_mexpr_var in preprocessed_xpath_exprs_with_vars
+                if len(segments) > 1 and len(segments[0]) == 1 and not is_nonterminal(segments[0][0][0])
+            ]
+
+            if simple_descendant_xpath_exprs:
+                for segments, bound_mexpr_var in simple_descendant_xpath_exprs:
+                    var_name = segments[0][0][0]
+                    assert segments[1][0][1] == 0, \
+                        'You cannot use an indexed expression after the `..` descendant axis.'
+                    bound_var_type = segments[1][0][0]
+                    assert is_nonterminal(bound_var_type), 'A .. axis invocation must be followed by a nonterminal.'
+
+                    if len(segments) == 2 and len(segments[1]) == 1:
+                        # Expression after `..` refers to the already introduced variable present in the subformula.
+                        bound_var = bound_mexpr_var
+
+                        # We can eliminate this XPath expression entirely;
+                        # remove it from the dictionary to stop recursion.
+                        self.vars_for_xpath_expressions = {
+                            xpath_expr: var
+                            for xpath_expr, var in self.vars_for_xpath_expressions.items()
+                            if var != bound_var
+                        }
+                    else:
+                        bound_var_name = bound_var_type[1:-1]
+                        bound_var = fresh_bound_variable(
+                            self.used_variables,
+                            BoundVariable(bound_var_name, bound_var_type),
+                            add=False)
+                        self.used_variables.add(bound_var.name)
+
+                        # We can simplify this XPath expression: `var..<bound_var_type>...` gets `bound_var...`.
+                        # Update the dictionary to ensure termination of recursion.
+                        # TODO: Implement this, write test case (nontrivial following segment)
+                        raise NotImplementedError()
+                        self.vars_for_xpath_expressions = {
+                            xpath_expr: var
+                            for xpath_expr, var in self.vars_for_xpath_expressions.items()
+                            if var != bound_var
+                        }
+
+                    class AddQuantifierTransformer(NoopFormulaTransformer):
+                        def transform_qfd_formula(self, subformula: QuantifiedFormula) -> Formula:
+                            bound_variable_in_subformula = [
+                                var for var in subformula.bound_variables() if var.name == var_name]
+                            if not bound_variable_in_subformula:
+                                return subformula
+                            assert len(bound_variable_in_subformula) == 1
+
+                            return type(subformula)(
+                                subformula.bound_variable,
+                                subformula.in_variable,
+                                ForallFormula(
+                                    bound_var,
+                                    bound_variable_in_subformula[0],
+                                    subformula.inner_formula),
+                                subformula.bind_expression)
+
+                        def transform_exists_formula(self, subformula: ExistsFormula) -> Formula:
+                            return self.transform_qfd_formula(subformula)
+
+                        def transform_forall_formula(self, subformula: ForallFormula) -> Formula:
+                            return self.transform_qfd_formula(subformula)
+
+                    formula = formula.transform(AddQuantifierTransformer())
+
+                return self.close_over_xpath_expressions(formula)
+
             # Only as intermediate simplification:
+            # TODO: Handle nontrivial XPath descendent expressions
             assert all(len(xpath_segments) == 1 for xpath_segments, _ in group), 'The .. axis is not yet supported'
 
             is_existing_var = False
-            if is_nonterminal(bound_var_name_or_type) and bound_var_name_or_type in self.vars_for_free_nonterminals:
-                bound_var = self.vars_for_free_nonterminals[bound_var_name_or_type]
+            if is_nonterminal(
+                    final_bound_var_name_or_type) and final_bound_var_name_or_type in self.vars_for_free_nonterminals:
+                bound_var = self.vars_for_free_nonterminals[final_bound_var_name_or_type]
                 bound_var_type = bound_var.n_type
                 is_existing_var = bound_var in BoundVariablesCollector.collect(formula)
-            elif is_nonterminal(bound_var_name_or_type):
-                bound_var_type = bound_var_name_or_type
+            elif is_nonterminal(final_bound_var_name_or_type):
+                bound_var_type = final_bound_var_name_or_type
                 bound_var_name = bound_var_type[1:-1]
                 bound_var = fresh_bound_variable(
                     self.used_variables,
@@ -2301,10 +2608,10 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                 try:
                     bound_var = next(
                         var for var in VariablesCollector.collect(formula)
-                        if var.name == bound_var_name_or_type)
+                        if var.name == final_bound_var_name_or_type)
                 except StopIteration:
                     raise RuntimeError(
-                        f'Unknown variable {bound_var_name_or_type} in '
+                        f'Unknown variable {final_bound_var_name_or_type} in '
                         f'XPath expression {group[0][0]}')
 
                 is_existing_var = True
@@ -2339,7 +2646,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             #       quantifiers have to be put on a lower level. Well, that's actually also true
             #       for "free" initial qfrs.
             if is_existing_var:
-                formula = add_mexpr_to_qfr_over_var(formula, bound_var, match_expressions)
+                formula = add_mexpr_to_qfr_over_var(formula, bound_var, match_expressions, self.grammar)
             else:
                 formula = reduce(
                     Formula.__and__,
@@ -2349,7 +2656,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         return ensure_unique_bound_variables(formula)
 
     def expand_mexpr_trees(
-            self, partial_mexpr_trees: Dict[DerivationTree, List[Path]], xpath_segment: List[Tuple[str, int]]):
+            self, partial_mexpr_trees: Dict[DerivationTree, List[Path]], xpath_segment: ImmutableList[Tuple[str, int]]):
         for nonterminal, position in xpath_segment[1:]:
             old_partial_mexpr_trees = dict(partial_mexpr_trees)
             partial_mexpr_trees: Dict[DerivationTree, List[Path]] = {}
@@ -2407,8 +2714,9 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             formula = ensure_unique_bound_variables(formula)
             self.used_variables.update({var.name for var in VariablesCollector.collect(formula)})
             self.result = \
-                self.close_over_xpath_expressions(
-                    self.close_over_free_nonterminals(formula))
+                ensure_unique_bound_variables(
+                    self.close_over_xpath_expressions(
+                        self.close_over_free_nonterminals(formula)))
 
             free_variables = [var for var in self.result.free_variables() if not isinstance(var, Constant)]
             if free_variables:
@@ -2466,6 +2774,14 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                     f"(line {ctx.varId.line}, column {ctx.varId.column})")
         else:
             var = self.register_var_for_free_nonterminal(var_type)
+            # This "free" nonterminal is bound now; remove it from the free nonterminals map.
+            del self.vars_for_free_nonterminals[var_type]
+            # ... and the XPath expressions map.
+            for segments, final_var in list(self.vars_for_xpath_expressions.items()):
+                if segments[0][0][0] == var_type:
+                    del self.vars_for_xpath_expressions[segments]
+                    new_segments = list_set(segments, 0, list_set(segments[0], 0, (var.name, 0)))
+                    self.vars_for_xpath_expressions[new_segments] = final_var
             var_id = var.name
 
         if ctx.inId:
@@ -2568,18 +2884,17 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
         # We have to replace XPath expressions in the formula, since they can break
         # the parsing (e.g., with `<a>[2]` indexed expressions).
-        for xpath_expr in self.vars_for_xpath_expressions:
-            formula_text = formula_text.replace(xpath_expr, f'var_{abs(hash(xpath_expr))}')
+        # for xpath_expr in self.vars_for_xpath_expressions:
+        #     formula_text = formula_text.replace(xpath_expr, f'var_{abs(hash(xpath_expr))}')
 
         try:
             z3_constr = z3.parse_smt2_string(
                 f"(assert {formula_text})",
                 decls=({var: z3.String(var)
                         for var in self.known_var_names()} |
-                       {nonterminal: z3.String(var.name)
-                        for nonterminal, var in self.vars_for_free_nonterminals.items()} |
-                       {f'var_{abs(hash(xpath_expr))}': z3.String(var.name)
-                        for xpath_expr, var in self.vars_for_xpath_expressions.items()}))[0]
+                       {var.name: z3.String(var.name)
+                        for var in (set(self.vars_for_free_nonterminals.values()) |
+                                    set(self.vars_for_xpath_expressions.values()))}))[0]
         except z3.Z3Exception as exp:
             raise SyntaxError(
                 f"Error parsing SMT formula '{formula_text}', {exp.value.decode().strip()}")
@@ -2603,18 +2918,15 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         if not ISLaEmitter.is_protected_smtlib_keyword(id_text):
             self.get_var(id_text)  # Simply register variable
 
-    def enterSexprXPathExpr(self, ctx: IslaLanguageParser.SexprXPathExprContext):
-        self.register_var_for_xpath_expression(parse_tree_text(ctx))
-
     def exitSexprXPathExpr(self, ctx: IslaLanguageParser.SexprXPathExprContext):
-        self.smt_expressions[ctx] = parse_tree_text(ctx)
-
-    def enterSexprFreeId(self, ctx: IslaLanguageParser.SexprFreeIdContext):
-        nonterminal = parse_tree_text(ctx.VAR_TYPE())
-        self.register_var_for_free_nonterminal(nonterminal)
+        # TODO: Handle XPath expressions in predicates?
+        new_var = self.register_var_for_xpath_expression(parse_tree_text(ctx))
+        self.smt_expressions[ctx] = new_var.name
 
     def exitSexprFreeId(self, ctx: IslaLanguageParser.SexprFreeIdContext):
-        self.smt_expressions[ctx] = parse_tree_text(ctx)
+        nonterminal = parse_tree_text(ctx.VAR_TYPE())
+        var = self.register_var_for_free_nonterminal(nonterminal)
+        self.smt_expressions[ctx] = var.name
 
     def exitSexprStr(self, ctx: IslaLanguageParser.SexprStrContext):
         self.smt_expressions[ctx] = antlr_get_text_with_whitespace(ctx)
