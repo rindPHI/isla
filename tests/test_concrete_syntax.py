@@ -539,6 +539,30 @@ forall <xml-open-tag> xml-open-tag_0="<{<id> id_0}>" in start:
 
         self.assertEqual(expected, result)
 
+    def test_config_grammar_fuzzingbook(self):
+        # Test case from https://www.fuzzingbook.org/beta/html/FuzzingWithConstraints.html
+        config_grammar = {
+            "<start>": ["<config>"],
+            "<config>": [
+                "pagesize=<pagesize>\n"
+                "bufsize=<bufsize>"
+            ],
+            "<pagesize>": ["<int>"],
+            "<bufsize>": ["<int>"],
+            "<int>": ["<leaddigit><digits>"],
+            "<digits>": ["", "<digit><digits>"],
+            "<digit>": list("0123456789"),
+            "<leaddigit>": list("123456789")
+        }
+
+        result = parse_isla('<config>..<digit> = "7"', config_grammar)
+        expected = parse_isla(f'''
+forall <config> config in start:
+  forall <digit> in config:
+     (= digit "7")''')
+
+        self.assertEqual(unparse_isla(expected), unparse_isla(result))
+
 
 if __name__ == '__main__':
     unittest.main()
