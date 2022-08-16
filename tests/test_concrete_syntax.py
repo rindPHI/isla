@@ -198,12 +198,12 @@ forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
         result = parse_isla('exists <var> var in start: (= var <var>)')
         expected = parse_isla('forall <var> var_0 in start: exists <var> var in start: (= var var_0)')
 
-        self.assertEqual(expected, result)
+        self.assertEqual(unparse_isla(expected), unparse_isla(result))
 
     def test_free_nonterminal_predicate(self):
         result = parse_isla('before(<var>, <expr>)', structural_predicates={BEFORE_PREDICATE})
         expected = parse_isla(
-            'forall <var> var in start: forall <expr> expr in start: before(var, expr)',
+            'forall <expr> expr in start: forall <var> var in start: before(var, expr)',
             structural_predicates={BEFORE_PREDICATE})
 
         self.assertEqual(expected, result)
@@ -228,9 +228,11 @@ forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
 
     def test_default_name_nested(self):
         result = parse_isla('forall <expr> in start: exists <elem> in <var>: (= <elem> "x")')
-        expected = parse_isla(
-            'forall <var> var in start: '
-            '  forall <expr> expr in start: exists <elem> elem in var: (= elem "x")')
+        expected = parse_isla('''
+forall <expr> expr in start:
+  forall <var> var in start:
+    exists <elem> elem in var:
+      (= elem "x")'''.strip())
 
         self.assertEqual(expected, result)
 
@@ -516,22 +518,26 @@ forall <xml-open-tag> optag="<{<id> id}>" in start:
         result = parse_isla(
             'forall <xml-open-tag> optag="<{<id> id}>" in start: (id..<id-char> = "a" or id..<id-char> = "b")',
             grammar=XML_GRAMMAR)
+
         expected = parse_isla('''
 forall <xml-open-tag> optag="<{<id> id}>" in start: 
   forall <id-char> id-char in id:
     (id-char = "a" or id-char = "b")''')
-        self.assertEqual(expected, result)
+
+        self.assertEqual(unparse_isla(expected), unparse_isla(result))
 
     def test_xml_descendant_axis(self):
         result = parse_isla('<xml-open-tag>.<id>..<id-char> = "a"', grammar=XML_GRAMMAR)
+
         expected = parse_isla('''
-forall <xml-open-tag> xml-open-tag="<{<id> id}>" in start: 
+forall <xml-open-tag> xml-open-tag="<{<id> id} <xml-attribute>>" in start: 
   forall <id-char> id-char in id:
     id-char = "a" and
-forall <xml-open-tag> xml-open-tag_0="<{<id> id_0} <xml-attribute>>" in start:
+forall <xml-open-tag> xml-open-tag_0="<{<id> id_0}>" in start:
   forall <id-char> id-char_0 in id_0:
     id-char_0 = "a"''')
-        self.assertEqual(unparse_isla(expected), unparse_isla(result))
+
+        self.assertEqual(expected, result)
 
 
 if __name__ == '__main__':

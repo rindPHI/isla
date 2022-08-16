@@ -2097,21 +2097,54 @@ def univ_close_over_var_push_in(
         in_var: Variable = start_constant(),
         mexpr: Optional[BindExpression] = None,
         qfd_var: Optional[BoundVariable] = None) -> Formula:
-    """Adds a universal quantifier over `var` with match expression `mexpr` and "in" variable `in_var`
-    in `formula`, such that, if `formula` is a propositional combination, the new quantifier is pushed
-    inside as much as possible. To decide whether pushing in is possible, we check if `qfd_var` occurs
-    inside a formula, and push in if it does not. If `qfd_var` is None, it is set to `var`."""
+    """
+    Adds a universal quantifier over `var` with match expression `mexpr` and "in" variable `in_var`
+    in `formula`, such that, if `formula` is a propositional combination or a universal quantifier,
+    the new quantifier is pushed inside as much as possible.
+
+    We consider pushing in possible if:
+    1. `formula` is a propositional combination and
+    1a. it has one argument in which `qfd_var` does not occur, *or*
+    1b. `in_var` is bound by a quantifier inside one of the arguments; or
+    2. `formula` is a universal formula that does not use `var` as container ("in") variable.
+
+    :param formula: The formula into which to push in a new universal quantifier.
+    :param var: The bound variable of the new universal quantifier.
+    :param in_var: The container ("in") variable of the new universal quantifier.
+    :param mexpr: The match expression of the new universal quantifier.
+    :param qfd_var: A variable to decide whether pushing in is possible or not. Defaults to `var`.
+    :return: A formula with an added quantifier, or the original formula if `qfd_var` does
+    not occur freely in `formula`.
+    """
+
     if qfd_var is None:
         qfd_var = var
 
-    if not ({qfd_var} | (set() if not mexpr else mexpr.bound_variables())).intersection(formula.free_variables()):
+    mexpr_vars = (set() if not mexpr else mexpr.bound_variables())
+    all_new_bound_vars = {qfd_var} | mexpr_vars
+
+    if not all_new_bound_vars.intersection(formula.free_variables()):
         return formula
+
+    if isinstance(formula, PropositionalCombinator):
+        if (any(qfd_var not in arg.free_variables() for arg in formula.args) or
+                any(in_var in BoundVariablesCollector().collect(arg) for arg in formula.args)):
+            return type(formula)(*map(
+                lambda arg: univ_close_over_var_push_in(arg, var, in_var, mexpr, qfd_var),
+                formula.args))
 
     if (isinstance(formula, PropositionalCombinator) and
             any(qfd_var not in arg.free_variables() for arg in formula.args)):
         return type(formula)(*map(
             lambda arg: univ_close_over_var_push_in(arg, var, in_var, mexpr, qfd_var),
             formula.args))
+
+    if isinstance(formula, ForallFormula) and var != formula.in_variable:
+        return ForallFormula(
+            formula.bound_variable,
+            formula.in_variable,
+            univ_close_over_var_push_in(formula.inner_formula, var, in_var, mexpr, qfd_var),
+            formula.bind_expression)
 
     return ForallFormula(var, in_var, formula, bind_expression=mexpr)
 
@@ -2409,11 +2442,28 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         if len(xpath_expr) > 1 and len(xpath_expr[0]) == 1:
             # If the first of more than one XPath segments is a variable, we can eliminate
             # that segment by introducing a quantifier.
-            raise NotImplementedError()
+            in_var_name = xpath_expr[0][0][0]
+            assert not is_nonterminal(in_var_name)
+            in_var = next(var for var in VariablesCollector().collect(formula) if var.name == in_var_name)
+            bound_var_type = xpath_expr[1][0][0]
+            assert is_nonterminal(bound_var_type)
 
-        # TODO: Update strategy for the case that we have multiple match expressions
-        #       whose first segments point to the same variable! Then, we might have
-        #       to update also other dictionary entries.
+            if len(xpath_expr) == 2 and len(xpath_expr[1]) == 1:
+                bound_var = final_bound_variable
+            else:
+                bound_var = fresh_bound_variable(
+                    self.used_variables,
+                    BoundVariable(bound_var_type[1:-1], bound_var_type),
+                    add=False)
+                self.used_variables.add(bound_var.name)
+
+                xpath_expr = list_set(xpath_expr[1:], 0, list_set(xpath_expr[1], 0, (bound_var.name, 0)))
+                self.vars_for_xpath_expressions[xpath_expr] = final_bound_variable
+
+            formula = univ_close_over_var_push_in(formula, bound_var, in_var=in_var, qfd_var=final_bound_variable)
+
+            return self.close_over_xpath_expressions(formula)
+
         # We eliminate the first XPath segment by
         #
         # 1. Creating a suitable match expression. If there is only one XPath segment,
@@ -2452,7 +2502,10 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         else:
             bound_var_type = xpath_expr[0][-1][0]
             assert is_nonterminal(bound_var_type)
-            bound_var = fresh_bound_variable(self.used_variables, bound_var_type[1:-1], add=False)
+            bound_var = fresh_bound_variable(
+                self.used_variables,
+                BoundVariable(bound_var_type[1:-1], bound_var_type),
+                add=False)
             self.used_variables.add(bound_var.name)
 
         match_expressions = []
@@ -2474,8 +2527,8 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         # 3. Update `self.vars_for_xpath_expressions if more XPath segments remain.
         if len(xpath_expr) > 1:
             self.vars_for_xpath_expressions[list_set(
-                xpath_expr[1:], 0,
-                list_set(xpath_expr[1:], 0, (bound_var.name, 0)))] = final_bound_variable
+                xpath_expr, 0,
+                ((bound_var.name, 0),))] = final_bound_variable
 
         # 4. Proceed recursively.
         return self.close_over_xpath_expressions(formula)
