@@ -1,6 +1,8 @@
 ISLa: Input Specification Language
 ==================================
 
+![Build Status](https://img.shields.io/github/workflow/status/rindPHI/isla/Test%20ISLa)
+
 ISLa is a grammar-aware String constraint solver with its own specification
 language. The language is a superset of SMT-LIB for String constraints, and adds
 the power of structural quantifiers over derivation trees on top. ISLa supports
