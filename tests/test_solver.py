@@ -797,6 +797,11 @@ str.len(<string>.<chars>) and
         self.assertEqual(0, ord(str(high_byte)))
         self.assertEqual(len(str(chars)), ord(str(low_byte)))
 
+    @pytest.mark.skip('Test not working / not ready')
+    def test_unsatisfiable_smt_atom(self):
+        solver = ISLaSolver(LANG_GRAMMAR, '<var> = "aa"')
+        next(solver.solve())
+
 
 if __name__ == '__main__':
     unittest.main()

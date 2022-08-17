@@ -245,7 +245,9 @@ class ISLaSolver:
         self.graph = GrammarGraph.from_grammar(self.grammar)
         self.canonical_grammar = canonical(self.grammar)
         self.timeout_seconds = timeout_seconds
+        self.start_time: Optional[int] = None
         self.global_fuzzer = global_fuzzer
+        self.fuzzer = fuzzer_factory(self.grammar)
         self.fuzzer_factory = fuzzer_factory
         self.predicates_unique_in_int_arg: Set[language.SemanticPredicate] = set(predicates_unique_in_int_arg)
         self.tree_insertion_methods = tree_insertion_methods
@@ -307,6 +309,8 @@ class ISLaSolver:
             heapq.heappush(self.queue, (self.compute_cost(state), state))
         self.current_level = 0
 
+        self.solutions: List[DerivationTree] = []
+
         # Debugging stuff
         self.debug = debug
         self.state_tree: Dict[SolutionState, List[SolutionState]] = {}  # is only filled if self.debug
@@ -335,18 +339,34 @@ class ISLaSolver:
 
     def solve(self) -> Generator[DerivationTree, None, None]:
         """
-        Produces solutions to the constraint passed to the solver instance.
-        Take care to repeatedly call `next(...)` on the *same* generator object (don't call `solve()` repeatedly).
+        Produces solutions to the constraint passed to the solver instance. If the parameter `timeout_seconds`
+        has been passed to the `ISLaSolver` constructor, the generator will stop if the chosen number of
+        seconds have expired.
+
         :return: A generator of solutions.
         """
-        start_time = int(time.time())
-        fuzzer = self.fuzzer_factory(self.grammar)
+
+        inp = self.fuzz()
+        while inp is not None:
+            yield inp
+            inp = self.fuzz()
+
+    def fuzz(self) -> Optional[DerivationTree]:
+        """
+        Attempts to compute a solution to the given ISLa formula. Returns that solution, if any.
+        This function can be called repeatedly to obtain more solutions until `None` is returned.
+        After that, only `None` will be returned at each call.
+
+        If the parameter `timeout_seconds` has been passed to the `ISLaSolver` constructor, `None`
+        will also be returned after the chosen number of seconds have expired.
+
+        :return: A solution for the ISLa formula passed to the `ISLaSolver`, or `None` if no solution
+        could be found.
+        """
+        if self.timeout_seconds is not None and self.start_time is None:
+            self.start_time = int(time.time())
 
         while self.queue:
-            if self.timeout_seconds is not None:
-                if int(time.time()) - start_time > self.timeout_seconds:
-                    return
-
             # import dill as pickle
             # state_hash = -7249231706094547066
             # out_file = "/tmp/saved_debug_state"
@@ -355,6 +375,13 @@ class ISLaSolver:
             #         pickle.dump(self, debug_state_file)
             #     print(f"Dumping state to {out_file}")
             #     exit()
+
+            if self.timeout_seconds is not None:
+                if int(time.time()) - self.start_time > self.timeout_seconds:
+                    return None
+
+            if self.solutions:
+                return self.solutions.pop(0)
 
             cost: int
             state: SolutionState
@@ -376,92 +403,83 @@ class ISLaSolver:
             state = self.instantiate_structural_predicates(state)
 
             if state.constraint == sc.false():
-                continue
-
+                # This state can be silently discarded.
+                pass
             # Eliminate existential quantifiers over integers -> replace by constants
-            result_state = self.eliminate_existential_integer_quantifiers(state)
-            if result_state is not None:
-                yield from self.process_new_state(result_state)
-                continue
-
+            elif (result_state := self.eliminate_existential_integer_quantifiers(state)) is not None:
+                self.solutions.extend(self.process_new_state(result_state))
             # Eliminate universal quantifiers over integers -> random choice up to max_number_free_instantiations times
-            result_states = self.instantiate_universal_integer_quantifiers(state)
-            if result_states is not None:
-                yield from self.process_new_states(result_states)
-                continue
-
+            elif (result_states := self.instantiate_universal_integer_quantifiers(state)) is not None:
+                self.solutions.extend(self.process_new_states(result_states))
             # Match all universal formulas
-            result_states = self.match_all_universal_formulas(state)
-            if result_states is not None:
-                yield from self.process_new_states(result_states)
-                continue
-
+            elif (result_states := self.match_all_universal_formulas(state)) is not None:
+                self.solutions.extend(self.process_new_states(result_states))
             # Expand if there are any not yet eliminated / matched universal quantifiers
-            if any(isinstance(conjunct, language.ForallFormula) for conjunct in get_conjuncts(state.constraint)):
+            elif any(isinstance(conjunct, language.ForallFormula) for conjunct in get_conjuncts(state.constraint)):
                 expanded_states = self.expand_tree(state)
                 assert len(expanded_states) > 0, f"State {state} will never leave the queue."
-
                 self.logger.debug("Expanding state %s (%d successors)", state, len(expanded_states))
-                yield from self.process_new_states(expanded_states)
-                continue
 
+                self.solutions.extend(self.process_new_states(expanded_states))
             # Eliminate all semantic formulas
-            result_states = self.eliminate_all_semantic_formulas(state)
-            if result_states is not None:
-                yield from self.process_new_states(result_states)
-                continue
-
+            elif (result_states := self.eliminate_all_semantic_formulas(state)) is not None:
+                self.solutions.extend(self.process_new_states(result_states))
             # Eliminate all ready semantic predicate formulas
-            result_state = self.eliminate_all_ready_semantic_predicate_formulas(state)
-            if result_state is not None:
-                yield from self.process_new_state(result_state)
-                continue
-
+            elif (result_state := self.eliminate_all_ready_semantic_predicate_formulas(state)) is not None:
+                self.solutions.extend(self.process_new_state(result_state))
             # Eliminate first existential formula
-            result_states = self.eliminate_first_match_all_existential_formulas(state)
-            if result_states is not None:
-                yield from self.process_new_states(result_states)
+            elif (result_states := self.eliminate_first_match_all_existential_formulas(state)) is not None:
+                self.solutions.extend(self.process_new_states(result_states))
                 # Also add some expansions of the original state, to create a larger
                 # solution stream (otherwise, it might be possible that only a small
                 # finite number of solutions are generated for existential formulas).
-                yield from self.process_new_states(self.expand_tree(state, limit=2, only_universal=False))
-                continue
-
-            # semantic predicate formulas can remain if they bind lazily. In that case, we can choose a random
-            # instantiation and let the predicate "fix" the resulting tree.
-            assert (state.constraint == sc.true() or
-                    all(isinstance(conjunct, language.SemanticPredicateFormula)
-                        or (isinstance(conjunct, language.NegatedFormula) and
-                            isinstance(conjunct.args[0], language.SemanticPredicateFormula))
-                        for conjunct in get_conjuncts(state.constraint))), \
-                f"Constraint is not true and contains formulas " \
-                f"other than semantic predicate formulas: {state.constraint}"
-            assert (state.constraint == sc.true() or
-                    all(not pred_formula.binds_tree(leaf)
-                        for pred_formula in get_conjuncts(state.constraint)
-                        if isinstance(pred_formula, language.SemanticPredicateFormula)
-                        for _, leaf in state.tree.open_leaves()) or
-                    all(not cast(language.SemanticPredicateFormula, pred_formula.args[0]).binds_tree(leaf)
-                        for pred_formula in get_conjuncts(state.constraint)
-                        if isinstance(pred_formula, language.NegatedFormula) and
-                        isinstance(pred_formula.args[0], language.SemanticPredicateFormula))
-                    for _, leaf in state.tree.open_leaves()
-                    ), \
-                f"Constraint is not true and contains semantic predicate formulas which bind open leaves in the tree: " \
-                f"{state.constraint}, leaves: {', '.join(list(map(str, [leaf for _, leaf in state.tree.open_leaves()])))}"
-
-            if not self.global_fuzzer:
-                fuzzer = self.fuzzer_factory(self.grammar)
-            if state.constraint == sc.true():
-                for _ in range(self.max_number_free_instantiations):
-                    result = state.tree
-                    for path, leaf in state.tree.open_leaves():
-                        leaf_inst = fuzzer.expand_tree(DerivationTree(leaf.value, None))
-                        result = result.replace_path(path, leaf_inst)
-                    yield from self.process_new_states([SolutionState(state.constraint, result)])
+                self.solutions.extend(self.process_new_states(self.expand_tree(state, limit=2, only_universal=False)))
             else:
-                # noinspection PyTypeChecker
-                yield from self.process_new_states(self.expand_state(state, fuzzer))
+                # semantic predicate formulas can remain if they bind lazily. In that case, we can choose a random
+                # instantiation and let the predicate "fix" the resulting tree.
+                assert (state.constraint == sc.true() or
+                        all(isinstance(conjunct, language.SemanticPredicateFormula)
+                            or (isinstance(conjunct, language.NegatedFormula) and
+                                isinstance(conjunct.args[0], language.SemanticPredicateFormula))
+                            for conjunct in get_conjuncts(state.constraint))), \
+                    f"Constraint is not true and contains formulas " \
+                    f"other than semantic predicate formulas: {state.constraint}"
+                assert (state.constraint == sc.true() or
+                        all(not pred_formula.binds_tree(leaf)
+                            for pred_formula in get_conjuncts(state.constraint)
+                            if isinstance(pred_formula, language.SemanticPredicateFormula)
+                            for _, leaf in state.tree.open_leaves()) or
+                        all(not cast(language.SemanticPredicateFormula, pred_formula.args[0]).binds_tree(leaf)
+                            for pred_formula in get_conjuncts(state.constraint)
+                            if isinstance(pred_formula, language.NegatedFormula) and
+                            isinstance(pred_formula.args[0], language.SemanticPredicateFormula))
+                        for _, leaf in state.tree.open_leaves()
+                        ), \
+                    f"Constraint is not true and contains semantic predicate formulas binding open tree leaves: " \
+                    f"{state.constraint}, leaves: " + \
+                    str({', '.join(list(map(str, [leaf for _, leaf in state.tree.open_leaves()])))})
+
+                if self.global_fuzzer:
+                    fuzzer = self.fuzzer
+                else:
+                    fuzzer = self.fuzzer_factory(self.grammar)
+
+                if state.constraint == sc.true():
+                    for _ in range(self.max_number_free_instantiations):
+                        result = state.tree
+                        for path, leaf in state.tree.open_leaves():
+                            leaf_inst = fuzzer.expand_tree(DerivationTree(leaf.value, None))
+                            result = result.replace_path(path, leaf_inst)
+
+                        self.solutions.extend(self.process_new_state(SolutionState(state.constraint, result)))
+                else:
+                    # noinspection PyTypeChecker
+                    self.solutions.extend(self.process_new_states(self.expand_state(state, fuzzer)))
+
+        if self.solutions:
+            return self.solutions.pop(0)
+        else:
+            return None
 
     def expand_state(self, state: SolutionState, fuzzer: GrammarCoverageFuzzer) -> List[SolutionState]:
         result: List[SolutionState] = []

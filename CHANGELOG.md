@@ -5,6 +5,11 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Added
+
+- Added a method `ISLaSolver.fuzz()` that produces one solution at each call, i.e., not a generator of
+  solutions as returned by `ISLaSolver.solver()`.
+
 ## [0.8.16] - 2022-08-17
 
 ### Added
