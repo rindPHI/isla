@@ -5,6 +5,14 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.8.16] - 2022-08-15
+
+### Added
+
+- The *descendant* axis `..` is now supported in XPath expressions, as in `<xml-open-tag>.<id>..<id-char> = "a"`.
+  Consult the [ISLa Language Specification](https://rindphi.github.io/isla/islaspec/#x-path-expressions)
+  for more information.
+
 ### Changed
 
 - Escaping in unparsing of grammars.
