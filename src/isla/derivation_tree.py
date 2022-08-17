@@ -45,20 +45,22 @@ class DerivationTree:
             self.__is_open = True
 
     def __getstate__(self) -> bytes:
-        return zlib.compress(json.dumps(self.__dict__, default=lambda o: o.__dict__).encode('UTF-8'))
+        the_dict = self.__dict__
+        del the_dict['_DerivationTree__k_paths']
+        return zlib.compress(json.dumps(the_dict, default=lambda o: o.__dict__).encode('UTF-8'))
 
     def __setstate__(self, state: bytes):
         def from_dict(a_dict: dict) -> 'DerivationTree':
             result = DerivationTree.__new__(DerivationTree)
+            result.__k_paths = {}
 
             children_key = '_DerivationTree__children'
             ser_children = a_dict[children_key]
 
-            children = []
-            for child in ser_children:
-                children.append(from_dict(child))
-
-            a_dict[children_key] = tuple(children)
+            if ser_children is None:
+                a_dict[children_key] = None
+            else:
+                a_dict[children_key] = tuple([from_dict(child) for child in ser_children])
 
             result.__dict__.update(a_dict)
 

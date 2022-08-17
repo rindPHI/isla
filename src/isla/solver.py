@@ -368,7 +368,7 @@ class ISLaSolver:
 
         while self.queue:
             # import dill as pickle
-            # state_hash = -7249231706094547066
+            # state_hash = 7682207616059503088
             # out_file = "/tmp/saved_debug_state"
             # if hash(self.queue[0][1]) == state_hash:
             #     with open(out_file, 'wb') as debug_state_file:
@@ -777,7 +777,10 @@ class ISLaSolver:
             universal_int_formula)
         return []
 
-    def eliminate_all_semantic_formulas(self, state: SolutionState) -> Optional[List[SolutionState]]:
+    def eliminate_all_semantic_formulas(
+            self,
+            state: SolutionState,
+            max_instantiations: Optional[int] = None) -> Optional[List[SolutionState]]:
         conjuncts = split_conjunction(state.constraint)
         semantic_formulas = [conjunct for conjunct in conjuncts
                              if isinstance(conjunct, language.SMTFormula)
@@ -797,7 +800,8 @@ class ISLaSolver:
 
         return self.eliminate_semantic_formula(
             prefix_conjunction,
-            SolutionState(new_disjunct, state.tree))
+            SolutionState(new_disjunct, state.tree),
+            max_instantiations)
 
     def eliminate_all_ready_semantic_predicate_formulas(self, state: SolutionState) -> Optional[SolutionState]:
         semantic_predicate_formulas: List[language.NegatedFormula | language.SemanticPredicateFormula] = [
@@ -1201,7 +1205,10 @@ class ISLaSolver:
         return result
 
     def eliminate_semantic_formula(
-            self, semantic_formula: language.Formula, state: SolutionState) -> List[SolutionState]:
+            self,
+            semantic_formula: language.Formula,
+            state: SolutionState,
+            max_instantiations: Optional[int] = None) -> List[SolutionState]:
         """
         Solves a semantic formula and, for each solution, substitutes the solution for the respective
         constant in each assignment of the state. Also instantiates all "free" constants in the given
@@ -1211,6 +1218,7 @@ class ISLaSolver:
         :param semantic_formula: The semantic (i.e., only containing logical connectors and SMT Formulas)
         formula to solve.
         :param state: The original solution state.
+        :param max_instantiations: The maximum number of solutions to ask the SMT solver for.
         :return: A list of instantiated SolutionStates.
         """
 
@@ -1247,7 +1255,8 @@ class ISLaSolver:
             formula_clusters.append(remaining_clusters)
 
         all_solutions: List[List[Dict[Union[language.Constant, DerivationTree], DerivationTree]]] = [
-            self.solve_quantifier_free_formula(cluster) for cluster in formula_clusters
+            self.solve_quantifier_free_formula(cluster, max_instantiations)
+            for cluster in formula_clusters
         ]
 
         # These solutions are all independent, such that we can combine each solution with all others.
@@ -1293,17 +1302,30 @@ class ISLaSolver:
             smt_formulas: List[language.SMTFormula],
             max_instantiations: Optional[int] = None) -> \
             List[Dict[language.Constant | DerivationTree, DerivationTree]]:
-        # If any SMT formula refers to subtrees in the instantiations of other SMT formulas,
+        """
+        Attempts to solve the given SMT-LIB formulas by calling Z3.
+
+        Note that this function does not unify variables pointing to the same derivation trees.
+        E.g., a solution may be returned for the formula `var_1 = "a" and var_2 = "b"`, though
+        `var_1` and `var_2` point to the same `<var>` tree as defined by their substitutions maps.
+        Unification is performed in `eliminate_all_semantic_formulas`.
+
+        :param smt_formulas: The SMT-LIB formulas to solve.
+        :param max_instantiations: The maximum number of instantiations to produce.
+        :return: A (possibly empty) list of solutions.
+        """
+
+        # If any SMT formula refers to *sub*trees in the instantiations of other SMT formulas,
         # we have to instantiate those first.
-        def get_conflicts(smt_formulas):
+        def get_conflicts(smt_formulas: List[language.SMTFormula]):
             return [
-                f for fidx, f in enumerate(smt_formulas)
+                formula for formula_idx, formula in enumerate(smt_formulas)
                 if any(
-                    ot != t and ot.find_node(t) is not None
-                    for t in f.substitutions.values()
-                    for ofidx, of in enumerate(smt_formulas)
-                    if fidx != ofidx
-                    for ot in of.substitutions.values())]
+                    other_subst_tree != subst_tree and other_subst_tree.find_node(subst_tree) is not None
+                    for subst_tree in formula.substitutions.values()
+                    for other_formula_idx, other_formula in enumerate(smt_formulas)
+                    if formula_idx != other_formula_idx
+                    for other_subst_tree in other_formula.substitutions.values())]
 
         conflicts = get_conflicts(smt_formulas)
 
@@ -1432,6 +1454,12 @@ class ISLaSolver:
         new_states = self.establish_invariant(new_state)
         new_states = [self.remove_nonmatching_universal_quantifiers(new_state) for new_state in new_states]
         new_states = [self.remove_infeasible_universal_quantifiers(new_state) for new_state in new_states]
+
+        for new_state in list(new_states):
+            # Remove states with unsatisfiable SMT-LIB formulas.
+            if (any(isinstance(f, language.SMTFormula) for f in split_conjunction(new_state.constraint)) and
+                    not self.eliminate_all_semantic_formulas(new_state, max_instantiations=1)):
+                new_states.remove(new_state)
 
         assert all(
             state.tree.find_node(tree) is not None

@@ -11,6 +11,7 @@ from xml.sax.saxutils import escape
 import pytest
 import z3
 from grammar_graph import gg
+from orderedset import OrderedSet
 
 import isla.derivation_tree
 import isla.evaluator
@@ -797,10 +798,53 @@ str.len(<string>.<chars>) and
         self.assertEqual(0, ord(str(high_byte)))
         self.assertEqual(len(str(chars)), ord(str(low_byte)))
 
-    @pytest.mark.skip('Test not working / not ready')
     def test_unsatisfiable_smt_atom(self):
         solver = ISLaSolver(LANG_GRAMMAR, '<var> = "aa"')
-        next(solver.solve())
+        self.assertEqual(None, solver.fuzz())
+
+    def test_unsatisfiable_smt_conjunction(self):
+        solver = ISLaSolver(LANG_GRAMMAR, '<var> = "a" and <var> = "b"')
+        self.assertEqual(None, solver.fuzz())
+
+    def test_unsatisfiable_smt_quantified_conjunction(self):
+        solver = ISLaSolver(
+            LANG_GRAMMAR, '''
+forall <assgn> assgn_1="{<var> var_1} := <rhs>" in <start>:
+  var_1 = "a" and
+forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
+  var_2 = "b"''')
+        self.assertEqual(None, solver.fuzz())
+
+    def test_unsatisfiable_smt_formulas(self):
+        solver = ISLaSolver(
+            LANG_GRAMMAR, '''
+forall <assgn> assgn_1="{<var> var_1} := <rhs>" in <start>:
+  var_1 = "a" and
+forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
+  var_2 = "b"''')
+
+        tree = DerivationTree(
+            "<start>", (
+                DerivationTree("<stmt>", (
+                    DerivationTree("<assgn>", (
+                        DerivationTree("<var>"),
+                        DerivationTree(" := ", ()),
+                        DerivationTree("<rhs>")), ),), ),), )
+        var_node = tree.get_subtree((0, 0, 0))
+
+        var_1 = language.BoundVariable('var_1', '<var>')
+        formula_1 = language.SMTFormula(
+            z3_eq(var_1.to_smt(), z3.StringVal('a')),
+            instantiated_variables=OrderedSet([var_1]),
+            substitutions={var_1: var_node})
+
+        var_2 = language.BoundVariable('var_2', '<var>')
+        formula_2 = language.SMTFormula(
+            z3_eq(var_2.to_smt(), z3.StringVal('b')),
+            instantiated_variables=OrderedSet([var_2]),
+            substitutions={var_2: var_node})
+
+        self.assertFalse(solver.eliminate_all_semantic_formulas(SolutionState(formula_1 & formula_2, tree)))
 
 
 if __name__ == '__main__':
