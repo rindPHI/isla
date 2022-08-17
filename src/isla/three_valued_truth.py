@@ -1,20 +1,14 @@
+from dataclasses import dataclass
 from typing import Iterable
 
 
+@dataclass(frozen=True)
 class ThreeValuedTruth:
+    val: int
+
     FALSE = 0
     TRUE = 1
     UNKNOWN = 2
-
-    def __init__(self, val: int):
-        assert 0 <= val <= 2
-        self.val = val
-
-    def __eq__(self, other):
-        return self.val == other.val
-
-    def __hash__(self):
-        return self.val
 
     def to_bool(self) -> bool:
         assert self.val != ThreeValuedTruth.UNKNOWN
@@ -91,9 +85,6 @@ class ThreeValuedTruth:
             return ThreeValuedTruth.unknown()
 
         return ThreeValuedTruth.from_bool(bool(self) or bool(other))
-
-    def __repr__(self):
-        return f"ThreeValuedTruth({self.val})"
 
     def __str__(self):
         return ("TRUE" if self.is_true() else

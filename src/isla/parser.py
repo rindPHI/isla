@@ -1,6 +1,5 @@
 import itertools as I
 import random
-from functools import lru_cache
 from typing import Tuple, Iterable, Generator, List, Dict, Collection
 
 from isla.helpers import tree_to_string, RE_NONTERMINAL
@@ -27,9 +26,6 @@ def single_char_tokens(grammar: Grammar) -> Dict[str, List[List[Collection[str]]
 
 def canonical(grammar: Grammar) -> CanonicalGrammar:
     def split(expansion):
-        if isinstance(expansion, tuple):
-            expansion = expansion[0]
-
         return [token for token in RE_NONTERMINAL.split(expansion) if token]
 
     return {
@@ -79,7 +75,7 @@ class Parser:
     def parse_prefix(self, text: str) -> Tuple[int, Iterable[ParseTree]]:
         """Return pair (cursor, forest) for longest prefix of text.
            To be defined in subclasses."""
-        raise NotImplementedError
+        raise NotImplementedError()
 
     def parse(self, text: str) -> Iterable[ParseTree]:
         """Parse `text` using the grammar.
@@ -123,36 +119,6 @@ class Parser:
             return (name, [(tree_to_string(tree), [])])
         else:
             return (name, [self.prune_tree(c) for c in children])
-
-
-class PEGParser(Parser):
-    def parse_prefix(self, text):
-        cursor, tree = self.unify_key(self.start_symbol(), text, 0)
-        return cursor, [tree]
-
-    def unify_rule(self, rule, text, at):
-        if self.log:
-            print('unify_rule: %s with %s' % (repr(rule), repr(text[at:])))
-        results = []
-        for token in rule:
-            at, res = self.unify_key(token, text, at)
-            if res is None:
-                return at, None
-            results.append(res)
-        return at, results
-
-    @lru_cache(maxsize=None)
-    def unify_key(self, key, text, at=0):
-        if key not in self.cgrammar:
-            if text[at:].startswith(key):
-                return at + len(key), (key, [])
-            else:
-                return at, None
-        for rule in self.cgrammar[key]:
-            to, res = self.unify_rule(rule, text, at)
-            if res is not None:
-                return (to, (key, res))
-        return 0, None
 
 
 class Column:
@@ -479,36 +445,3 @@ class EnhancedExtractor(SimpleExtractor):
             if parse_tree is not None:
                 return self.parser.prune_tree(parse_tree)
         return None
-
-
-class PackratParser(Parser):
-    def parse_prefix(self, text):
-        txt, res = self.unify_key(self.start_symbol(), text)
-        return len(txt), [res]
-
-    def parse(self, text):
-        remain, res = self.parse_prefix(text)
-        if remain:
-            raise SyntaxError("at " + res)
-        return res
-
-    def unify_rule(self, rule, text):
-        results = []
-        for token in rule:
-            text, res = self.unify_key(token, text)
-            if res is None:
-                return text, None
-            results.append(res)
-        return text, results
-
-    def unify_key(self, key, text):
-        if key not in self.cgrammar:
-            if text.startswith(key):
-                return text[len(key):], (key, [])
-            else:
-                return text, None
-        for rule in self.cgrammar[key]:
-            text_, res = self.unify_rule(rule, text)
-            if res:
-                return (text_, (key, res))
-        return text, None

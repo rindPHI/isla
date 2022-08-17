@@ -345,17 +345,6 @@ def replace_in_z3_expr(
     return z3_subst(e, subst_map)
 
 
-def filter_z3_expr(
-        e: z3.ExprRef | z3.QuantifierRef,
-        predicate: Callable[[z3.ExprRef | z3.QuantifierRef], bool]) -> Set[z3.ExprRef | z3.QuantifierRef]:
-    result: Set[z3.ExprRef | z3.QuantifierRef] = set([])
-    for sub_expr in visit_z3_expr(e):
-        if predicate(sub_expr):
-            result.add(sub_expr)
-
-    return result
-
-
 def visit_z3_expr(e: z3.ExprRef | z3.QuantifierRef,
                   seen: Optional[Dict[Union[z3.ExprRef, z3.QuantifierRef], bool]] = None) -> \
         Generator[z3.ExprRef | z3.QuantifierRef, None, None]:
