@@ -7,7 +7,6 @@ packaging>=21.3
 pathos>=0.2.9
 proxyorderedset>=0.3.0
 pytest-cov>=3.0.0
-pytest-forked>=1.3.0
 pytest-html>=3.1.1
 pytest-profiling>=1.7.0
 pytest-pycharm>=0.7.0
