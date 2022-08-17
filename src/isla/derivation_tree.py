@@ -46,7 +46,8 @@ class DerivationTree:
 
     def __getstate__(self) -> bytes:
         the_dict = self.__dict__
-        del the_dict['_DerivationTree__k_paths']
+        if '_DerivationTree__k_paths' in the_dict:
+            del the_dict['_DerivationTree__k_paths']
         return zlib.compress(json.dumps(the_dict, default=lambda o: o.__dict__).encode('UTF-8'))
 
     def __setstate__(self, state: bytes):

@@ -5,6 +5,7 @@ import itertools
 import logging
 import operator
 import random
+import re
 import sys
 import time
 from abc import ABC
@@ -20,7 +21,7 @@ from grammar_to_regex.cfg2regex import RegexConverter
 from grammar_to_regex.regex import regex_to_z3
 from orderedset import OrderedSet
 from packaging import version
-from typing import Generator, Dict, List, Set, Optional, Tuple, Union, cast, Callable
+from typing import Generator, Dict, List, Set, Optional, Tuple, Union, cast, Callable, Iterable
 
 import isla.evaluator
 import isla.helpers
@@ -40,7 +41,7 @@ from isla.language import VariablesCollector, split_conjunction, split_disjuncti
 from isla.derivation_tree import DerivationTree
 from isla.parser import EarleyParser
 from isla.three_valued_truth import ThreeValuedTruth
-from isla.type_defs import Grammar, Path
+from isla.type_defs import Grammar, Path, ImmutableList
 from isla.z3_helpers import z3_solve, z3_subst, z3_eq
 
 
@@ -184,7 +185,8 @@ class ISLaSolver:
                  global_fuzzer: bool = False,
                  predicates_unique_in_int_arg: Tuple[language.SemanticPredicate, ...] = (COUNT_PREDICATE,),
                  fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = lambda grammar: GrammarCoverageFuzzer(grammar),
-                 tree_insertion_methods=DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION):
+                 tree_insertion_methods=DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION,
+                 activate_unsat_support: bool = False):
         """
         Constructs a new ISLaSolver object. Passing a grammar and a formula is mandatory.
 
@@ -218,6 +220,10 @@ class ISLaSolver:
         :param fuzzer_factory: Constructor of the fuzzer to use for instantiating "free" nonterminals.
         :param tree_insertion_methods: Combination of methods to use for existential quantifier elimination by
         tree insertion. Full selection: `DIRECT_EMBEDDING & SELF_EMBEDDING & CONTEXT_ADDITION`.
+        :param activate_unsat_support: Set to True if you assume that a formula might be unsatisfiable. This
+        triggers additional tests for unsatisfiability that reduce input generation performance, but might
+        ensure termination (with a negative solver result) for unsatisfiable problems for which the solver
+        could otherwise diverge.
         """
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -251,6 +257,7 @@ class ISLaSolver:
         self.fuzzer_factory = fuzzer_factory
         self.predicates_unique_in_int_arg: Set[language.SemanticPredicate] = set(predicates_unique_in_int_arg)
         self.tree_insertion_methods = tree_insertion_methods
+        self.activate_unsat_support = activate_unsat_support
 
         self.cost_computer = (
             cost_computer if cost_computer is not None
@@ -368,7 +375,7 @@ class ISLaSolver:
 
         while self.queue:
             # import dill as pickle
-            # state_hash = 7682207616059503088
+            # state_hash = -5722477832052327252
             # out_file = "/tmp/saved_debug_state"
             # if hash(self.queue[0][1]) == state_hash:
             #     with open(out_file, 'wb') as debug_state_file:
@@ -586,8 +593,7 @@ class ISLaSolver:
 
             try:
                 solver_result = self.solve_quantifier_free_formula(
-                    [smt_formula], max_instantiations=max_instantiations
-                )
+                    (smt_formula,), max_instantiations=max_instantiations)
 
                 solutions: Dict[language.Constant, Set[int]] = {
                     c: {int(solution[cast(language.Constant, c)].value)
@@ -615,7 +621,7 @@ class ISLaSolver:
                     return {
                         c for c in candidates
                         if self.solve_quantifier_free_formula(
-                            [cast(language.SMTFormula, smt_formula.substitute_variables({constant: c}))],
+                            (cast(language.SMTFormula, smt_formula.substitute_variables({constant: c})),),
                             max_instantiations=1)}
 
         instantiations: List[Dict[language.Constant | DerivationTree,
@@ -1217,7 +1223,7 @@ class ISLaSolver:
             self,
             semantic_formula: language.Formula,
             state: SolutionState,
-            max_instantiations: Optional[int] = None) -> List[SolutionState]:
+            max_instantiations: Optional[int] = None) -> Optional[List[SolutionState]]:
         """
         Solves a semantic formula and, for each solution, substitutes the solution for the respective
         constant in each assignment of the state. Also instantiates all "free" constants in the given
@@ -1264,7 +1270,7 @@ class ISLaSolver:
             formula_clusters.append(remaining_clusters)
 
         all_solutions: List[List[Dict[Union[language.Constant, DerivationTree], DerivationTree]]] = [
-            self.solve_quantifier_free_formula(cluster, max_instantiations)
+            self.solve_quantifier_free_formula(tuple(cluster), max_instantiations)
             for cluster in formula_clusters
         ]
 
@@ -1306,9 +1312,10 @@ class ISLaSolver:
 
         return results
 
+    @lru_cache(100)
     def solve_quantifier_free_formula(
             self,
-            smt_formulas: List[language.SMTFormula],
+            smt_formulas: ImmutableList[language.SMTFormula],
             max_instantiations: Optional[int] = None) -> \
             List[Dict[language.Constant | DerivationTree, DerivationTree]]:
         """
@@ -1326,7 +1333,7 @@ class ISLaSolver:
 
         # If any SMT formula refers to *sub*trees in the instantiations of other SMT formulas,
         # we have to instantiate those first.
-        def get_conflicts(smt_formulas: List[language.SMTFormula]):
+        def get_conflicts(smt_formulas: Iterable[language.SMTFormula]):
             return [
                 formula for formula_idx, formula in enumerate(smt_formulas)
                 if any(
@@ -1464,11 +1471,12 @@ class ISLaSolver:
         new_states = [self.remove_nonmatching_universal_quantifiers(new_state) for new_state in new_states]
         new_states = [self.remove_infeasible_universal_quantifiers(new_state) for new_state in new_states]
 
-        for new_state in list(new_states):
-            # Remove states with unsatisfiable SMT-LIB formulas.
-            if (any(isinstance(f, language.SMTFormula) for f in split_conjunction(new_state.constraint)) and
-                    not self.eliminate_all_semantic_formulas(new_state, max_instantiations=1)):
-                new_states.remove(new_state)
+        if self.activate_unsat_support:
+            for new_state in list(new_states):
+                # Remove states with unsatisfiable SMT-LIB formulas.
+                if (any(isinstance(f, language.SMTFormula) for f in split_conjunction(new_state.constraint)) and
+                        not self.eliminate_all_semantic_formulas(new_state, max_instantiations=1)):
+                    new_states.remove(new_state)
 
         assert all(
             state.tree.find_node(tree) is not None

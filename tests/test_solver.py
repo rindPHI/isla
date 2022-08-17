@@ -17,13 +17,13 @@ import isla.derivation_tree
 import isla.evaluator
 from isla import isla_shortcuts as sc
 from isla import language
+from isla.derivation_tree import DerivationTree
 from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_ADDITION
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.helpers import crange
 from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, STANDARD_SEMANTIC_PREDICATES, \
     STANDARD_STRUCTURAL_PREDICATES
-from isla.language import VariablesCollector, parse_isla, unparse_isla
-from isla.derivation_tree import DerivationTree
+from isla.language import VariablesCollector, parse_isla
 from isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
     get_quantifier_chains, CostComputer, GrammarBasedBlackboxCostComputer, quantified_formula_might_match
 from isla.type_defs import Grammar
@@ -799,11 +799,11 @@ str.len(<string>.<chars>) and
         self.assertEqual(len(str(chars)), ord(str(low_byte)))
 
     def test_unsatisfiable_smt_atom(self):
-        solver = ISLaSolver(LANG_GRAMMAR, '<var> = "aa"')
+        solver = ISLaSolver(LANG_GRAMMAR, '<var> = "aa"', activate_unsat_support=True)
         self.assertEqual(None, solver.fuzz())
 
     def test_unsatisfiable_smt_conjunction(self):
-        solver = ISLaSolver(LANG_GRAMMAR, '<var> = "a" and <var> = "b"')
+        solver = ISLaSolver(LANG_GRAMMAR, '<var> = "a" and <var> = "b"', activate_unsat_support=True)
         self.assertEqual(None, solver.fuzz())
 
     def test_unsatisfiable_smt_quantified_conjunction(self):
@@ -812,11 +812,15 @@ str.len(<string>.<chars>) and
 forall <assgn> assgn_1="{<var> var_1} := <rhs>" in <start>:
   var_1 = "a" and
 forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
-  var_2 = "b"''')
+  var_2 = "b"''',
+            activate_unsat_support=True)
         self.assertEqual(None, solver.fuzz())
 
     def test_unsatisfiable_smt_formulas(self):
-        solver = ISLaSolver(LANG_GRAMMAR, 'start = "x := 1"')  # Formula here is just dummy.
+        solver = ISLaSolver(
+            LANG_GRAMMAR,
+            'start = "x := 1"',  # Formula here is just dummy.
+            activate_unsat_support=True)
 
         tree = DerivationTree(
             "<start>", (
@@ -839,7 +843,17 @@ forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
             instantiated_variables=OrderedSet([var_2]),
             substitutions={var_2: var_node})
 
-        self.assertFalse(solver.eliminate_all_semantic_formulas(SolutionState(formula_1 & formula_2, tree)))
+        self.assertEqual([], solver.eliminate_all_semantic_formulas(SolutionState(formula_1 & formula_2, tree)))
+
+    @pytest.mark.skip('Not yet working.')
+    def test_unsatisfiable_existential_formula(self):
+        solver = ISLaSolver(
+            LANG_GRAMMAR,
+            '''
+forall <assgn> assgn_1:
+  exists <assgn> assgn_2:
+    before(assgn_2, assgn_1)''')
+        self.assertFalse(solver.fuzz())
 
 
 if __name__ == '__main__':
