@@ -19,7 +19,7 @@ requires-python = ">=3.10"
 classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
-    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering",
     "Topic :: Security",
