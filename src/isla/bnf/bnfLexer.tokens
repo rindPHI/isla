@@ -1,9 +1,0 @@
-T__0=1
-T__1=2
-NONTERMINAL=3
-STRING=4
-ESC=5
-WS=6
-LINE_COMMENT=7
-'::='=1
-'|'=2

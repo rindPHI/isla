@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en-US">
+
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width,maximum-scale=2">
+    <link rel="stylesheet" type="text/css" media="screen" href="/assets/css/style.css?v=">
+
+    <!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>ISLa: Input Specification Language | The Input Specification Language ISLa</title>
+<meta name="generator" content="Jekyll v3.9.2" />
+<meta property="og:title" content="ISLa: Input Specification Language" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="ISLa is a language and solver for checking and generation based on context-sensitive constraints of structured inputs." />
+<meta property="og:description" content="ISLa is a language and solver for checking and generation based on context-sensitive constraints of structured inputs." />
+<link rel="canonical" href="http://localhost:4000/" />
+<meta property="og:url" content="http://localhost:4000/" />
+<meta property="og:site_name" content="The Input Specification Language ISLa" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="ISLa: Input Specification Language" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebSite","description":"ISLa is a language and solver for checking and generation based on context-sensitive constraints of structured inputs.","headline":"ISLa: Input Specification Language","name":"The Input Specification Language ISLa","url":"http://localhost:4000/"}</script>
+<!-- End Jekyll SEO tag -->
+
+    <!-- start custom head snippets, customize with your own _includes/head-custom.html file -->
+
+<!-- Setup Google Analytics -->
+
+
+
+<!-- You can set your favicon here -->
+<!-- link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" -->
+
+<!-- end custom head snippets -->
+
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          
+
+          <h1 id="project_title">The Input Specification Language ISLa</h1>
+          <h2 id="project_tagline">ISLa is a language and solver for checking and generation based on context-sensitive constraints of structured inputs.</h2>
+
+          
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <h1 id="isla-input-specification-language">ISLa: Input Specification Language</h1>
+
+<p>ISLa is a grammar-aware String constraint solver with its own specification
+language. The language is a superset of SMT-LIB for String constraints, and adds
+the power of structural quantifiers over derivation trees on top. ISLa supports
+universal and existential quantifiers as well as structural (e.g., “occurs
+before”) and semantic (e.g., “is a checksum”) predicates. Its generation
+mechanism uses feedback from Z3 to solve SMT-LIB formulas, and constructive
+insertion for eliminating existential quantifiers. Universal quantifiers and
+structural predicates are solved by a deterministic, heuristic-based search
+(with a configurable cost function).</p>
+
+<p>For more information on the ISLa language, take a look at the <a href="https://rindphi.github.io/isla/islaspec/"><strong>ISLa Language
+Specification</strong></a>. The specification
+contains a list of <a href="https://rindphi.github.io/isla/islaspec/#structural-predicates">supported default
+predicates</a>,
+which might be useful in many cases.</p>
+
+<p>We also offer an <a href="https://www.fuzzingbook.org/beta/html/FuzzingWithConstraints.html"><strong>interactive ISLa
+tutorial</strong></a>
+as part of the Fuzzing Book.</p>
+
+<h2 id="example">Example</h2>
+
+<p>Consider a grammar of a simple assignment programming language (e.g., “x := 1 ; y := x”):</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">string</span>
+
+<span class="n">LANG_GRAMMAR</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s">"&lt;start&gt;"</span><span class="p">:</span>
+        <span class="p">[</span><span class="s">"&lt;stmt&gt;"</span><span class="p">],</span>
+    <span class="s">"&lt;stmt&gt;"</span><span class="p">:</span>
+        <span class="p">[</span><span class="s">"&lt;assgn&gt;"</span><span class="p">,</span> <span class="s">"&lt;assgn&gt; ; &lt;stmt&gt;"</span><span class="p">],</span>
+    <span class="s">"&lt;assgn&gt;"</span><span class="p">:</span>
+        <span class="p">[</span><span class="s">"&lt;var&gt; := &lt;rhs&gt;"</span><span class="p">],</span>
+    <span class="s">"&lt;rhs&gt;"</span><span class="p">:</span>
+        <span class="p">[</span><span class="s">"&lt;var&gt;"</span><span class="p">,</span> <span class="s">"&lt;digit&gt;"</span><span class="p">],</span>
+    <span class="s">"&lt;var&gt;"</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">string</span><span class="p">.</span><span class="n">ascii_lowercase</span><span class="p">),</span>
+    <span class="s">"&lt;digit&gt;"</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">string</span><span class="p">.</span><span class="n">digits</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>An interesting, context-sensitive property for this language is that all right-hand side variables have been declared
+somewhere before. In ISLa’s concrete syntax, this can be expressed as a constraint</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>forall &lt;assgn&gt; assgn_1="&lt;var&gt; := {&lt;var&gt; rhs}" in start:
+  exists &lt;assgn&gt; assgn_2="{&lt;var&gt; lhs} := &lt;rhs&gt;" in start:
+    (before(assgn_2, assgn_1) and (= rhs lhs))
+</code></pre></div></div>
+
+<p>ISLa also allows writing binary SMT-LIB S-expressions in infix syntax: <code class="language-plaintext highlighter-rouge">(= rhs lhs)</code> gets <code class="language-plaintext highlighter-rouge">rhs = lhs</code>.
+Furthermore, the <code class="language-plaintext highlighter-rouge">in start</code> is optional, and the “match expressions” <code class="language-plaintext highlighter-rouge">"{&lt;var&gt; lhs} := &lt;rhs&gt;"</code> etc. can (at least
+in such simple cases) be expressed using a syntax inspired by the 
+<a href="https://www.w3.org/TR/1999/REC-xpath-19991116/#path-abbrev">XPath abbreviated syntax</a>:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>forall &lt;assgn&gt; assgn_1:
+  exists &lt;assgn&gt; assgn_2:
+    (before(assgn_2, assgn_1) and assgn_1.&lt;rhs&gt;.&lt;var&gt; = assgn_2.&lt;var&gt;)
+</code></pre></div></div>
+
+<p>Additionally, top-level universal quantifiers without match expressions (like <code class="language-plaintext highlighter-rouge">forall &lt;assgn&gt; assgn_1</code>) can be
+omitted; instead of the bound name (e.g., <code class="language-plaintext highlighter-rouge">assgn_1</code>) one then simply uses the type (<code class="language-plaintext highlighter-rouge">&lt;assgn&gt;</code>) in the inner
+formula. This only works for one such quantifier over any type, since otherwise, the names are needed for
+disambiguation. The final, simpler formula is:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>exists &lt;assgn&gt; assgn:
+  (before(assgn, &lt;assgn&gt;) and &lt;assgn&gt;.&lt;rhs&gt;.&lt;var&gt; = assgn.&lt;var&gt;)
+</code></pre></div></div>
+
+<p>Using the Python API, the same constraint is written as follows:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">isla</span> <span class="kn">import</span> <span class="n">language</span>
+<span class="kn">import</span> <span class="nn">isla.isla_shortcuts</span> <span class="k">as</span> <span class="n">sc</span> 
+
+<span class="n">mgr</span> <span class="o">=</span> <span class="n">language</span><span class="p">.</span><span class="n">VariableManager</span><span class="p">()</span>
+
+<span class="n">formula</span><span class="p">:</span> <span class="n">language</span><span class="p">.</span><span class="n">Formula</span> <span class="o">=</span> <span class="n">mgr</span><span class="p">.</span><span class="n">create</span><span class="p">(</span><span class="n">sc</span><span class="p">.</span><span class="n">forall_bind</span><span class="p">(</span>
+    <span class="n">mgr</span><span class="p">.</span><span class="n">bv</span><span class="p">(</span><span class="s">"$lhs_1"</span><span class="p">,</span> <span class="s">"&lt;var&gt;"</span><span class="p">)</span> <span class="o">+</span> <span class="s">" := "</span> <span class="o">+</span> <span class="n">mgr</span><span class="p">.</span><span class="n">bv</span><span class="p">(</span><span class="s">"$rhs_1"</span><span class="p">,</span> <span class="s">"&lt;rhs&gt;"</span><span class="p">),</span>
+    <span class="n">mgr</span><span class="p">.</span><span class="n">bv</span><span class="p">(</span><span class="s">"$assgn_1"</span><span class="p">,</span> <span class="s">"&lt;assgn&gt;"</span><span class="p">),</span>
+    <span class="n">mgr</span><span class="p">.</span><span class="n">const</span><span class="p">(</span><span class="s">"$start"</span><span class="p">,</span> <span class="s">"&lt;start&gt;"</span><span class="p">),</span>
+    <span class="n">sc</span><span class="p">.</span><span class="n">forall</span><span class="p">(</span>
+        <span class="n">mgr</span><span class="p">.</span><span class="n">bv</span><span class="p">(</span><span class="s">"$var"</span><span class="p">,</span> <span class="s">"&lt;var&gt;"</span><span class="p">),</span>
+        <span class="n">mgr</span><span class="p">.</span><span class="n">bv</span><span class="p">(</span><span class="s">"$rhs_1"</span><span class="p">),</span>
+        <span class="n">sc</span><span class="p">.</span><span class="n">exists_bind</span><span class="p">(</span>
+            <span class="n">mgr</span><span class="p">.</span><span class="n">bv</span><span class="p">(</span><span class="s">"$lhs_2"</span><span class="p">,</span> <span class="s">"&lt;var&gt;"</span><span class="p">)</span> <span class="o">+</span> <span class="s">" := "</span> <span class="o">+</span> <span class="n">mgr</span><span class="p">.</span><span class="n">bv</span><span class="p">(</span><span class="s">"$rhs_2"</span><span class="p">,</span> <span class="s">"&lt;rhs&gt;"</span><span class="p">),</span>
+            <span class="n">mgr</span><span class="p">.</span><span class="n">bv</span><span class="p">(</span><span class="s">"$assgn_2"</span><span class="p">,</span> <span class="s">"&lt;assgn&gt;"</span><span class="p">),</span>
+            <span class="n">mgr</span><span class="p">.</span><span class="n">const</span><span class="p">(</span><span class="s">"$start"</span><span class="p">),</span>
+            <span class="n">sc</span><span class="p">.</span><span class="n">before</span><span class="p">(</span><span class="n">mgr</span><span class="p">.</span><span class="n">bv</span><span class="p">(</span><span class="s">"$assgn_2"</span><span class="p">),</span> <span class="n">mgr</span><span class="p">.</span><span class="n">bv</span><span class="p">(</span><span class="s">"$assgn_1"</span><span class="p">))</span> <span class="o">&amp;</span>
+            <span class="n">mgr</span><span class="p">.</span><span class="n">smt</span><span class="p">(</span><span class="n">cast</span><span class="p">(</span><span class="n">z3</span><span class="p">.</span><span class="n">BoolRef</span><span class="p">,</span> <span class="n">mgr</span><span class="p">.</span><span class="n">bv</span><span class="p">(</span><span class="s">"$lhs_2"</span><span class="p">).</span><span class="n">to_smt</span><span class="p">()</span> <span class="o">==</span> <span class="n">mgr</span><span class="p">.</span><span class="n">bv</span><span class="p">(</span><span class="s">"$var"</span><span class="p">).</span><span class="n">to_smt</span><span class="p">()))</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+<span class="p">))</span>
+</code></pre></div></div>
+
+<p>The ISLa solver can find satisfying assignments for this formula:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">isla.solver</span> <span class="kn">import</span> <span class="n">ISLaSolver</span>
+
+<span class="n">solver</span> <span class="o">=</span> <span class="n">ISLaSolver</span><span class="p">(</span>
+    <span class="n">grammar</span><span class="o">=</span><span class="n">LANG_GRAMMAR</span><span class="p">,</span>
+    <span class="n">formula</span><span class="o">=</span><span class="n">formula</span><span class="p">,</span>
+    <span class="n">max_number_free_instantiations</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+    <span class="n">max_number_smt_instantiations</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+
+<span class="n">it</span> <span class="o">=</span> <span class="n">solver</span><span class="p">.</span><span class="n">solve</span><span class="p">()</span>
+<span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">it</span><span class="p">))</span>
+    <span class="k">except</span> <span class="nb">StopIteration</span><span class="p">:</span>
+        <span class="k">break</span>
+</code></pre></div></div>
+
+<p>When calling the solver with an ISLa formula in concrete syntax (a string), one has to supply a “signature” of the
+structural and semantic predicate symbols used:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">isla.solver</span> <span class="kn">import</span> <span class="n">ISLaSolver</span>
+<span class="kn">from</span> <span class="nn">isla.isla_predicates</span> <span class="kn">import</span> <span class="n">BEFORE_PREDICATE</span>
+
+<span class="n">solver</span> <span class="o">=</span> <span class="n">ISLaSolver</span><span class="p">(</span>
+    <span class="n">grammar</span><span class="o">=</span><span class="n">LANG_GRAMMAR</span><span class="p">,</span>
+    <span class="n">formula</span><span class="o">=</span><span class="n">concrete_syntax_formula</span><span class="p">,</span>
+    <span class="n">structural_predicates</span><span class="o">=</span><span class="p">{</span><span class="n">BEFORE_PREDICATE</span><span class="p">},</span>
+    <span class="n">max_number_free_instantiations</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+    <span class="n">max_number_smt_instantiations</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+
+<span class="n">it</span> <span class="o">=</span> <span class="n">solver</span><span class="p">.</span><span class="n">solve</span><span class="p">()</span>
+<span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">it</span><span class="p">))</span>
+    <span class="k">except</span> <span class="nb">StopIteration</span><span class="p">:</span>
+        <span class="k">break</span>
+</code></pre></div></div>
+
+<p>To create more diverse inputs, ISLa can be configured to perform a <em>bounded expansion</em> of grammar nonterminals that are
+irrelevant for any constraint (parameter <code class="language-plaintext highlighter-rouge">max_number_free_instantiations</code>). Similarly, the number of solutions for
+semantic SMT formulas can be configured (<code class="language-plaintext highlighter-rouge">max_number_smt_instantiations</code>).</p>
+
+<p>In certain cases, ISLa will only produce a finite amount of solutions. This holds in particular for simple existential
+constraints. The existential quantifier will be eliminated and the solution output; the search terminates then. Usually,
+though, the stream of solutions will be infinite (given that the grammar contains recursions).</p>
+
+<h2 id="resources--important-files">Resources / Important Files</h2>
+
+<ul>
+  <li>The file <code class="language-plaintext highlighter-rouge">tests/xml_demo.py</code> demonstrates most ISLa features along the example of an XML constraint.</li>
+  <li>In the directory <code class="language-plaintext highlighter-rouge">src/isla_formalizations/</code>, you find our specifications for the subject languages
+of our experimental evaluation.</li>
+  <li>The files <code class="language-plaintext highlighter-rouge">evaluations/evaluate_...</code> are the scripts we used to collect and analyze our 
+evaluation data. By running these scripts without arguments, a digest of the most recent results is returned.</li>
+  <li>The most important files of our implementation are <code class="language-plaintext highlighter-rouge">src/isla/language.py</code>, <code class="language-plaintext highlighter-rouge">src/isla/evaluator.py</code> 
+and <code class="language-plaintext highlighter-rouge">input_constraints/solver.py</code>, containing ISLa language features, the constraint checker, 
+and the ISLa solver.</li>
+</ul>
+
+<h2 id="build-run-install">Build, Run, Install</h2>
+
+<p>ISLa depends on Python 3.10 and the Python header files. To compile all of ISLa’s dependencies, you need
+gcc, g++ make, and cmake. To check out the current ISLa version, git will be needed. Furthermore, 
+python3.10-venv is required to run ISLearn in a virtual environment. Additionally, for testing
+ISLa, clang and the <code class="language-plaintext highlighter-rouge">csvlint</code> executable are required (for the Scriptsize-C and CSV case studies).</p>
+
+<p>On <em>Alpine Linux</em>, all dependencies (but <code class="language-plaintext highlighter-rouge">csvlint</code>) can be installed using</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>apk add python3.10 python3.10-dev python3.10-venv gcc g++ make cmake git clang
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">csvlint</code> executable can be obtained from
+https://github.com/Clever/csvlint/releases/download/v0.3.0/csvlint-v0.3.0-linux-amd64.tar.gz. You obtain and
+unpack <code class="language-plaintext highlighter-rouge">csvlint</code> by running (in a Unix shell)</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wget https://github.com/Clever/csvlint/releases/download/v0.3.0/csvlint-v0.3.0-linux-amd64.tar.gz <span class="nt">-O</span> /tmp/csvlint.tar.gz
+<span class="nb">tar </span>xzf /tmp/csvlint.tar.gz <span class="nt">-C</span> /tmp
+</code></pre></div></div>
+
+<p>Then, move the file <code class="language-plaintext highlighter-rouge">/tmp/csvlint-v0.3.0-linux-amd64/csvlint</code> to some location in your PATH (e.g., <code class="language-plaintext highlighter-rouge">/usr/bin</code>).</p>
+
+<h3 id="docker">Docker</h3>
+
+<p>For testing ISLa without having to care about external dependencies like Python, we provide a Docker container,
+which already contains all dependencies.</p>
+
+<p>First, pull and run the Docker container:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker pull dsteinhoefel/isla:latest
+docker run <span class="nt">-it</span> <span class="nt">--name</span> isla dsteinhoefel/isla
+</code></pre></div></div>
+
+<p>You should now have entered the container. Next, check out the ISLa repository, and update the requirements:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>git clone https://github.com/rindPHI/isla.git
+<span class="nb">cd </span>isla/
+</code></pre></div></div>
+
+<p>Now, you can perform an editable installation of ISLa and run the ISLa tests:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>pip <span class="nb">install</span> <span class="nt">-e</span> .[dev,test]
+python3.10 <span class="nt">-m</span> pytest <span class="nt">-n</span> 16 tests
+</code></pre></div></div>
+
+<h3 id="install">Install</h3>
+
+<p>If all external dependencies are available, a simple <code class="language-plaintext highlighter-rouge">pip install isla-solver</code> suffices. We recommend installing 
+ISLa inside a virtual environment (virtualenv):</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python3.10 <span class="nt">-m</span> venv venv
+<span class="nb">source </span>venv/bin/activate
+pip <span class="nb">install</span> <span class="nt">--upgrade</span> pip
+pip <span class="nb">install </span>isla-solver
+</code></pre></div></div>
+
+<h3 id="build">Build</h3>
+
+<p>ISLearn is built locally as follows:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>git clone https://github.com/rindPHI/isla.git
+<span class="nb">cd </span>isla/
+
+python3.10 <span class="nt">-m</span> venv venv
+<span class="nb">source </span>venv/bin/activate
+
+pip <span class="nb">install</span> <span class="nt">--upgrade</span> pip
+pip <span class="nb">install</span> <span class="nt">--upgrade</span> build
+python3 <span class="nt">-m</span> build
+</code></pre></div></div>
+
+<p>Then, you will find the built wheel (<code class="language-plaintext highlighter-rouge">*.whl</code>) in the <code class="language-plaintext highlighter-rouge">dist/</code> directory.</p>
+
+<h3 id="testing--development">Testing &amp; Development</h3>
+
+<p>For development, we recommend using ISLa inside a virtual environment (virtualenv). By thing the following steps in a
+standard shell (bash), one can run the ISLa tests:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>git clone https://github.com/rindPHI/isla.git
+<span class="nb">cd </span>isla/
+
+python3.10 <span class="nt">-m</span> venv venv
+<span class="nb">source </span>venv/bin/activate
+
+pip <span class="nb">install</span> <span class="nt">--upgrade</span> pip
+pip <span class="nb">install</span> <span class="nt">-r</span> requirements_test.txt
+
+<span class="c"># Run tests</span>
+pip <span class="nb">install</span> <span class="nt">-e</span> .[dev,test]
+python3 <span class="nt">-m</span> pytest <span class="nt">-n</span> 16 tests
+</code></pre></div></div>
+
+<p>Then you can, for instance, run <code class="language-plaintext highlighter-rouge">python3 tests/xml_demo.py</code> inside the virtual environment.</p>
+
+<h2 id="changelog">Changelog</h2>
+
+<p>See <a href="CHANGELOG.md">CHANGELOG.md</a>.</p>
+
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        
+        <p>Published with <a href="https://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+  </body>
+</html>
+
+<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+<script id="MathJax-script" async src="/assets/mathjax/tex-chtml.js"></script>
