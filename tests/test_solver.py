@@ -816,12 +816,7 @@ forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
         self.assertEqual(None, solver.fuzz())
 
     def test_unsatisfiable_smt_formulas(self):
-        solver = ISLaSolver(
-            LANG_GRAMMAR, '''
-forall <assgn> assgn_1="{<var> var_1} := <rhs>" in <start>:
-  var_1 = "a" and
-forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
-  var_2 = "b"''')
+        solver = ISLaSolver(LANG_GRAMMAR, 'start = "x := 1"')  # Formula here is just dummy.
 
         tree = DerivationTree(
             "<start>", (

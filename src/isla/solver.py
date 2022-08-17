@@ -781,6 +781,15 @@ class ISLaSolver:
             self,
             state: SolutionState,
             max_instantiations: Optional[int] = None) -> Optional[List[SolutionState]]:
+        """
+        Eliminates all SMT-LIB formulas that appear in `state`'s constraint as conjunctive elements.
+        If, e.g., an SMT-LIB formula occurs as a disjunction, no solution is computed.
+
+        :param state: The state in which to solve all SMT-LIB formulas.
+        :param max_instantiations: The number of solutions the SMT solver should be asked for.
+        :return: The discovered solutions.
+        """
+
         conjuncts = split_conjunction(state.constraint)
         semantic_formulas = [conjunct for conjunct in conjuncts
                              if isinstance(conjunct, language.SMTFormula)
