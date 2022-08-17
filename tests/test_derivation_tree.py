@@ -203,6 +203,10 @@ class TestDerivationTree(unittest.TestCase):
         self.assertTrue(other_tree.is_prefix(potential_prefix_tree))
         self.assertTrue(other_tree.is_potential_prefix(potential_prefix_tree))
 
+    def test_find_start(self):
+        tree = DerivationTree('<start>', id=1)
+        self.assertEqual((), tree.find_node(1))
+
     def test_from_parse_tree(self):
         for _ in range(20):
             fuzzer = GrammarFuzzer(XML_GRAMMAR, max_nonterminals=50, min_nonterminals=10)

@@ -36,6 +36,7 @@ def insert_tree(grammar: CanonicalGrammar,
         #         and not any(existing.is_prefix(new_tree) for existing in result)):
 
         assert graph.tree_is_valid(new_tree.to_parse_tree())
+        assert all(new_tree.find_node(node.id) is not None for _, node in in_tree.paths())
 
         if (new_tree.find_node(tree) is not None  # In rare cases things fail (see simple-tar case study)
                 and new_tree.structural_hash() not in result_hashes):
@@ -111,7 +112,8 @@ def compute_context_additions(
     return [tree for tree in result
             if (all(tree.find_node(inserted_tree) is not None
                     for inserted_tree in all_in_tree_subtrees.values()) and
-                tree.find_node(into_tree) is not None)]
+                tree.find_node(into_tree) is not None) and
+            all(tree.find_node(node.id) is not None for _, node in in_tree.paths())]
 
 
 def compute_self_embeddings(
@@ -164,9 +166,11 @@ def compute_self_embeddings(
         new_tree = in_tree.replace_path(current_path, instantiated_tree)
         assert graph.tree_is_valid(new_tree.to_parse_tree())
 
-        new_tree = DerivationTree(new_tree.value, new_tree.children)
-        assert graph.tree_is_valid(new_tree.to_parse_tree())
+        # new_tree = DerivationTree(new_tree.value, new_tree.children)
+        # assert graph.tree_is_valid(new_tree.to_parse_tree())
         assert new_tree.has_unique_ids()
+
+        assert all(new_tree.find_node(node.id) is not None for _, node in in_tree.paths())
 
         results[new_tree.structural_hash()] = new_tree
 
@@ -300,6 +304,7 @@ def insert_trees(
                     new_tree = result_tree.replace_path(insertion_path, tree)
                     assert graph.tree_is_valid(new_tree.to_parse_tree())
                     assert new_tree.has_unique_ids()
+                    assert all(new_tree.find_node(node.id) is not None for _, node in tree.paths())
 
                     new_result_trees.append(new_tree)
                     continue
@@ -307,11 +312,14 @@ def insert_trees(
                 single_parent_tree_children = [
                     t for t in children_with_at_most_one_parent(tree) if is_nonterminal(t.value)]
 
-                for subtree in [t for t in single_parent_tree_children if t.value == insertion_point_tree.value]:
-                    new_tree = result_tree.replace_path(insertion_path, subtree)
-                    assert new_tree.has_unique_ids()
-                    assert graph.tree_is_valid(new_tree.to_parse_tree())
-                    new_result_trees.append(new_tree)
+                # for subtree in [t for t in single_parent_tree_children if t.value == insertion_point_tree.value]:
+                #     # NOTE: Here, IDs from `tree` might get lost, since we extract subtrees
+                #     #       and place them in insert_tree!
+                #     new_tree = result_tree.replace_path(insertion_path, subtree)
+                #     assert new_tree.has_unique_ids()
+                #     assert graph.tree_is_valid(new_tree.to_parse_tree())
+                #     assert all(new_tree.find_node(node.id) is not None for _, node in tree.paths())
+                #     new_result_trees.append(new_tree)
 
                 insertion_points: Dict[Path, DerivationTree] = {insertion_path: insertion_point_tree}
                 for subtree in single_parent_tree_children:

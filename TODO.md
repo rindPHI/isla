@@ -6,3 +6,7 @@
   elements of the propositional combination, it probably fails (a free variable
   remains).
 - Support & test XPath expressions in ISLa predicates.
+- Address unsatisfiability of formulas with existential quantifiers. Currently, we
+  can only handle these cases ingeneral by setting a timeout. Otherwise, we continue
+  inserting and expanding trees for an infinite amount of time. Have to find
+  a termination criterion eventually.

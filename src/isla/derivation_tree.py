@@ -207,7 +207,16 @@ class DerivationTree:
         return result
 
     def find_node(self, node_or_id: Union['DerivationTree', int]) -> Optional[Path]:
-        """Finds a node by its (assumed unique) ID. Returns the path relative to this node."""
+        """
+        Finds a node by its (assumed unique) ID. Returns the path relative to this node.
+
+        Attention: Might return an empty tuple, which indicates that the searched-for node
+        is the root of the tree! Don't use as in `if not find_node(...).`, use
+        `if find_node(...) is not None:`.
+
+        :param node_or_id: The node or node ID to search for.
+        :return: The path to the node or None.
+        """
         if isinstance(node_or_id, DerivationTree):
             node_or_id = node_or_id.id
 
@@ -215,17 +224,6 @@ class DerivationTree:
             return next(path for path, subtree in self.paths() if subtree.id == node_or_id)
         except StopIteration:
             return None
-
-        stack: List[Tuple[Path, DerivationTree]] = [((), self)]
-        while stack:
-            path, tree = stack.pop()
-            if tree.id == node_or_id:
-                return path
-
-            if tree.children:
-                stack.extend([(path + (idx,), child) for idx, child in enumerate(tree.children)])
-
-        return None
 
     def traverse(
             self,
@@ -445,8 +443,7 @@ class DerivationTree:
 
         result = self
         for tree_id in id_subst_map:
-            path = result.find_node(tree_id)
-            if path is not None:
+            if (path := result.find_node(tree_id)) is not None:
                 result = result.replace_path(path, id_subst_map[tree_id])
 
         return result

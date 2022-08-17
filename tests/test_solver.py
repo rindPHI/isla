@@ -23,7 +23,7 @@ from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.helpers import crange
 from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, STANDARD_SEMANTIC_PREDICATES, \
     STANDARD_STRUCTURAL_PREDICATES
-from isla.language import VariablesCollector, parse_isla
+from isla.language import VariablesCollector, parse_isla, unparse_isla
 from isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
     get_quantifier_chains, CostComputer, GrammarBasedBlackboxCostComputer, quantified_formula_might_match
 from isla.type_defs import Grammar
@@ -845,14 +845,29 @@ forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
 
         self.assertEqual([], solver.eliminate_all_semantic_formulas(SolutionState(formula_1 & formula_2, tree)))
 
-    @pytest.mark.skip('Not yet working.')
     def test_unsatisfiable_existential_formula(self):
+        # TODO: Currently, we can only handle unsatisfiability of formulas with existential
+        #       quantifiers (in general) by setting a timeout, since otherwise, we continue
+        #       inserting and expanding trees for an infinite amount of time. Have to find
+        #       a termination criterion eventually.
         solver = ISLaSolver(
             LANG_GRAMMAR,
             '''
 forall <assgn> assgn_1:
   exists <assgn> assgn_2:
-    before(assgn_2, assgn_1)''')
+    before(assgn_2, assgn_1)''',
+            timeout_seconds=10)
+        self.assertFalse(solver.fuzz())
+
+    def test_implication(self):
+        formula = '''
+not(
+  forall <assgn> assgn_1="{<var> var_1} := <rhs>" in start:
+      var_1 = "x" implies
+  exists <var> var_2 in start:
+      var_2 = "x")'''
+
+        solver = ISLaSolver(LANG_GRAMMAR, formula, timeout_seconds=10)
         self.assertFalse(solver.fuzz())
 
 

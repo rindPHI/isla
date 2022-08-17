@@ -5,6 +5,8 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.8.17] - 2022-08-17
+
 ### Added
 
 - Added a method `ISLaSolver.fuzz()` that produces one solution at each call, i.e., not a generator of
@@ -13,9 +15,11 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 ### Changed
 
 - Better support for unsatisfiable formulas: States with unsatisfiable SMT-LIB atoms in their formulas
-  are discarded early. Before, it could happen that the solver diverged.
+  are discarded early. Before, it could happen that the solver diverged. When checking unsatisfiable
+  formulas with existential quantifiers, you have to set a timeout; the solver usually diverges (without
+  producing an output) in these cases.
 
-## [0.8.16] - 2022-08-17
+## [0.8.16] - 2022-08-16
 
 ### Added
 
