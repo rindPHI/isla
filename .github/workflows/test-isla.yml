@@ -28,7 +28,8 @@ jobs:
         pip install -e .[dev,test]
     - name: Test with pytest
       run: |
-        pytest -n 16 --html=report.html --self-contained-html --cov-report xml:coverage.xml --cov-config=.coveragerc --cov=isla tests/
+        python3 -m pytest -n 16 --html=report.html --self-contained-html --cov-report xml:coverage.xml --cov-config=.coveragerc --cov=isla tests/
+        python3 -m coverage lcov
     - uses: actions/upload-artifact@v3
       with:
         name: Test Report
@@ -37,4 +38,4 @@ jobs:
       uses: coverallsapp/github-action@master
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
-        path-to-lcov: coverage.xml
+        path-to-lcov: coverage.lcov
