@@ -11,7 +11,7 @@ The purpose of this document is to precisely specify ISLa's syntax and
 semantics.
 
 The ISLa version considered in this document is ISLa
-[0.8.15](https://github.com/rindPHI/isla/tree/v0.8.15). Please consult the [ISLa
+[0.8.16](https://github.com/rindPHI/isla/tree/v0.8.16). Please consult the [ISLa
 CHANGELOG](https://github.com/rindPHI/isla/blob/main/CHANGELOG.md) to find out
 if there were recent additions.
 
@@ -593,11 +593,9 @@ first segment) or `<type>.<type1>[pos1].<type2>[pos2]` (for the second and later
 segments). Note that the second form can also be used when specifying an ISLa
 constraint, but is translated to the first form by [universally closing over the
 free nonterminal `<type>`](#free-nonterminals). Segments are connected using the
-`..` operator (descendent axis).[^6] Each segment consists of one of more child
+`..` operator (descendent axis). Each segment consists of one of more child
 axis usages connected by `.`. The `[pos]` specifiers are optional and default to
 `[1]`.
-
-[^6]: The descendent axis is not yet supported by the ISLa solver as of version 0.8.15.
 
 Semantically, `var.<type1>[pos1]` refers to the `pos1`-th *direct* child of type
 `<type1>` in the derivation tree associated to `var`, where counting starts from
