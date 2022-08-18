@@ -22,6 +22,7 @@ g_wf = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
+    tree_insertion_methods=0,
     cost_computer=GrammarBasedBlackboxCostComputer(
         CostSettings(cost_vector, k=eval_k),
         gg.GrammarGraph.from_grammar(xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)),
@@ -33,6 +34,7 @@ g_ns = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
+    tree_insertion_methods=0,
     cost_computer=GrammarBasedBlackboxCostComputer(
         CostSettings(cost_vector, k=eval_k),
         gg.GrammarGraph.from_grammar(xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)),
@@ -44,6 +46,7 @@ g_redef = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
+    tree_insertion_methods=0,
     cost_computer=GrammarBasedBlackboxCostComputer(
         CostSettings(cost_vector, k=eval_k),
         gg.GrammarGraph.from_grammar(xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)),
@@ -55,6 +58,7 @@ g_wf_ns = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
+    tree_insertion_methods=0,
     cost_computer=GrammarBasedBlackboxCostComputer(
         CostSettings(cost_vector, k=eval_k),
         gg.GrammarGraph.from_grammar(xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)),
@@ -68,6 +72,7 @@ g_wf_ns_redef = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
+    tree_insertion_methods=0,
     cost_computer=GrammarBasedBlackboxCostComputer(
         CostSettings(cost_vector, k=eval_k),
         gg.GrammarGraph.from_grammar(xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)),

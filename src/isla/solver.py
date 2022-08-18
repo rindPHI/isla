@@ -268,6 +268,8 @@ class ISLaSolver:
                       f'the current value is: {tree_insertion_methods}', file=sys.stderr)
 
             self.tree_insertion_methods = DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION
+            if tree_insertion_methods is not None:
+                self.tree_insertion_methods = tree_insertion_methods
 
         self.activate_unsat_support = activate_unsat_support
 

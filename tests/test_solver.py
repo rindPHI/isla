@@ -237,6 +237,7 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             num_solutions=50,
             enforce_unique_trees_in_queue=True,
             custom_test_func=validate_xml,
+            tree_insertion_methods=0,
             cost_computer=GrammarBasedBlackboxCostComputer(
                 CostSettings(
                     CostWeightVector(
