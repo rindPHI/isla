@@ -1,6 +1,12 @@
 ISLa: Input Specification Language
 ==================================
 
+[![Python](https://img.shields.io/pypi/pyversions/isla-solver.svg)](https://pypi.python.org/pypi/isla-solver/)
+[![Version](http://img.shields.io/pypi/v/isla-solver.svg)](https://pypi.python.org/pypi/isla-solver)
+[![Build Status](https://img.shields.io/github/workflow/status/rindPHI/isla/Test%20ISLa)](https://github.com/rindPHI/isla/actions/workflows/test-isla.yml)
+[![Coverage Status](https://coveralls.io/repos/github/rindPHI/isla/badge.svg?branch=main)](https://coveralls.io/github/rindPHI/isla?branch=main)
+[![Dependencies](https://img.shields.io/librariesio/release/github/rindphi/isla)](https://libraries.io/github/rindPHI/isla)
+
 ISLa is a grammar-aware String constraint solver with its own specification
 language. The language is a superset of SMT-LIB for String constraints, and adds
 the power of structural quantifiers over derivation trees on top. ISLa supports
@@ -109,12 +115,9 @@ solver = ISLaSolver(
     max_number_free_instantiations=10,
     max_number_smt_instantiations=10)
 
-it = solver.solve()
-while True:
-    try:
-        print(next(it))
-    except StopIteration:
-        break
+solution = solver.fuzz()
+for _ in range(100):
+    print(solver.fuzz())
 ```
 
 When calling the solver with an ISLa formula in concrete syntax (a string), one has to supply a "signature" of the
@@ -131,12 +134,9 @@ solver = ISLaSolver(
     max_number_free_instantiations=10,
     max_number_smt_instantiations=10)
 
-it = solver.solve()
-while True:
-    try:
-        print(next(it))
-    except StopIteration:
-        break
+solution = solver.fuzz()
+for _ in range(100):
+    print(solver.fuzz())
 ```
 
 To create more diverse inputs, ISLa can be configured to perform a *bounded expansion* of grammar nonterminals that are
