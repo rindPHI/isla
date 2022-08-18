@@ -136,7 +136,7 @@ solver = ISLaSolver(
 
 solution = solver.fuzz()
 for _ in range(100):
-  print(solver.fuzz())
+    print(solver.fuzz())
 ```
 
 To create more diverse inputs, ISLa can be configured to perform a *bounded expansion* of grammar nonterminals that are
