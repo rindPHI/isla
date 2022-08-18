@@ -212,6 +212,7 @@ def compute_direct_embeddings(
             match_path_embeddable,
             DerivationTree(t.value, t.children, orig_node.id),
             retain_id=True)
+        assert all(new_tree.find_node(node.id) is not None for _, node in in_tree.paths())
         results[new_tree.structural_hash()] = new_tree
 
     # NOTE: Removed the attempt to use existing "holes" for now. There is some kind of problem with

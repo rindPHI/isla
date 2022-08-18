@@ -243,6 +243,11 @@ class TestDerivationTree(unittest.TestCase):
             tree = fuzzer.fuzz_tree()
             self.assertEqual(str(tree), str(pickle.loads(pickle.dumps(tree))))
 
+    def test_zero_id(self):
+        DerivationTree.next_id = 42
+        tree = DerivationTree('<start>', id=0)
+        self.assertEqual(0, tree.id)
+
 
 if __name__ == '__main__':
     unittest.main()

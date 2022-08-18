@@ -29,7 +29,7 @@ class DerivationTree:
         self.__value = value
         self.__children = None if children is None else tuple(children)
 
-        if id:
+        if id is not None:
             self._id = id
         else:
             self._id = DerivationTree.next_id

@@ -177,8 +177,7 @@ class TestExistentialHelpers(unittest.TestCase):
             id=2)
         DerivationTree.next_id = 8
 
-        # methods = DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION
-        methods = SELF_EMBEDDING
+        methods = DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION
 
         results = insert_tree(
             canonical(LANG_GRAMMAR),
@@ -191,6 +190,16 @@ class TestExistentialHelpers(unittest.TestCase):
                 self.assertTrue(
                     result.find_node(node_id) is not None,
                     f'Could not find node {node_id} in result no. {idx + 1}: {result}')
+
+    def test_tree_insert_direct_embedding(self):
+        in_tree = DerivationTree("<start>", (DerivationTree("<stmt>", None, id=0),), id=1)
+        tree = DerivationTree('<assgn>', id=2)
+        results = insert_tree(
+            canonical(LANG_GRAMMAR),
+            tree,
+            in_tree,
+            methods=DIRECT_EMBEDDING)
+        self.assertTrue(all(result.find_node(node.id) is not None for result in results for _, node in result.paths()))
 
     def test_insert_trees_assignment(self):
         trees = [
