@@ -168,6 +168,8 @@ class ISLaSolver:
     """
     The solver class for ISLa formulas/constraints. Main methods: `solve()` and `evaluate()`.
     """
+    UNSAT = 0
+    TIMEOUT = 1
 
     def __init__(self,
                  grammar: Grammar | str,
@@ -344,31 +346,35 @@ class ISLaSolver:
         assert isinstance(inp, DerivationTree)
         return evaluate(self.formula, inp, self.grammar)
 
-    def solve(self) -> Generator[DerivationTree, None, None]:
+    def solve(self) -> Generator[DerivationTree | int, None, None]:
         """
-        Produces solutions to the constraint passed to the solver instance. If the parameter `timeout_seconds`
-        has been passed to the `ISLaSolver` constructor, the generator will stop if the chosen number of
-        seconds have expired.
+        Produces solutions to the constraint passed to the solver instance, or `ISLaSolver.TIMEOUT` (if
+        a timeout occurred) or `ISLaSolver.UNSAT` if no more solutions or none at all could be found.
+        If no solution was found at all and `UNSAT` is returned, this means that the formula is unsatisfiable.
+
+        The timeout can be controlled by the `timeout_seconds` constructor parameter.
 
         :return: A generator of solutions.
         """
 
         inp = self.fuzz()
-        while inp is not None:
+        while isinstance(inp, DerivationTree):
             yield inp
             inp = self.fuzz()
 
-    def fuzz(self) -> Optional[DerivationTree]:
+        yield inp
+
+    def fuzz(self) -> DerivationTree:
         """
         Attempts to compute a solution to the given ISLa formula. Returns that solution, if any.
-        This function can be called repeatedly to obtain more solutions until `None` is returned.
-        After that, only `None` will be returned at each call.
+        This function can be called repeatedly to obtain more solutions until `ISLaSolver.TIMEOUT`
+        or `ISLaSolver.UNSAT` is returned. After that, only `TIMEOUT` or `UNSAT` will be returned
+        at each call.
 
-        If the parameter `timeout_seconds` has been passed to the `ISLaSolver` constructor, `None`
-        will also be returned after the chosen number of seconds have expired.
+        The timeout can be controlled by the `timeout_seconds` constructor parameter.
 
-        :return: A solution for the ISLa formula passed to the `ISLaSolver`, or `None` if no solution
-        could be found.
+        :return: A solution for the ISLa formula passed to the `ISLaSolver`, or `ISLaSolver.TIMEOUT` (if
+        a timeout occurred) or `ISLaSolver.UNSAT` if no more solutions or none at all could be found.
         """
         if self.timeout_seconds is not None and self.start_time is None:
             self.start_time = int(time.time())
@@ -385,7 +391,7 @@ class ISLaSolver:
 
             if self.timeout_seconds is not None:
                 if int(time.time()) - self.start_time > self.timeout_seconds:
-                    return None
+                    return ISLaSolver.TIMEOUT
 
             if self.solutions:
                 return self.solutions.pop(0)
@@ -486,7 +492,7 @@ class ISLaSolver:
         if self.solutions:
             return self.solutions.pop(0)
         else:
-            return None
+            return ISLaSolver.UNSAT
 
     def expand_state(self, state: SolutionState, fuzzer: GrammarCoverageFuzzer) -> List[SolutionState]:
         result: List[SolutionState] = []

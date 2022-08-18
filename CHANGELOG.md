@@ -9,7 +9,11 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ### Changed
 
+- The `ISLaSolver.fuzz()` and `ISLaSolver.solver()` methods now return either (a generator of) derivation
+  trees *or* the special constants `ISLaSolver.TIMEOUT` or `ISLaSolver.UNSAT` for occurred timeouts or
+  unsatisfiable problems.
 - Changes to a crucial solver function drastically improved performance.
+- Small bug fix in DerivationTree.
 
 ## [0.8.17] - 2022-08-17
 

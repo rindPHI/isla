@@ -23,7 +23,7 @@ from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.helpers import crange
 from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, STANDARD_SEMANTIC_PREDICATES, \
     STANDARD_STRUCTURAL_PREDICATES
-from isla.language import VariablesCollector, parse_isla, unparse_isla
+from isla.language import VariablesCollector, parse_isla
 from isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
     get_quantifier_chains, CostComputer, GrammarBasedBlackboxCostComputer, quantified_formula_might_match
 from isla.type_defs import Grammar
@@ -589,102 +589,6 @@ forall int colno:
             num_solutions=10,
             precompute_reachability=False)
 
-    def execute_generation_test(
-            self,
-            formula: Union[language.Formula, str],
-            structural_predicates: Set[language.StructuralPredicate] = STANDARD_STRUCTURAL_PREDICATES,
-            semantic_predicates: Set[language.SemanticPredicate] = STANDARD_SEMANTIC_PREDICATES,
-            grammar=LANG_GRAMMAR,
-            num_solutions=50,
-            print_solutions=False,
-            max_number_free_instantiations=1,
-            max_number_smt_instantiations=1,
-            enforce_unique_trees_in_queue=True,
-            precompute_reachability=False,
-            debug=False,
-            state_tree_out="/tmp/state_tree.xml",
-            log_out="/tmp/isla_log.txt",
-            custom_test_func: Optional[Callable[[isla.derivation_tree.DerivationTree], Union[bool, str]]] = None,
-            cost_computer: Optional[CostComputer] = None,
-            print_only: bool = False,
-            timeout_seconds: Optional[int] = None,
-            global_fuzzer: bool = False,
-            fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = lambda grammar: GrammarCoverageFuzzer(grammar),
-            tree_insertion_methods=DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION):
-        logger = logging.getLogger(type(self).__name__)
-
-        if debug:
-            for f in [f for f in [state_tree_out, log_out] if os.path.exists(f)]:
-                os.remove(f)
-
-        solver = ISLaSolver(
-            grammar=grammar,
-            formula=formula,
-            structural_predicates=structural_predicates,
-            semantic_predicates=semantic_predicates,
-            max_number_free_instantiations=max_number_free_instantiations,
-            max_number_smt_instantiations=max_number_smt_instantiations,
-            enforce_unique_trees_in_queue=enforce_unique_trees_in_queue,
-            precompute_reachability=precompute_reachability,
-            debug=debug,
-            cost_computer=cost_computer,
-            timeout_seconds=timeout_seconds,
-            global_fuzzer=global_fuzzer,
-            fuzzer_factory=fuzzer_factory,
-            tree_insertion_methods=tree_insertion_methods
-        )
-
-        if debug:
-            file_handler = logging.FileHandler(log_out)
-            for name in logging.root.manager.loggerDict:
-                logging.getLogger(name).addHandler(file_handler)
-
-        if isinstance(formula, str):
-            formula = parse_isla(formula, grammar, structural_predicates, semantic_predicates)
-
-        constant = next(
-            c for c in VariablesCollector.collect(formula)
-            if isinstance(c, language.Constant) and not c.is_numeric())
-
-        def print_tree():
-            if debug:
-                with open(state_tree_out, 'w') as file:
-                    file.write(TestSolver.state_tree_to_xml(
-                        solver.state_tree_root, solver.state_tree, solver.costs))
-                    print(f"Written derivation data (XML) to {state_tree_out}")
-                    print(f"Written log {log_out}")
-
-        it = solver.solve()
-        solutions_found = 0
-        for idx in range(num_solutions):
-            try:
-                assignment = next(it)
-
-                solutions_found += 1
-                logger.info(f"Found solution no. %d: %s", solutions_found, assignment)
-
-                if not print_only:
-                    self.assertTrue(
-                        isla.evaluator.evaluate(formula.substitute_expressions({constant: assignment}), assignment,
-                                                grammar),
-                        f"Solution {assignment} does not satisfy constraint {formula}")
-
-                    if custom_test_func:
-                        test_result = custom_test_func(assignment)
-                        if test_result is not True:
-                            self.fail(f"Solution WRONG: '{assignment}'" if not isinstance(test_result, str)
-                                      else f"Solution WRONG: '{assignment}', message: {test_result}")
-
-                if print_solutions:
-                    print(str(assignment))
-            except StopIteration:
-                print_tree()
-                if idx == 0:
-                    self.fail("No solution found.")
-                self.fail(f"Only found {idx} solutions")
-
-        print_tree()
-
     @staticmethod
     def state_tree_to_xml(
             root: SolutionState,
@@ -800,11 +704,11 @@ str.len(<string>.<chars>) and
 
     def test_unsatisfiable_smt_atom(self):
         solver = ISLaSolver(LANG_GRAMMAR, '<var> = "aa"', activate_unsat_support=True)
-        self.assertEqual(None, solver.fuzz())
+        self.assertEqual(ISLaSolver.UNSAT, solver.fuzz())
 
     def test_unsatisfiable_smt_conjunction(self):
         solver = ISLaSolver(LANG_GRAMMAR, '<var> = "a" and <var> = "b"', activate_unsat_support=True)
-        self.assertEqual(None, solver.fuzz())
+        self.assertEqual(ISLaSolver.UNSAT, solver.fuzz())
 
     def test_unsatisfiable_smt_quantified_conjunction(self):
         solver = ISLaSolver(
@@ -814,7 +718,7 @@ forall <assgn> assgn_1="{<var> var_1} := <rhs>" in <start>:
 forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
   var_2 = "b"''',
             activate_unsat_support=True)
-        self.assertEqual(None, solver.fuzz())
+        self.assertEqual(ISLaSolver.UNSAT, solver.fuzz())
 
     def test_unsatisfiable_smt_formulas(self):
         solver = ISLaSolver(
@@ -845,7 +749,7 @@ forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
 
         self.assertEqual([], solver.eliminate_all_semantic_formulas(SolutionState(formula_1 & formula_2, tree)))
 
-    @pytest.mark.skip
+    # @pytest.mark.skip
     def test_unsatisfiable_existential_formula(self):
         # TODO: Currently, we can only handle unsatisfiability of formulas with existential
         #       quantifiers (in general) by setting a timeout, since otherwise, we continue
@@ -857,10 +761,10 @@ forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
 forall <assgn> assgn_1:
   exists <assgn> assgn_2:
     before(assgn_2, assgn_1)''',
-            tree_insertion_methods=0,
-            # timeout_seconds=10
+            # tree_insertion_methods=0,
+            timeout_seconds=10
         )
-        self.assertFalse(solver.fuzz())
+        self.assertEqual(ISLaSolver.TIMEOUT, solver.fuzz())
 
     def test_implication(self):
         formula = '''
@@ -871,8 +775,109 @@ not(
       var_2 = "x")'''
 
         solver = ISLaSolver(LANG_GRAMMAR, formula, activate_unsat_support=True)
-        self.assertFalse(solver.fuzz())
+        self.assertEqual(ISLaSolver.UNSAT, solver.fuzz())
 
+    def execute_generation_test(
+            self,
+            formula: Union[language.Formula, str],
+            structural_predicates: Set[language.StructuralPredicate] = STANDARD_STRUCTURAL_PREDICATES,
+            semantic_predicates: Set[language.SemanticPredicate] = STANDARD_SEMANTIC_PREDICATES,
+            grammar=LANG_GRAMMAR,
+            num_solutions=50,
+            print_solutions=False,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=1,
+            enforce_unique_trees_in_queue=True,
+            precompute_reachability=False,
+            debug=False,
+            state_tree_out="/tmp/state_tree.xml",
+            log_out="/tmp/isla_log.txt",
+            custom_test_func: Optional[Callable[[isla.derivation_tree.DerivationTree], Union[bool, str]]] = None,
+            cost_computer: Optional[CostComputer] = None,
+            print_only: bool = False,
+            timeout_seconds: Optional[int] = None,
+            global_fuzzer: bool = False,
+            fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = lambda grammar: GrammarCoverageFuzzer(grammar),
+            tree_insertion_methods=DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION):
+        logger = logging.getLogger(type(self).__name__)
+
+        if debug:
+            for f in [f for f in [state_tree_out, log_out] if os.path.exists(f)]:
+                os.remove(f)
+
+        solver = ISLaSolver(
+            grammar=grammar,
+            formula=formula,
+            structural_predicates=structural_predicates,
+            semantic_predicates=semantic_predicates,
+            max_number_free_instantiations=max_number_free_instantiations,
+            max_number_smt_instantiations=max_number_smt_instantiations,
+            enforce_unique_trees_in_queue=enforce_unique_trees_in_queue,
+            precompute_reachability=precompute_reachability,
+            debug=debug,
+            cost_computer=cost_computer,
+            timeout_seconds=timeout_seconds,
+            global_fuzzer=global_fuzzer,
+            fuzzer_factory=fuzzer_factory,
+            tree_insertion_methods=tree_insertion_methods
+        )
+
+        if debug:
+            file_handler = logging.FileHandler(log_out)
+            for name in logging.root.manager.loggerDict:
+                logging.getLogger(name).addHandler(file_handler)
+
+        if isinstance(formula, str):
+            formula = parse_isla(formula, grammar, structural_predicates, semantic_predicates)
+
+        constant = next(
+            c for c in VariablesCollector.collect(formula)
+            if isinstance(c, language.Constant) and not c.is_numeric())
+
+        def print_tree():
+            if debug:
+                with open(state_tree_out, 'w') as file:
+                    file.write(TestSolver.state_tree_to_xml(
+                        solver.state_tree_root, solver.state_tree, solver.costs))
+                    print(f"Written derivation data (XML) to {state_tree_out}")
+                    print(f"Written log {log_out}")
+
+        solutions_found = 0
+        for idx in range(num_solutions):
+            assignment = solver.fuzz()
+
+            if not isinstance(assignment, DerivationTree):
+                if assignment == ISLaSolver.UNSAT:
+                    print('UNSAT / no more solutions found')
+                else:
+                    assert assignment == ISLaSolver.TIMEOUT
+                    print('TIMEOUT')
+                break
+
+            solutions_found += 1
+            logger.info(f"Found solution no. %d: %s", solutions_found, assignment)
+
+            if not print_only:
+                self.assertTrue(
+                    isla.evaluator.evaluate(formula.substitute_expressions({constant: assignment}), assignment,
+                                            grammar),
+                    f"Solution {assignment} does not satisfy constraint {formula}")
+
+                if custom_test_func:
+                    test_result = custom_test_func(assignment)
+                    if test_result is not True:
+                        self.fail(f"Solution WRONG: '{assignment}'" if not isinstance(test_result, str)
+                                  else f"Solution WRONG: '{assignment}', message: {test_result}")
+
+            if print_solutions:
+                print(str(assignment))
+
+        if not solutions_found:
+            self.fail("No solution found.")
+        if solutions_found < num_solutions:
+            self.fail(f"Only found {solutions_found} solutions")
+
+        print_tree()
 
 if __name__ == '__main__':
     unittest.main()
