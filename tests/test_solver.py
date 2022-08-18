@@ -845,6 +845,7 @@ forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
 
         self.assertEqual([], solver.eliminate_all_semantic_formulas(SolutionState(formula_1 & formula_2, tree)))
 
+    @pytest.mark.skip
     def test_unsatisfiable_existential_formula(self):
         # TODO: Currently, we can only handle unsatisfiability of formulas with existential
         #       quantifiers (in general) by setting a timeout, since otherwise, we continue
@@ -856,7 +857,9 @@ forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
 forall <assgn> assgn_1:
   exists <assgn> assgn_2:
     before(assgn_2, assgn_1)''',
-            timeout_seconds=10)
+            tree_insertion_methods=0,
+            # timeout_seconds=10
+        )
         self.assertFalse(solver.fuzz())
 
     def test_implication(self):
@@ -867,7 +870,7 @@ not(
   exists <var> var_2 in start:
       var_2 = "x")'''
 
-        solver = ISLaSolver(LANG_GRAMMAR, formula, timeout_seconds=10)
+        solver = ISLaSolver(LANG_GRAMMAR, formula, activate_unsat_support=True)
         self.assertFalse(solver.fuzz())
 
 

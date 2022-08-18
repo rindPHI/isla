@@ -5,6 +5,12 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.8.18] - 2022-08-18
+
+### Changed
+
+- Changes to a crucial solver function drastically improved performance.
+
 ## [0.8.17] - 2022-08-17
 
 ### Added
@@ -17,7 +23,8 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 - Better support for unsatisfiable formulas: States with unsatisfiable SMT-LIB atoms in their formulas
   are discarded early. Before, it could happen that the solver diverged. When checking unsatisfiable
   formulas with existential quantifiers, you have to set a timeout; the solver usually diverges (without
-  producing an output) in these cases.
+  producing an output) in these cases. \
+  To use this, pass the parameter `activate_unsat_support=True` to the solver.
 
 ## [0.8.16] - 2022-08-16
 
