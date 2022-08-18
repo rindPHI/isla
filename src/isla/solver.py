@@ -412,37 +412,37 @@ class ISLaSolver:
             if state.constraint == sc.false():
                 # This state can be silently discarded.
                 pass
-            # Eliminate existential quantifiers over integers -> replace by constants
+            # Eliminate INTEGER EXISTENTIAL quantifiers
             elif (result_state := self.eliminate_existential_integer_quantifiers(state)) is not None:
                 self.solutions.extend(self.process_new_state(result_state))
-            # Eliminate universal quantifiers over integers -> random choice up to max_number_free_instantiations times
+            # Eliminate INTEGER UNIVERSAL quantifiers
             elif (result_states := self.instantiate_universal_integer_quantifiers(state)) is not None:
                 self.solutions.extend(self.process_new_states(result_states))
-            # Match all universal formulas
+            # Match all UNIVERSAL FORMULAS
             elif (result_states := self.match_all_universal_formulas(state)) is not None:
                 self.solutions.extend(self.process_new_states(result_states))
-            # Expand if there are any not yet eliminated / matched universal quantifiers
+            # EXPAND if there are any not yet eliminated / matched universal quantifiers
             elif any(isinstance(conjunct, language.ForallFormula) for conjunct in get_conjuncts(state.constraint)):
                 expanded_states = self.expand_tree(state)
                 assert len(expanded_states) > 0, f"State {state} will never leave the queue."
                 self.logger.debug("Expanding state %s (%d successors)", state, len(expanded_states))
 
                 self.solutions.extend(self.process_new_states(expanded_states))
-            # Eliminate all semantic formulas
+            # Eliminate all SEMANTIC FORMULAS
             elif (result_states := self.eliminate_all_semantic_formulas(state)) is not None:
                 self.solutions.extend(self.process_new_states(result_states))
             # Eliminate all ready semantic predicate formulas
             elif (result_state := self.eliminate_all_ready_semantic_predicate_formulas(state)) is not None:
                 self.solutions.extend(self.process_new_state(result_state))
-            # Eliminate first existential formula
-            elif (result_states := self.eliminate_first_match_all_existential_formulas(state)) is not None:
+            # Eliminate first EXISTENTIAL FORMULA
+            elif (result_states := self.eliminate_and_match_first_existential_formula(state)) is not None:
                 self.solutions.extend(self.process_new_states(result_states))
                 # Also add some expansions of the original state, to create a larger
                 # solution stream (otherwise, it might be possible that only a small
                 # finite number of solutions are generated for existential formulas).
                 self.solutions.extend(self.process_new_states(self.expand_tree(state, limit=2, only_universal=False)))
             else:
-                # semantic predicate formulas can remain if they bind lazily. In that case, we can choose a random
+                # SEMANTIC PREDICATE FORMULAS can remain if they bind lazily. In that case, we can choose a random
                 # instantiation and let the predicate "fix" the resulting tree.
                 assert (state.constraint == sc.true() or
                         all(isinstance(conjunct, language.SemanticPredicateFormula)
@@ -882,12 +882,9 @@ class ISLaSolver:
 
         return result if changed else None
 
-    def eliminate_first_match_all_existential_formulas(self, state: SolutionState) -> Optional[List[SolutionState]]:
-        # We produce up to three output states: One where all existential formulas that can be matched
-        # are matched, one where only the first existential formula is matched, and one where only the
-        # first existential formula is eliminated by tree insertion. The reason is that for re-inserted
-        # existential formulas, eager matching is the best strategy; in other cases, however, it is not
-        # clear whether matching or insertion are the best strategies.
+    def eliminate_and_match_first_existential_formula(self, state: SolutionState) -> Optional[List[SolutionState]]:
+        # We produce up to two groups of output states: One where the first existential formula, if it can be matched,
+        # is matched, and one where the first existential formula is eliminated by tree insertion.
         existential_formulas = [
             conjunct for conjunct in split_conjunction(state.constraint)
             if isinstance(conjunct, language.ExistsFormula)]
@@ -926,6 +923,10 @@ class ISLaSolver:
 
         # 2. Match first existential formula.
         first_matched = OrderedSet(self.match_existential_formula(existential_formulas[0], state))
+
+        # Tree insertion can be deactivated by setting `self.tree_insertion_methods` to 0.
+        if not self.tree_insertion_methods:
+            return list(first_matched)
 
         if first_matched:
             self.logger.debug(
@@ -998,6 +999,9 @@ class ISLaSolver:
                 if (only_universal and isinstance(formula, language.ForallFormula))
                 or (not only_universal and isinstance(formula, language.QuantifiedFormula))
             )}
+
+        if not nonterminal_expansions:
+            return []
 
         possible_expansions: List[Dict[Path, List[DerivationTree]]] = []
         if not limit:
@@ -1617,11 +1621,11 @@ class ISLaSolver:
             if not isinstance(universal_formula, language.ForallFormula):
                 continue
 
-            if not (any(self.quantified_formula_might_match(universal_formula, leaf_path, universal_formula.in_variable)
-                        for leaf_path, leaf_node in universal_formula.in_variable.open_leaves())
-                    or [match for match in
-                        isla.evaluator.matches_for_quantified_formula(universal_formula, self.grammar)
-                        if not universal_formula.is_already_matched(match[universal_formula.bound_variable][1])]):
+            if (all(not self.quantified_formula_might_match(universal_formula, leaf_path, universal_formula.in_variable)
+                    for leaf_path, leaf_node in universal_formula.in_variable.open_leaves()) and
+                    not [match for match in
+                         isla.evaluator.matches_for_quantified_formula(universal_formula, self.grammar)
+                         if not universal_formula.is_already_matched(match[universal_formula.bound_variable][1])]):
                 result = SolutionState(
                     language.replace_formula(result.constraint, universal_formula, sc.true()),
                     result.tree)
@@ -1859,8 +1863,23 @@ def quantified_formula_might_match(
         tree: DerivationTree,
         grammar: Grammar,
         reachable: Callable[[str, str], bool]) -> bool:
+    """
+    This function returns `True` if in order to match the `qfd_formula`, the given path
+    has to be expanded. It will return `False` if expanding that path makes no difference,
+    either because there is a match already or because the expansion will not contribute
+    to a future match. The purpose is to check, e.g., if a nonterminal shall be expanded
+     or "freely" instantiated; or to check if a quantifier can be removed, because it won't
+      match any expansion (in addition of not already matchine!).
+
+    :param qfd_formula: The quantified formula for which to check if the given tree path might become a match.
+    :param path_to_nonterminal: The path in the tree to check.
+    :param tree: The context tree.
+    :param grammar: The reference grammar.
+    :param reachable: A reachability function in the grammar.
+    :return: `True` iff some expansion of this path matches the formula, and the formula does not already match.
+    """
     node = tree.get_subtree(path_to_nonterminal)
-    assert not node.children
+    assert not node.children, 'quantified_formula_might_match only works for leaf nodes'
 
     if qfd_formula.in_variable.find_node(node) is None:
         return False
@@ -1871,17 +1890,20 @@ def quantified_formula_might_match(
                    for path, _ in node.paths() if path)
 
     qfd_nonterminal = qfd_formula.bound_variable.n_type
-    if not node.children and (qfd_nonterminal == node.value or reachable(node.value, qfd_nonterminal)):
+
+    if qfd_nonterminal == node.value:
+        return qfd_formula.bind_expression is not None
+
+    if qfd_nonterminal != node.value and reachable(node.value, qfd_nonterminal):
         return True
 
     if qfd_formula.bind_expression is None:
-        return False
+        return False  # The formula matches a (parent) element or not, but it's no future match.
 
-    # Is there an extension of some tree `node` is a subtree of, such that the
-    # bind expression tree is a prefix tree of that extension, and extending
-    # the nonterminal might approach a match?
-    # Note that the prefix tree must not *already* be a match.
+    # This leaf won't reach the "root node" of the match tree for `qfd_formula`.
+    assert qfd_nonterminal != node.value and not reachable(node.value, qfd_nonterminal)
 
+    # Return true if extending this leaf makes the quantifier match some parent.
     maybe_prefix_tree: DerivationTree
     for maybe_prefix_tree, var_map in qfd_formula.bind_expression.to_tree_prefix(
             qfd_formula.bound_variable.n_type, grammar):
