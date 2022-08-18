@@ -755,6 +755,7 @@ forall <expr> expr in start:
         self.assertFalse(implies(constraint_2, constraint_1))
         self.assertTrue(implies(constraint_1, -constraint_1) is False)
 
+    @pytest.mark.flaky(reruns=3, reruns_delay=2)
     def test_implication_check_type_implied(self):
         constraint_1 = parse_isla("""
         forall <stmt> stmt in start:

@@ -187,7 +187,7 @@ class ISLaSolver:
                  global_fuzzer: bool = False,
                  predicates_unique_in_int_arg: Tuple[language.SemanticPredicate, ...] = (COUNT_PREDICATE,),
                  fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = lambda grammar: GrammarCoverageFuzzer(grammar),
-                 tree_insertion_methods=DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION,
+                 tree_insertion_methods: Optional[int] = None,
                  activate_unsat_support: bool = False):
         """
         Constructs a new ISLaSolver object. Passing a grammar and a formula is mandatory.
@@ -258,8 +258,20 @@ class ISLaSolver:
         self.fuzzer = fuzzer_factory(self.grammar)
         self.fuzzer_factory = fuzzer_factory
         self.predicates_unique_in_int_arg: Set[language.SemanticPredicate] = set(predicates_unique_in_int_arg)
-        self.tree_insertion_methods = tree_insertion_methods
+
+        if activate_unsat_support and tree_insertion_methods is None:
+            self.tree_insertion_methods = 0
+        else:
+            if activate_unsat_support:
+                assert tree_insertion_methods is not None
+                print('With activate_unsat_support set, a 0 value for tree_insertion_methods is recommended, '
+                      f'the current value is: {tree_insertion_methods}', file=sys.stderr)
+
+            self.tree_insertion_methods = DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION
+
         self.activate_unsat_support = activate_unsat_support
+
+        self.currently_unsat_checking: bool = False
 
         self.cost_computer = (
             cost_computer if cost_computer is not None
@@ -364,7 +376,7 @@ class ISLaSolver:
 
         yield inp
 
-    def fuzz(self) -> DerivationTree:
+    def fuzz(self) -> DerivationTree | int:
         """
         Attempts to compute a solution to the given ISLa formula. Returns that solution, if any.
         This function can be called repeatedly to obtain more solutions until `ISLaSolver.TIMEOUT`
@@ -1481,12 +1493,48 @@ class ISLaSolver:
         new_states = [self.remove_nonmatching_universal_quantifiers(new_state) for new_state in new_states]
         new_states = [self.remove_infeasible_universal_quantifiers(new_state) for new_state in new_states]
 
-        if self.activate_unsat_support:
+        if self.activate_unsat_support and not self.currently_unsat_checking:
+            self.currently_unsat_checking = True
+
             for new_state in list(new_states):
+                if new_state.constraint == sc.true():
+                    continue
+
                 # Remove states with unsatisfiable SMT-LIB formulas.
                 if (any(isinstance(f, language.SMTFormula) for f in split_conjunction(new_state.constraint)) and
                         not self.eliminate_all_semantic_formulas(new_state, max_instantiations=1)):
                     new_states.remove(new_state)
+                    self.logger.debug('Dropping state %s, unsatisfiable SMT formulas', new_state)
+
+                # Remove states with unsatisfiable existential formulas.
+                existential_formulas = [f for f in split_conjunction(new_state.constraint) if
+                                        isinstance(f, language.ExistsFormula)]
+                for existential_formula in existential_formulas:
+                    old_start_time = self.start_time
+                    old_timeout_seconds = self.timeout_seconds
+                    old_queue = list(self.queue)
+
+                    self.queue = []
+                    check_state = SolutionState(existential_formula, new_state.tree)
+                    heapq.heappush(self.queue, (0, check_state))
+                    self.start_time = int(time.time())
+                    self.timeout_seconds = 2
+
+                    result = self.fuzz()
+
+                    self.start_time = old_start_time
+                    self.timeout_seconds = old_timeout_seconds
+                    self.queue = old_queue
+
+                    if result == ISLaSolver.UNSAT:
+                        new_states.remove(new_state)
+                        self.logger.debug(
+                            'Dropping state %s, unsatisfiable existential formula %s',
+                            new_state,
+                            existential_formula)
+                        break
+
+            self.currently_unsat_checking = False
 
         assert all(
             state.tree.find_node(tree) is not None

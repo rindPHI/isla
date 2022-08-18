@@ -1,4 +1,5 @@
 import functools
+import heapq
 import logging
 import os
 import random
@@ -23,7 +24,8 @@ from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
 from isla.helpers import crange
 from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, STANDARD_SEMANTIC_PREDICATES, \
     STANDARD_STRUCTURAL_PREDICATES
-from isla.language import VariablesCollector, parse_isla
+from isla.language import VariablesCollector, parse_isla, start_constant
+from isla.parser import EarleyParser
 from isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
     get_quantifier_chains, CostComputer, GrammarBasedBlackboxCostComputer, quantified_formula_might_match
 from isla.type_defs import Grammar
@@ -355,18 +357,18 @@ forall <csv-header> hline in start:
     def test_csv_rows_equal_length_simpler(self):
         property = """
 exists int num:
-   forall <csv-record> elem in start:
-     ((>= (str.to.int num) 1) and
-      count(elem, "<raw-field>", num))"""
+  forall <csv-record> elem in start:
+    ((>= (str.to.int num) 1) and
+     count(elem, "<raw-field>", num))"""
 
         self.execute_generation_test(
             property,
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR,
             custom_test_func=csv_lint,
-            num_solutions=50,
-            max_number_free_instantiations=10,
-            max_number_smt_instantiations=10,
+            num_solutions=30,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=2,
             enforce_unique_trees_in_queue=False,
             global_fuzzer=False,
             fuzzer_factory=functools.partial(GrammarFuzzer, min_nonterminals=0, max_nonterminals=30),
@@ -388,7 +390,7 @@ forall <csv-header> hline in start:
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR,
             custom_test_func=csv_lint,
-            num_solutions=50,
+            num_solutions=30,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=1,
             enforce_unique_trees_in_queue=False,
@@ -749,22 +751,48 @@ forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
 
         self.assertEqual([], solver.eliminate_all_semantic_formulas(SolutionState(formula_1 & formula_2, tree)))
 
-    # @pytest.mark.skip
-    def test_unsatisfiable_existential_formula(self):
-        # TODO: Currently, we can only handle unsatisfiability of formulas with existential
-        #       quantifiers (in general) by setting a timeout, since otherwise, we continue
-        #       inserting and expanding trees for an infinite amount of time. Have to find
-        #       a termination criterion eventually.
+    def test_unsatisfiable_forall_exists_formula(self):
         solver = ISLaSolver(
             LANG_GRAMMAR,
             '''
 forall <assgn> assgn_1:
   exists <assgn> assgn_2:
     before(assgn_2, assgn_1)''',
-            # tree_insertion_methods=0,
-            timeout_seconds=10
+            activate_unsat_support=True,
         )
-        self.assertEqual(ISLaSolver.TIMEOUT, solver.fuzz())
+        self.assertEqual(ISLaSolver.UNSAT, solver.fuzz())
+
+    def test_unsatisfiable_existential_formula(self):
+        tree = DerivationTree(
+            '<start>', (
+                (DerivationTree('<stmt>', (
+                    DerivationTree('<assgn>', id=2),
+                    DerivationTree(' ; ', (), id=3),
+                    DerivationTree('<stmt>', id=4)), id=1)),),
+            id=0)
+
+        formula = parse_isla(
+            '''
+forall <assgn> assgn_1:
+  exists <assgn> assgn_2:
+    before(assgn_2, assgn_1)''', LANG_GRAMMAR, structural_predicates={BEFORE_PREDICATE}
+        ).inner_formula.substitute_expressions({
+            start_constant(): tree,
+            language.BoundVariable('assgn_1', '<assgn>'): tree.get_subtree((0, 0))
+        })
+
+        solver = ISLaSolver(
+            LANG_GRAMMAR,
+            '''
+forall <assgn> assgn_1:
+  exists <assgn> assgn_2:
+    before(assgn_2, assgn_1)''',
+            activate_unsat_support=True,  # This is crucial.
+        )
+
+        solver.queue = []
+        heapq.heappush(solver.queue, (0, SolutionState(formula, tree)))
+        self.assertEqual(ISLaSolver.UNSAT, solver.fuzz())
 
     def test_implication(self):
         formula = '''
@@ -798,7 +826,8 @@ not(
             timeout_seconds: Optional[int] = None,
             global_fuzzer: bool = False,
             fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = lambda grammar: GrammarCoverageFuzzer(grammar),
-            tree_insertion_methods=DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION):
+            tree_insertion_methods=DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION,
+            activate_unsat_support: bool = False):
         logger = logging.getLogger(type(self).__name__)
 
         if debug:
@@ -819,7 +848,8 @@ not(
             timeout_seconds=timeout_seconds,
             global_fuzzer=global_fuzzer,
             fuzzer_factory=fuzzer_factory,
-            tree_insertion_methods=tree_insertion_methods
+            tree_insertion_methods=tree_insertion_methods,
+            activate_unsat_support=activate_unsat_support
         )
 
         if debug:
@@ -878,6 +908,7 @@ not(
             self.fail(f"Only found {solutions_found} solutions")
 
         print_tree()
+
 
 if __name__ == '__main__':
     unittest.main()

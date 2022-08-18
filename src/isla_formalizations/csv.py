@@ -66,14 +66,19 @@ def csv_lint(tree: isla.derivation_tree.DerivationTree) -> Union[bool, str]:
         return True if not has_error else err_msg
 
 
-# TODO: Choose different formalization?
-csv_colno_property = """
-forall <csv-header> hline in start:
-  exists int colno:
-    ((>= (str.to.int colno) 3) and 
-    ((<= (str.to.int colno) 5) and 
-     (count(hline, "<raw-field>", colno) and 
-     forall <csv-record> line in start:
-       count(line, "<raw-field>", colno))))"""
+# csv_colno_property = """
+# forall <csv-header> hline in start:
+#   exists int colno:
+#     ((>= (str.to.int colno) 3) and
+#     ((<= (str.to.int colno) 5) and
+#      (count(hline, "<raw-field>", colno) and
+#      forall <csv-record> line in start:
+#        count(line, "<raw-field>", colno))))"""
+
+csv_colno_property = '''
+exists int num:
+  forall <csv-record> elem in start:
+    ((>= (str.to.int num) 1) and
+     count(elem, "<raw-field>", num))'''
 
 CSV_COLNO_PROPERTY = parse_isla(csv_colno_property, CSV_GRAMMAR, semantic_predicates={COUNT_PREDICATE})

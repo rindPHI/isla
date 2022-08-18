@@ -1,6 +1,7 @@
 import copy
 import itertools
 import logging
+import sys
 from functools import reduce
 from typing import Union, Optional, Set, Dict, cast, Tuple, List
 
@@ -798,6 +799,7 @@ def implies(
         formula_2: Formula,
         grammar: Optional[CanonicalGrammar] = None,
         do_fix_str_to_int: bool = True) -> Optional[bool]:
+    print('The `evaluator.implies` function is deprecated.', file=sys.stderr)
     sublang_relation = {}
     if grammar:
         sublang_relation = transitive_closure({
