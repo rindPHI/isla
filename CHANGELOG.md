@@ -12,7 +12,8 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 - With the solver flag `activate_unsat_support` set, an additional unsatisfiability check is executed
   for existential formulas arising during solving, which, in many cases, can make the solver terminate
   with an adequate `ISLaSolver.UNSAT` response. This flag should only be set if an unsatisfiable answer
-  is expected or deemed possible, since the additional checks impact the solver performance.
+  is expected or deemed possible, since the additional checks impact the solver performance. With this
+  release, ISLa is approaching the state of being a *solver/checker for both satisfiable and unsatisfiable problems*.
 
 ## [0.8.18] - 2022-08-18
 
