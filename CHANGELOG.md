@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.9.2] - 2022-08-19
+
+### Changed
+
+- Using Trie implementation that is more efficient in retrieving sub-tries. All trie functionality is now
+  bundled in the `isla.trie.SubtreesTrie` class.
+
 ## [0.9.1] - 2022-08-19
 
 ### Changed
