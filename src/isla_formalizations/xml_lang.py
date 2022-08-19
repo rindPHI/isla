@@ -51,7 +51,9 @@ XML_GRAMMAR_WITH_NAMESPACE_PREFIXES.update({
         "<id-start-char><id-chars>",
         "<id-start-char>",
     ],
-    "<id-with-prefix>": ["<id-no-prefix>:<id-no-prefix>"]
+    "<id-with-prefix>": [
+        "<id-no-prefix>:<id-no-prefix>"
+    ]
 })
 
 
@@ -82,12 +84,12 @@ XML_WELLFORMEDNESS_CONSTRAINT = parse_isla(xml_wellformedness_constraint, XML_GR
 #            (= prefix_use prefix_def)))'''
 
 xml_attribute_namespace_constraint = r'''
-forall <xml-attribute> attribute="{<id-no-prefix> prefix_use}:<id-no-prefix>=\"<text>\"":
-  ((= prefix_use "xmlns") or
+forall <xml-attribute> attribute="{<id-no-prefix> prefix_use}:{<id-no-prefix> maybe_def}=\"<text>\"":
+  (((= prefix_use "xmlns") and not (= maybe_def "xmlns")) or
     exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}><inner-xml-tree></<id>>":
       (inside(attribute, outer_tag) and
        exists <xml-attribute> def_attribute="xmlns:{<id-no-prefix> prefix_def}=\"<text>\"" in cont_attribute:
-         (= prefix_use prefix_def)))'''
+         (not (= prefix_def "xmlns") and (= prefix_use prefix_def))))'''
 
 XML_ATTRIBUTE_NAMESPACE_CONSTRAINT = parse_isla(
     xml_attribute_namespace_constraint,
@@ -108,12 +110,12 @@ XML_TAG_NAMESPACE_CONSTRAINT = parse_isla(
 
 XML_NAMESPACE_CONSTRAINT = XML_TAG_NAMESPACE_CONSTRAINT & XML_ATTRIBUTE_NAMESPACE_CONSTRAINT
 
-xml_no_attr_redef_constraint = """
+xml_no_attr_redef_constraint = r'''
 forall <xml-attribute> attr_outer in start:
-  forall <xml-attribute> attr_inner_1="{<id> id_1}=\\\"<text>\\\"" in attr_outer:
-    forall <xml-attribute> attr_inner_2="{<id> id_2}=\\\"<text>\\\"" in attr_outer: 
-      (not same_position(attr_inner_1, attr_inner_2) implies
-       not (= id_1 id_2))"""
+  forall <xml-attribute> attr_inner_1="{<id> id_1}=\"<text>\"" in attr_outer:
+    forall <xml-attribute> attr_inner_2="{<id> id_2}=\"<text>\"" in attr_outer: 
+      (same_position(attr_inner_1, attr_inner_2) xor
+       not (= id_1 id_2))'''
 
 XML_NO_ATTR_REDEF_CONSTRAINT = parse_isla(
     xml_no_attr_redef_constraint,

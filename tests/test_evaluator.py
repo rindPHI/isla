@@ -361,6 +361,17 @@ class TestEvaluator(unittest.TestCase):
             reference_tree=tree,
             structural_predicates={IN_TREE_PREDICATE}))
 
+        inp = '<a xmlns:xmlns="9"/>'
+        tree = isla.derivation_tree.DerivationTree.from_parse_tree(
+            list(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))[0])
+        assert not validate_xml(tree)
+
+        self.assertFalse(evaluate(
+            XML_NAMESPACE_CONSTRAINT.substitute_expressions({Constant("start", "<start>"): tree}),
+            grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
+            reference_tree=tree,
+            structural_predicates={IN_TREE_PREDICATE}))
+
     def test_xml_attr_redefs(self):
         inp = '<a b="..." c="...">asdf</a>'
         tree = isla.derivation_tree.DerivationTree.from_parse_tree(
