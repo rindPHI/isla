@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.9.4] - 2022-08-19
+
+### Changed
+
+- Bug fix in `ISLaUnparser`: Quotation marks in SMT-LIB string literals are escaped according to the [ISLa
+  language specification](https://rindphi.github.io/isla/islaspec/#lexer-rules), using `\"`.
+
 ## [0.9.3] - 2022-08-19
 
 ### Added

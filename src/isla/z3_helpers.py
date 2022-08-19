@@ -394,7 +394,7 @@ def smt_expr_to_str(f: z3.ExprRef, qfd_var_stack: Tuple[str, ...] = ()) -> str:
         assert len(qfd_var_stack) > idx
         return qfd_var_stack[idx]
     if z3.is_string_value(f):
-        return '"' + cast(str, f.as_string()).replace('"', '""') + '"'
+        return '"' + cast(str, f.as_string()).replace('"', r'\"') + '"'
     if z3.is_int_value(f):
         return str(f.as_long())
     if z3.is_true(f):
