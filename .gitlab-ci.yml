@@ -35,7 +35,7 @@ before_script:
 
 test:
   script:
-    - python3 -m pytest -n 16 --randomly-seed=0 --html=report.html --self-contained-html --cov-report xml:coverage.xml --cov-config=.coveragerc --cov=isla tests/
+    - python3 -m pytest -n 16 --randomly-seed=0 --html=report.html --self-contained-html --cov-report xml:coverage.xml --cov-report term --cov-config=.coveragerc --cov=isla tests/
   coverage: '/TOTAL *\d+ *\d+ *\d+(\.\d+)?%/'
   artifacts:
     when: always
