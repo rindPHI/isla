@@ -16,6 +16,10 @@ S = TypeVar('S')
 T = TypeVar('T')
 
 
+def is_path(maybe_path: Any) -> bool:
+    return isinstance(maybe_path, tuple) and all(isinstance(elem, int) for elem in maybe_path)
+
+
 def pop(l: List[S], default: T = None, index=0) -> Union[S, T]:
     return default if not l else l.pop(index)
 
