@@ -9,6 +9,7 @@ from grammar_graph import gg
 from graphviz import Digraph
 
 from isla.helpers import is_nonterminal, mk_subtree_trie, path_to_trie_key, traverse, TRAVERSE_POSTORDER
+from isla.trie import SubtreesTrie
 from isla.type_defs import Path, Grammar, ParseTree
 
 
@@ -180,7 +181,7 @@ class DerivationTree:
         return result
 
     @lru_cache
-    def trie(self) -> datrie.Trie:
+    def trie(self) -> SubtreesTrie:
         """Mapping from Paths (encoded as unicode Strings) to pairs of a path
         and a corresponding subtree, in efficient Trie structure. The path
         in the value is the unencoded version of the path in the key; this
@@ -188,10 +189,8 @@ class DerivationTree:
         and `helpers.trie_key_to_path` for de/encoding paths for trie usage.
         Can be used like a dictionary. Keys (paths) are ordered according
         to a pre-order traversal."""
-        trie = mk_subtree_trie()  # Works for up to 30 children of a node
-        for path, subtree in self.paths():
-            trie[path_to_trie_key(path)] = (path, subtree)
-        return trie
+
+        return SubtreesTrie({path: (path, tree) for path, tree in self.paths()})
 
     def filter(self, f: Callable[['DerivationTree'], bool],
                enforce_unique: bool = False) -> List[Tuple[Path, 'DerivationTree']]:

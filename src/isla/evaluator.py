@@ -10,7 +10,8 @@ import z3
 from grammar_graph import gg
 from orderedset import OrderedSet
 
-from isla.helpers import is_nonterminal, transitive_closure, path_to_trie_key, get_subtrie
+from isla.derivation_tree import DerivationTree
+from isla.helpers import is_nonterminal, transitive_closure
 from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES
 from isla.language import Formula, StructuralPredicate, SemanticPredicate, parse_isla, \
     VariablesCollector, Constant, FilterVisitor, NumericQuantifiedFormula, StructuralPredicateFormula, SMTFormula, \
@@ -18,7 +19,6 @@ from isla.language import Formula, StructuralPredicate, SemanticPredicate, parse
     BoundVariable, ExistsIntFormula, ForallIntFormula, QuantifiedFormula, PropositionalCombinator, \
     ConjunctiveFormula, ForallFormula, ExistsFormula, NegatedFormula, \
     DisjunctiveFormula, BindExpression, split_conjunction, split_disjunction, DummyVariable, parse_bnf
-from isla.derivation_tree import DerivationTree
 from isla.three_valued_truth import ThreeValuedTruth
 from isla.type_defs import Grammar, Path, CanonicalGrammar
 from isla.z3_helpers import evaluate_z3_expression, DomainError, is_valid, z3_and, z3_or, z3_eq, replace_in_z3_expr
@@ -391,7 +391,7 @@ def evaluate_legacy(
             in_path, in_inst = assignments[formula.in_variable]
 
         if formula.bind_expression is None:
-            sub_trie = get_subtrie(trie, in_path)
+            sub_trie = trie.get_subtrie(in_path)
 
             new_assignments: List[Dict[Variable, Tuple[Path, DerivationTree]]] = []
             for path_key, (path, subtree) in sub_trie.items():
@@ -401,7 +401,7 @@ def evaluate_legacy(
             new_assignments = [
                 {var: (in_path + path, tree) for var, (path, tree) in new_assignment.items()}
                 for new_assignment in matches_for_quantified_formula(
-                    formula, grammar, in_inst, {}, trie=get_subtrie(trie, in_path))]
+                    formula, grammar, in_inst, {})]
 
         new_assignments = [
             new_assignment | assignments
@@ -574,8 +574,7 @@ def matches_for_quantified_formula(
         formula: QuantifiedFormula,
         grammar: Grammar,
         in_tree: Optional[DerivationTree] = None,
-        initial_assignments: Optional[Dict[Variable, Tuple[Path, DerivationTree]]] = None,
-        trie: Optional[datrie.Trie] = None) -> \
+        initial_assignments: Optional[Dict[Variable, Tuple[Path, DerivationTree]]] = None) -> \
         List[Dict[Variable, Tuple[Path, DerivationTree]]]:
     assert in_tree is None or isinstance(in_tree, DerivationTree)
     if in_tree is None:
@@ -590,10 +589,6 @@ def matches_for_quantified_formula(
 
     def search_action(path: Path, tree: DerivationTree) -> None:
         nonlocal new_assignments
-
-        subtrees_trie = None
-        if trie is not None:
-            subtrees_trie = get_subtrie(trie, path)
 
         node, children = tree
         if node == qfd_var.n_type:
