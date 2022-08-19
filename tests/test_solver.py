@@ -231,6 +231,7 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
         self.assertEqual(set(chains_1) | set(chains_2), set(all_chains))
 
     def test_xml_with_prefixes(self):
+        # TODO: Check how we can generate (more) prefixed attributes.
         self.execute_generation_test(
             XML_NAMESPACE_CONSTRAINT & XML_WELLFORMEDNESS_CONSTRAINT & XML_NO_ATTR_REDEF_CONSTRAINT,
             grammar=XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
