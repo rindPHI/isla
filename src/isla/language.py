@@ -395,22 +395,22 @@ def grammar_to_match_expr_grammar(start_symbol: str, grammar: ImmutableGrammar) 
     for nonterminal in new_grammar:
         if nonterminal == '<start>':
             continue
-        new_grammar[nonterminal].insert(0, f'{langle_nonterminal}{nonterminal[1:-1]}{rangle_nonterminal}')
         new_grammar[nonterminal].insert(0, f'{{{langle_nonterminal}{nonterminal[1:-1]}{rangle_nonterminal} <ID>}}')
+        new_grammar[nonterminal].insert(0, f'{langle_nonterminal}{nonterminal[1:-1]}{rangle_nonterminal}')
 
     new_grammar[langle_nonterminal] = ['<']
     new_grammar[rangle_nonterminal] = ['>']
     new_grammar[letter_nonterminal] = srange(string.ascii_letters)
     new_grammar[letter_or_digit_nonterminal] = srange(string.digits) + srange(string.ascii_letters)
     new_grammar[id_chars] = [
-        '',
+        f'{letter_or_digit_nonterminal}{id_chars}',
         f'_{id_chars}',
         f'-{id_chars}',
-        f'{letter_or_digit_nonterminal}{id_chars}',
+        '',
     ]
     new_grammar[id_nonterminal] = [
-        f'{letter_nonterminal}{id_chars}',
         f'${letter_nonterminal}{id_chars}',
+        f'{letter_nonterminal}{id_chars}',
     ]
 
     return new_grammar
