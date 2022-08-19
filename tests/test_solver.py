@@ -810,12 +810,12 @@ not(
     def test_equivalent(self):
         f1 = parse_isla('forall <var> var_1 in start: var_1 = "a"')
         f2 = parse_isla('forall <var> var_2 in start: var_2 = "a"')
-        self.assertTrue(equivalent(f1, f2, LANG_GRAMMAR))
+        self.assertTrue(equivalent(f1, f2, LANG_GRAMMAR, timeout_seconds=20))
 
     def test_implies(self):
         f1 = parse_isla('forall <var> var_1 in start: var_1 = "a"')
         f2 = parse_isla('exists <var> var_2 in start: var_2 = "a"')
-        self.assertTrue(implies(f1, f2, LANG_GRAMMAR))
+        self.assertTrue(implies(f1, f2, LANG_GRAMMAR, timeout_seconds=20))
 
     def execute_generation_test(
             self,
