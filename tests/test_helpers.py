@@ -1,16 +1,13 @@
 import copy
-import itertools
 import unittest
 from typing import Optional
 
 import z3
 from grammar_graph.gg import GrammarGraph
 
-from isla.derivation_tree import DerivationTree
 from isla.existential_helpers import path_to_tree, paths_between
 from isla.helpers import is_prefix, path_iterator, delete_unreachable, \
-    dict_of_lists_to_list_of_dicts, weighted_geometric_mean, canonical, trie_key_to_path, get_subtrie, path_to_trie_key, \
-    mk_subtree_trie
+    dict_of_lists_to_list_of_dicts, weighted_geometric_mean, canonical
 from isla.isla_predicates import is_before
 from isla.parser import EarleyParser
 from isla.type_defs import Grammar, ParseTree
@@ -183,45 +180,6 @@ class TestHelpers(unittest.TestCase):
         self.assertTrue(eval_result[1](tuple([assgn[var] for var in vars])))
         assgn = {"a": "a", "b": "b", "c": "c"}
         self.assertFalse(eval_result[1](tuple([assgn[var] for var in vars])))
-
-    def test_get_subtrie(self):
-        parser = EarleyParser(LANG_GRAMMAR)
-        tree = DerivationTree.from_parse_tree(next(parser.parse("x := 1 ; y := x ; y := 2 ; z := y ; x := z")))
-
-        for path, _ in tree.paths():
-            subtree_paths = [(p, t) for p, t in get_subtrie(tree.trie(), path).values()]
-            self.assertEqual([(p[len(path):], t) for p, t in tree.paths() if p[:len(path)] == path], subtree_paths)
-
-    def test_get_subtrie_artificial(self):
-        paths = []
-        for l in range(6):
-            paths += list(itertools.product(*[[i for i in range(5)] for _ in range(l)]))
-
-        trie = mk_subtree_trie()
-        for path in paths:
-            trie[path_to_trie_key(path)] = path, None
-
-        for path in paths:
-            subtree_paths = [(p, t) for p, t in get_subtrie(trie, path).values()]
-            sub_trie_paths = {(p[len(path):], None) for p in paths if p[:len(path)] == path}
-            self.assertEqual(
-                sub_trie_paths, set(subtree_paths),
-                f"Sub-trie differs from sub-tree at path {path}"
-            )
-
-    def test_path_to_trie_key(self):
-        for l in range(6):
-            paths = list(itertools.product(*[[i for i in range(5)] for _ in range(l)]))
-            for path in paths:
-                self.assertEqual(path, trie_key_to_path(path_to_trie_key(path)))
-
-    def test_trie_key_to_path(self):
-        self.assertEqual("\x01\x02", path_to_trie_key(trie_key_to_path("\x01\x02")))
-        try:
-            trie_key_to_path("\x02")
-            self.fail("Exception expected for trie key '\\x02'")
-        except RuntimeError:
-            pass
 
 
 if __name__ == '__main__':

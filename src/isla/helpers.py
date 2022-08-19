@@ -8,12 +8,14 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast, Callable, Iterable, Any, Optional
 
-import datrie
-
 from isla.type_defs import Path, Grammar, ParseTree, ImmutableGrammar, CanonicalGrammar, ImmutableList
 
 S = TypeVar('S')
 T = TypeVar('T')
+
+
+def is_path(maybe_path: Any) -> bool:
+    return isinstance(maybe_path, tuple) and all(isinstance(elem, int) for elem in maybe_path)
 
 
 def pop(l: List[S], default: T = None, index=0) -> Union[S, T]:
@@ -442,88 +444,6 @@ def transitive_closure(relation: Iterable[Tuple[S, T]]) -> Set[Tuple[S, T]]:
         closure = closure_until_now
 
     return closure
-
-
-def remove_subtrees_for_prefix(
-        subtrees: List[Tuple[Path, Any]],
-        prefix: Path) -> List[Tuple[Path, Any]]:
-    if not prefix or not subtrees:
-        return []
-
-    keyed_subtrees = KeyList(subtrees, key=lambda t: t[0])
-    pos_start = bisect_left(keyed_subtrees, prefix)
-
-    if subtrees[pos_start][0][:len(prefix)] != prefix:
-        # Prefix does not exist in list! Thus, return the whole list
-        result = subtrees
-    else:
-        pos_end = bisect_left(keyed_subtrees, prefix[:-1] + (prefix[-1] + 1,), lo=pos_start + 1)
-        result = subtrees[:pos_start] + subtrees[pos_end:]
-
-    # assert result == [(p, s) for p, s in subtrees if not p[:len(prefix)] == prefix]
-
-    return result
-
-
-class KeyList(Sequence):
-    # bisect doesn't accept a key function, so we build the key into our sequence.
-    def __init__(self, l, key):
-        self.l = l
-        self.key = key
-
-    def __len__(self):
-        return len(self.l)
-
-    def __getitem__(self, index):
-        return self.key(self.l[index])
-
-
-def mk_subtree_trie() -> datrie.Trie:
-    return datrie.Trie([chr(i) for i in range(30)])
-
-
-def path_to_trie_key(path: Path) -> str:
-    # 0-bytes are ignored by the trie ==> +1
-    # To represent the empty part, reserve chr(1) ==> +2
-    if not path:
-        return chr(1)
-
-    return chr(1) + "".join([chr(i + 2) for i in path])
-
-
-def trie_key_to_path(key: str) -> Path:
-    if not key or key[0] != chr(1):
-        raise RuntimeError(f"Invalid trie key '{key}' ({[ord(c) for c in key]}), should start with 1")
-
-    if key == chr(1):
-        return ()
-
-    return tuple([ord(c) - 2 for c in key if ord(c) != 1])
-
-
-def get_subtrie(trie: datrie.Trie, new_root_path: Path | str) -> datrie.Trie:
-    subtrees_trie = mk_subtree_trie()
-
-    if isinstance(new_root_path, str):
-        root_key = new_root_path
-        root_path_len = len(root_key) - 1
-    else:
-        assert isinstance(new_root_path, tuple)
-        root_key = path_to_trie_key(new_root_path)
-        root_path_len = len(new_root_path)
-
-    for suffix in trie.suffixes(root_key):
-        path, tree = trie[root_key + suffix]
-        subtrees_trie[chr(1) + suffix] = (path[root_path_len:], tree)
-
-    return subtrees_trie
-
-
-def copy_trie(trie: datrie.Trie) -> datrie.Trie:
-    result = mk_subtree_trie()
-    for key, value in trie.items():
-        result[key] = value
-    return result
 
 
 def start_symbol():
