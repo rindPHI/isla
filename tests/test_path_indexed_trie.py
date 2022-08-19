@@ -18,35 +18,31 @@ class TestPathIndexedTrie(unittest.TestCase):
     def test_get_keys_of_sub_trie(self):
         parser = EarleyParser(LANG_GRAMMAR)
         tree = DerivationTree.from_parse_tree(next(parser.parse("x := 1 ; y := x")))
-        trie = SubtreesTrie(dict(tree.paths()))
 
         self.assertEqual(
             [path for path, _ in tree.get_subtree((0, 0)).paths()],
-            trie.get_subtrie((0, 0)).keys())
+            tree.trie().get_subtrie((0, 0)).keys())
 
     def test_get_values_of_sub_trie(self):
         parser = EarleyParser(LANG_GRAMMAR)
         tree = DerivationTree.from_parse_tree(next(parser.parse("x := 1 ; y := x")))
-        trie = SubtreesTrie(dict(tree.paths()))
 
-        self.assertEqual([st for _, st in tree.get_subtree((0, 0)).paths()], trie.get_subtrie((0, 0)).values())
+        self.assertEqual(tree.get_subtree((0, 0)).paths(), tree.trie().get_subtrie((0, 0)).values())
 
     def test_get_items_of_sub_trie(self):
         parser = EarleyParser(LANG_GRAMMAR)
         tree = DerivationTree.from_parse_tree(next(parser.parse("x := 1 ; y := x")))
-        trie = SubtreesTrie(dict(tree.paths()))
 
         self.assertEqual(
-            [(path, str(st)) for path, st in tree.get_subtree((0, 0)).paths()],
-            [(path, str(st)) for path, st in trie.get_subtrie((0, 0)).items()])
+            [(path, (path, st)) for path, st in tree.get_subtree((0, 0)).paths()],
+            tree.trie().get_subtrie((0, 0)).items())
 
     def test_get_sub_trie(self):
         parser = EarleyParser(LANG_GRAMMAR)
         tree = DerivationTree.from_parse_tree(next(parser.parse("x := 1 ; y := x ; y := 2 ; z := y ; x := z")))
-        trie = SubtreesTrie(dict(tree.paths()))
 
         for path, _ in tree.paths():
-            subtree_paths = [(p, t) for p, t in trie.get_subtrie(path).items()]
+            subtree_paths = [(p, t) for _, (p, t) in tree.trie().get_subtrie(path).items()]
             self.assertEqual([(p[len(path):], t) for p, t in tree.paths() if p[:len(path)] == path], subtree_paths)
 
     def test_get_subtrie_artificial(self):

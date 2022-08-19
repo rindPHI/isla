@@ -1,26 +1,25 @@
 import copy
 import itertools
 import logging
-import sys
 from functools import reduce
 from typing import Union, Optional, Set, Dict, cast, Tuple, List
 
-import datrie
 import z3
 from grammar_graph import gg
 from orderedset import OrderedSet
 
 from isla.derivation_tree import DerivationTree
-from isla.helpers import is_nonterminal, transitive_closure
+from isla.helpers import is_nonterminal
 from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANTIC_PREDICATES
 from isla.language import Formula, StructuralPredicate, SemanticPredicate, parse_isla, \
     VariablesCollector, Constant, FilterVisitor, NumericQuantifiedFormula, StructuralPredicateFormula, SMTFormula, \
     SemanticPredicateFormula, Variable, replace_formula, \
     BoundVariable, ExistsIntFormula, ForallIntFormula, QuantifiedFormula, PropositionalCombinator, \
     ConjunctiveFormula, ForallFormula, ExistsFormula, NegatedFormula, \
-    DisjunctiveFormula, BindExpression, split_conjunction, split_disjunction, DummyVariable, parse_bnf
+    DisjunctiveFormula, BindExpression, split_conjunction, split_disjunction, parse_bnf
 from isla.three_valued_truth import ThreeValuedTruth
-from isla.type_defs import Grammar, Path, CanonicalGrammar
+from isla.trie import SubtreesTrie
+from isla.type_defs import Grammar, Path
 from isla.z3_helpers import evaluate_z3_expression, DomainError, is_valid, z3_and, z3_or, z3_eq, replace_in_z3_expr
 
 logger = logging.getLogger("evaluator")
@@ -44,7 +43,7 @@ def evaluate(
         structural_predicates: Set[StructuralPredicate] = STANDARD_STRUCTURAL_PREDICATES,
         semantic_predicates: Set[SemanticPredicate] = STANDARD_SEMANTIC_PREDICATES,
         assumptions: Optional[Set[Formula]] = None,
-        subtrees_trie: Optional[datrie.Trie] = None,
+        subtrees_trie: Optional[SubtreesTrie] = None,
         graph: Optional[gg.GrammarGraph] = None) -> ThreeValuedTruth:
     assumptions = assumptions or set()
 
@@ -322,7 +321,7 @@ def evaluate_legacy(
         assignments: Dict[Variable, Tuple[Path, DerivationTree]],
         reference_tree: DerivationTree,
         vacuously_satisfied: Optional[Set[Formula]] = None,
-        trie: Optional[datrie.Trie] = None,
+        trie: Optional[SubtreesTrie] = None,
         graph: Optional[gg.GrammarGraph] = None) -> ThreeValuedTruth:
     """
     An evaluation method which is based on tracking assignments in a dictionary.
@@ -710,123 +709,3 @@ def fix_str_to_int(formula: z3.BoolRef) -> z3.BoolRef:
         return None
 
     return replace_in_z3_expr(formula, replacement)
-
-
-def isla_to_smt_formula(formula: Formula, do_fix_str_to_int: bool = True) -> z3.BoolRef:
-    if isinstance(formula, SMTFormula):
-        if do_fix_str_to_int:
-            return fix_str_to_int(formula.formula)
-
-        return formula.formula
-
-    if isinstance(formula, ConjunctiveFormula):
-        return z3_and([isla_to_smt_formula(child) for child in formula.args])
-
-    if isinstance(formula, DisjunctiveFormula):
-        return z3_or([isla_to_smt_formula(child) for child in formula.args])
-
-    if isinstance(formula, NegatedFormula):
-        return z3.Not(isla_to_smt_formula(formula.args[0]))
-
-    if isinstance(formula, QuantifiedFormula):
-        assert isinstance(formula.in_variable, Variable)
-        premises = [
-            z3_type_predicate(formula.bound_variable.to_smt(), z3.StringVal(formula.bound_variable.n_type)),
-            z3.Contains(formula.in_variable.to_smt(), formula.bound_variable.to_smt())
-        ]
-        bound_vars = []
-
-        if formula.bind_expression:
-            # NOTE: Stipulating the precise shape of the match expression as a
-            #       concatenation of match expression elements can lead to
-            #       non-termination of Z3 despite a set timeout. Removed that.
-            for bound_element in formula.bind_expression.bound_elements:
-                assert not isinstance(bound_element, list), "Conversion of optionals not yet implemented"
-                if not isinstance(bound_element, DummyVariable):
-                    premises.append(z3.Contains(formula.bound_variable.to_smt(), bound_element.to_smt()))
-                    bound_vars.append(bound_element.to_smt())
-                    continue
-
-        if isinstance(formula, ForallFormula):
-            return z3.ForAll(
-                [formula.bound_variable.to_smt()] + bound_vars,
-                z3.Implies(z3.And(*premises), isla_to_smt_formula(formula.inner_formula)))
-        else:
-            return z3.Exists(
-                [formula.bound_variable.to_smt()] + bound_vars,
-                z3.And(z3.And(*premises), isla_to_smt_formula(formula.inner_formula)))
-
-    if isinstance(formula, ForallIntFormula):
-        return z3.ForAll(
-            [formula.bound_variable.to_smt()],
-            isla_to_smt_formula(formula.inner_formula))
-
-    if isinstance(formula, ExistsIntFormula):
-        return z3.Exists(
-            [formula.bound_variable.to_smt()],
-            isla_to_smt_formula(formula.inner_formula))
-
-    if isinstance(formula, StructuralPredicateFormula) or isinstance(formula, SemanticPredicateFormula):
-        arg_types = [z3.IntSort() if isinstance(arg, int) else z3.StringSort() for arg in formula.args]
-        args = [arg.to_smt() if isinstance(arg, Variable) else arg for arg in formula.args]
-        predicate = z3.Function(formula.predicate.name, *(arg_types + [z3.BoolSort()]))
-        return predicate(*args)
-
-    raise NotImplementedError(f"Translation of formula {formula} (type {type(formula).__name__}) not implemented")
-
-
-def equivalent(
-        formula_1: Formula,
-        formula_2: Formula,
-        grammar: Optional[CanonicalGrammar] = None,
-        do_fix_str_to_int: bool = True) -> Optional[bool]:
-    dir_1 = implies(formula_1, formula_2, grammar, do_fix_str_to_int)
-    dir_2 = implies(formula_2, formula_1, grammar, do_fix_str_to_int)
-
-    if dir_1 is None or dir_2 is None:
-        return None
-
-    return dir_1 and dir_2
-
-
-def implies(
-        formula_1: Formula,
-        formula_2: Formula,
-        grammar: Optional[CanonicalGrammar] = None,
-        do_fix_str_to_int: bool = True) -> Optional[bool]:
-    print('The `evaluator.implies` function is deprecated.', file=sys.stderr)
-    sublang_relation = {}
-    if grammar:
-        sublang_relation = transitive_closure({
-            (nonterminal_1, nonterminal_2)
-            for nonterminal_1 in grammar
-            for nonterminal_2 in grammar
-            if (nonterminal_1 == nonterminal_2
-                or any(derivation == [nonterminal_1] for derivation in grammar[nonterminal_2])
-                or grammar[nonterminal_1] == [[nonterminal_2]])
-        })
-
-    f_1 = isla_to_smt_formula(formula_1, do_fix_str_to_int=do_fix_str_to_int)
-    f_2 = isla_to_smt_formula(formula_2, do_fix_str_to_int=do_fix_str_to_int)
-
-    premises = []
-
-    x = z3.String("x")
-    for nonterminal_1, nonterminal_2 in sublang_relation:
-        premises.append(z3.ForAll([x], z3.Implies(z3_type_predicate(x, z3.StringVal(nonterminal_2)),
-                                                  z3_type_predicate(x, z3.StringVal(nonterminal_1)))))
-
-    # TODO: Consider adding special axioms for frequently used predicates like `before`
-
-    for i in range(4):
-        s = z3.Solver()
-        s.set("timeout", (i + 1) * 30)
-        for premise in premises:
-            s.append(premise)
-        s.append(z3.Not(z3.Implies(f_1, f_2)))
-        result = s.check()
-
-        if result != z3.unknown:
-            return result == z3.unsat
-
-    return None

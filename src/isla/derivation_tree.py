@@ -4,12 +4,11 @@ import zlib
 from functools import lru_cache
 from typing import Optional, Sequence, Dict, Set, Tuple, List, Callable, Union, Generator
 
-import datrie
 from grammar_graph import gg
 from graphviz import Digraph
-
-from isla.helpers import is_nonterminal, mk_subtree_trie, path_to_trie_key, traverse, TRAVERSE_POSTORDER
 from isla.trie import SubtreesTrie
+
+from isla.helpers import is_nonterminal, traverse, TRAVERSE_POSTORDER
 from isla.type_defs import Path, Grammar, ParseTree
 
 

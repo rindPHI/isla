@@ -2,18 +2,16 @@ import string
 import unittest
 from typing import cast, Callable
 
-import pytest
 import z3
-
-from isla.fuzzer import GrammarCoverageFuzzer
-from isla.parser import EarleyParser
 from orderedset import OrderedSet
 
 import isla.derivation_tree
 import isla.isla_shortcuts as sc
 from isla import language
-from isla.evaluator import evaluate, matches_for_quantified_formula, implies
-from isla.helpers import tree_to_string, canonical, srange
+from isla.derivation_tree import DerivationTree
+from isla.evaluator import evaluate, matches_for_quantified_formula
+from isla.fuzzer import GrammarCoverageFuzzer
+from isla.helpers import srange
 from isla.isla_predicates import BEFORE_PREDICATE, LEVEL_PREDICATE, IN_TREE_PREDICATE, \
     SAME_POSITION_PREDICATE
 from isla.isla_predicates import COUNT_PREDICATE
@@ -21,7 +19,7 @@ from isla.language import BoundVariable
 from isla.language import Constant, Formula, BindExpression, \
     VariableManager, \
     QuantifiedFormula, parse_isla
-from isla.derivation_tree import DerivationTree
+from isla.parser import EarleyParser
 from isla.z3_helpers import z3_eq
 from isla_formalizations import rest, scriptsizec
 from isla_formalizations.csv import CSV_GRAMMAR, CSV_HEADERBODY_GRAMMAR
@@ -728,83 +726,6 @@ forall <expr> expr in start:
 
         inp = DerivationTree.from_parse_tree(next(EarleyParser(grammar).parse("sqrt(-2.0)")))
         self.assertTrue(evaluate(property, inp, grammar))
-
-    @pytest.mark.skip('far too flaky. anyway not so important.')
-    def test_implication_check_core_implied(self):
-        def my_str_to_int(var):
-            return (f'(ite (= (str.at {var} 0) "-") '
-                    f'(* -1 (str.to.int (str.substr {var} 1 (- (str.len {var}) 1)))) '
-                    f'(str.to.int {var}))')
-
-        constraint_1 = parse_isla(f"(<= {my_str_to_int('start')} -100)")
-        constraint_2 = parse_isla(f"(<= {my_str_to_int('start')} -50)")
-        self.assertTrue(implies(constraint_1, constraint_2, do_fix_str_to_int=False))
-        self.assertFalse(implies(constraint_2, constraint_1, do_fix_str_to_int=False))
-
-        constraint_1 = parse_isla("""
-        forall <arith_expr> container="{<number> number} * <number>" in start:
-           exists <number> e in number:
-             (<= (str.to.int e) (str.to.int "-100"))""")
-
-        constraint_2 = parse_isla("""
-        forall <arith_expr> container="{<number> number} * <number>" in start:
-           exists <number> e in number:
-             (<= (str.to.int e) (str.to.int "-50"))""")
-
-        self.assertTrue(implies(constraint_1, constraint_2))
-        self.assertFalse(implies(constraint_2, constraint_1))
-        self.assertTrue(implies(constraint_1, -constraint_1) is False)
-
-    @pytest.mark.flaky(reruns=3, reruns_delay=2)
-    def test_implication_check_type_implied(self):
-        constraint_1 = parse_isla("""
-        forall <stmt> stmt in start:
-          exists <rhs> rhs in stmt:
-            (= rhs "1")""")
-
-        constraint_2 = parse_isla("""
-        forall <assgn> stmt in start:
-          exists <rhs> rhs in stmt:
-            (= rhs "1")""")
-
-        # This should hold since there is no <stmt> without an <assgn>!
-        self.assertTrue(implies(constraint_2, constraint_1, canonical(LANG_GRAMMAR)))
-        self.assertFalse(implies(constraint_1, constraint_2, canonical(LANG_GRAMMAR)))
-
-        constraint_3 = parse_isla("""
-        forall <start> stmt in start:
-          exists <rhs> rhs in stmt:
-            (= rhs "1")""")
-
-        self.assertTrue(implies(constraint_1, constraint_3, canonical(LANG_GRAMMAR)))
-        self.assertTrue(implies(constraint_3, constraint_1, canonical(LANG_GRAMMAR)))
-        self.assertTrue(implies(constraint_2, constraint_3, canonical(LANG_GRAMMAR)))
-        self.assertFalse(implies(constraint_3, constraint_2, canonical(LANG_GRAMMAR)))
-
-    @pytest.mark.flaky(reruns=3, reruns_delay=2)
-    def test_implication_check_type_implied_scriptsize_c(self):
-        constraint_1 = parse_isla("""
-        forall <statement> stmt in start:
-          exists <id> id in stmt:
-            (= id "x")""")
-
-        constraint_2 = parse_isla("""
-        forall <block> stmt in start:
-          exists <id> id in stmt:
-            (= id "1")""")
-
-        self.assertFalse(implies(constraint_2, constraint_1, canonical(scriptsizec.SCRIPTSIZE_C_GRAMMAR)))
-        self.assertFalse(implies(constraint_1, constraint_2, canonical(scriptsizec.SCRIPTSIZE_C_GRAMMAR)))
-
-        constraint_3 = parse_isla("""
-        forall <statement> stmt="if<paren_expr> <statement>" in start:
-          exists <id> id in stmt:
-            (= id "1")""")
-
-        self.assertFalse(implies(constraint_1, constraint_3, canonical(scriptsizec.SCRIPTSIZE_C_GRAMMAR)))
-        self.assertFalse(implies(constraint_3, constraint_1, canonical(scriptsizec.SCRIPTSIZE_C_GRAMMAR)))
-
-        self.assertTrue(implies(constraint_1, constraint_1, canonical(scriptsizec.SCRIPTSIZE_C_GRAMMAR)))
 
 
 if __name__ == '__main__':

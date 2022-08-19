@@ -12,7 +12,6 @@ from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Set, Iter
     TypeVar, MutableSet
 
 import antlr4
-import datrie
 import z3
 from antlr4 import InputStream, RuleContext, ParserRuleContext
 from antlr4.Token import CommonToken
@@ -21,17 +20,16 @@ from orderedset import OrderedSet
 from z3 import Z3Exception
 
 import isla.mexpr_parser.MexprParserListener as MexprParserListener
-from isla.derivation_tree import DerivationTree
-from isla.fuzzer import GrammarCoverageFuzzer
-from isla.helpers import RE_NONTERMINAL, is_nonterminal, assertions_activated, \
-    copy_trie, canonical, nth_occ, replace_in_list, srange, grammar_to_mutable, unreachable_nonterminals, start_symbol, \
-    list_set, is_prefix
-from isla.helpers import replace_line_breaks, delete_unreachable, pop, powerset, grammar_to_immutable, \
-    immutable_to_grammar, \
-    nested_list_to_tuple
 from isla.bnf import bnfListener
 from isla.bnf.bnfLexer import bnfLexer
 from isla.bnf.bnfParser import bnfParser
+from isla.derivation_tree import DerivationTree
+from isla.fuzzer import GrammarCoverageFuzzer
+from isla.helpers import RE_NONTERMINAL, is_nonterminal, assertions_activated, \
+    canonical, nth_occ, srange, grammar_to_mutable, list_set, is_prefix
+from isla.helpers import replace_line_breaks, delete_unreachable, powerset, grammar_to_immutable, \
+    immutable_to_grammar, \
+    nested_list_to_tuple
 from isla.isla_language import IslaLanguageListener
 from isla.isla_language.IslaLanguageLexer import IslaLanguageLexer
 from isla.isla_language.IslaLanguageParser import IslaLanguageParser
