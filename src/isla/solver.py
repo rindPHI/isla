@@ -3,16 +3,16 @@ import functools
 import heapq
 import itertools
 import logging
+import math
 import operator
 import random
-import re
 import sys
 import time
 from abc import ABC
 from dataclasses import dataclass
 from functools import reduce, lru_cache
+from typing import Generator, Dict, List, Set, Optional, Tuple, Union, cast, Callable, Iterable
 
-import math
 import pkg_resources
 import z3
 from grammar_graph import gg
@@ -21,13 +21,13 @@ from grammar_to_regex.cfg2regex import RegexConverter
 from grammar_to_regex.regex import regex_to_z3
 from orderedset import OrderedSet
 from packaging import version
-from typing import Generator, Dict, List, Set, Optional, Tuple, Union, cast, Callable, Iterable
 
 import isla.evaluator
 import isla.helpers
 import isla.isla_shortcuts as sc
 import isla.three_valued_truth
 from isla import language
+from isla.derivation_tree import DerivationTree
 from isla.evaluator import evaluate
 from isla.existential_helpers import insert_tree, DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_ADDITION
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
@@ -38,7 +38,6 @@ from isla.isla_predicates import STANDARD_STRUCTURAL_PREDICATES, STANDARD_SEMANT
 from isla.language import VariablesCollector, split_conjunction, split_disjunction, \
     convert_to_dnf, convert_to_nnf, ensure_unique_bound_variables, parse_isla, get_conjuncts, QuantifiedFormula, \
     parse_bnf
-from isla.derivation_tree import DerivationTree
 from isla.parser import EarleyParser
 from isla.three_valued_truth import ThreeValuedTruth
 from isla.type_defs import Grammar, Path, ImmutableList
@@ -1515,8 +1514,10 @@ class ISLaSolver:
                     old_start_time = self.start_time
                     old_timeout_seconds = self.timeout_seconds
                     old_queue = list(self.queue)
+                    old_solutions = list(self.solutions)
 
                     self.queue = []
+                    self.solutions = []
                     check_state = SolutionState(existential_formula, new_state.tree)
                     heapq.heappush(self.queue, (0, check_state))
                     self.start_time = int(time.time())
@@ -1527,6 +1528,7 @@ class ISLaSolver:
                     self.start_time = old_start_time
                     self.timeout_seconds = old_timeout_seconds
                     self.queue = old_queue
+                    self.solutions = old_solutions
 
                     if result == ISLaSolver.UNSAT:
                         new_states.remove(new_state)
@@ -2061,3 +2063,13 @@ def compute_symbol_costs(graph: GrammarGraph) -> Dict[str, int]:
                     result[source.symbol] = result[target.symbol] + 1
 
     return result
+
+
+def implies(f1: language.Formula, f2: language.Formula, grammar: Grammar, timeout_seconds=5) -> bool:
+    solver = ISLaSolver(grammar, f1 & -f2, activate_unsat_support=True, timeout_seconds=timeout_seconds)
+    return solver.fuzz() == ISLaSolver.UNSAT
+
+
+def equivalent(f1: language.Formula, f2: language.Formula, grammar: Grammar, timeout_seconds=5) -> bool:
+    solver = ISLaSolver(grammar, -(f1 & f2 | -f1 & -f2), activate_unsat_support=True, timeout_seconds=timeout_seconds)
+    return solver.fuzz() == ISLaSolver.UNSAT

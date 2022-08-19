@@ -27,7 +27,8 @@ from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, STANDARD_SEM
 from isla.language import VariablesCollector, parse_isla, start_constant
 from isla.parser import EarleyParser
 from isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
-    get_quantifier_chains, CostComputer, GrammarBasedBlackboxCostComputer, quantified_formula_might_match
+    get_quantifier_chains, CostComputer, GrammarBasedBlackboxCostComputer, quantified_formula_might_match, implies, \
+    equivalent
 from isla.type_defs import Grammar
 from isla.z3_helpers import z3_eq
 from isla_formalizations import rest, tar, simple_tar, scriptsizec
@@ -805,6 +806,16 @@ not(
 
         solver = ISLaSolver(LANG_GRAMMAR, formula, activate_unsat_support=True)
         self.assertEqual(ISLaSolver.UNSAT, solver.fuzz())
+
+    def test_equivalent(self):
+        f1 = parse_isla('forall <var> var_1 in start: var_1 = "a"')
+        f2 = parse_isla('forall <var> var_2 in start: var_2 = "a"')
+        self.assertTrue(equivalent(f1, f2, LANG_GRAMMAR))
+
+    def test_implies(self):
+        f1 = parse_isla('forall <var> var_1 in start: var_1 = "a"')
+        f2 = parse_isla('exists <var> var_2 in start: var_2 = "a"')
+        self.assertTrue(implies(f1, f2, LANG_GRAMMAR))
 
     def execute_generation_test(
             self,

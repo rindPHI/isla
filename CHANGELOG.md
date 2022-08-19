@@ -5,6 +5,18 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.9.3] - 2022-08-19
+
+### Added
+
+- Added functions `isla.solver.implies` and `isla.solver.equivalent` for implication and equivalence
+  checking.
+
+### Changed
+
+- Bug fix in unsatisfiability testing for existential quantifiers. Before, SAT was reported instead
+  of UNSAT in certain cases.
+
 ## [0.9.2] - 2022-08-19
 
 ### Changed
