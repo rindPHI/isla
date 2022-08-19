@@ -43,7 +43,9 @@ class SubtreesTrie:
 
     def items(self) -> List:
         return [
-            (trie_key_to_path(chr(1) + suffix), self.trie[self.root_path + suffix])
+            (trie_key_to_path(chr(1) + suffix),
+             (value := self.trie[self.root_path + suffix],
+              (value[0][len(self.root_path) - 1:], value[1]))[-1])
             for suffix in self.trie.suffixes(self.root_path)]
 
     def get_subtrie(self, new_root_path: Path) -> 'SubtreesTrie':
