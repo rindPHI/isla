@@ -37,7 +37,7 @@ from isla.isla_language.IslaLanguageLexer import IslaLanguageLexer
 from isla.isla_language.IslaLanguageParser import IslaLanguageParser
 from isla.mexpr_lexer.MexprLexer import MexprLexer
 from isla.mexpr_parser.MexprParser import MexprParser
-from isla.parser import EarleyParser
+from isla.parser import EarleyParser, PEGParser
 from isla.type_defs import Path, Grammar, ImmutableGrammar, ImmutableList, Pair
 from isla.z3_helpers import is_valid, z3_push_in_negations, z3_subst, get_symbols, smt_expr_to_str
 
@@ -199,7 +199,15 @@ class BindExpression:
 
         result: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]] = []
         immutable_grammar = grammar_to_immutable(grammar)
-        parser = EarleyParser(grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar))
+
+        def parse_peg(inp: str) -> DerivationTree:
+            peg_parser = PEGParser(grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar))
+            return DerivationTree.from_parse_tree(peg_parser.parse(inp)[0])
+
+        def parse_earley(inp: str) -> DerivationTree:
+            # Should we address ambiguities and return multiple parse trees?
+            earley_parser = EarleyParser(grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar))
+            return DerivationTree.from_parse_tree(next(earley_parser.parse(inp)))
 
         for bound_elements in flatten_bound_elements(
                 nested_list_to_tuple(self.bound_elements),
@@ -208,15 +216,23 @@ class BindExpression:
             flattened_bind_expr_str = ''.join(map(
                 lambda elem: f'{{{elem.n_type} {elem.name}}}' if type(elem) == BoundVariable else str(elem),
                 bound_elements))
-            # TODO: Ambiguities?
+
             try:
-                tree = DerivationTree.from_parse_tree(next(parser.parse(flattened_bind_expr_str))).children[0]
-            except SyntaxError:
-                language_core_logger.debug(
-                    f'Parsing match expression string "%s" caused a syntax error. If this is not a '
-                    f'test case where this behavior is intended, it should probably be investigated.',
-                    flattened_bind_expr_str)
-                continue
+                # Try the PEG parser first, it's faster if it works (and returns only one tree).
+                tree = parse_peg(flattened_bind_expr_str).children[0]
+            except Exception:
+                try:
+                    # Fall back to the more general Earley parser.
+                    language_core_logger.debug(
+                        'Parsing match expression %s with EarleyParser',
+                        flattened_bind_expr_str)
+                    tree = parse_earley(flattened_bind_expr_str).children[0]
+                except SyntaxError:
+                    language_core_logger.warning(
+                        f'Parsing match expression string "%s" caused a syntax error. If this is not a '
+                        f'test case where this behavior is intended, it should probably be investigated.',
+                        flattened_bind_expr_str)
+                    continue
 
             assert tree.value == in_nonterminal
 
@@ -379,8 +395,8 @@ def grammar_to_match_expr_grammar(start_symbol: str, grammar: ImmutableGrammar) 
     for nonterminal in new_grammar:
         if nonterminal == '<start>':
             continue
-        new_grammar[nonterminal].append(f'{langle_nonterminal}{nonterminal[1:-1]}{rangle_nonterminal}')
-        new_grammar[nonterminal].append(f'{{{langle_nonterminal}{nonterminal[1:-1]}{rangle_nonterminal} <ID>}}')
+        new_grammar[nonterminal].insert(0, f'{langle_nonterminal}{nonterminal[1:-1]}{rangle_nonterminal}')
+        new_grammar[nonterminal].insert(0, f'{{{langle_nonterminal}{nonterminal[1:-1]}{rangle_nonterminal} <ID>}}')
 
     new_grammar[langle_nonterminal] = ['<']
     new_grammar[rangle_nonterminal] = ['>']

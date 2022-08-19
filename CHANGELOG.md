@@ -5,6 +5,11 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Changed
+
+- Re-introduced PEGParser to `isla.parser`
+- Using PEGParser first in bind expression parsing; make a huge performance difference for complex (PEG) grammars.
+
 ## [0.9] - 2022-08-18
 
 ### Added
