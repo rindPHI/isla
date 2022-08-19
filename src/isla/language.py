@@ -1112,8 +1112,10 @@ class SMTFormula(Formula):
         free_variables: OrderedSet[Variable] = inst["free_variables_"]
         instantiated_variables: OrderedSet[Variable] = inst["instantiated_variables"]
 
+        formula = state['formula'].decode('utf-8')
+        formula = formula.replace(r'\"', r'\"')
         z3_constr = z3.parse_smt2_string(
-            f"(assert {state['formula'].decode('utf-8')})",
+            f"(assert {formula})",
             decls={var.name: z3.String(var.name) for var in free_variables | instantiated_variables})[0]
 
         self.__dict__ = inst
