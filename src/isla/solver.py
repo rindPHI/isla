@@ -1837,7 +1837,11 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
         global_k_path_cost = self._compute_global_k_coverage_cost(state)
 
         costs = [tree_closing_cost, constraint_cost, state.level, k_cov_cost, global_k_path_cost]
-        assert all(c >= 0 for c in costs)
+        assert tree_closing_cost >= 0, f'tree_closing_cost == {tree_closing_cost}!'
+        assert constraint_cost >= 0, f'constraint_cost == {constraint_cost}!'
+        assert state.level >= 0, f'state.level == {state.level}!'
+        assert k_cov_cost >= 0, f'k_cov_cost == {k_cov_cost}!'
+        assert global_k_path_cost >= 0, f'global_k_path_cost == {global_k_path_cost}!'
 
         # Compute geometric mean
         result = weighted_geometric_mean(costs, list(self.cost_settings.weight_vector))
@@ -1890,18 +1894,28 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
                 self.rounds_with_no_new_coverage = 0
 
     def _compute_global_k_coverage_cost(self, state: SolutionState):
-        num_contributed_k_paths = len(
-            {path for path in self.graph.k_paths(self.cost_settings.k)
-             if path in state.tree.k_paths(self.graph, self.cost_settings.k) and
-             path not in self.covered_k_paths})
+        all_k_paths = state.tree.k_paths(self.graph, self.cost_settings.k)
+        contributed_k_paths = {
+            path for path in self.graph.k_paths(self.cost_settings.k)
+            if path in all_k_paths and path not in self.covered_k_paths}
+
+        num_contributed_k_paths = len( contributed_k_paths)
         num_missing_k_paths = len(self.graph.k_paths(self.cost_settings.k)) - len(self.covered_k_paths)
+
+        assert 0 <= num_contributed_k_paths <= num_missing_k_paths, \
+            f'num_contributed_k_paths == {num_contributed_k_paths}, ' \
+            f'num_missing_k_paths == {num_missing_k_paths}'
 
         return 1 - (num_contributed_k_paths / num_missing_k_paths)
 
     def _compute_k_coverage_cost(self, state: SolutionState) -> float:
-        return math.prod([
-            1 - state.tree.k_coverage(self.graph, k) for k in range(1, self.cost_settings.k + 1)]
-        ) ** (1 / float(self.cost_settings.k))
+        coverages = []
+        for k in range(1, self.cost_settings.k + 1):
+            coverage = state.tree.k_coverage(self.graph, k)
+            assert 0 <= coverage <= 1, f'coverage == {coverage}'
+            coverages.append(1 - coverage)
+
+        return math.prod(coverages) ** (1 / float(self.cost_settings.k))
 
 
 def compute_tree_closing_cost(tree: DerivationTree, graph: GrammarGraph) -> float:
