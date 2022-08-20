@@ -5,6 +5,8 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.9.6] - 2022-08-20
+
 ### Changed
 
 - Bug fix in performance_evaluator, regression due to API change in ISLaSolver (return of TIMEOUT values)
