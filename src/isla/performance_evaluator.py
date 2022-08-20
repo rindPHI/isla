@@ -247,7 +247,8 @@ class Evaluator:
             jobname: get_all_sids(jobname, self.db_file)
             for jobname in self.jobs_and_generators}
 
-        args: List[Tuple[List[str], List[Callable[[isla.derivation_tree.DerivationTree], bool]], List[str], List[int]]] = [
+        args: List[
+            Tuple[List[str], List[Callable[[isla.derivation_tree.DerivationTree], bool]], List[str], List[int]]] = [
             (
                 [jobname],
                 [self.validator],
@@ -434,6 +435,10 @@ def generate_inputs(
             print(traceback.format_exc())
             return result
 
+        if not isinstance(inp, isla.derivation_tree.DerivationTree):
+            assert inp == ISLaSolver.TIMEOUT, f'Unexpected return value {inp} from solver'
+            break
+
         logger.debug("Input: %s", str(inp))
         curr_relative_time = time.time() - start_time
         assert curr_relative_time not in result
@@ -553,6 +558,11 @@ def store_inputs(
         timeout: int,
         inputs: Dict[float, isla.derivation_tree.DerivationTree],
         db_file: str = std_db_file()) -> None:
+    assert isinstance(inputs, dict), f'Expected dictionary, got: {type(inputs)}'
+    assert all(isinstance(key, float) for key in inputs), f'Expected float keys'
+    assert all(isinstance(value, isla.derivation_tree.DerivationTree) for value in inputs.values()), \
+        f'Expected DerivationTree values keys'
+
     sid = (get_max_sid(test_id, db_file) or 0) + 1
 
     create_db_tables(db_file)
@@ -646,7 +656,8 @@ def evaluate_validity(
 
     # Obtain inputs from session
     print(f"Reading inputs for session {sid} of {test_id} from database...")
-    inputs: Dict[int, isla.derivation_tree.DerivationTree] = get_inputs_from_db(test_id, sid, db_file, only_unkown_validity=True)
+    inputs: Dict[int, isla.derivation_tree.DerivationTree] = get_inputs_from_db(test_id, sid, db_file,
+                                                                                only_unkown_validity=True)
 
     print(f"Evaluating validity of inputs for session {sid} of {test_id}...")
 
