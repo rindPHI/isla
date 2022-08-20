@@ -1,3 +1,5 @@
+import sys
+
 from grammar_graph import gg
 from grammar_graph.gg import GrammarGraph
 
@@ -113,6 +115,8 @@ g_len_cs_lin = lambda timeout: ISLaSolver(
 )
 
 if __name__ == '__main__':
+    sys.setrecursionlimit(5000)
+
     # logging.basicConfig(level=logging.DEBUG)
     generators = [tar.TAR_GRAMMAR, g_len, g_len_cs, g_len_cs_lin]
     jobnames = ["Grammar Fuzzer", "Length", "Length + Checksum", "Length + Checksum + Def-Use"]

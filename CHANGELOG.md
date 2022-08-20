@@ -8,6 +8,7 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 ### Changed
 
 - Bug fix in performance_evaluator, regression due to API change in ISLaSolver (return of TIMEOUT values)
+- Increased maximum recursion depth for evaluation; this is needed in the TAR case study.
 
 ## [0.9.5] - 2022-08-19
 

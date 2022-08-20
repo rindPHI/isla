@@ -4,6 +4,7 @@ import logging
 import os
 import random
 import string
+import sys
 import unittest
 from typing import cast, Optional, Dict, List, Callable, Union, Set
 from xml.dom import minidom
@@ -559,8 +560,9 @@ forall int colno:
             # print_only=True
         )
 
-    @pytest.mark.skip(reason="Have to disable assertions to run this test, disabling in CI pipeline.")
+    # @pytest.mark.skip(reason="Have to disable assertions to run this test, disabling in CI pipeline.")
     def test_tar(self):
+        sys.setrecursionlimit(1500)
         self.execute_generation_test(
             tar.TAR_CONSTRAINTS,
             grammar=tar.TAR_GRAMMAR,

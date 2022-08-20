@@ -497,7 +497,23 @@ class DerivationTree:
         return result
 
     def to_parse_tree(self) -> ParseTree:
-        return self.value, None if self.children is None else [child.to_parse_tree() for child in self.children]
+        stack: List[ParseTree] = []
+
+        def action(_, node: DerivationTree) -> None:
+            if node.children is None:
+                stack.append((node.value, None))
+            elif not node.children:
+                stack.append((node.value, []))
+            else:
+                children: List[ParseTree] = []
+                for _ in range(len(node.children)):
+                    children.append(stack.pop())
+                stack.append((node.value, children))
+
+        self.traverse(action, kind=DerivationTree.TRAVERSE_POSTORDER, reverse=True)
+
+        assert len(stack) == 1
+        return stack.pop()
 
     def __iter__(self):
         # Allows tuple unpacking: node, children = tree
