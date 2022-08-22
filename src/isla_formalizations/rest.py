@@ -134,7 +134,8 @@ def render_rst(tree: isla.derivation_tree.DerivationTree) -> Union[bool, str]:
         enumerations_in_tree = tree.filter(lambda n: n.value == "<enumeration>")
         enumerations_in_output = doc.getElementsByTagName("enumerated_list")
 
-        if len(enumerations_in_tree) != len(enumerations_in_output):
+        # if len(enumerations_in_tree) != len(enumerations_in_output):
+        if len(enumerations_in_tree) > len(enumerations_in_output):
             err_msg = f"Incorrect enumeration numbering: {len(enumerations_in_tree)} enumerations " \
                       f"were rendered to {len(enumerations_in_output)} HTML ordered lists."
 

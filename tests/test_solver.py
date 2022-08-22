@@ -493,10 +493,7 @@ forall int colno:
             debug=True
         )
 
-    # @pytest.mark.flaky(reruns=3, reruns_delay=2)
-    @pytest.mark.skip('This has to be fixed!')
     def test_rest(self):
-        random.seed(1234)
         self.execute_generation_test(
             rest.LENGTH_UNDERLINE & rest.DEF_LINK_TARGETS &
             rest.NO_LINK_TARGET_REDEF & rest.LIST_NUMBERING_CONSECUTIVE,
@@ -509,11 +506,11 @@ forall int colno:
             # tree_insertion_methods=0,
             cost_computer=GrammarBasedBlackboxCostComputer(CostSettings(
                 CostWeightVector(
-                    tree_closing_cost=7,
+                    tree_closing_cost=10,
                     constraint_cost=0,
-                    derivation_depth_penalty=4,
-                    low_k_coverage_penalty=15,
-                    low_global_k_path_coverage_penalty=120,
+                    derivation_depth_penalty=3.5,
+                    low_k_coverage_penalty=10,
+                    low_global_k_path_coverage_penalty=100,
                 ),
                 k=4),
                 gg.GrammarGraph.from_grammar(rest.REST_GRAMMAR),
@@ -918,7 +915,8 @@ not(
                     test_result = custom_test_func(assignment)
                     if test_result is not True:
                         self.fail(f"Solution WRONG: '{assignment}'" if not isinstance(test_result, str)
-                                  else f"Solution WRONG: '{assignment}', message: {test_result}")
+                                  else f"Solution WRONG: '{assignment}', message: {test_result}, "
+                                       f"tree: {assignment.to_parse_tree()}")
 
             if print_solutions:
                 print(str(assignment))

@@ -2,7 +2,7 @@ from grammar_graph import gg
 from grammar_graph.gg import GrammarGraph
 
 from isla.performance_evaluator import Evaluator
-from isla.solver import ISLaSolver, CostSettings, STD_COST_SETTINGS, GrammarBasedBlackboxCostComputer, CostWeightVector
+from isla.solver import ISLaSolver, CostSettings, GrammarBasedBlackboxCostComputer, CostWeightVector
 from isla_formalizations import rest
 
 max_number_free_instantiations = 10
@@ -10,11 +10,12 @@ max_number_smt_instantiations = 2
 eval_k = 4
 
 cost_vector = CostWeightVector(
-    tree_closing_cost=20,
-    constraint_cost=1,
-    derivation_depth_penalty=11.25,
-    low_k_coverage_penalty=12,
-    low_global_k_path_coverage_penalty=26)
+    tree_closing_cost=10,
+    constraint_cost=0,
+    derivation_depth_penalty=3.5,
+    low_k_coverage_penalty=10,
+    low_global_k_path_coverage_penalty=100,
+)
 
 g_link_defuse = lambda timeout: ISLaSolver(
     rest.REST_GRAMMAR,
