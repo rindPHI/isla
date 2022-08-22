@@ -7,14 +7,19 @@ from isla_formalizations import scriptsizec
 
 max_number_free_instantiations = 10
 max_number_smt_instantiations = 2
-eval_k = 4
+eval_k = 3
 
 cost_vector = CostWeightVector(
-    tree_closing_cost=10,
+    tree_closing_cost=4.2,
     constraint_cost=0,
-    derivation_depth_penalty=9,
-    low_k_coverage_penalty=28,
-    low_global_k_path_coverage_penalty=14,
+    derivation_depth_penalty=7,
+    low_k_coverage_penalty=30,
+    low_global_k_path_coverage_penalty=80,
+)
+
+cost_computer = GrammarBasedBlackboxCostComputer(
+    CostSettings(cost_vector, k=eval_k),
+    gg.GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR),
 )
 
 g_defuse = lambda timeout: ISLaSolver(
@@ -23,9 +28,7 @@ g_defuse = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_computer=GrammarBasedBlackboxCostComputer(
-        CostSettings(cost_vector, k=eval_k),
-        gg.GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR)),
+    cost_computer=cost_computer,
 )
 
 g_redef = lambda timeout: ISLaSolver(
@@ -34,9 +37,7 @@ g_redef = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_computer=GrammarBasedBlackboxCostComputer(
-        CostSettings(cost_vector, k=eval_k),
-        gg.GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR)),
+    cost_computer=cost_computer,
 )
 
 g_defuse_redef = lambda timeout: ISLaSolver(
@@ -45,9 +46,7 @@ g_defuse_redef = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_computer=GrammarBasedBlackboxCostComputer(
-        CostSettings(cost_vector, k=eval_k),
-        gg.GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR)),
+    cost_computer=cost_computer,
 )
 
 if __name__ == '__main__':

@@ -615,8 +615,9 @@ def evaluate_data(
         accumulated_valid_inputs[seconds] = valid_inputs
 
         if compute_kpath_coverage:
-            covered_kpaths.update(graph.k_paths_in_tree(inp.to_parse_tree(), k))
-            accumulated_k_path_coverage[seconds] = int(len(covered_kpaths) * 100 / len(graph.k_paths(k)))
+            covered_kpaths.update(graph.k_paths_in_tree(inp, k))
+            accumulated_k_path_coverage[seconds] = (
+                int(len(covered_kpaths) * 100 / len(graph.k_paths(k, include_terminals=False))))
 
         if quantifier_chains and compute_vacuity:
             # Values in chains_satisfied range between 0 and `valid_inputs`, and thus the mean, too.
@@ -638,7 +639,7 @@ def evaluate_data(
     print(f"Final evaluation values: "
           f"{valid_inputs} valid inputs, "
           f"{invalid_inputs} invalid inputs, "
-          f"{int(len(covered_kpaths) * 100 / len(graph.k_paths(k)))}% coverage, "
+          f"{int(len(covered_kpaths) * 100 / len(graph.k_paths(k, include_terminals=False)))}% coverage, "
           f"{(list(accumulated_non_vacuous_index.values()) or [0])[-1]} non-vacuous index, "
           f"final mean: {(list(result.mean_data().values()) or [0])[-1]}, job: {jobname}")
 

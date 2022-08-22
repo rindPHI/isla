@@ -405,7 +405,7 @@ class TestLanguage(unittest.TestCase):
                 tree = fuzzer.expand_tree(DerivationTree("<start>"))
                 self.assertEqual(
                     {path_to_string(p) for p in tree.k_paths(graph, k)},
-                    {path_to_string(p) for p in set(graph.k_paths_in_tree(tree.to_parse_tree(), k))},
+                    {path_to_string(p) for p in set(graph.k_paths_in_tree(tree, k, include_terminals=False))},
                     f"Paths for tree {tree} differ"
                 )
 
@@ -420,7 +420,7 @@ class TestLanguage(unittest.TestCase):
                     tree = fuzzer.expand_tree_once(tree)
                 self.assertEqual(
                     {path_to_string(p) for p in tree.k_paths(graph, k)},
-                    {path_to_string(p) for p in set(graph.k_paths_in_tree(tree.to_parse_tree(), k))},
+                    {path_to_string(p) for p in set(graph.k_paths_in_tree(tree, k, include_terminals=False))},
                     f"Paths for tree {tree} differ"
                 )
 
@@ -429,11 +429,11 @@ class TestLanguage(unittest.TestCase):
 
         tree = DerivationTree.from_parse_tree(('<start>', [('<statement>', [('<block>', None)])]))
         for k in range(1, 6):
-            self.assertEqual(graph.k_paths_in_tree(tree.to_parse_tree(), k), tree.k_paths(graph, k))
+            self.assertEqual(graph.k_paths_in_tree(tree, k, include_terminals=False), tree.k_paths(graph, k))
 
         tree = DerivationTree.from_parse_tree(('<start>', [('<statement>', None)]))
         for k in range(1, 6):
-            self.assertEqual(graph.k_paths_in_tree(tree.to_parse_tree(), k), tree.k_paths(graph, k))
+            self.assertEqual(graph.k_paths_in_tree(tree, k, include_terminals=False), tree.k_paths(graph, k))
 
         rtree = tree.replace_path(
             (0,), DerivationTree("<statement>", [DerivationTree("<block>", None)])
@@ -441,14 +441,14 @@ class TestLanguage(unittest.TestCase):
 
         for k in range(1, 6):
             self.assertEqual(
-                {path_to_string(p) for p in graph.k_paths_in_tree(rtree.to_parse_tree(), k)},
+                {path_to_string(p) for p in graph.k_paths_in_tree(rtree, k, include_terminals=False)},
                 {path_to_string(p) for p in rtree.k_paths(graph, k)}
             )
 
         tree = DerivationTree.from_parse_tree(('<start>', [('<statement>', None)]))
 
         for k in range(1, 6):
-            self.assertEqual(graph.k_paths_in_tree(tree.to_parse_tree(), k), tree.k_paths(graph, k))
+            self.assertEqual(graph.k_paths_in_tree(tree, k, include_terminals=False), tree.k_paths(graph, k))
 
         rtree = tree.replace_path(
             (0,), DerivationTree.from_parse_tree(("<statement>", [
@@ -458,16 +458,15 @@ class TestLanguage(unittest.TestCase):
 
         for k in range(1, 6):
             self.assertEqual(
-                {path_to_string(p) for p in graph.k_paths_in_tree(rtree.to_parse_tree(), k)},
-                {path_to_string(p) for p in rtree.k_paths(graph, k)}
-            )
+                {path_to_string(p) for p in graph.k_paths_in_tree(rtree, k, include_terminals=False)},
+                {path_to_string(p) for p in rtree.k_paths(graph, k)})
 
     def test_open_paths_replace_2(self):
         graph = gg.GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR)
         tree = DerivationTree('<start>', None)
         for k in range(1, 6):
             self.assertEqual(
-                {path_to_string(p) for p in graph.k_paths_in_tree(tree.to_parse_tree(), k)},
+                {path_to_string(p) for p in graph.k_paths_in_tree(tree, k, include_terminals=False)},
                 {path_to_string(p) for p in tree.k_paths(graph, k)})
 
         tree_1 = tree.replace_path(
@@ -475,11 +474,11 @@ class TestLanguage(unittest.TestCase):
             DerivationTree("<start>", [DerivationTree("<statement>", None)]),
         )
 
-        self.assertTrue(graph.tree_is_valid(tree_1.to_parse_tree()))
+        self.assertTrue(graph.tree_is_valid(tree_1))
 
         for k in range(1, 6):
             self.assertEqual(
-                {path_to_string(p) for p in graph.k_paths_in_tree(tree_1.to_parse_tree(), k)},
+                {path_to_string(p) for p in graph.k_paths_in_tree(tree_1, k, include_terminals=False)},
                 {path_to_string(p) for p in tree_1.k_paths(graph, k)})
 
         tree_2 = tree_1.replace_path(
@@ -488,11 +487,11 @@ class TestLanguage(unittest.TestCase):
                 ('<statement>', [('if', []), ('<paren_expr>', None), (' ', []), ('<statement>', None)])),
         )
 
-        self.assertTrue(graph.tree_is_valid(tree_2.to_parse_tree()))
+        self.assertTrue(graph.tree_is_valid(tree_2))
 
         for k in range(1, 6):
             self.assertEqual(
-                {path_to_string(p) for p in graph.k_paths_in_tree(tree_2.to_parse_tree(), k)},
+                {path_to_string(p) for p in graph.k_paths_in_tree(tree_2, k, include_terminals=False)},
                 {path_to_string(p) for p in tree_2.k_paths(graph, k)})
 
     def test_unparse_isla(self):
@@ -593,7 +592,7 @@ forall <xml-tree> tree="<<id>><inner-xml-tree></<id>>" in start:
         self.assertEqual(((0,), inp.get_subtree((0,))), result[lhs])
         self.assertEqual(((2, 0), inp.get_subtree((2, 0))), result[rhs])
 
-        inp: DerivationTree = parse('a := b ; c := d').get_subtree((0,2))
+        inp: DerivationTree = parse('a := b ; c := d').get_subtree((0, 2))
         result = match(inp, mexpr_tree, mexpr_var_paths)
         self.assertEqual(None, result)
 

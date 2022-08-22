@@ -328,7 +328,7 @@ class Evaluator:
             precision[job] = valid_inputs / total_inputs
 
             # Analyze diversity: Fraction of covered k-paths
-            total_num_kpaths = {k: len(self.graph.k_paths(k)) for k in self.kvalues}
+            total_num_kpaths = {k: len(self.graph.k_paths(k, include_terminals=False)) for k in self.kvalues}
             diversity_by_sid: Dict[int, float] = {}
             for sid in sids:
                 diversity_by_k: Dict[int, float] = {}

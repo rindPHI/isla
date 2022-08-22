@@ -35,7 +35,7 @@ def insert_tree(grammar: CanonicalGrammar,
         # if (new_tree.structural_hash() not in result_hashes
         #         and not any(existing.is_prefix(new_tree) for existing in result)):
 
-        assert graph.tree_is_valid(new_tree.to_parse_tree())
+        assert graph.tree_is_valid(new_tree)
         assert all(new_tree.find_node(node.id) is not None for _, node in in_tree.paths())
 
         if (new_tree.find_node(tree) is not None  # In rare cases things fail (see simple-tar case study)
@@ -151,7 +151,7 @@ def compute_self_embeddings(
         for insert_result in insert_trees([curr_tree, tree], self_embedding_tree, grammar, graph, max_num_solutions)]
 
     for instantiated_tree in instantiated_self_embedding_trees:
-        assert graph.tree_is_valid(instantiated_tree.to_parse_tree())
+        assert graph.tree_is_valid(instantiated_tree)
 
         if len(results) >= (max_num_solutions or sys.maxsize):
             break
@@ -164,7 +164,7 @@ def compute_self_embeddings(
         assert instantiated_tree.has_unique_ids()
 
         new_tree = in_tree.replace_path(current_path, instantiated_tree)
-        assert graph.tree_is_valid(new_tree.to_parse_tree())
+        assert graph.tree_is_valid(new_tree)
 
         # new_tree = DerivationTree(new_tree.value, new_tree.children)
         # assert graph.tree_is_valid(new_tree.to_parse_tree())
@@ -303,7 +303,7 @@ def insert_trees(
                 insertion_point_tree = result_tree.get_subtree(insertion_path)
                 if insertion_point_tree.value == tree.value:
                     new_tree = result_tree.replace_path(insertion_path, tree)
-                    assert graph.tree_is_valid(new_tree.to_parse_tree())
+                    assert graph.tree_is_valid(new_tree)
                     assert new_tree.has_unique_ids()
                     assert all(new_tree.find_node(node.id) is not None for _, node in tree.paths())
 
@@ -363,7 +363,7 @@ def insert_trees(
 
                         new_tree = result_tree.replace_path(insertion_path, instantiated_connecting_tree)
                         assert new_tree.has_unique_ids()
-                        assert graph.tree_is_valid(new_tree.to_parse_tree())
+                        assert graph.tree_is_valid(new_tree)
                         new_result_trees.append(new_tree)
                         continue
                     else:

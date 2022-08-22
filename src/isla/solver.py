@@ -1808,20 +1808,21 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
             self,
             cost_settings: CostSettings,
             graph: gg.GrammarGraph,
-            reset_coverage_after_n_round_with_no_coverage: int = 100):
+            reset_coverage_after_n_round_with_no_coverage: int = 100,
+            symbol_costs: Optional[Dict[str, int]] = None):
         self.cost_settings = cost_settings
         self.graph = graph
 
         self.covered_k_paths: Set[Tuple[gg.Node, ...]] = set()
         self.rounds_with_no_new_coverage = 0
         self.reset_coverage_after_n_round_with_no_coverage = reset_coverage_after_n_round_with_no_coverage
-        self.symbol_costs: Optional[Dict[str, int]] = None
+        self.symbol_costs: Optional[Dict[str, int]] = symbol_costs
 
         self.logger = logging.getLogger(type(self).__name__)
 
     def compute_cost(self, state: SolutionState) -> float:
         # How costly is it to finish the tree?
-        tree_closing_cost = compute_tree_closing_cost(state.tree, self.graph)
+        tree_closing_cost = self.compute_tree_closing_cost(state.tree)
 
         # Quantifiers are expensive (universal formulas have to be matched, tree insertion for existential
         # formulas is even more costly). TODO: Penalize nested quantifiers more.
@@ -1865,12 +1866,12 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
         if self.cost_settings.weight_vector.low_global_k_path_coverage_penalty > 0:
             old_covered_k_paths = copy.copy(self.covered_k_paths)
 
-            self.covered_k_paths.update(tree.k_paths(self.graph, self.cost_settings.k))
+            self.covered_k_paths.update(tree.k_paths(self.graph, self.cost_settings.k, include_potential_paths=False))
 
             if old_covered_k_paths == self.covered_k_paths:
                 self.rounds_with_no_new_coverage += 1
 
-            graph_paths = self.graph.k_paths(self.cost_settings.k)
+            graph_paths = self.graph.k_paths(self.cost_settings.k, include_terminals=False)
             if (self.rounds_with_no_new_coverage >= self.reset_coverage_after_n_round_with_no_coverage or
                     self.covered_k_paths == graph_paths):
                 if self.covered_k_paths == graph_paths:
@@ -1881,41 +1882,75 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
                         self.reset_coverage_after_n_round_with_no_coverage,
                         len(graph_paths) - len(self.covered_k_paths))
 
-                    # uncovered_paths = self.graph.k_paths(self.cost_settings.k) - self.covered_k_paths
-                    # self.logger.info("\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]))
+                    # uncovered_paths = (
+                    #        self.graph.k_paths(self.cost_settings.k, include_terminals=False) -
+                    #        self.covered_k_paths)
+                    # self.logger.debug("\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]))
 
                 self.covered_k_paths = set()
             else:
                 pass
-                # uncovered_paths = self.graph.k_paths(self.cost_settings.k) - self.covered_k_paths
-                # self.logger.info("\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]))
+                # uncovered_paths = (
+                #         self.graph.k_paths(self.cost_settings.k, include_terminals=False) -
+                #         self.covered_k_paths)
+                # self.logger.debug("%d uncovered paths", len(uncovered_paths))
+                # self.logger.info('\n' + "\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]) + '\n')
 
             if self.rounds_with_no_new_coverage >= self.reset_coverage_after_n_round_with_no_coverage:
                 self.rounds_with_no_new_coverage = 0
 
     def _compute_global_k_coverage_cost(self, state: SolutionState):
-        all_k_paths = state.tree.k_paths(self.graph, self.cost_settings.k)
-        contributed_k_paths = {
-            path for path in self.graph.k_paths(self.cost_settings.k)
-            if path in all_k_paths and path not in self.covered_k_paths}
+        tree_k_paths = state.tree.k_paths(self.graph, self.cost_settings.k, include_potential_paths=False)
+        all_graph_k_paths = self.graph.k_paths(self.cost_settings.k, include_terminals=False)
 
-        num_contributed_k_paths = len( contributed_k_paths)
-        num_missing_k_paths = len(self.graph.k_paths(self.cost_settings.k)) - len(self.covered_k_paths)
+        contributed_k_paths = {
+            path for path in all_graph_k_paths
+            if path in tree_k_paths and path not in self.covered_k_paths}
+
+        num_contributed_k_paths = len(contributed_k_paths)
+        num_missing_k_paths = len(all_graph_k_paths) - len(self.covered_k_paths)
+
+        # self.logger.debug(
+        #     'k-Paths contributed by input %s:\n%s',
+        #     state.tree,
+        #     '\n'.join(map(
+        #         lambda path: ' '.join(map(
+        #             lambda n: n.symbol,
+        #             filter(lambda n: not isinstance(n, gg.ChoiceNode), path))),
+        #         contributed_k_paths)))
+        # self.logger.debug('Missing k paths: %s', num_missing_k_paths)
 
         assert 0 <= num_contributed_k_paths <= num_missing_k_paths, \
             f'num_contributed_k_paths == {num_contributed_k_paths}, ' \
             f'num_missing_k_paths == {num_missing_k_paths}'
 
-        return 1 - (num_contributed_k_paths / num_missing_k_paths)
+        # return 1 - (num_contributed_k_paths / num_missing_k_paths)
+
+        potential_tree_k_paths = state.tree.k_paths(self.graph, self.cost_settings.k, include_potential_paths=True)
+        contributed_k_paths = {
+            path for path in all_graph_k_paths
+            if path in potential_tree_k_paths and path not in self.covered_k_paths}
+
+        num_contributed_potential_k_paths = len(contributed_k_paths)
+
+        return 1 - weighted_geometric_mean([
+            num_contributed_k_paths / num_missing_k_paths,
+            num_contributed_potential_k_paths / num_missing_k_paths
+        ], [0.7, 0.3])
 
     def _compute_k_coverage_cost(self, state: SolutionState) -> float:
         coverages = []
         for k in range(1, self.cost_settings.k + 1):
-            coverage = state.tree.k_coverage(self.graph, k)
+            coverage = state.tree.k_coverage(self.graph, k, include_potential_paths=False)
             assert 0 <= coverage <= 1, f'coverage == {coverage}'
+
             coverages.append(1 - coverage)
 
         return math.prod(coverages) ** (1 / float(self.cost_settings.k))
+
+    def compute_tree_closing_cost(self, tree: DerivationTree) -> float:
+        nonterminals = [leaf.value for _, leaf in tree.open_leaves()]
+        return sum([self._symbol_costs()[nonterminal] for nonterminal in nonterminals])
 
 
 def compute_tree_closing_cost(tree: DerivationTree, graph: GrammarGraph) -> float:
@@ -2021,6 +2056,7 @@ def compute_symbol_costs(graph: GrammarGraph) -> Dict[str, int]:
         fuzzer = GrammarFuzzer(grammar)
         tree = fuzzer.expand_tree_with_strategy(DerivationTree(nonterminal, None), fuzzer.expand_node_max_cost, 1)
         tree = fuzzer.expand_tree_with_strategy(tree, fuzzer.expand_node_min_cost)
+
         result[nonterminal] = sum([
             len([expansion for expansion in canonical_grammar[tree.value]
                  if any(is_nonterminal(symbol) for symbol in expansion)])
@@ -2030,7 +2066,7 @@ def compute_symbol_costs(graph: GrammarGraph) -> Dict[str, int]:
 
     def all_paths(
             from_node: gg.NonterminalNode,
-            to_node: gg.NonterminalNode, cycles_allowed: int = 1) -> List[List[gg.NonterminalNode]]:
+            to_node: gg.NonterminalNode, cycles_allowed: int = 2) -> List[List[gg.NonterminalNode]]:
         """Compute all paths between two nodes. Note: We allow to visit each nonterminal twice.
         This is not really allowing up to `cycles_allowed` cycles (which was the original intention
         of the parameter), since then we would have to check per path; yet, the number of paths would

@@ -22,16 +22,16 @@ if __name__ == '__main__':
         SCRIPTSIZE_C_GRAMMAR,
         SCRIPTSIZE_C_DEF_USE_CONSTR & SCRIPTSIZE_C_NO_REDEF_CONSTR,
         validator,
-        timeout=120,
-        population_size=110,
-        generations=5,
+        timeout=240,
+        population_size=32,
+        generations=10,
         cpu_count=32,
         seed_population=[
             CostWeightVector(
                 tree_closing_cost=10,
                 constraint_cost=0,
-                derivation_depth_penalty=9,
-                low_k_coverage_penalty=28,
+                derivation_depth_penalty=12,
+                low_k_coverage_penalty=14,
                 low_global_k_path_coverage_penalty=14)])
 
     tune_result[0].plot("/tmp/scriptsize_c_autotune_result_state.pdf", "Scriptsize-C Auto-Tune Result Config Stats")

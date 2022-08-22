@@ -5,6 +5,12 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.10.0] - 2022-08-22
+
+### Changed
+
+- Major overhaul of cost computation. The solver finds much more diverse inputs now. 
+
 ## [0.9.6] - 2022-08-20
 
 ### Changed

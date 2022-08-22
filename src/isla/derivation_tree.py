@@ -9,7 +9,7 @@ from graphviz import Digraph
 from isla.trie import SubtreesTrie
 
 from isla.helpers import is_nonterminal, traverse, TRAVERSE_POSTORDER
-from isla.type_defs import Path, Grammar, ParseTree
+from isla.type_defs import Path, Grammar, ParseTree, ImmutableList
 
 
 class DerivationTree:
@@ -39,6 +39,7 @@ class DerivationTree:
         self.__hash = hash
         self.__structural_hash = structural_hash
         self.__k_paths: Dict[int, Set[Tuple[gg.Node, ...]]] = k_paths or {}
+        self.__concrete_k_paths: Dict[int, Set[Tuple[gg.Node, ...]]] = {}
 
         self.__is_open = is_open
         if children is None:
@@ -48,12 +49,15 @@ class DerivationTree:
         the_dict = self.__dict__
         if '_DerivationTree__k_paths' in the_dict:
             del the_dict['_DerivationTree__k_paths']
+        if '_DerivationTree__concrete_k_paths' in the_dict:
+            del the_dict['_DerivationTree__concrete_k_paths']
         return zlib.compress(json.dumps(the_dict, default=lambda o: o.__dict__).encode('UTF-8'))
 
     def __setstate__(self, state: bytes):
         def from_dict(a_dict: dict) -> 'DerivationTree':
             result = DerivationTree.__new__(DerivationTree)
             result.__k_paths = {}
+            result.__concrete_k_paths = {}
 
             children_key = '_DerivationTree__children'
             ser_children = a_dict[children_key]
@@ -98,18 +102,35 @@ class DerivationTree:
                 for _, subt_2 in self.paths())
             for _, subt_1 in self.paths())
 
-    def k_coverage(self, graph: gg.GrammarGraph, k: int) -> float:
-        return len(self.k_paths(graph, k)) / len(graph.k_paths(k))
+    def k_coverage(self, graph: gg.GrammarGraph, k: int, include_potential_paths: bool = True) -> float:
+        tree_paths = self.k_paths(graph, k, include_potential_paths=include_potential_paths)
+        all_paths = graph.k_paths(k, include_terminals=False)
 
-    def k_paths(self, graph: gg.GrammarGraph, k: int) -> Set[Tuple[gg.Node, ...]]:
+        return len(tree_paths) / len(all_paths)
+
+    def k_paths(self, graph: gg.GrammarGraph, k: int, include_potential_paths: bool = True) -> Set[Tuple[gg.Node, ...]]:
+        if not include_potential_paths:
+            if k not in self.__concrete_k_paths:
+                self.__concrete_k_paths[k] = set(iter(graph.k_paths_in_tree(
+                    self,
+                    k,
+                    include_potential_paths=include_potential_paths,
+                    include_terminals=False)))
+            return self.__concrete_k_paths[k]
+
         if k not in self.__k_paths:
-            self.recompute_k_paths(graph, k)
+            self.recompute_k_paths(graph, k, include_potential_paths=include_potential_paths)
             assert k in self.__k_paths
 
         return self.__k_paths[k]
 
-    def recompute_k_paths(self, graph: gg.GrammarGraph, k: int) -> Set[Tuple[gg.Node, ...]]:
-        self.__k_paths[k] = set(iter(graph.k_paths_in_tree(self.to_parse_tree(), k)))
+    def recompute_k_paths(self, graph: gg.GrammarGraph, k: int, include_potential_paths=True) -> Set[
+        Tuple[gg.Node, ...]]:
+        self.__k_paths[k] = set(iter(graph.k_paths_in_tree(
+            self,
+            k,
+            include_potential_paths=include_potential_paths,
+            include_terminals=False)))
         return self.__k_paths[k]
 
     def root_nonterminal(self) -> str:
@@ -515,10 +536,31 @@ class DerivationTree:
         assert len(stack) == 1
         return stack.pop()
 
-    def __iter__(self):
-        # Allows tuple unpacking: node, children = tree
+    def __iter__(self) -> Generator[str | List['DerivationTree'] | None, None, None]:
+        """
+        Allows tuple unpacking: node, children = tree
+        This, and getting the value / children via index access, is important for backward compatibility
+        to plain `ParseTree` (fuzzingbook) objects.
+        
+        :return: An iterator of two elements: The node value and the children's list.
+        """
         yield self.value
-        yield self.children
+        yield None if self.children is None else list(self.children)
+
+    def __getitem__(self, item: int) -> str | List['DerivationTree']:
+        """
+        Allows accessing the tree's value using index 0 and the children list using index 1.
+        For backward compatibility with plain fuzzingbook parse trees.
+        
+        :param item: The index of the item to get (0 -> value, 1 -> children)
+        :return: The node's value or children list.
+        """
+        assert isinstance(item, int)
+        assert 0 <= item <= 1, f'Can only access element 0 (node value) or 1 (children)'
+        if item == 0:
+            return self.value
+        else:
+            return list(self.children)
 
     def compute_hash_iteratively(self, structural=False):
         # We perform an iterative reverse post-order depth-first traversal and use a stack
