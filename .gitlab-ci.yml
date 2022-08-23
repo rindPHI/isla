@@ -23,7 +23,7 @@ cache:
     - venv/
 
 before_script:
-  - apt update && apt install -y clang python3-dev curl fish
+  - apt update && apt install -y clang python3-dev curl fish parallel
   - curl -L https://github.com/Clever/csvlint/releases/download/v0.3.0/csvlint-v0.3.0-linux-amd64.tar.gz | tar xz --strip-components 1 && mv csvlint /bin/
   - csvlint --help  # Print out csvlint help for debugging
   - python -V  # Print out python version for debugging
@@ -56,12 +56,8 @@ build:
 
 runPerfEval:
   script:
-    - fish -c "./run_eval_csv.fish &> perf_result_csv.txt" &
-    - fish -c "./run_eval_scriptsize_c.fish &> perf_result_c.txt" &
-    - fish -c "./run_eval_rest.fish &> perf_result_rest.txt" &
-    - fish -c "./run_eval_tar.fish &> perf_result_tar.txt" &
-    - fish -c "./run_eval_xml.fish &> perf_result_xml.txt" &
-    - wait
+    - parallel --j 5 'fish -c "./run_eval_csv.fish &> perf_result_csv.txt"' 'fish -c "./run_eval_scriptsize_c.fish &> perf_result_c.txt"' 'fish -c "./run_eval_rest.fish &> perf_result_rest.txt"' 'fish -c "./run_eval_tar.fish &> perf_result_tar.txt"' 'fish -c "./run_eval_xml.fish &> perf_result_xml.txt"' &
+    - tail --pid=$! -f perf_result_*.txt
   rules:
     - if: $CI_PIPELINE_SOURCE == "web"
   artifacts:
