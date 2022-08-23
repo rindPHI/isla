@@ -57,7 +57,7 @@ build:
 runPerfEval:
   script:
     - "parallel ::: './run_eval_csv.fish &> perf_result_csv.txt' './run_eval_scriptsize_c.fish &> perf_result_c.txt' './run_eval_rest.fish &> perf_result_rest.txt' './run_eval_tar.fish &> perf_result_tar.txt' './run_eval_xml.fish &> perf_result_xml.txt' &"
-    - sleep 10
+    - sleep 60
     - tail --pid=$! -f perf_result_*.txt
   rules:
     - if: $CI_PIPELINE_SOURCE == "web"
