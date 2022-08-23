@@ -56,7 +56,7 @@ build:
 
 runPerfEval:
   script:
-    - "parallel ::: './run_eval_csv.fish &> perf_result_csv.txt' './run_eval_scriptsize_c.fish &> perf_result_c.txt' './run_eval_rest.fish &> perf_result_rest.txt' './run_eval_tar.fish &> perf_result_tar.txt' './run_eval_xml.fish &> perf_result_xml.txt' &"
+    - "parallel ::: 'stdbuf -oL ./run_eval_csv.fish &> perf_result_csv.txt' 'stdbuf -oL ./run_eval_scriptsize_c.fish &> perf_result_c.txt' 'stdbuf -oL ./run_eval_rest.fish &> perf_result_rest.txt' 'stdbuf -oL ./run_eval_tar.fish &> perf_result_tar.txt' 'stdbuf -oL ./run_eval_xml.fish &> perf_result_xml.txt' &"
     - sleep 10
     - tail --pid=$! -f perf_result_*.txt
   rules:
