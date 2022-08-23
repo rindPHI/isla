@@ -605,6 +605,16 @@ forall <string> string="{<high-byte> high-byte}{<low-byte> low-byte}{<chars> cha
 
         self.assertEqual(unparse_isla(expected), unparse_isla(result))
 
+    @pytest.mark.skip('Missing syntactic feature that has to be implemented')
+    def test_xpath_in_in_expr(self):
+        # TODO
+        result = parse_isla('exists <var> in <assgn>.<rhs>: true', LANG_GRAMMAR)
+        expected = parse_isla('''
+forall <assgn> assgn="<var> := {<rhs> rhs}" in start:
+  exists <var> var in <rhs>:
+    true''')
+
+        self.assertEqual(unparse_isla(expected), unparse_isla(result))
 
 
 if __name__ == '__main__':
