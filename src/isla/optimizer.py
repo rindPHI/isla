@@ -615,7 +615,7 @@ def evaluate_data(
         accumulated_valid_inputs[seconds] = valid_inputs
 
         if compute_kpath_coverage:
-            covered_kpaths.update(graph.k_paths_in_tree(inp, k))
+            covered_kpaths.update(graph.k_paths_in_tree(inp, k, include_terminals=False))
             accumulated_k_path_coverage[seconds] = (
                 int(len(covered_kpaths) * 100 / len(graph.k_paths(k, include_terminals=False))))
 

@@ -338,7 +338,8 @@ class Evaluator:
                         (job, sid, k))
                     path_hashes: Set[int] = set([])
                     for row in cur:
-                        path_hashes.update({int(path_hash) for path_hash in json.loads(row[0])})
+                        covered_paths = {int(path_hash) for path_hash in json.loads(row[0])}
+                        path_hashes.update(covered_paths)
 
                     diversity_by_k[k] = len(path_hashes) / total_num_kpaths[k]
                     assert len(path_hashes) <= total_num_kpaths[k], \
@@ -591,7 +592,7 @@ def get_inputs_from_db(
         only_valid: bool = False,
         only_unkown_validity: bool = False,
         convert_to_derivation_tree: bool = True,
-) -> Dict[int, isla.derivation_tree.DerivationTree]:
+) -> Dict[int, isla.derivation_tree.DerivationTree | ParseTree]:
     all_inputs_query = \
         """
         SELECT inpId, inp FROM inputs
@@ -724,7 +725,7 @@ def evaluate_kpaths(
 
     def compute_k_paths(inp: isla.derivation_tree.DerivationTree) -> List[int]:
         try:
-            return [hash(path) for path in graph.k_paths_in_tree(inp, k)]
+            return [hash(path) for path in graph.k_paths_in_tree(inp, k, include_terminals=False)]
         except SyntaxError as err:
             print(f"Could not compute {k}-paths, error: {err}")
             return []
