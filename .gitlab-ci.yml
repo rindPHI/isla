@@ -53,3 +53,18 @@ build:
     paths:
       - dist/*.whl
       - dist/*.tar.gz
+
+runPerfEval:
+  script:
+    - fish -c "./run_eval_csv.fish &> perf_result_csv.txt" &
+    - fish -c "./run_eval_scriptsize_c.fish &> perf_result_c.txt" &
+    - fish -c "./run_eval_rest.fish &> perf_result_rest.txt" &
+    - fish -c "./run_eval_tar.fish &> perf_result_tar.txt" &
+    - fish -c "./run_eval_xml.fish &> perf_result_xml.txt" &
+    - wait
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+  artifacts:
+    when: always
+    paths:
+      - perf_result_*.txt
