@@ -240,16 +240,16 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             num_solutions=50,
             enforce_unique_trees_in_queue=True,
             custom_test_func=validate_xml,
-            tree_insertion_methods=0,
             cost_computer=GrammarBasedBlackboxCostComputer(
                 CostSettings(
                     CostWeightVector(
-                        tree_closing_cost=16,
-                        constraint_cost=7,
-                        derivation_depth_penalty=20,
-                        low_k_coverage_penalty=26,
-                        low_global_k_path_coverage_penalty=20),
-                    k=3),
+                        tree_closing_cost=5,
+                        constraint_cost=5,
+                        derivation_depth_penalty=3.5,
+                        low_k_coverage_penalty=5,
+                        low_global_k_path_coverage_penalty=30,
+                    ),
+                    k=4),
                 gg.GrammarGraph.from_grammar(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)))
 
     def test_declared_before_used(self):

@@ -74,15 +74,6 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
 
 XML_WELLFORMEDNESS_CONSTRAINT = parse_isla(xml_wellformedness_constraint, XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)
 
-# xml_attribute_namespace_constraint = r'''
-# forall <xml-attribute> attribute in start:
-#   forall <id-with-prefix> prefix_id="{<id-no-prefix> prefix_use}:<id-no-prefix>" in attribute:
-#     ((= prefix_use "xmlns") or
-#       exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}><inner-xml-tree></<id>>" in start:
-#         (inside(attribute, outer_tag) and
-#          exists <xml-attribute> def_attribute="xmlns:{<id-no-prefix> prefix_def}=\"<text>\"" in cont_attribute:
-#            (= prefix_use prefix_def)))'''
-
 xml_attribute_namespace_constraint = r'''
 forall <xml-attribute> attribute="{<id-no-prefix> prefix_use}:{<id-no-prefix> maybe_def}=\"<text>\"":
   (((= prefix_use "xmlns") and not (= maybe_def "xmlns")) or
@@ -97,11 +88,19 @@ XML_ATTRIBUTE_NAMESPACE_CONSTRAINT = parse_isla(
     structural_predicates={IN_TREE_PREDICATE})
 
 xml_tag_namespace_constraint = r'''
-forall <xml-tree> xml_tree="<{<id-no-prefix> prefix_use}:<id-no-prefix>[ <xml-attribute>][/]>[<inner-xml-tree><xml-close-tag>]" in start:
-  exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}><inner-xml-tree></<id>>" in start:
+forall <xml-tree> xml_tree="<{<id-no-prefix> prefix_use}:<id-no-prefix>[ <xml-attribute>][/]>[<inner-xml-tree><xml-close-tag>]":
+  exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}><inner-xml-tree></<id>>":
     (inside(xml_tree, outer_tag) and 
-     exists <xml-attribute> def_attribute="xmlns:{<id-no-prefix> prefix_def}=\"<text>\"" in cont_attribute:
-       (= prefix_use prefix_def))'''
+     exists <xml-attribute>="xmlns:{<id-no-prefix> prefix_def}=\"<text>\"" in cont_attribute:
+       prefix_use = prefix_def)'''
+
+# xml_tag_namespace_constraint = r'''
+# forall <xml-tree> xml_tree="<{<id-no-prefix> prefix_use}:<id-no-prefix>[ <xml-attribute>][/]>[<inner-xml-tree><xml-close-tag>]":
+#   exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}><inner-xml-tree></<id>>": (
+#     inside(xml_tree, outer_tag) and
+#     exists <xml-attribute> in cont_attribute: (
+#       <xml-attribute>.<id>.<id-with-prefix>.<id-no-prefix>[1] = "xmlns" and
+#       prefix_use = <xml-attribute>.<id>.<id-with-prefix>.<id-no-prefix>[2]))'''
 
 XML_TAG_NAMESPACE_CONSTRAINT = parse_isla(
     xml_tag_namespace_constraint,

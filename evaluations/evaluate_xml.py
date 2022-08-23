@@ -10,11 +10,11 @@ max_number_smt_instantiations = 2
 eval_k = 4
 
 cost_vector = CostWeightVector(
-    tree_closing_cost=16,
-    constraint_cost=7,
-    derivation_depth_penalty=20,
-    low_k_coverage_penalty=26,
-    low_global_k_path_coverage_penalty=20)
+    tree_closing_cost=5,
+    constraint_cost=5,
+    derivation_depth_penalty=3.5,
+    low_k_coverage_penalty=5,
+    low_global_k_path_coverage_penalty=30)
 
 g_wf = lambda timeout: ISLaSolver(
     xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
@@ -22,7 +22,6 @@ g_wf = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    tree_insertion_methods=0,
     cost_computer=GrammarBasedBlackboxCostComputer(
         CostSettings(cost_vector, k=eval_k),
         gg.GrammarGraph.from_grammar(xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)),
@@ -34,7 +33,6 @@ g_ns = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    tree_insertion_methods=0,
     cost_computer=GrammarBasedBlackboxCostComputer(
         CostSettings(cost_vector, k=eval_k),
         gg.GrammarGraph.from_grammar(xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)),
@@ -46,7 +44,6 @@ g_redef = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    tree_insertion_methods=0,
     cost_computer=GrammarBasedBlackboxCostComputer(
         CostSettings(cost_vector, k=eval_k),
         gg.GrammarGraph.from_grammar(xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)),
@@ -58,7 +55,6 @@ g_wf_ns = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    tree_insertion_methods=0,
     cost_computer=GrammarBasedBlackboxCostComputer(
         CostSettings(cost_vector, k=eval_k),
         gg.GrammarGraph.from_grammar(xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)),
@@ -72,7 +68,6 @@ g_wf_ns_redef = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    tree_insertion_methods=0,
     cost_computer=GrammarBasedBlackboxCostComputer(
         CostSettings(cost_vector, k=eval_k),
         gg.GrammarGraph.from_grammar(xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)),
