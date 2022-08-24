@@ -6,9 +6,11 @@ from typing import List
 from isla.derivation_tree import DerivationTree
 from isla.fuzzer import GrammarFuzzer
 from isla.helpers import parent_or_child
+from isla.parser import EarleyParser
 from isla_formalizations.xml_lang import XML_GRAMMAR
 from test_data import LANG_GRAMMAR
 from test_helpers import parse
+import grammar_graph.gg as gg
 
 
 class TestDerivationTree(unittest.TestCase):
@@ -247,6 +249,95 @@ class TestDerivationTree(unittest.TestCase):
         DerivationTree.next_id = 42
         tree = DerivationTree('<start>', id=0)
         self.assertEqual(0, tree.id)
+
+    def test_nonterminals(self):
+        # x := x ; z := x
+        tree = DerivationTree('<start>', (
+            DerivationTree('<stmt>', (
+                DerivationTree('<assgn>', (
+                    DerivationTree('<var>', (
+                        DerivationTree('x', (), ),), ),
+                    DerivationTree(' := ', (), ),
+                    DerivationTree('<rhs>', (
+                        DerivationTree('<var>', (
+                            DerivationTree('x', (), ),), ),), )), ),
+                DerivationTree(' ; ', (), ),
+                DerivationTree('<stmt>', (
+                    DerivationTree('<assgn>', (
+                        DerivationTree('<var>', (
+                            DerivationTree('z', (), ),), ),
+                        DerivationTree(' := ', (), ),
+                        DerivationTree('<rhs>', (
+                            DerivationTree('<var>', (
+                                DerivationTree('x', (), ),), ),), )), ),), )), ),), )
+
+    def test_depth(self):
+        # x := x ; z := x
+        tree = DerivationTree('<start>', (
+            DerivationTree('<stmt>', (
+                DerivationTree('<assgn>', (
+                    DerivationTree('<var>', (
+                        DerivationTree('x', (), ),), ),
+                    DerivationTree(' := ', (), ),
+                    DerivationTree('<rhs>', (
+                        DerivationTree('<var>', (
+                            DerivationTree('x', (), ),), ),), )), ),
+                DerivationTree(' ; ', (), ),
+                DerivationTree('<stmt>', None)), ),), )
+
+        self.assertEqual(6, tree.depth())
+
+    def test_parse_tree_compatibility(self):
+        parse_tree = ('<xml-tree>', [
+            ('<xml-open-tag>', [('<', []), ('<id>', None), ('>', [])]),
+            ('<xml-tree>', None),
+            ('<xml-close-tag>', [('</', []), ('<id>', None), ('>', [])])])
+        dtree = DerivationTree.from_parse_tree(parse_tree)
+
+        self.assertEqual(parse_tree[0], dtree[0])
+        self.assertTrue(all(parse_tree[1][idx][0] == dtree[1][idx][0] for idx in range(len(parse_tree[1]))))
+
+        node_1, _ = parse_tree
+        node_2, _ = dtree
+        self.assertEqual(node_1, node_2)
+
+        node_1, _ = parse_tree[1][0]
+        node_2, _ = dtree[1][0]
+        self.assertEqual(node_1, node_2)
+
+    def test_to_dot(self):
+        parse_tree = ('<xml-tree>', [
+            ('<xml-open-tag>', [('<', []), ('<id>', None), ('>', [])]),
+            ('<xml-tree>', None),
+            ('<xml-close-tag>', [('</', []), ('<id>', None), ('>', [])])])
+        dtree = DerivationTree.from_parse_tree(parse_tree)
+
+        expected = r'''// Derivation Tree
+digraph {
+    node [shape=plain]
+    9 [label=<&lt;xml-tree&gt; <FONT COLOR="gray">(9)</FONT>>]
+    9 -> 8
+    9 -> 4
+    9 -> 3
+    8 [label=<&lt;xml-open-tag&gt; <FONT COLOR="gray">(8)</FONT>>]
+    8 -> 7
+    8 -> 6
+    8 -> 5
+    7 [label=<&lt; <FONT COLOR="gray">(7)</FONT>>]
+    6 [label=<&lt;id&gt; <FONT COLOR="gray">(6)</FONT>>]
+    5 [label=<&gt; <FONT COLOR="gray">(5)</FONT>>]
+    4 [label=<&lt;xml-tree&gt; <FONT COLOR="gray">(4)</FONT>>]
+    3 [label=<&lt;xml-close-tag&gt; <FONT COLOR="gray">(3)</FONT>>]
+    3 -> 2
+    3 -> 1
+    3 -> 0
+    2 [label=<&lt;/ <FONT COLOR="gray">(2)</FONT>>]
+    1 [label=<&lt;id&gt; <FONT COLOR="gray">(1)</FONT>>]
+    0 [label=<&gt; <FONT COLOR="gray">(0)</FONT>>]
+}
+'''.replace('    ', '\t')
+
+        self.assertEqual(expected, str(dtree.to_dot()))
 
 
 if __name__ == '__main__':

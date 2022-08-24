@@ -6,10 +6,10 @@ from typing import Optional, Sequence, Dict, Set, Tuple, List, Callable, Union, 
 
 from grammar_graph import gg
 from graphviz import Digraph
-from isla.trie import SubtreesTrie
 
 from isla.helpers import is_nonterminal, traverse, TRAVERSE_POSTORDER
-from isla.type_defs import Path, Grammar, ParseTree, ImmutableList
+from isla.trie import SubtreesTrie
+from isla.type_defs import Path, ParseTree
 
 
 class DerivationTree:
@@ -310,24 +310,16 @@ class DerivationTree:
 
         return result
 
-    def terminals(self) -> List[str]:
-        result: List[str] = []
+    def terminals(self) -> Set[str]:
+        result: Set[str] = set()
 
         def add_if_terminal(_: Path, tree: DerivationTree):
             if not is_nonterminal(tree.value):
-                result.append(tree.value)
+                result.add(tree.value)
 
         self.traverse(action=add_if_terminal)
 
         return result
-
-    def reachable_symbols(self, grammar: Grammar, is_reachable: Callable[[str, str], bool]) -> Set[str]:
-        return self.nonterminals() | {
-            nonterminal for nonterminal in grammar
-            if any(is_reachable(leaf[1].value, nonterminal)
-                   for leaf in self.leaves()
-                   if is_nonterminal(leaf[1].value))
-        }
 
     def next_path(self, path: Path, skip_children=False) -> Optional[Path]:
         """
@@ -430,18 +422,6 @@ class DerivationTree:
             self.__len = sum([len(child) for child in (self.children or [])]) + 1
 
         return self.__len
-
-    def __lt__(self, other):
-        return len(self) < len(other)
-
-    def __le__(self, other):
-        return len(self) <= len(other)
-
-    def __gt__(self, other):
-        return len(self) > len(other)
-
-    def __ge__(self, other):
-        return len(self) >= len(other)
 
     def substitute(self, subst_map: Dict['DerivationTree', 'DerivationTree']) -> 'DerivationTree':
         # We perform an iterative reverse post-order depth-first traversal and use a stack
