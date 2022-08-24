@@ -42,7 +42,7 @@
     <!-- HEADER -->
     <div id="header_wrap" class="outer">
         <header class="inner">
-          
+          <a id="forkme_banner" href="">View on GitHub</a>
 
           <h1 id="project_title">The Input Specification Language ISLa</h1>
           <h2 id="project_tagline">ISLa is a language and solver for checking and generation based on context-sensitive constraints of structured inputs.</h2>
@@ -55,6 +55,12 @@
     <div id="main_content_wrap" class="outer">
       <section id="main_content" class="inner">
         <h1 id="isla-input-specification-language">ISLa: Input Specification Language</h1>
+
+<p><a href="https://pypi.python.org/pypi/isla-solver/"><img src="https://img.shields.io/pypi/pyversions/isla-solver.svg" alt="Python" /></a>
+<a href="https://pypi.python.org/pypi/isla-solver"><img src="http://img.shields.io/pypi/v/isla-solver.svg" alt="Version" /></a>
+<a href="https://github.com/rindPHI/isla/actions/workflows/test-isla.yml"><img src="https://img.shields.io/github/workflow/status/rindPHI/isla/Test%20ISLa" alt="Build Status" /></a>
+<a href="https://coveralls.io/github/rindPHI/isla?branch=main"><img src="https://coveralls.io/repos/github/rindPHI/isla/badge.svg?branch=main" alt="Coverage Status" /></a>
+<a href="https://libraries.io/github/rindPHI/isla"><img src="https://img.shields.io/librariesio/release/github/rindphi/isla" alt="Dependencies" /></a></p>
 
 <p>ISLa is a grammar-aware String constraint solver with its own specification
 language. The language is a superset of SMT-LIB for String constraints, and adds
@@ -158,12 +164,9 @@ disambiguation. The final, simpler formula is:</p>
     <span class="n">max_number_free_instantiations</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
     <span class="n">max_number_smt_instantiations</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
 
-<span class="n">it</span> <span class="o">=</span> <span class="n">solver</span><span class="p">.</span><span class="n">solve</span><span class="p">()</span>
-<span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
-    <span class="k">try</span><span class="p">:</span>
-        <span class="k">print</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">it</span><span class="p">))</span>
-    <span class="k">except</span> <span class="nb">StopIteration</span><span class="p">:</span>
-        <span class="k">break</span>
+<span class="n">solution</span> <span class="o">=</span> <span class="n">solver</span><span class="p">.</span><span class="n">fuzz</span><span class="p">()</span>
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">100</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">solver</span><span class="p">.</span><span class="n">fuzz</span><span class="p">())</span>
 </code></pre></div></div>
 
 <p>When calling the solver with an ISLa formula in concrete syntax (a string), one has to supply a “signature” of the
@@ -179,12 +182,9 @@ structural and semantic predicate symbols used:</p>
     <span class="n">max_number_free_instantiations</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
     <span class="n">max_number_smt_instantiations</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
 
-<span class="n">it</span> <span class="o">=</span> <span class="n">solver</span><span class="p">.</span><span class="n">solve</span><span class="p">()</span>
-<span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
-    <span class="k">try</span><span class="p">:</span>
-        <span class="k">print</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">it</span><span class="p">))</span>
-    <span class="k">except</span> <span class="nb">StopIteration</span><span class="p">:</span>
-        <span class="k">break</span>
+<span class="n">solution</span> <span class="o">=</span> <span class="n">solver</span><span class="p">.</span><span class="n">fuzz</span><span class="p">()</span>
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">100</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">solver</span><span class="p">.</span><span class="n">fuzz</span><span class="p">())</span>
 </code></pre></div></div>
 
 <p>To create more diverse inputs, ISLa can be configured to perform a <em>bounded expansion</em> of grammar nonterminals that are
@@ -312,8 +312,7 @@ python3 <span class="nt">-m</span> pytest <span class="nt">-n</span> 16 tests
     <!-- FOOTER  -->
     <div id="footer_wrap" class="outer">
       <footer class="inner">
-        
-        <p>Published with <a href="https://pages.github.com">GitHub Pages</a></p>
+        <p class="copyright">ISLa and its documentation are maintained by <a href="https://www.dominic-steinhoefel.de">Dominic Steinh&ouml;fel</a>.</p>
       </footer>
     </div>
   </body>
