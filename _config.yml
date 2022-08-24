@@ -3,4 +3,5 @@ title: The Input Specification Language ISLa
 description: ISLa is a language and solver for checking and generation based on context-sensitive constraints of structured inputs.
 repository: rindphi/isla
 github: [metadata]
+github_repo: https://github.com/rindPHI/isla
 show_downloads: false
