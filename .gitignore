@@ -16,3 +16,4 @@ isla_evaluation.sqlite
 docker-access-token.txt
 isla_evaluation_*
 src/isla_solver.egg-info/
+_site/
