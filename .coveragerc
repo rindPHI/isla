@@ -3,3 +3,6 @@ omit =
     src/isla/isla_shortcuts.py
     src/isla/optimizer.py
     src/isla/performance_evaluator.py
+    src/isla/isla_language/
+    src/isla/mexpr_parser/
+    src/isla/bnf/
