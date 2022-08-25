@@ -497,7 +497,7 @@ exists <assgn> decl: (
 ### [Generalized SMT-LIB syntax](#generalized-smt-lib-syntax)
 
 At the core of ISLa are SMT-LIB expressions; quantifiers and predicate formulas
-are are constructed around those. In the [SMT-LIB
+are constructed around those. In the [SMT-LIB
 language](https://smtlib.cs.uiowa.edu/language.shtml), all expressions are
 written in the S-expression format `(op arg1 arg2)` known from languages like
 LISP and Scheme. In addition to this syntax, ISLa supports the prefix notation
@@ -588,7 +588,7 @@ XPath syntax, we use dots `.` instead of slashes `/`. We still use the term
 
 At any position in an ISLa formula where a variable may occur, one may
 alternatively use an XPath expression. An XPath expression in ISLa consists of
-one ore more *segments* of the form `var.<type1>[pos1].<type2>[pos2]` (for the
+one or more *segments* of the form `var.<type1>[pos1].<type2>[pos2]` (for the
 first segment) or `<type>.<type1>[pos1].<type2>[pos2]` (for the second and later
 segments). Note that the second form can also be used when specifying an ISLa
 constraint, but is translated to the first form by [universally closing over the
@@ -611,7 +611,7 @@ distance (than 1). The exact distance cannot be specified. An XPath expression
 * of the `pos1`-th *direct* child with type `<type1>` 
 * of the derivation tree associated with `var`.
 
-An simple example for the use of the `..` axis is the formula
+A simple example for the use of the `..` axis is the formula
 
 ```
 checksum(<header>, <header>..<checksum>)
@@ -687,7 +687,7 @@ In summary,
   `.` allows addressing *direct* children of a nonterminal that appear in at
   least one expansion alternative. If more than one occurrence of a nonterminal
   symbol appear in the same expansion alternative, indices `<type>[idx]` can be
-  use to choose the one to constrain.
+  used to choose the one to constrain.
 * For each segment chain consisting of more than one segment, we eliminate the
   segments from left to right by introducing universal quantifiers.
 * XPath expressions *do not add expressiveness* to ISLa: They are translated to
@@ -1003,7 +1003,7 @@ where \\(p^1\\) is the first element of the tuple \\(p\\) and
 \\(\mathit{tail}(p)\\) is the (possibly empty) tuple resulting from removing the
 first element of \\(p\\).
 
-The remaining structural predicates can be defined in a similar fashion. Only
+The remaining structural predicates can be defined similarly. Only
 for predicates like `level` we additionally need to retrieve labels of subtrees
 (grammar symbols) in addition to paths.
 
@@ -1174,7 +1174,7 @@ to the nodes corresponding to the bound elements. Then, we continue as for
 expressions](#tree-quantifiers-without-match-expressions): If `Q <type>
 var="mexpr" in tree: A` is the formula (`Q` being either `forall` or `exists`),
 we collect subtrees from `tree` with roots labeled with `<type>`. Then, however,
-we select only those of which the some derivation tree for the match expression
+we select only those of which some derivation tree for the match expression
 is a *prefix*. Then, we instantiate `var` and all variables in `mexpr` according
 to the found match, and check whether `A` holds for all/one of these
 instantiations.
@@ -1277,7 +1277,7 @@ Numeric quantifiers are of the form `forall int var; A` or `exists int var; A`.
 They allow introducing a fresh variable, unconnected to the reference grammar,
 ranging over strings representing *positive* integers. We only allow positive
 integers since the SMT solver used by ISLa, Z3, does not support converting
-converting negative numeric strings to integers and back (see [this GitHub
+negative numeric strings to integers and back (see [this GitHub
 issue](https://github.com/Z3Prover/z3/issues/1846#issuecomment-424809364)). The
 main use case of numeric quantifiers is connecting several semantic predicates.
 Consider, for example, the following ISLa constraint for CSV files:
