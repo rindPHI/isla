@@ -6,3 +6,8 @@ omit =
     src/isla/isla_language/*
     src/isla/mexpr_parser/*
     src/isla/bnf/*
+
+[report]
+exclude_lines =
+    @abstractmethod
+    @abc.abstractmethod

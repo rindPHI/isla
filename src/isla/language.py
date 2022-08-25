@@ -6,7 +6,7 @@ import operator
 import pickle
 import re
 import string
-from abc import ABC
+from abc import ABC, abstractmethod
 from functools import reduce, lru_cache
 from typing import Union, List, Optional, Dict, Tuple, Callable, cast, Set, Iterable, Sequence, Protocol, \
     TypeVar, MutableSet
@@ -451,33 +451,43 @@ class FormulaVisitor:
 
 
 class FormulaTransformer(ABC):
+    @abstractmethod
     def transform_predicate_formula(self, formula: 'StructuralPredicateFormula') -> 'Formula':
         raise NotImplementedError()
 
+    @abstractmethod
     def transform_semantic_predicate_formula(self, formula: 'SemanticPredicateFormula') -> 'Formula':
         raise NotImplementedError()
 
+    @abstractmethod
     def transform_negated_formula(self, formula: 'NegatedFormula') -> 'Formula':
         raise NotImplementedError()
 
+    @abstractmethod
     def transform_conjunctive_formula(self, formula: 'ConjunctiveFormula') -> 'Formula':
         raise NotImplementedError()
 
+    @abstractmethod
     def transform_disjunctive_formula(self, formula: 'DisjunctiveFormula') -> 'Formula':
         raise NotImplementedError()
 
+    @abstractmethod
     def transform_smt_formula(self, formula: 'SMTFormula') -> 'Formula':
         raise NotImplementedError()
 
+    @abstractmethod
     def transform_exists_formula(self, formula: 'ExistsFormula') -> 'Formula':
         raise NotImplementedError()
 
+    @abstractmethod
     def transform_forall_formula(self, formula: 'ForallFormula') -> 'Formula':
         raise NotImplementedError()
 
+    @abstractmethod
     def transform_exists_int_formula(self, formula: 'ExistsIntFormula') -> 'Formula':
         raise NotImplementedError()
 
+    @abstractmethod
     def transform_forall_int_formula(self, formula: 'ForallIntFormula') -> 'Formula':
         raise NotImplementedError()
 
@@ -521,36 +531,46 @@ class Formula(ABC):
     # def __setstate__(self, state):
     #     pass
 
+    @abstractmethod
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         """Non-recursive: Only non-empty for quantified formulas"""
         raise NotImplementedError()
 
+    @abstractmethod
     def free_variables(self) -> OrderedSet[Variable]:
         """Recursive."""
         raise NotImplementedError()
 
+    @abstractmethod
     def tree_arguments(self) -> OrderedSet[DerivationTree]:
         """Trees that were substituted for variables."""
         raise NotImplementedError()
 
+    @abstractmethod
     def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> 'Formula':
         raise NotImplementedError()
 
+    @abstractmethod
     def substitute_expressions(self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]) -> 'Formula':
         raise NotImplementedError()
 
+    @abstractmethod
     def accept(self, visitor: FormulaVisitor):
         raise NotImplementedError()
 
+    @abstractmethod
     def transform(self, transformer: FormulaTransformer) -> 'Formula':
         raise NotImplementedError()
 
+    @abstractmethod
     def __len__(self):
         raise NotImplementedError()
 
+    @abstractmethod
     def __hash__(self):
         raise NotImplementedError()
 
+    @abstractmethod
     def __eq__(self, other: 'Formula'):
         raise NotImplementedError()
 
@@ -603,10 +623,9 @@ class Formula(ABC):
         return DisjunctiveFormula(self, other)
 
     def __neg__(self):
-        if isinstance(self, SMTFormula):
-            # Overloaded in SMTFormula
-            assert False
-        elif isinstance(self, NegatedFormula):
+        assert not isinstance(self, SMTFormula)  # Overloaded in SMTFormula
+
+        if isinstance(self, NegatedFormula):
             return self.args[0]
         elif isinstance(self, ConjunctiveFormula):
             return reduce(lambda a, b: a | b, [-arg for arg in self.args])
@@ -795,17 +814,6 @@ class SemPredEvalResult:
 SemPredArg = Union[DerivationTree, Variable, str, int]
 
 
-def binds_nothing(tree: DerivationTree, args: Tuple[SemPredArg, ...]) -> bool:
-    return False
-
-
-def binds_argument_trees(tree: DerivationTree, args: Tuple[SemPredArg, ...]) -> bool:
-    return any(
-        tree_arg.find_node(tree) is not None
-        for tree_arg in args
-        if isinstance(tree_arg, DerivationTree))
-
-
 class SemanticPredicateEvalFun(Protocol):
     def __call__(
             self,
@@ -837,11 +845,14 @@ class SemanticPredicate:
 
         if binds_tree is not None and binds_tree is not True:
             if binds_tree is False:
-                self.binds_tree = binds_nothing
+                self.binds_tree = lambda tree, args: False
             else:
                 self.binds_tree = binds_tree
         else:
-            self.binds_tree = binds_argument_trees
+            self.binds_tree = lambda tree, args: any(
+                tree_arg.find_node(tree) is not None
+                for tree_arg in args
+                if isinstance(tree_arg, DerivationTree))
 
     def evaluate(self, graph: gg.GrammarGraph, *instantiations: SemPredArg, negate: bool = False):
         if negate:
@@ -2476,6 +2487,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             if len(xpath_expr) == 2 and len(xpath_expr[1]) == 1:
                 bound_var = final_bound_variable
             else:
+                # TODO: This else leg seems to be untested. Check if/when it is executed.
                 bound_var = fresh_bound_variable(
                     self.used_variables,
                     BoundVariable(bound_var_type[1:-1], bound_var_type),
@@ -3104,39 +3116,6 @@ def instantiate_top_constant(formula: Formula, tree: DerivationTree) -> Formula:
         c for c in VariablesCollector.collect(formula)
         if isinstance(c, Constant) and not c.is_numeric())
     return formula.substitute_expressions({top_constant: tree})
-
-
-@lru_cache(maxsize=None)
-def bound_elements_to_tree(
-        bound_elements: Tuple[BoundVariable, ...],
-        immutable_grammar: ImmutableGrammar,
-        in_nonterminal: str) -> DerivationTree:
-    grammar = immutable_to_grammar(immutable_grammar)
-    fuzzer = GrammarCoverageFuzzer(grammar)
-
-    placeholder_map: Dict[Union[str, BoundVariable], str] = {}
-    for bound_element in bound_elements:
-        if isinstance(bound_element, str):
-            placeholder_map[bound_element] = bound_element
-        elif not is_nonterminal(bound_element.n_type):
-            placeholder_map[bound_element] = bound_element.n_type
-        else:
-            ph_candidate = fuzzer.expand_tree(DerivationTree(bound_element.n_type))
-            placeholder_map[bound_element] = str(ph_candidate)
-
-    inp = "".join(list(map(lambda elem: placeholder_map[elem], bound_elements)))
-
-    subgrammar = copy.deepcopy(grammar)
-    subgrammar["<start>"] = [in_nonterminal]
-    delete_unreachable(subgrammar)
-    parser = EarleyParser(subgrammar)
-
-    try:
-        return DerivationTree.from_parse_tree(next(parser.parse(inp))[1][0])
-    except SyntaxError as serr:
-        raise RuntimeError(
-            f"Could not transform bound elements {''.join(map(str, bound_elements))} "
-            f"to tree starting in {in_nonterminal}: SyntaxError {serr}")
 
 
 @lru_cache(maxsize=None)
