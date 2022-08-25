@@ -17,6 +17,8 @@ if test -z "$VIRTUAL_ENV" -a -d venv
     source venv/bin/activate.fish
 end
 
+echo "Running each job $runs times for $secs seconds."
+
 set -x PYTHONPATH (pwd)
 set -x PYTHONHASHSEED 0
 
