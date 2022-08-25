@@ -3,11 +3,6 @@ omit =
     src/isla/isla_shortcuts.py
     src/isla/optimizer.py
     src/isla/performance_evaluator.py
-    src/isla/isla_language/IslaLanguageLexer.py
-    src/isla/isla_language/IslaLanguageParser.py
-    src/isla/isla_language/IslaLanguageListener.py
-    src/isla/mexpr_parser/MexprParser.py
-    src/isla/mexpr_parser/MexprParserListener.py
-    src/isla/bnf/bnfLexer.py
-    src/isla/bnf/bnfParser.py
-    src/isla/bnf/bnfListener.py
+    src/isla/isla_language/*
+    src/isla/mexpr_parser/*
+    src/isla/bnf/*
