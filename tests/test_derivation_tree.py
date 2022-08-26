@@ -339,6 +339,15 @@ digraph {
 
         self.assertEqual(expected, str(dtree.to_dot()))
 
+    def test_serialization(self):
+        parse_tree = ('<xml-tree>', [
+            ('<xml-open-tag>', [('<', []), ('<id>', None), ('>', [])]),
+            ('<xml-tree>', None),
+            ('<xml-close-tag>', [('</', []), ('<id>', None), ('>', [])])])
+        dtree = DerivationTree.from_parse_tree(parse_tree)
+
+        self.assertEqual(dtree, pickle.loads(pickle.dumps(dtree)))
+
 
 if __name__ == '__main__':
     unittest.main()
