@@ -12,11 +12,11 @@ max_number_smt_instantiations = 2
 eval_k = 4
 
 cost_vector = CostWeightVector(
-    tree_closing_cost=11,
-    constraint_cost=3,
-    derivation_depth_penalty=5,
-    low_k_coverage_penalty=10,
-    low_global_k_path_coverage_penalty=40)
+    tree_closing_cost=3,
+    constraint_cost=0,
+    derivation_depth_penalty=2,
+    low_k_coverage_penalty=0,
+    low_global_k_path_coverage_penalty=0)
 
 length_constraints = (
     # tar.link_constraint &

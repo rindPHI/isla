@@ -577,15 +577,15 @@ forall int colno:
             precompute_reachability=False,
             # custom_test_func=extract_tar,
             cost_computer=GrammarBasedBlackboxCostComputer(CostSettings(
-                STD_COST_SETTINGS.weight_vector,
+                CostWeightVector(
+                    tree_closing_cost=3,
+                    constraint_cost=0,
+                    derivation_depth_penalty=2,
+                    low_k_coverage_penalty=0,
+                    low_global_k_path_coverage_penalty=0),
                 k=4),
                 gg.GrammarGraph.from_grammar(tar.TAR_GRAMMAR)),
-            tree_insertion_methods=DIRECT_EMBEDDING | SELF_EMBEDDING
-            # cost_settings=CostSettings(
-            #     (CostWeightVector(1, 1, 1, 1, 1, 1),),
-            #     (200,),
-            #     k=1
-            # ),
+            tree_insertion_methods=DIRECT_EMBEDDING | SELF_EMBEDDING,
         )
 
     def test_simple_tar(self):
