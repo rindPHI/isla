@@ -332,6 +332,7 @@ class ISLaSolver:
         self.seen_coverages: Set[str] = set()
         self.current_level: int = 0
         self.step_cnt: int = 0
+        self.last_cost_recomputation: int = 0
 
         self.solutions: List[DerivationTree] = []
 
@@ -1419,7 +1420,7 @@ class ISLaSolver:
                 formulas.extend([
                     # "str.to_int(constant) == 42" has been shown to be more efficiently
                     # solvable than "x == '17'"---fewer timeouts!
-                    z3.Not(z3.StrToInt(constant.to_smt()) == z3.IntVal(int(string_val.as_string())))
+                    z3.Not(z3_eq(z3.StrToInt(constant.to_smt()), z3.IntVal(int(string_val.as_string()))))
                     if constant.is_numeric()
                     else z3.Not(z3_eq(constant.to_smt(), string_val))
                     for constant, string_val in prev_solution.items()])
@@ -1633,7 +1634,8 @@ class ISLaSolver:
         self.tree_hashes_in_queue.add(state.tree.structural_hash())
         self.state_hashes_in_queue.add(hash(state))
 
-        if self.step_cnt % 200 == 0:
+        if self.step_cnt % 400 == 0 and self.step_cnt > self.last_cost_recomputation:
+            self.last_cost_recomputation = self.step_cnt
             self.logger.info(f'Recomputing costs in queue after {self.step_cnt} solver steps')
             old_queue = list(self.queue)
             self.queue = []
