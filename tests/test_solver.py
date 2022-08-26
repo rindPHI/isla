@@ -243,12 +243,11 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             cost_computer=GrammarBasedBlackboxCostComputer(
                 CostSettings(
                     CostWeightVector(
-                        tree_closing_cost=5,
-                        constraint_cost=5,
-                        derivation_depth_penalty=3.5,
-                        low_k_coverage_penalty=5,
-                        low_global_k_path_coverage_penalty=30,
-                    ),
+                        tree_closing_cost=10,
+                        constraint_cost=0,
+                        derivation_depth_penalty=6,
+                        low_k_coverage_penalty=0,
+                        low_global_k_path_coverage_penalty=18),
                     k=4),
                 gg.GrammarGraph.from_grammar(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES)))
 
@@ -382,7 +381,7 @@ exists int num:
         property = """
 forall <csv-header> hline in start:
   exists int colno:
-    ((>= (str.to.int colno) 3) and 
+    ((>= (str.to.int colno) 1) and 
     ((<= (str.to.int colno) 5) and 
      (count(hline, "<raw-field>", colno) and 
      forall <csv-record> line in start:
@@ -394,9 +393,9 @@ forall <csv-header> hline in start:
             semantic_predicates={COUNT_PREDICATE},
             grammar=CSV_GRAMMAR,
             custom_test_func=csv_lint,
-            num_solutions=30,
+            num_solutions=90,
             max_number_free_instantiations=1,
-            max_number_smt_instantiations=1,
+            max_number_smt_instantiations=3,
             enforce_unique_trees_in_queue=False,
             global_fuzzer=False,
             fuzzer_factory=functools.partial(GrammarFuzzer, min_nonterminals=0, max_nonterminals=30),
@@ -494,6 +493,7 @@ forall int colno:
         )
 
     def test_rest(self):
+        random.seed(10)
         self.execute_generation_test(
             rest.LENGTH_UNDERLINE & rest.DEF_LINK_TARGETS &
             rest.NO_LINK_TARGET_REDEF & rest.LIST_NUMBERING_CONSECUTIVE,
@@ -504,14 +504,14 @@ forall int colno:
             num_solutions=50,
             enforce_unique_trees_in_queue=True,
             # tree_insertion_methods=0,
+            # print_only=True,
             cost_computer=GrammarBasedBlackboxCostComputer(CostSettings(
                 CostWeightVector(
-                    tree_closing_cost=10,
-                    constraint_cost=0,
-                    derivation_depth_penalty=3.5,
-                    low_k_coverage_penalty=10,
-                    low_global_k_path_coverage_penalty=95,
-                ),
+                    tree_closing_cost=7,
+                    constraint_cost=1.5,
+                    derivation_depth_penalty=2.5,
+                    low_k_coverage_penalty=2,
+                    low_global_k_path_coverage_penalty=21),
                 k=4),
                 gg.GrammarGraph.from_grammar(rest.REST_GRAMMAR),
                 reset_coverage_after_n_round_with_no_coverage=500,
@@ -529,12 +529,11 @@ forall int colno:
             cost_computer=GrammarBasedBlackboxCostComputer(
                 CostSettings(
                     CostWeightVector(
-                        tree_closing_cost=4.2,
-                        constraint_cost=0,
-                        derivation_depth_penalty=7,
-                        low_k_coverage_penalty=30,
-                        low_global_k_path_coverage_penalty=80,
-                    ),
+                        tree_closing_cost=5,
+                        constraint_cost=2,
+                        derivation_depth_penalty=6,
+                        low_k_coverage_penalty=2,
+                        low_global_k_path_coverage_penalty=21),
                     k=3,
                 ),
                 gg.GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR),

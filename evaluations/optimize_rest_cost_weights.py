@@ -18,6 +18,13 @@ if __name__ == '__main__':
 
     random.seed(123456)
 
+    start_vector = CostWeightVector(
+        tree_closing_cost=7,
+        constraint_cost=1.5,
+        derivation_depth_penalty=4,
+        low_k_coverage_penalty=2,
+        low_global_k_path_coverage_penalty=21)
+
     tune_result = auto_tune_weight_vector(
         rest.REST_GRAMMAR,
         rest.DEF_LINK_TARGETS & rest.LENGTH_UNDERLINE & rest.LIST_NUMBERING_CONSECUTIVE & rest.NO_LINK_TARGET_REDEF,
@@ -27,15 +34,10 @@ if __name__ == '__main__':
         generations=6,
         cpu_count=16,
         k=4,
-        # seed_population=[
-        #     mutate_cost_vector(CostWeightVector(
-        #         tree_closing_cost=20,
-        #         constraint_cost=1,
-        #         derivation_depth_penalty=11.25,
-        #         low_k_coverage_penalty=12,
-        #         low_global_k_path_coverage_penalty=26))
-        #     for _ in range(16)
-        # ]
+        seed_population=[
+            mutate_cost_vector(start_vector)
+            for _ in range(15)
+        ] + [start_vector]
     )
 
     print(tune_result[1])

@@ -10,12 +10,11 @@ max_number_smt_instantiations = 2
 eval_k = 4
 
 cost_vector = CostWeightVector(
-    tree_closing_cost=10,
-    constraint_cost=0,
-    derivation_depth_penalty=3.5,
-    low_k_coverage_penalty=10,
-    low_global_k_path_coverage_penalty=95,
-)
+    tree_closing_cost=7,
+    constraint_cost=1.5,
+    derivation_depth_penalty=2.5,
+    low_k_coverage_penalty=2,
+    low_global_k_path_coverage_penalty=21)
 
 cost_computer = GrammarBasedBlackboxCostComputer(
     CostSettings(cost_vector, k=eval_k),

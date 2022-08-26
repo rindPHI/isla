@@ -10,11 +10,11 @@ max_number_smt_instantiations = 2
 eval_k = 4
 
 cost_vector = CostWeightVector(
-    tree_closing_cost=5,
-    constraint_cost=5,
-    derivation_depth_penalty=3.5,
-    low_k_coverage_penalty=5,
-    low_global_k_path_coverage_penalty=30)
+    tree_closing_cost=10,
+    constraint_cost=0,
+    derivation_depth_penalty=6,
+    low_k_coverage_penalty=0,
+    low_global_k_path_coverage_penalty=18)
 
 g_wf = lambda timeout: ISLaSolver(
     xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
