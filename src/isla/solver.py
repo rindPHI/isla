@@ -1936,7 +1936,7 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
         return 1 - weighted_geometric_mean([
             num_contributed_k_paths / num_missing_k_paths,
             num_contributed_potential_k_paths / num_missing_k_paths
-        ], [0.7, 0.3])
+        ], [0.3, 0.7])
 
     def _compute_k_coverage_cost(self, state: SolutionState) -> float:
         coverages = []
