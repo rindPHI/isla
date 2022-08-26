@@ -527,7 +527,7 @@ class DerivationTree:
         yield self.value
         yield None if self.children is None else list(self.children)
 
-    def __getitem__(self, item: int) -> str | List['DerivationTree']:
+    def __getitem__(self, item: int) -> str | Optional[List['DerivationTree']]:
         """
         Allows accessing the tree's value using index 0 and the children list using index 1.
         For backward compatibility with plain fuzzingbook parse trees.
@@ -540,7 +540,7 @@ class DerivationTree:
         if item == 0:
             return self.value
         else:
-            return list(self.children)
+            return None if self.children is None else list(self.children)
 
     def compute_hash_iteratively(self, structural=False):
         # We perform an iterative reverse post-order depth-first traversal and use a stack
