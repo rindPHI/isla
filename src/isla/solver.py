@@ -30,7 +30,7 @@ from isla import language
 from isla.derivation_tree import DerivationTree
 from isla.evaluator import evaluate
 from isla.existential_helpers import insert_tree, DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_ADDITION
-from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
+from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer, expansion_key
 from isla.helpers import delete_unreachable, dict_of_lists_to_list_of_dicts, \
     replace_line_breaks, weighted_geometric_mean, assertions_activated, \
     split_str_with_nonterminals, cluster_by_common_elements, is_nonterminal, canonical, lazyjoin, lazystr, is_prefix
@@ -328,6 +328,8 @@ class ISLaSolver:
         self.state_hashes_in_queue: Set[int] = {hash(state) for state in initial_states}
         for state in initial_states:
             heapq.heappush(self.queue, (self.compute_cost(state), state))
+
+        self.seen_coverages: Set[str] = set()
         self.current_level: int = 0
         self.step_cnt: int = 0
 
@@ -491,6 +493,9 @@ class ISLaSolver:
                     fuzzer = self.fuzzer
                 else:
                     fuzzer = self.fuzzer_factory(self.grammar)
+
+                if isinstance(fuzzer, GrammarCoverageFuzzer):
+                    fuzzer.covered_expansions.update(self.seen_coverages)
 
                 if state.constraint == sc.true():
                     for _ in range(self.max_number_free_instantiations):
@@ -1563,6 +1568,10 @@ class ISLaSolver:
         """
 
         if state.complete():
+            for _, subtree in state.tree.paths():
+                if subtree.children:
+                    self.seen_coverages.add(expansion_key(subtree.value, subtree.children))
+
             assert state.formula_satisfied(self.grammar).is_true()
             return True
 

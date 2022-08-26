@@ -30,11 +30,10 @@
 # CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
+import collections.abc
 import random
 import subprocess
-from typing import Tuple, List, Any, Set, Callable, Optional
-
+from typing import Tuple, List, Any, Set, Callable, Optional, Iterable
 
 from isla.helpers import RE_NONTERMINAL, is_nonterminal, nonterminals, is_valid_grammar
 from isla.derivation_tree import DerivationTree
@@ -48,16 +47,16 @@ def all_terminals(tree: DerivationTree) -> str:
     return str(tree)
 
 
-def expansion_key(symbol: str, expansion: Expansion | DerivationTree | Tuple[DerivationTree]) -> str:
+def expansion_key(symbol: str, expansion: Expansion | DerivationTree | Iterable[DerivationTree]) -> str:
     """Convert (symbol, `expansion`) into a key "SYMBOL -> EXPRESSION".
     `expansion` can be an expansion string, a derivation tree, or a list of derivation trees."""
 
     if isinstance(expansion, DerivationTree):
         expansion = expansion.value
-    elif isinstance(expansion, list):
-        # List of derivation trees
+    elif not isinstance(expansion, str) and isinstance(expansion, collections.abc.Iterable):
+        # Iterable of derivation trees
         assert all(isinstance(elem, DerivationTree) for elem in expansion)
-        expansion = "".join(map(all_terminals, expansion))
+        expansion = "".join(map(lambda t: t.value, expansion))
     else:
         assert isinstance(expansion, str)
 
@@ -155,7 +154,7 @@ class GrammarFuzzer(Fuzzer):
     def check_grammar(self) -> None:
         """Check the grammar passed"""
         assert self.start_symbol in self.grammar
-        assert is_valid_grammar( self.grammar, _start_symbol=self.start_symbol)
+        assert is_valid_grammar(self.grammar, _start_symbol=self.start_symbol)
 
     def init_tree(self) -> DerivationTree:
         return DerivationTree(self.start_symbol, None)
@@ -414,8 +413,7 @@ class GrammarCoverageFuzzer(GrammarFuzzer):
 
         return cov
 
-    def add_coverage(self, symbol: str,
-                     new_child: Expansion | List[DerivationTree]) -> None:
+    def add_coverage(self, symbol: str, new_child: Expansion | Iterable[DerivationTree]) -> None:
         key = expansion_key(symbol, new_child)
 
         if self.log and key not in self.covered_expansions:
