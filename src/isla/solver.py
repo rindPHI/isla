@@ -1921,6 +1921,9 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
                 self.rounds_with_no_new_coverage = 0
 
     def _compute_global_k_coverage_cost(self, state: SolutionState):
+        if self.cost_settings.weight_vector.low_global_k_path_coverage_penalty == 0:
+            return 0
+
         tree_k_paths = state.tree.k_paths(self.graph, self.cost_settings.k, include_potential_paths=False)
         all_graph_k_paths = self.graph.k_paths(self.cost_settings.k, include_terminals=False)
 
@@ -1960,6 +1963,9 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
         ], [0.2, 0.8])
 
     def _compute_k_coverage_cost(self, state: SolutionState) -> float:
+        if self.cost_settings.weight_vector.low_k_coverage_penalty == 0:
+            return 0
+
         coverages = []
         for k in range(1, self.cost_settings.k + 1):
             coverage = state.tree.k_coverage(self.graph, k, include_potential_paths=False)
