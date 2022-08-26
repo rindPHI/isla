@@ -24,11 +24,11 @@ if __name__ == '__main__':
     random.seed(13468432149)
 
     start_vector = CostWeightVector(
-        tree_closing_cost=7,
-        constraint_cost=1.5,
-        derivation_depth_penalty=2.5,
-        low_k_coverage_penalty=2,
-        low_global_k_path_coverage_penalty=21)
+        tree_closing_cost=10,
+        constraint_cost=0,
+        derivation_depth_penalty=6,
+        low_k_coverage_penalty=0,
+        low_global_k_path_coverage_penalty=18)
 
     tune_result = auto_tune_weight_vector(
         XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
