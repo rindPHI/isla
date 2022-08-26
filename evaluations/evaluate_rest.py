@@ -14,8 +14,13 @@ cost_vector = CostWeightVector(
     constraint_cost=0,
     derivation_depth_penalty=3.5,
     low_k_coverage_penalty=10,
-    low_global_k_path_coverage_penalty=100,
+    low_global_k_path_coverage_penalty=95,
 )
+
+cost_computer = GrammarBasedBlackboxCostComputer(
+    CostSettings(cost_vector, k=eval_k),
+    gg.GrammarGraph.from_grammar(rest.REST_GRAMMAR),
+    reset_coverage_after_n_round_with_no_coverage=1500)
 
 g_link_defuse = lambda timeout: ISLaSolver(
     rest.REST_GRAMMAR,
@@ -23,9 +28,7 @@ g_link_defuse = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_computer=GrammarBasedBlackboxCostComputer(
-        CostSettings(cost_vector, k=eval_k),
-        gg.GrammarGraph.from_grammar(rest.REST_GRAMMAR)),
+    cost_computer=cost_computer,
 )
 
 g_link_defuse_len = lambda timeout: ISLaSolver(
@@ -34,9 +37,7 @@ g_link_defuse_len = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_computer=GrammarBasedBlackboxCostComputer(
-        CostSettings(cost_vector, k=eval_k),
-        gg.GrammarGraph.from_grammar(rest.REST_GRAMMAR)),
+    cost_computer=cost_computer,
 )
 
 g_link_defuse_len_numbering = lambda timeout: ISLaSolver(
@@ -45,9 +46,7 @@ g_link_defuse_len_numbering = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_computer=GrammarBasedBlackboxCostComputer(
-        CostSettings(cost_vector, k=eval_k),
-        gg.GrammarGraph.from_grammar(rest.REST_GRAMMAR)),
+    cost_computer=cost_computer,
 )
 
 g_link_defuse_len_numbering_no_redef = lambda timeout: ISLaSolver(
@@ -56,9 +55,7 @@ g_link_defuse_len_numbering_no_redef = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
-    cost_computer=GrammarBasedBlackboxCostComputer(
-        CostSettings(cost_vector, k=eval_k),
-        gg.GrammarGraph.from_grammar(rest.REST_GRAMMAR)),
+    cost_computer=cost_computer,
 )
 
 if __name__ == '__main__':

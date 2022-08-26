@@ -510,10 +510,11 @@ forall int colno:
                     constraint_cost=0,
                     derivation_depth_penalty=3.5,
                     low_k_coverage_penalty=10,
-                    low_global_k_path_coverage_penalty=100,
+                    low_global_k_path_coverage_penalty=95,
                 ),
                 k=4),
                 gg.GrammarGraph.from_grammar(rest.REST_GRAMMAR),
+                reset_coverage_after_n_round_with_no_coverage=500,
             ))
 
     def test_scriptsize_c_def_before_use(self):

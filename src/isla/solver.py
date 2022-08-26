@@ -1894,7 +1894,7 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
                 #         self.graph.k_paths(self.cost_settings.k, include_terminals=False) -
                 #         self.covered_k_paths)
                 # self.logger.debug("%d uncovered paths", len(uncovered_paths))
-                # self.logger.info('\n' + "\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]) + '\n')
+                # self.logger.debug('\n' + "\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]) + '\n')
 
             if self.rounds_with_no_new_coverage >= self.reset_coverage_after_n_round_with_no_coverage:
                 self.rounds_with_no_new_coverage = 0
