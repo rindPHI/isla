@@ -14,7 +14,7 @@ cost_vector = CostWeightVector(
     constraint_cost=0,
     derivation_depth_penalty=6,
     low_k_coverage_penalty=0,
-    low_global_k_path_coverage_penalty=18)
+    low_global_k_path_coverage_penalty=13)
 
 g_wf = lambda timeout: ISLaSolver(
     xml_lang.XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,

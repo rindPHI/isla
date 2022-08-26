@@ -5,6 +5,17 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.10.1] - 2022-08-26
+
+### Changed
+
+- Fixed a bug in computing more than one solution to an SMT-LIB formula. Before, it was
+  pure coincidence if another solution dropped out.
+- Updated dependency to `grammar_graph` library, which had a major bug before which could
+  render k-path coverage guidance useless.
+- Recalibrated weight vectors (including default weight vector) to account for the bug
+  fix in the grammar graph library.
+
 ## [0.10.0] - 2022-08-22
 
 ### Changed
