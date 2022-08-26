@@ -271,7 +271,6 @@ class ISLaSolver:
                 self.tree_insertion_methods = tree_insertion_methods
 
         self.activate_unsat_support = activate_unsat_support
-
         self.currently_unsat_checking: bool = False
 
         self.cost_computer = (
@@ -329,7 +328,8 @@ class ISLaSolver:
         self.state_hashes_in_queue: Set[int] = {hash(state) for state in initial_states}
         for state in initial_states:
             heapq.heappush(self.queue, (self.compute_cost(state), state))
-        self.current_level = 0
+        self.current_level: int = 0
+        self.step_cnt: int = 0
 
         self.solutions: List[DerivationTree] = []
 
@@ -393,6 +393,8 @@ class ISLaSolver:
             self.start_time = int(time.time())
 
         while self.queue:
+            self.step_cnt += 1
+
             # import dill as pickle
             # state_hash = 9107154106757938105
             # out_file = "/tmp/saved_debug_state"
@@ -1622,6 +1624,14 @@ class ISLaSolver:
         self.tree_hashes_in_queue.add(state.tree.structural_hash())
         self.state_hashes_in_queue.add(hash(state))
 
+        if self.step_cnt % 200 == 0:
+            self.logger.info(f'Recomputing costs in queue after {self.step_cnt} solver steps')
+            old_queue = list(self.queue)
+            self.queue = []
+            for _, state in old_queue:
+                cost = self.compute_cost(state)
+                heapq.heappush(self.queue, (cost, state))
+
         if self.debug:
             self.state_tree[self.current_state].append(state)
             self.costs[state] = cost
@@ -1936,7 +1946,7 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
         return 1 - weighted_geometric_mean([
             num_contributed_k_paths / num_missing_k_paths,
             num_contributed_potential_k_paths / num_missing_k_paths
-        ], [0.3, 0.7])
+        ], [0.2, 0.8])
 
     def _compute_k_coverage_cost(self, state: SolutionState) -> float:
         coverages = []
