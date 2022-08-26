@@ -16,6 +16,7 @@ from typing import List, Generator, Dict, Callable, Set, Tuple, Optional, cast, 
 
 import pathos.multiprocessing as pmp
 from grammar_graph import gg
+from grammar_graph.gg import path_to_string
 
 import isla.derivation_tree
 from isla.fuzzer import GrammarCoverageFuzzer
@@ -328,7 +329,9 @@ class Evaluator:
             precision[job] = valid_inputs / total_inputs
 
             # Analyze diversity: Fraction of covered k-paths
-            total_num_kpaths = {k: len(self.graph.k_paths(k, include_terminals=False)) for k in self.kvalues}
+            all_kpaths = {
+                k: {path_to_string(p) for p in self.graph.k_paths(k, include_terminals=False)}
+                for k in self.kvalues}
             diversity_by_sid: Dict[int, float] = {}
             for sid in sids:
                 diversity_by_k: Dict[int, float] = {}
@@ -336,15 +339,15 @@ class Evaluator:
                     cur.execute(
                         "SELECT paths FROM inputs NATURAL JOIN kpaths WHERE testId = ? AND sid = ? AND k = ?",
                         (job, sid, k))
-                    path_hashes: Set[int] = set([])
+                    paths: Set[str] = set()
                     for row in cur:
-                        covered_paths = {int(path_hash) for path_hash in json.loads(row[0])}
-                        path_hashes.update(covered_paths)
+                        paths.update(set(json.loads(row[0])))
 
-                    diversity_by_k[k] = len(path_hashes) / total_num_kpaths[k]
-                    assert len(path_hashes) <= total_num_kpaths[k], \
-                        f"For {job}, session {sid}, k={k}, found {len(path_hashes)} covered paths " \
-                        f"though only {total_num_kpaths[k]} paths exist in grammar graph."
+                    diversity_by_k[k] = len(paths) / len(all_kpaths[k])
+
+                    assert all(path in all_kpaths[k] for path in paths), \
+                        f'For {job}, session {sid}, k={k}, found covered paths that are not ' \
+                        f'in the list of all covered paths.'
 
                 diversity_by_sid[sid] = sum(diversity_by_k.values()) / len(diversity_by_k)
 
@@ -723,9 +726,9 @@ def evaluate_kpaths(
 
     inputs = {inp_id: inp for inp_id, inp in inputs.items() if not kpaths_already_computed(inp_id)}
 
-    def compute_k_paths(inp: isla.derivation_tree.DerivationTree) -> List[int]:
+    def compute_k_paths(inp: ParseTree) -> List[str]:
         try:
-            return [hash(path) for path in graph.k_paths_in_tree(inp, k, include_terminals=False)]
+            return [path_to_string(path) for path in graph.k_paths_in_tree(inp, k, include_terminals=False)]
         except SyntaxError as err:
             print(f"Could not compute {k}-paths, error: {err}")
             return []
