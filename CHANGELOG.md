@@ -5,8 +5,15 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.10.2] - 2022-08-29
+
 ### Changed
 
+- If multiple solutions to an SMT formula are required (see solver parameter
+  `max_number_smt_instantiations`), we add a negated *conjunction* of the values 
+  for all variables in a previous solution; before, we only added a negation
+  of the individual values, which sometimes resulted in fewer solutions than possible
+  (see [this GitHub issue](https://github.com/rindPHI/isla/issues/4)).
 - Using iterative JSON deserialization in performance evaluators and derivation tree
   deserialization, works better for large inputs (e.g., TAR files).
 

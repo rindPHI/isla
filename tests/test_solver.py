@@ -1,5 +1,6 @@
 import functools
 import heapq
+import itertools
 import logging
 import os
 import random
@@ -822,6 +823,33 @@ not(
         f1 = parse_isla('forall <var> var_1 in start: var_1 = "a"')
         f2 = parse_isla('exists <var> var_2 in start: var_2 = "a"')
         self.assertTrue(implies(f1, f2, LANG_GRAMMAR, timeout_seconds=20))
+
+    def test_negation_previous_smt_solutions(self):
+        # See issue https://github.com/rindPHI/isla/issues/4 --- there should
+        # be more than ten solutions to this problem, but before, solutions to
+        # all the variables were negated *individually* (not per solution vector)
+        # which limited the solution set to ten.
+        GRAMMAR: Grammar = {
+            "<start>": ["<point>"],
+            "<point>": ["<x> <y> <z>"],
+            "<x>": ["<digit>"],
+            "<y>": ["<digit>"],
+            "<z>": ["<digit>"],
+            "<digit>": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+        }
+
+        solver = ISLaSolver(
+            GRAMMAR,
+            """
+            forall <point> seed in start:
+                (<= (+ (+ (^ (str.to.int seed.<x>) 2) (^ (str.to.int seed.<y>) 2)) (^ (str.to.int seed.<z>) 2)) 900)
+            """,
+            max_number_smt_instantiations=30,
+        ).solve()
+
+        solutions = [s for s in itertools.islice(solver, 30) if isinstance(s, DerivationTree)]
+        self.assertEqual(30, len(solutions))
+
 
     def execute_generation_test(
             self,

@@ -41,7 +41,7 @@ from isla.language import VariablesCollector, split_conjunction, split_disjuncti
 from isla.parser import EarleyParser
 from isla.three_valued_truth import ThreeValuedTruth
 from isla.type_defs import Grammar, Path, ImmutableList
-from isla.z3_helpers import z3_solve, z3_subst, z3_eq
+from isla.z3_helpers import z3_solve, z3_subst, z3_eq, z3_and
 
 
 class SolutionState:
@@ -1417,13 +1417,15 @@ class ISLaSolver:
                 formulas.append(z3.InRe(z3.String(constant.name), regex))
 
             for prev_solution in internal_solutions:
-                formulas.extend([
+                prev_solution_formula = z3_and([
                     # "str.to_int(constant) == 42" has been shown to be more efficiently
                     # solvable than "x == '17'"---fewer timeouts!
-                    z3.Not(z3_eq(z3.StrToInt(constant.to_smt()), z3.IntVal(int(string_val.as_string()))))
+                    z3_eq(z3.StrToInt(constant.to_smt()), z3.IntVal(int(string_val.as_string())))
                     if constant.is_numeric()
                     else z3.Not(z3_eq(constant.to_smt(), string_val))
-                    for constant, string_val in prev_solution.items()])
+                    for constant, string_val in prev_solution.items()
+                ])
+                formulas.append(z3.Not(prev_solution_formula))
 
             for smt_formula in smt_formulas:
                 formulas.append(smt_formula.formula)
