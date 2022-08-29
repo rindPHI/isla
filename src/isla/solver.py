@@ -1422,7 +1422,7 @@ class ISLaSolver:
                     # solvable than "x == '17'"---fewer timeouts!
                     z3_eq(z3.StrToInt(constant.to_smt()), z3.IntVal(int(string_val.as_string())))
                     if constant.is_numeric()
-                    else z3.Not(z3_eq(constant.to_smt(), string_val))
+                    else z3_eq(constant.to_smt(), string_val)
                     for constant, string_val in prev_solution.items()
                 ])
                 formulas.append(z3.Not(prev_solution_formula))

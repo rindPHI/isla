@@ -848,6 +848,7 @@ not(
         ).solve()
 
         solutions = [s for s in itertools.islice(solver, 30) if isinstance(s, DerivationTree)]
+        print('\n'.join(map(str, solutions)))
         self.assertEqual(30, len(solutions))
 
 
