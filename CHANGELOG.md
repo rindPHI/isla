@@ -5,6 +5,11 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Changed
+
+- Using iterative JSON deserialization in performance evaluators and derivation tree
+  deserialization, works better for large inputs (e.g., TAR files).
+
 ## [0.10.1] - 2022-08-26
 
 ### Changed
