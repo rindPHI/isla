@@ -6,11 +6,9 @@ from typing import List
 from isla.derivation_tree import DerivationTree
 from isla.fuzzer import GrammarFuzzer
 from isla.helpers import parent_or_child
-from isla.parser import EarleyParser
 from isla_formalizations.xml_lang import XML_GRAMMAR
 from test_data import LANG_GRAMMAR
 from test_helpers import parse
-import grammar_graph.gg as gg
 
 
 class TestDerivationTree(unittest.TestCase):
@@ -245,6 +243,17 @@ class TestDerivationTree(unittest.TestCase):
             tree = fuzzer.fuzz_tree()
             self.assertEqual(str(tree), str(pickle.loads(pickle.dumps(tree))))
 
+    def test_json(self):
+        tree = DerivationTree.from_parse_tree(("1", [
+            ("2", [("4", [])]),
+            ("3", [
+                ("5", [("7", [])]),
+                ("6", [])
+            ])
+        ]))
+
+        self.assertEqual(tree, DerivationTree.from_json(tree.to_json()))
+
     def test_zero_id(self):
         DerivationTree.next_id = 42
         tree = DerivationTree('<start>', id=0)
@@ -338,7 +347,6 @@ digraph {
 '''.replace('    ', '\t')
 
         self.assertEqual(expected, str(dtree.to_dot()))
-
 
 
 if __name__ == '__main__':

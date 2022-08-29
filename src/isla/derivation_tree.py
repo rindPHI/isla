@@ -4,6 +4,7 @@ import zlib
 from functools import lru_cache
 from typing import Optional, Sequence, Dict, Set, Tuple, List, Callable, Union, Generator
 
+import ijson
 from grammar_graph import gg
 from graphviz import Digraph
 
@@ -45,15 +46,19 @@ class DerivationTree:
         if children is None:
             self.__is_open = True
 
-    def __getstate__(self) -> bytes:
+    def to_json(self) -> str:
         the_dict = self.__dict__
         if '_DerivationTree__k_paths' in the_dict:
             del the_dict['_DerivationTree__k_paths']
         if '_DerivationTree__concrete_k_paths' in the_dict:
             del the_dict['_DerivationTree__concrete_k_paths']
-        return zlib.compress(json.dumps(the_dict, default=lambda o: o.__dict__).encode('UTF-8'))
+        return json.dumps(the_dict, default=lambda o: o.__dict__)
 
-    def __setstate__(self, state: bytes):
+    def __getstate__(self) -> bytes:
+        return zlib.compress(self.to_json().encode('UTF-8'))
+
+    @staticmethod
+    def from_json(json_str: str, tree: Optional['DerivationTree'] = None) -> 'DerivationTree':
         def from_dict(a_dict: dict) -> 'DerivationTree':
             result = DerivationTree.__new__(DerivationTree)
             result.__k_paths = {}
@@ -76,8 +81,16 @@ class DerivationTree:
 
             return result
 
-        assert isinstance(state, bytes)
-        self.__dict__.update(from_dict(json.loads(zlib.decompress(state).decode('UTF-8'))).__dict__)
+        assert isinstance(json_str, str)
+
+        if tree is None:
+            tree = DerivationTree('<start>')
+        tree.__dict__.update(from_dict(next(ijson.items(json_str, ''))).__dict__)
+
+        return tree
+
+    def __setstate__(self, state: bytes):
+        return DerivationTree.from_json(zlib.decompress(state).decode('UTF-8'), self)
 
     @property
     def children(self) -> Tuple['DerivationTree']:
