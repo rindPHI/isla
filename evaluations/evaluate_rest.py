@@ -14,7 +14,7 @@ cost_vector = CostWeightVector(
     constraint_cost=1.5,
     derivation_depth_penalty=2.5,
     low_k_coverage_penalty=2,
-    low_global_k_path_coverage_penalty=21)
+    low_global_k_path_coverage_penalty=18)
 
 cost_computer = GrammarBasedBlackboxCostComputer(
     CostSettings(cost_vector, k=eval_k),

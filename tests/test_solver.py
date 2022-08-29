@@ -503,7 +503,7 @@ forall int colno:
                     constraint_cost=1.5,
                     derivation_depth_penalty=2.5,
                     low_k_coverage_penalty=2,
-                    low_global_k_path_coverage_penalty=21),
+                    low_global_k_path_coverage_penalty=18),
                 k=4),
                 gg.GrammarGraph.from_grammar(rest.REST_GRAMMAR),
                 reset_coverage_after_n_round_with_no_coverage=500,
