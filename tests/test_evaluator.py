@@ -2,6 +2,7 @@ import string
 import unittest
 from typing import cast, Callable
 
+import pytest
 import z3
 from orderedset import OrderedSet
 
@@ -737,6 +738,26 @@ forall <expr> expr in start:
 
         inp = DerivationTree.from_parse_tree(next(EarleyParser(grammar).parse("sqrt(-2.0)")))
         self.assertTrue(evaluate(property, inp, grammar))
+
+    @pytest.mark.skip
+    def test_addition_with_more_than_two_operands(self):
+        # https://github.com/rindPHI/isla/issues/2
+        from isla.type_defs import Grammar
+        from isla.solver import ISLaSolver
+
+        GRAMMAR: Grammar = {
+            "<start>": ["<isbn10>"],
+            "<isbn10>": [
+                "<digit><digit><digit><digit><digit><digit><digit><digit><digit><checkdigit>"
+            ],
+            "<digit>": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+            "<checkdigit>": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "X"],
+        }
+
+        valid = "097522980X"
+
+        solver = ISLaSolver(GRAMMAR, "(= (+ 254 (* 2 str.to.int(<isbn10>.<digit>[9])) 10) 264)")
+        self.assertTrue(solver.evaluate(valid))
 
 
 if __name__ == '__main__':

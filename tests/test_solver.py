@@ -13,6 +13,7 @@ from xml.sax.saxutils import escape
 import pytest
 import z3
 from grammar_graph import gg
+from grammar_graph.gg import path_to_string
 from orderedset import OrderedSet
 
 import isla.derivation_tree
@@ -398,16 +399,7 @@ forall <csv-header> hline in start:
             max_number_smt_instantiations=3,
             enforce_unique_trees_in_queue=False,
             global_fuzzer=False,
-            fuzzer_factory=functools.partial(GrammarFuzzer, min_nonterminals=0, max_nonterminals=30),
-            cost_computer=GrammarBasedBlackboxCostComputer(CostSettings(
-                CostWeightVector(
-                    tree_closing_cost=1,
-                    constraint_cost=0,
-                    derivation_depth_penalty=1,
-                    low_k_coverage_penalty=0,
-                    low_global_k_path_coverage_penalty=0),
-                k=3),
-                gg.GrammarGraph.from_grammar(CSV_GRAMMAR)))
+            fuzzer_factory=functools.partial(GrammarFuzzer, min_nonterminals=0, max_nonterminals=30))
 
     def test_csv_rows_equal_length_more_complex(self):
         property = """
@@ -598,6 +590,14 @@ forall int colno:
             debug=True,
             num_solutions=10,
             precompute_reachability=False)
+
+    def test_delete_me(self):
+        inp = '''a
+c;d
+'''
+        graph = gg.GrammarGraph.from_grammar(CSV_GRAMMAR)
+        tree = next(EarleyParser(CSV_GRAMMAR).parse(inp))
+        print('\n'.join(map(path_to_string, graph.k_paths_in_tree(tree, 3, include_terminals=False))))
 
     @staticmethod
     def state_tree_to_xml(

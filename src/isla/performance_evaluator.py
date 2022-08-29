@@ -120,6 +120,7 @@ class Evaluator:
 
         self.do_clean: bool = args.clean
         self.do_analyze: bool = args.analyze
+        self.do_print_missing_kpaths: bool = args.print_missing_kpaths
         self.do_generate: bool = args.generate
         self.do_evaluate_validity: bool = args.validity
         self.do_compute_kpaths: bool = args.kpaths
@@ -184,6 +185,9 @@ class Evaluator:
         parser.add_argument(
             "-a", "--analyze", action="store_true", default=False,
             help="Analyze the accumulated results of the previous [numsessions] sessions.")
+        parser.add_argument(
+            "-m", "--print-missing-kpaths", action="store_true", default=False,
+            help="Print the uncovered k-paths of the previous [numsessions] sessions.")
 
         g = parser.add_mutually_exclusive_group()
         g.add_argument(
@@ -329,7 +333,7 @@ class Evaluator:
             precision[job] = valid_inputs / total_inputs
 
             # Analyze diversity: Fraction of covered k-paths
-            all_kpaths = {
+            all_kpaths: Dict[int, Set[str]] = {
                 k: {path_to_string(p) for p in self.graph.k_paths(k, include_terminals=False)}
                 for k in self.kvalues}
             diversity_by_sid: Dict[int, float] = {}
@@ -342,6 +346,14 @@ class Evaluator:
                     paths: Set[str] = set()
                     for row in cur:
                         paths.update(set(json.loads(row[0])))
+
+                    if self.do_print_missing_kpaths:
+                        missing_paths = all_kpaths[k].difference(paths)
+                        if missing_paths:
+                            print(f'Missing {k}-paths for session {sid} of job "{job}":')
+                            print('\n'.join(map(lambda p: f'- {p}', missing_paths)))
+                        else:
+                            print(f'No missing {k}-paths for sesson {sid} of job "{job}"')
 
                     diversity_by_k[k] = len(paths) / len(all_kpaths[k])
 
@@ -660,8 +672,8 @@ def evaluate_validity(
 
     # Obtain inputs from session
     print(f"Reading inputs for session {sid} of {test_id} from database...")
-    inputs: Dict[int, isla.derivation_tree.DerivationTree] = get_inputs_from_db(test_id, sid, db_file,
-                                                                                only_unkown_validity=True)
+    inputs: Dict[int, isla.derivation_tree.DerivationTree] = get_inputs_from_db(
+        test_id, sid, db_file, only_unkown_validity=True)
 
     print(f"Evaluating validity of inputs for session {sid} of {test_id}...")
 
@@ -733,12 +745,14 @@ def evaluate_kpaths(
             print(f"Could not compute {k}-paths, error: {err}")
             return []
 
+    covered_k_paths = {inp_id: compute_k_paths(inp) for inp_id, inp in inputs.items()}
+
     # Insert into DB
     con = sqlite3.connect(db_file)
     with con:
         con.executemany(
             "INSERT INTO kpaths(inpId, k, paths) VALUES (?, ?, ?)",
-            [(inp_id, k, json.dumps(compute_k_paths(inp))) for inp_id, inp in inputs.items()])
+            [(inp_id, k, json.dumps(kpaths)) for inp_id, kpaths in covered_k_paths.items()])
     con.close()
 
     print(f"[{strtime()}] DONE Evaluating {k}-paths for session {sid} of {test_id}")

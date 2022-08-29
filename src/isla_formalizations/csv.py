@@ -78,7 +78,7 @@ def csv_lint(tree: isla.derivation_tree.DerivationTree) -> Union[bool, str]:
 csv_colno_property = '''
 exists int num:
   forall <csv-record> elem in start:
-    ((>= (str.to.int num) 1) and
+    (str.to.int(num) >= 1 and
      count(elem, "<raw-field>", num))'''
 
 CSV_COLNO_PROPERTY = parse_isla(csv_colno_property, CSV_GRAMMAR, semantic_predicates={COUNT_PREDICATE})

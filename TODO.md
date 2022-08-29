@@ -9,3 +9,5 @@
   elements of the propositional combination, it probably fails (a free variable
   remains).
 - Support & test XPath expressions in ISLa predicates.
+- Address buggy test case: `test_evaluator.test_addition_with_more_than_two_operands`
+  [GitHub Issue](https://github.com/rindPHI/isla/issues/2)

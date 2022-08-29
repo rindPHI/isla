@@ -9,10 +9,9 @@ from isla.solver import ISLaSolver, CostSettings, CostWeightVector, GrammarBased
 from isla_formalizations import csv
 
 max_number_free_instantiations = 10
-max_number_smt_instantiations = 2
+max_number_smt_instantiations = 5
 eval_k = 3
 
-# cost_vector = STD_COST_SETTINGS.weight_vectors[0]
 cost_vector = CostWeightVector(
     tree_closing_cost=1,
     constraint_cost=0,
@@ -26,6 +25,7 @@ g_colno = lambda timeout: ISLaSolver(
     max_number_free_instantiations=max_number_free_instantiations,
     max_number_smt_instantiations=max_number_smt_instantiations,
     timeout_seconds=timeout,
+    enforce_unique_trees_in_queue=False,
     cost_computer=GrammarBasedBlackboxCostComputer(
         CostSettings(cost_vector, k=eval_k),
         gg.GrammarGraph.from_grammar(csv.CSV_GRAMMAR)),
