@@ -650,7 +650,7 @@ def get_inputs_from_db(
             row[0]: isla.derivation_tree.DerivationTree.from_parse_tree(next(ijson.items(row[1], '')))
             for row in rows}
     else:
-        inputs: Dict[int, isla.derivation_tree.DerivationTree] = {
+        inputs: Dict[int, ParseTree] = {
             row[0]: next(ijson.items(row[1], ''))
             for row in rows}
 
@@ -742,19 +742,36 @@ def evaluate_kpaths(
 
     def compute_k_paths(inp: ParseTree) -> List[str]:
         try:
+            assert isinstance(inp, list), f'Expected a list, got: {type(inp).__name__}'
+            assert len(inp) == 2, f'Expected a (node, children) pair, but tree has {len(inp)} items'
+            assert isinstance(inp[0], str), f'Node label should be a str, got {type(inp[0]).__name__}'
+            assert inp[1] is None or isinstance(inp[1], list), \
+                f'Children field should be None or list, is: {type(inp[1]).__name__}'
             return [path_to_string(path) for path in graph.k_paths_in_tree(inp, k, include_terminals=False)]
         except SyntaxError as err:
             print(f"Could not compute {k}-paths, error: {err}")
             return []
 
-    covered_k_paths = {inp_id: compute_k_paths(inp) for inp_id, inp in inputs.items()}
+    # We evaluate inputs in bundles of 10 inputs at a time
+    bundle_size = 10
+    get2nd = lambda t: t[1]
 
-    # Insert into DB
-    con = sqlite3.connect(db_file)
-    with con:
-        con.executemany(
-            "INSERT INTO kpaths(inpId, k, paths) VALUES (?, ?, ?)",
-            [(inp_id, k, json.dumps(kpaths)) for inp_id, kpaths in covered_k_paths.items()])
-    con.close()
+    input_bundle: List[Tuple[int, Tuple[int, ParseTree]]]
+    for input_bundle in map(list, map(
+            get2nd,
+            itertools.groupby(enumerate(inputs.values()),
+                              lambda p: p[0] // bundle_size))):
+        print(f'Evaluating {k}-paths for session {sid} of {test_id}: '
+              f'{100 * input_bundle[0][0] / len(inputs):.2f}% done '
+              f'({input_bundle[0][0]} of {len(inputs)} inputs)')
+        covered_k_paths = {inp_id: compute_k_paths(inp) for _, (inp_id, inp) in input_bundle}
+
+        # Insert into DB
+        con = sqlite3.connect(db_file)
+        with con:
+            con.executemany(
+                "INSERT INTO kpaths(inpId, k, paths) VALUES (?, ?, ?)",
+                [(inp_id, k, json.dumps(kpaths)) for inp_id, kpaths in covered_k_paths.items()])
+        con.close()
 
     print(f"[{strtime()}] DONE Evaluating {k}-paths for session {sid} of {test_id}")

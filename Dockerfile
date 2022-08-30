@@ -15,10 +15,12 @@ RUN mv /tmp/csvlint-v0.3.0-linux-amd64/csvlint /usr/bin
 RUN adduser -D isla
 USER isla
 WORKDIR /home/isla
-ADD requirements_test.txt /home/isla
+RUN pip install --upgrade pip wheel
 
-RUN pip install --upgrade pip
-RUN pip install wheel
-RUN pip install -r requirements_test.txt
+RUN git clone https://github.com/rindPHI/isla.git
+WORKDIR /home/isla/isla
+RUN git checkout v0.10.5
+RUN pip install -e .[dev,test]
 
+WORKDIR /home/isla
 CMD ["fish"]

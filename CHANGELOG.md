@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.10.5] - 2022-08-30
+
+### Changed
+
+- Upgraded `grammar_graph` library; includes performance fix.
+- Including ISLa 0.10.15 in Dockerfile.
+
 ## [0.10.4] - 2022-08-30
 
 ### Changed
