@@ -187,7 +187,8 @@ class ISLaSolver:
                  predicates_unique_in_int_arg: Tuple[language.SemanticPredicate, ...] = (COUNT_PREDICATE,),
                  fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = lambda grammar: GrammarCoverageFuzzer(grammar),
                  tree_insertion_methods: Optional[int] = None,
-                 activate_unsat_support: bool = False):
+                 activate_unsat_support: bool = False,
+                 grammar_unwinding_threshold: int = 4):
         """
         Constructs a new ISLaSolver object. Passing a grammar and a formula is mandatory.
 
@@ -225,6 +226,11 @@ class ISLaSolver:
         triggers additional tests for unsatisfiability that reduce input generation performance, but might
         ensure termination (with a negative solver result) for unsatisfiable problems for which the solver
         could otherwise diverge.
+        :param grammar_unwinding_threshold: When querying the SMT solver, ISLa passes a regular expression for
+        the syntax of the involved nonterminals. If this syntax is not regular, we unwind the respective part
+        in the reference grammar up to a depth of `grammar_unwinding_threshold`. If this is too shallow, it can
+        happen that an equation etc. cannot be solved; if it is too deep, it can negatively impact performance
+        (and quite tremendously so).
         """
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -257,6 +263,7 @@ class ISLaSolver:
         self.fuzzer = fuzzer_factory(self.grammar)
         self.fuzzer_factory = fuzzer_factory
         self.predicates_unique_in_int_arg: Set[language.SemanticPredicate] = set(predicates_unique_in_int_arg)
+        self.grammar_unwinding_threshold = grammar_unwinding_threshold
 
         if activate_unsat_support and tree_insertion_methods is None:
             self.tree_insertion_methods = 0
@@ -1740,7 +1747,10 @@ class ISLaSolver:
 
     @lru_cache(maxsize=None)
     def extract_regular_expression(self, nonterminal: str) -> z3.ReRef:
-        regex_conv = RegexConverter(self.grammar, compress_unions=True)
+        regex_conv = RegexConverter(
+            self.grammar,
+            compress_unions=True,
+            max_num_expansions=self.grammar_unwinding_threshold)
         regex = regex_conv.to_regex(nonterminal, convert_to_z3=False)
         self.logger.debug(f"Computed regular expression for nonterminal {nonterminal}:\n{regex}")
         z3_regex = regex_to_z3(regex)
