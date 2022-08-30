@@ -752,14 +752,14 @@ def evaluate_kpaths(
             print(f"Could not compute {k}-paths, error: {err}")
             return []
 
-    # We evaluate inputs in bundles of 10 inputs at a time
-    bundle_size = 10
+    # We evaluate inputs in bundles of `bundle_size` inputs at a time
+    bundle_size = 30
     get2nd = lambda t: t[1]
 
     input_bundle: List[Tuple[int, Tuple[int, ParseTree]]]
     for input_bundle in map(list, map(
             get2nd,
-            itertools.groupby(enumerate(inputs.values()),
+            itertools.groupby(enumerate(inputs.items()),
                               lambda p: p[0] // bundle_size))):
         print(f'Evaluating {k}-paths for session {sid} of {test_id}: '
               f'{100 * input_bundle[0][0] / len(inputs):.2f}% done '
