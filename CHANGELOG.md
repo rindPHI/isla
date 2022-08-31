@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.10.7] - 2022-08-31
+
+### Changed
+
+- Non-recursive length computation for derivation trees; prevents recursion depth errors for
+  deep trees.
+
 ## [0.10.6] - 2022-08-30
 
 ### Changed

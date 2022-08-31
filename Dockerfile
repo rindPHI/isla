@@ -20,7 +20,7 @@ RUN pip install --upgrade pip wheel
 RUN git clone https://github.com/rindPHI/isla.git
 WORKDIR /home/isla/isla
 RUN git pull
-RUN git checkout v0.10.5
+RUN git checkout v0.10.6
 RUN pip install -e .[dev,test]
 
 WORKDIR /home/isla

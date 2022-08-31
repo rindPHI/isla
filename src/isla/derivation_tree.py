@@ -432,7 +432,7 @@ class DerivationTree:
 
     def __len__(self):
         if self.__len is None:
-            self.__len = sum([len(child) for child in (self.children or [])]) + 1
+            self.__len = len(self.paths())
 
         return self.__len
 
