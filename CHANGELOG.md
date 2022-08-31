@@ -5,6 +5,10 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Changed
+
+- Passing bytes rather than str to the `ijson` library to address deprecation warning.
+
 ## [0.10.7] - 2022-08-31
 
 ### Changed

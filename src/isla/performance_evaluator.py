@@ -346,7 +346,7 @@ class Evaluator:
                         (job, sid, k))
                     paths: Set[str] = set()
                     for row in cur:
-                        paths.update(set(next(ijson.items(row[0], ''))))
+                        paths.update(set(next(ijson.items(row[0].encode('utf-8'), ''))))
 
                     if self.do_print_missing_kpaths:
                         missing_paths = all_kpaths[k].difference(paths)
@@ -374,7 +374,7 @@ class Evaluator:
 
             if valid_inputs:
                 def get_input_length(row: Sequence[str]) -> int:
-                    return len(tree_to_string(next(ijson.items(row[0], ''))))
+                    return len(tree_to_string(next(ijson.items(row[0].encode('utf-8'), ''))))
 
                 with pmp.ProcessingPool(processes=pmp.cpu_count()) as pool:
                     input_lengths = pool.map(get_input_length, valid_inputs)
@@ -382,7 +382,7 @@ class Evaluator:
                 # input_lengths = []
                 # for row in cur:
                 #     input_lengths.append(len(str(isla.derivation_tree.DerivationTree.from_parse_tree(
-                #         next(ijson.items(row[0], ''))))))
+                #         next(ijson.items(row[0].encode('utf-8'), ''))))))
 
                 avg_inp_length[job] = statistics.mean(input_lengths)
                 median_inp_length[job] = statistics.median(input_lengths)
@@ -647,11 +647,11 @@ def get_inputs_from_db(
 
     if convert_to_derivation_tree:
         inputs: Dict[int, isla.derivation_tree.DerivationTree] = {
-            row[0]: isla.derivation_tree.DerivationTree.from_parse_tree(next(ijson.items(row[1], '')))
+            row[0]: isla.derivation_tree.DerivationTree.from_parse_tree(next(ijson.items(row[1].encode('utf-8'), '')))
             for row in rows}
     else:
         inputs: Dict[int, ParseTree] = {
-            row[0]: next(ijson.items(row[1], ''))
+            row[0]: next(ijson.items(row[1].encode('utf-8'), ''))
             for row in rows}
 
     return inputs

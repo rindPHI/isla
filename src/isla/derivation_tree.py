@@ -85,7 +85,7 @@ class DerivationTree:
 
         if tree is None:
             tree = DerivationTree('<start>')
-        tree.__dict__.update(from_dict(next(ijson.items(json_str, ''))).__dict__)
+        tree.__dict__.update(from_dict(next(ijson.items(json_str.encode('utf-8'), ''))).__dict__)
 
         return tree
 
