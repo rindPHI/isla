@@ -5,9 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.10.8] - 2022-08-31
+
 ### Changed
 
 - Passing bytes rather than str to the `ijson` library to address deprecation warning.
+- Increased version of required `grammar_to_regex` library; works better when expressing
+  constraints on nonterminals with certain nonregular sub-languages.
 
 ## [0.10.7] - 2022-08-31
 
