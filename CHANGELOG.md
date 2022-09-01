@@ -5,6 +5,15 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [0.10.9] - 2022-09-01
+
+### Changed
+
+- Upgraded `grammar_graph` library, which now caches (k)-paths of subtrees. This gives a
+  performance boost in particular for long trees with redundant subtrees like from the
+  TAR case study.
+- Fixed the TAR parser from the TAR case study.
+
 ## [0.10.8] - 2022-08-31
 
 ### Changed

@@ -408,13 +408,30 @@ class TarParser:
         return "<entry>", [header, content]
 
     def parse_content(self, content_size: Optional[int] = None) -> ParseTree:
-        return self.parse_padded_characters(
+        padded_characters = self.parse_padded_characters(
             self.read(roundup(content_size, 512)
                       if content_size is not None
                       else len(self.inp)),
             parent_nonterminal="<content>",
-            characters_optional_nonterminal="<maybe_characters>"
-        )
+            characters_optional_nonterminal="<maybe_characters>",
+            padding_optional=True)
+
+        # We patch the result, since there are additional (nullable) `<maybe_...>` nonterminals that were
+        # not considered before, and the actual characters/nuls nonterminals are no longer nullable.
+        first_child = padded_characters[1][0]
+        second_child = padded_characters[1][1]
+
+        if first_child[0] == '<characters>':
+            first_child = ('<maybe_characters>', [first_child])
+        if second_child[0] == '<nuls>':
+            second_child = ('<maybe_nuls>', [second_child])
+
+        if first_child[1] and not first_child[1][0][1]:
+            first_child = ('<maybe_characters>', [])
+        if second_child[1] and not second_child[1][0][1]:
+            second_child = ('<maybe_nuls>', [])
+
+        return '<content>', [first_child, second_child]
 
     def parse_header(self) -> ParseTree:
         file_name = self.parse_file_name()

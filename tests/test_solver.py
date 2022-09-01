@@ -14,12 +14,11 @@ from xml.sax.saxutils import escape
 import pytest
 import z3
 from grammar_graph import gg
-from grammar_graph.gg import path_to_string
 from orderedset import OrderedSet
 
 import isla.derivation_tree
 import isla.evaluator
-from isla import isla_shortcuts as sc, existential_helpers
+from isla import isla_shortcuts as sc
 from isla import language
 from isla.derivation_tree import DerivationTree
 from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_ADDITION
@@ -28,10 +27,9 @@ from isla.helpers import crange
 from isla.isla_predicates import BEFORE_PREDICATE, COUNT_PREDICATE, STANDARD_SEMANTIC_PREDICATES, \
     STANDARD_STRUCTURAL_PREDICATES
 from isla.language import VariablesCollector, parse_isla, start_constant
-from isla.parser import EarleyParser
-from isla.solver import ISLaSolver, SolutionState, STD_COST_SETTINGS, CostSettings, CostWeightVector, \
+from isla.solver import ISLaSolver, SolutionState, CostSettings, CostWeightVector, \
     get_quantifier_chains, CostComputer, GrammarBasedBlackboxCostComputer, quantified_formula_might_match, implies, \
-    equivalent, compute_symbol_costs
+    equivalent
 from isla.type_defs import Grammar
 from isla.z3_helpers import z3_eq
 from isla_formalizations import rest, tar, simple_tar, scriptsizec
@@ -592,14 +590,6 @@ forall int colno:
             num_solutions=10,
             precompute_reachability=False)
 
-    def test_delete_me(self):
-        inp = '''a
-c;d
-'''
-        graph = gg.GrammarGraph.from_grammar(CSV_GRAMMAR)
-        tree = next(EarleyParser(CSV_GRAMMAR).parse(inp))
-        print('\n'.join(map(path_to_string, graph.k_paths_in_tree(tree, 3, include_terminals=False))))
-
     @staticmethod
     def state_tree_to_xml(
             root: SolutionState,
@@ -850,7 +840,6 @@ not(
         solutions = [s for s in itertools.islice(solver, 30) if isinstance(s, DerivationTree)]
         print('\n'.join(map(str, solutions)))
         self.assertEqual(30, len(solutions))
-
 
     def execute_generation_test(
             self,

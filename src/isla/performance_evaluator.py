@@ -21,7 +21,7 @@ from grammar_graph.gg import path_to_string
 
 import isla.derivation_tree
 from isla.fuzzer import GrammarCoverageFuzzer
-from isla.helpers import tree_to_string
+from isla.helpers import tree_to_string, assertions_activated
 from isla.solver import ISLaSolver
 from isla.type_defs import Grammar, ParseTree
 
@@ -306,6 +306,84 @@ class Evaluator:
         avg_inp_length: Dict[str, float] = {}
         median_inp_length: Dict[str, float] = {}
 
+        # The custom TAR parser is inconsistent with the TAR grammar for the expansion of the `<content>`
+        # nonterminal. This has been fixed by now. For existing evaluation data, we patch the k-paths
+        # that are affected by the issue.
+        tar_kpath_fix_map: Dict[str, Set[str]] = {
+            '<content> <content>-choice-1 <characters> <characters>-choice-1 <character>': {
+                '<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>',
+                '<maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <character>',
+            },
+            '<content> <content>-choice-1 <characters> <characters>-choice-1 <characters>': {
+                '<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>',
+                '<maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters>',
+            },
+            '<content> <content>-choice-1 <nuls> <nuls>-choice-1 <NUL>': {
+                '<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>',
+                '<maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <NUL>',
+            },
+            '<content> <content>-choice-1 <nuls> <nuls>-choice-1 <nuls>': {
+                '<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>',
+                '<maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>',
+            },
+            '<entry> <entry>-choice-1 <content> <content>-choice-1 <characters>': {
+                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters>',
+                '<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>',
+            },
+            '<entry> <entry>-choice-1 <content> <content>-choice-1 <nuls>': {
+                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls>',
+                '<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>',
+            },
+            '<content> <content>-choice-1 <characters> <characters>-choice-1 <characters> <characters>-choice-1 <character>': {
+                '<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters>',
+                '<maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters> <characters>-choice-1 <character>',
+            },
+            '<content> <content>-choice-1 <characters> <characters>-choice-1 <characters> <characters>-choice-1 <characters>': {
+                '<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters>',
+                '<maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters> <characters>-choice-1 <characters>',
+            },
+            '<content> <content>-choice-1 <nuls> <nuls>-choice-1 <nuls> <nuls>-choice-1 <NUL>': {
+                '<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>',
+                '<maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls> <nuls>-choice-1 <NUL>',
+            },
+            '<content> <content>-choice-1 <nuls> <nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>': {
+                '<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>',
+                '<maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>',
+            },
+            '<entries> <entries>-choice-1 <entry> <entry>-choice-1 <content> <content>-choice-1 <characters>': {
+                '<entries> <entries>-choice-1 <entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters>',
+                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>',
+            },
+            '<entries> <entries>-choice-1 <entry> <entry>-choice-1 <content> <content>-choice-1 <nuls>': {
+                '<entries> <entries>-choice-1 <entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls>',
+                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>',
+            },
+            '<entries> <entries>-choice-2 <entry> <entry>-choice-1 <content> <content>-choice-1 <characters>': {
+                '<entries> <entries>-choice-2 <entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters>',
+                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>',
+            },
+            '<entries> <entries>-choice-2 <entry> <entry>-choice-1 <content> <content>-choice-1 <nuls>': {
+                '<entries> <entries>-choice-2 <entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls>',
+                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>',
+            },
+            '<entry> <entry>-choice-1 <content> <content>-choice-1 <characters> <characters>-choice-1 <character>': {
+                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>',
+                '<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <character>',
+            },
+            '<entry> <entry>-choice-1 <content> <content>-choice-1 <characters> <characters>-choice-1 <characters>': {
+                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>',
+                '<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters>',
+            },
+            '<entry> <entry>-choice-1 <content> <content>-choice-1 <nuls> <nuls>-choice-1 <NUL>': {
+                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>',
+                '<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <NUL>',
+            },
+            '<entry> <entry>-choice-1 <content> <content>-choice-1 <nuls> <nuls>-choice-1 <nuls>': {
+                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>',
+                '<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>',
+            },
+        }
+
         for job in self.jobs_and_generators:
             sids = tuple(get_all_sids(job, self.db_file))
             if self.num_sessions >= 0:
@@ -344,9 +422,25 @@ class Evaluator:
                     cur.execute(
                         "SELECT paths FROM inputs NATURAL JOIN kpaths WHERE testId = ? AND sid = ? AND k = ?",
                         (job, sid, k))
+
                     paths: Set[str] = set()
                     for row in cur:
-                        paths.update(set(next(ijson.items(row[0].encode('utf-8'), ''))))
+                        for path in next(ijson.items(row[0].encode('utf-8'), '')):
+                            if path not in all_kpaths[k]:
+                                if path in tar_kpath_fix_map:
+                                    for fixed_path in tar_kpath_fix_map[path]:
+                                        assert fixed_path in all_kpaths[k], \
+                                            f'Fixed path {fixed_path} is broken'
+                                        paths.add(fixed_path)
+                                else:
+                                    print(
+                                        f'For {job}, session {sid}, k={k}, found a covered path that is not ' +
+                                        f'in the list of all covered paths (SKIPPING): "{path}"',
+                                        file=sys.stderr)
+
+                                continue
+
+                            paths.add(path)
 
                     if self.do_print_missing_kpaths:
                         missing_paths = all_kpaths[k].difference(paths)
@@ -357,10 +451,6 @@ class Evaluator:
                             print(f'No missing {k}-paths for sesson {sid} of job "{job}"')
 
                     diversity_by_k[k] = len(paths) / len(all_kpaths[k])
-
-                    assert all(path in all_kpaths[k] for path in paths), \
-                        f'For {job}, session {sid}, k={k}, found covered paths that are not ' \
-                        f'in the list of all covered paths.'
 
                 diversity_by_sid[sid] = sum(diversity_by_k.values()) / len(diversity_by_k)
 
@@ -753,7 +843,7 @@ def evaluate_kpaths(
             return []
 
     # We evaluate inputs in bundles of `bundle_size` inputs at a time
-    bundle_size = 30
+    bundle_size = 1
     get2nd = lambda t: t[1]
 
     input_bundle: List[Tuple[int, Tuple[int, ParseTree]]]
