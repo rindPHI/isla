@@ -1,16 +1,15 @@
 import os
 import pathlib
-import sys
 import unittest
 
+import pytest
 from grammar_graph import gg
 from grammar_graph.gg import path_to_string
-
-from isla.derivation_tree import DerivationTree
 from isla_formalizations.tar import TarParser, TAR_GRAMMAR
 
 
 class TestFormalizations(unittest.TestCase):
+    @pytest.mark.skip('Testing with the resource file only works if I make test a package...')
     def test_tar_parser_with_links(self):
         path = os.path.join(os.path.dirname(__file__), 'test_data/' 'test_with_links.tar')
         with pathlib.Path(path).open(mode='rb') as asdf:
@@ -25,6 +24,7 @@ class TestFormalizations(unittest.TestCase):
 
         self.assertTrue(graph.tree_is_valid(tree))
 
+    @pytest.mark.skip('Testing with the resource file only works if I make test a package...')
     def test_tar_parser_simple_file(self):
         path = os.path.join(os.path.dirname(__file__), 'test_data/' 'test_simple.tar')
         with pathlib.Path(path).open(mode='rb') as asdf:
