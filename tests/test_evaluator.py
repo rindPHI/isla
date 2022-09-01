@@ -644,7 +644,7 @@ forall <expr> expr in start:
     def test_evaluate_with_preconditions(self):
         tree = DerivationTree('<start>', (DerivationTree('<csv-file>', (
             DerivationTree('<csv-header>', (DerivationTree('<csv-record>', None, id=592),), id=595),
-            DerivationTree('<csv-record-1>', None, id=593)), id=596),), id=591)
+            DerivationTree('<csv-records>', None, id=593)), id=596),), id=591)
 
         colno_0 = Constant("colno_0", "NUM")
 

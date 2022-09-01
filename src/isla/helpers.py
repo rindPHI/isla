@@ -202,10 +202,6 @@ def grammar_to_mutable(grammar: ImmutableGrammar) -> Grammar:
     return {nonterminal: list(expansion) for nonterminal, expansion in grammar}
 
 
-def immutable_to_grammar(immutable: ImmutableGrammar) -> Grammar:
-    return {k: list(v) for k, v in dict(immutable).items()}
-
-
 def nested_list_to_tuple(l: List[Union[T, List[T]]]) -> Tuple[Union[T, Tuple[T, ...]], ...]:
     return tuple([tuple(elem) if isinstance(elem, list) else elem for elem in l])
 

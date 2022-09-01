@@ -1,8 +1,8 @@
 antlr4-python3-runtime>=4.10
 datrie>=0.8.2
 docutils>=0.18.1
-grammar_graph>=0.1.12
-grammar_to_regex>=0.0.3
+grammar_graph>=0.1.14
+grammar_to_regex>=0.0.4
 ijson>=3.1.4
 matplotlib>=3.5.3
 packaging>=21.3

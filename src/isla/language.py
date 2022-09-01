@@ -28,7 +28,6 @@ from isla.fuzzer import GrammarCoverageFuzzer
 from isla.helpers import RE_NONTERMINAL, is_nonterminal, assertions_activated, \
     canonical, nth_occ, srange, grammar_to_mutable, list_set, is_prefix
 from isla.helpers import replace_line_breaks, delete_unreachable, powerset, grammar_to_immutable, \
-    immutable_to_grammar, \
     nested_list_to_tuple
 from isla.isla_language import IslaLanguageListener
 from isla.isla_language.IslaLanguageLexer import IslaLanguageLexer
@@ -3170,7 +3169,7 @@ def is_valid_combination(
         combination: Sequence[BoundVariable],
         immutable_grammar: ImmutableGrammar,
         in_nonterminal: Optional[str]) -> bool:
-    grammar = immutable_to_grammar(immutable_grammar)
+    grammar = grammar_to_mutable(immutable_grammar)
     fuzzer = GrammarCoverageFuzzer(grammar, min_nonterminals=1, max_nonterminals=6)
     in_nonterminals = [in_nonterminal] if in_nonterminal else grammar.keys()
 

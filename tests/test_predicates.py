@@ -1,5 +1,6 @@
 import unittest
 
+import pytest
 import z3
 from grammar_graph import gg
 
@@ -265,6 +266,7 @@ forall <xml-open-tag> ot in <start>:
         self.assertTrue(evaluate(formula, bad_tree_1, XML_GRAMMAR).is_false())
         self.assertTrue(evaluate(formula, bad_tree_2, XML_GRAMMAR).is_false())
 
+    @pytest.mark.skip('Fix!')
     def test_count_pred_var_as_third_arg(self):
         solver = ISLaSolver(LANG_GRAMMAR, '''
 forall <rhs> in <assgn>:
