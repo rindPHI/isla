@@ -5,6 +5,10 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Changed
+
+- Integrated the [black](https://github.com/psf/black) code style.
+
 ## [0.10.10] - 2022-09-01
 
 ### Changed

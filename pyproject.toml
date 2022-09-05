@@ -29,3 +29,15 @@ classifiers = [
 [project.urls]
 "Homepage" = "https://github.com/rindPHI/isla/"
 "Bug Tracker" = "https://github.com/rindPHI/isla/issues"
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+extend-exclude = '''
+(
+    ^/src/isla/bnf/*
+  | ^/src/isla/isla_language/*
+  | ^/src/isla/mexpr_lexer/*
+  | ^/src/isla/mexpr_parser/*
+)
+'''
