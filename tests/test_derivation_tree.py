@@ -315,6 +315,7 @@ class TestDerivationTree(unittest.TestCase):
         self.assertEqual(node_1, node_2)
 
     def test_to_dot(self):
+        DerivationTree.next_id = 0
         parse_tree = ('<xml-tree>', [
             ('<xml-open-tag>', [('<', []), ('<id>', None), ('>', [])]),
             ('<xml-tree>', None),
