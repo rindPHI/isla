@@ -10,11 +10,11 @@ build-backend = "setuptools.build_meta"
 name = "isla-solver"
 version = "0.10.10"
 authors = [
-  { name="Dominic Steinhöfel", email="dominic.steinhoefel@cispa.de" },
+    { name = "Dominic Steinhöfel", email = "dominic.steinhoefel@cispa.de" },
 ]
 description = "The ISLa Input Specification Language and its solver."
 readme = "README.md"
-license = { file="LICENSE" }
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 classifiers = [
     "Intended Audience :: Science/Research",

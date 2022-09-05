@@ -31,4 +31,6 @@ jobs:
         uses: wearerequired/lint-action@v2
         with:
           black: true
+          black_dir: "src/"
+          black_args: '-extend=exclude="(^/src/isla/bnf/* | ^/src/isla/isla_language/* | ^/src/isla/mexpr_lexer/* | ^/src/isla/mexpr_parser/*)"'
           flake8: true
