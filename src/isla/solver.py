@@ -309,7 +309,7 @@ class ISLaSolver:
         z3_version = pkg_resources.get_distribution("z3-solver").version
         assert version.parse(z3_version) >= version.parse("4.8.13.0"), (
             f"ISLa requires at least z3 4.8.13.0, present: {z3_version}. "
-            f"Please install a newer z3 version, e.g., using 'pip install z3-solver==4.8.14.0'."
+            "Please install a newer z3 version, e.g., using 'pip install z3-solver==4.8.14.0'."
         )
 
         if isinstance(grammar, str):
