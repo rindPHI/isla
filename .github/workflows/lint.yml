@@ -35,4 +35,4 @@ jobs:
           black_args: '--extend-exclude="(^/isla/bnf/* | ^/isla/isla_language/* | ^/isla/mexpr_lexer/* | ^/isla/mexpr_parser/*)"'
           flake8: true
           flake8_dir: "src/"
-          flake8_args: "--max-complexity=10 --max-line-length=127 --exclude=isla/bnf/,isla/mexpr_parser/,isla/mexpr_lexer/,isla/isla_language/,isla_formalizations/"
+          flake8_args: '--max-complexity=10 --max-line-length=127 --extend-exclude="(isla/bnf/*|isla/isla_language/*|isla/mexpr_lexer/*|isla/mexpr_parser/*)"'
