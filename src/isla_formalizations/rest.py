@@ -11,8 +11,12 @@ from docutils.core import publish_doctree
 
 import isla.derivation_tree
 from isla.helpers import srange
-from isla.isla_predicates import LJUST_CROP_PREDICATE, EXTEND_CROP_PREDICATE, SAME_POSITION_PREDICATE, \
-    CONSECUTIVE_PREDICATE
+from isla.isla_predicates import (
+    LJUST_CROP_PREDICATE,
+    EXTEND_CROP_PREDICATE,
+    SAME_POSITION_PREDICATE,
+    CONSECUTIVE_PREDICATE,
+)
 from isla.language import parse_isla
 
 # NOTE: The following special characters are removed from general text.
@@ -29,29 +33,37 @@ REST_GRAMMAR = {
         "<paragraph>",
         "<enumeration>",
     ],
-
     "<section-title>": ["<title-text>\n<underline>"],
     "<title-text>": ["<title-first-char>", "<title-first-char><nobr-string>"],
-
     "<paragraph>": ["<first_paragraph_element><paragraph_elements>\n"],
     "<labeled_paragraph>": ["<label>\n\n<paragraph>"],
     "<label>": [".. _<id>:"],
-
-    "<paragraph_elements>": ["<paragraph_element><paragraph_elements>", "<paragraph_element>"],
-    "<first_paragraph_element>": ["<paragraph_chars_nospace>", "<internal_reference_nospace>"],
+    "<paragraph_elements>": [
+        "<paragraph_element><paragraph_elements>",
+        "<paragraph_element>",
+    ],
+    "<first_paragraph_element>": [
+        "<paragraph_chars_nospace>",
+        "<internal_reference_nospace>",
+    ],
     "<paragraph_element>": ["<paragraph_chars>", "<internal_reference>"],
     "<internal_reference>": ["<presep><id>_<postsep>"],
     "<internal_reference_nospace>": ["<id>_<postsep>"],
-
     "<enumeration>": ["<enumeration_items>\n"],
-    "<enumeration_items>": ["<enumeration_item>\n<enumeration_items>", "<enumeration_item>"],
+    "<enumeration_items>": [
+        "<enumeration_item>\n<enumeration_items>",
+        "<enumeration_item>",
+    ],
     "<enumeration_item>": ["<number>. <nobr-string>"],
-
     "<paragraph_chars>": ["<paragraph_char><paragraph_chars>", "<paragraph_char>"],
-    "<paragraph_chars_nospace>": ["<paragraph_char_nospace><paragraph_chars_nospace>", "<paragraph_char_nospace>"],
+    "<paragraph_chars_nospace>": [
+        "<paragraph_char_nospace><paragraph_chars_nospace>",
+        "<paragraph_char_nospace>",
+    ],
     "<paragraph_char>": list(set(srange(string.printable)) - set(srange("_{}`|*"))),
-    "<paragraph_char_nospace>": list(set(srange(string.printable)) - set(srange("_{}`|*" + string.whitespace))),
-
+    "<paragraph_char_nospace>": list(
+        set(srange(string.printable)) - set(srange("_{}`|*" + string.whitespace))
+    ),
     "<presep>": srange(" \t,;()"),
     "<postsep>": srange(" \t,.;()"),
     "<id>": srange(string.ascii_lowercase),
@@ -62,14 +74,18 @@ REST_GRAMMAR = {
     "<nobr-string>": ["<nobr-char>", "<nobr-char><nobr-string>"],
     # Exclude tab in <nobr-char> since otherwise, title can get too long (counts more than one character)
     "<nobr-char>": list(set(srange(string.printable)) - set(srange("\n\r\t_{}`|"))),
-    "<title-first-char>": list(set(srange(string.printable)) - set(srange(string.whitespace + "\b\f\v-*+_{}`|=-"))),
+    "<title-first-char>": list(
+        set(srange(string.printable))
+        - set(srange(string.whitespace + "\b\f\v-*+_{}`|=-"))
+    ),
     "<underline>": ["<eqs>", "<dashes>"],
     "<eqs>": ["=", "=<eqs>"],
     "<dashes>": ["-", "-<dashes>"],
 }
 
 # The below encoding is the most efficient one, but heavily uses semantic predicates
-LENGTH_UNDERLINE = parse_isla("""
+LENGTH_UNDERLINE = parse_isla(
+    """
 forall <section-title> title="{<title-text> titletxt}\n{<underline> underline}" in start:
   exists int title_length:
     exists int underline_length:
@@ -77,39 +93,53 @@ forall <section-title> title="{<title-text> titletxt}\n{<underline> underline}" 
       ((<= (str.to.int title_length) (str.to.int underline_length)) and
       (ljust_crop(titletxt, title_length, " ") and
        extend_crop(underline, underline_length))))
-""", REST_GRAMMAR, semantic_predicates={LJUST_CROP_PREDICATE, EXTEND_CROP_PREDICATE})
+""",
+    REST_GRAMMAR,
+    semantic_predicates={LJUST_CROP_PREDICATE, EXTEND_CROP_PREDICATE},
+)
 
 # LENGTH_UNDERLINE = parse_isla("""
 # forall <section-title> title="{<title-text> titletxt}\n{<underline> underline}" in start:
 #   (>= (str.len underline) (str.len titletxt))
 # """)
 
-DEF_LINK_TARGETS = parse_isla("""
+DEF_LINK_TARGETS = parse_isla(
+    """
 (forall <internal_reference> ref="<presep>{<id> use_id}_<postsep>" in start:
    exists <labeled_paragraph> labeled_par_1=".. _{<id> def_id}:\n\n<paragraph>" in start:
      (= use_id def_id) and
  forall <internal_reference_nospace> fref="{<id> use_id}_<postsep>" in start:
    exists <labeled_paragraph> labeled_par_2=".. _{<id> def_id}:\n\n<paragraph>" in start:
      (= use_id def_id))
-""", REST_GRAMMAR)
+""",
+    REST_GRAMMAR,
+)
 
-NO_LINK_TARGET_REDEF = parse_isla("""
+NO_LINK_TARGET_REDEF = parse_isla(
+    """
 forall <label> label_1=".. _{<id> id_1}:" in start:
   forall <label> label_2=".. _{<id> id_2}:" in start:
     (same_position(label_1, label_2) or
-     not (= id_1 id_2))""", REST_GRAMMAR, structural_predicates={SAME_POSITION_PREDICATE})
+     not (= id_1 id_2))""",
+    REST_GRAMMAR,
+    structural_predicates={SAME_POSITION_PREDICATE},
+)
 
 # NOTE: Obviously, reST allows enumerations starting with letters.
 #       This means that "f." starts an enumeration. To prevent this,
 #       we would have to mess with the grammar, so we accept it for now.
-LIST_NUMBERING_CONSECUTIVE = parse_isla("""
+LIST_NUMBERING_CONSECUTIVE = parse_isla(
+    """
 forall <enumeration> enumeration in start:
   forall <enumeration_item> item_1="{<number> number_1}. <nobr-string>" in enumeration:
     forall <enumeration_item> item_2="{<number> number_2}. <nobr-string>" in enumeration:
       (not consecutive(item_1, item_2) or
         (consecutive(item_1, item_2) and 
         ((= (str.to.int number_2) (+ (str.to.int number_1) 1)) and
-         (> (str.to.int number_1) 0))))""", REST_GRAMMAR, structural_predicates={CONSECUTIVE_PREDICATE})
+         (> (str.to.int number_1) 0))))""",
+    REST_GRAMMAR,
+    structural_predicates={CONSECUTIVE_PREDICATE},
+)
 
 
 # TODO: Further rst properties:
@@ -117,27 +147,36 @@ forall <enumeration> enumeration in start:
 #   - Footnotes: For auto-numbered footnote references without autonumber labels ("[#]_"), the references and footnotes
 #                must be in the same relative order. Similarly for auto-symbol footnotes ("[*]_").
 
+
 def render_rst(tree: isla.derivation_tree.DerivationTree) -> Union[bool, str]:
     f = io.StringIO()
     with redirect_stderr(f):
-        doc: Document = publish_doctree(str(tree), settings_overrides={'input_encoding': 'unicode'}).asdom()
+        doc: Document = publish_doctree(
+            str(tree), settings_overrides={"input_encoding": "unicode"}
+        ).asdom()
 
     err_msg = f.getvalue().strip()
 
     section_titles_in_tree = tree.filter(lambda n: n.value == "<section-title>")
-    headings_in_output = doc.getElementsByTagName("title") + doc.getElementsByTagName("subtitle")
+    headings_in_output = doc.getElementsByTagName("title") + doc.getElementsByTagName(
+        "subtitle"
+    )
 
     if len(section_titles_in_tree) != len(headings_in_output):
-        err_msg = f"Incorrect heading underlines: {len(section_titles_in_tree)} titles " \
-                  f"were rendered to {len(headings_in_output)} HTML headings."
+        err_msg = (
+            f"Incorrect heading underlines: {len(section_titles_in_tree)} titles "
+            f"were rendered to {len(headings_in_output)} HTML headings."
+        )
     else:
         enumerations_in_tree = tree.filter(lambda n: n.value == "<enumeration>")
         enumerations_in_output = doc.getElementsByTagName("enumerated_list")
 
         # if len(enumerations_in_tree) != len(enumerations_in_output):
         if len(enumerations_in_tree) > len(enumerations_in_output):
-            err_msg = f"Incorrect enumeration numbering: {len(enumerations_in_tree)} enumerations " \
-                      f"were rendered to {len(enumerations_in_output)} HTML ordered lists."
+            err_msg = (
+                f"Incorrect enumeration numbering: {len(enumerations_in_tree)} enumerations "
+                f"were rendered to {len(enumerations_in_output)} HTML ordered lists."
+            )
 
     has_error = bool(err_msg)
 
@@ -172,15 +211,19 @@ def render_rst_io(tree: isla.derivation_tree.DerivationTree) -> Union[bool, str]
             headings_in_output = doc.findall(".//{*}h1") + doc.findall(".//{*}h2")
 
             if len(section_titles_in_tree) != len(headings_in_output):
-                err_msg = f"Incorrect heading underlines: {len(section_titles_in_tree)} titles " \
-                          f"were rendered to {len(headings_in_output)} HTML headings."
+                err_msg = (
+                    f"Incorrect heading underlines: {len(section_titles_in_tree)} titles "
+                    f"were rendered to {len(headings_in_output)} HTML headings."
+                )
             else:
                 enumerations_in_tree = tree.filter(lambda n: n.value == "<enumeration>")
                 enumerations_in_output = doc.findall(".//{*}ol")
 
                 if len(enumerations_in_tree) != len(enumerations_in_output):
-                    err_msg = f"Incorrect enumeration numbering: {len(enumerations_in_tree)} enumerations " \
-                              f"were rendered to {len(enumerations_in_output)} HTML ordered lists."
+                    err_msg = (
+                        f"Incorrect enumeration numbering: {len(enumerations_in_tree)} enumerations "
+                        f"were rendered to {len(enumerations_in_output)} HTML ordered lists."
+                    )
 
         has_error = exit_code != 0 or err_msg
 
@@ -191,6 +234,7 @@ def render_rst_io(tree: isla.derivation_tree.DerivationTree) -> Union[bool, str]
         #         print(f"Written wrong input to file {perm_tmp.name}")
 
         return True if not has_error else err_msg
+
 
 # Below encoding results in timeouts for more complex input scaffolds, uses only SMT formulas,
 # but depends on an auxiliary numeric constant for better efficiency & more diversity.

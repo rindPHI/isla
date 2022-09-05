@@ -17,8 +17,15 @@ CSV_GRAMMAR = {
     "<csv-string-list>": ["<raw-field>", "<raw-field>;<csv-string-list>"],
     "<raw-field>": ["<simple-field>", "<quoted-field>"],
     "<simple-field>": ["<spaces><simple-characters><spaces>"],
-    "<simple-characters>": ["<simple-character><simple-characters>", "<simple-character>"],
-    "<simple-character>": [c for c in srange(string.printable) if c not in ["\n", ";", '"', " ", "\t", "\r", '"']],
+    "<simple-characters>": [
+        "<simple-character><simple-characters>",
+        "<simple-character>",
+    ],
+    "<simple-character>": [
+        c
+        for c in srange(string.printable)
+        if c not in ["\n", ";", '"', " ", "\t", "\r", '"']
+    ],
     "<quoted-field>": ['"<escaped-field>"'],
     "<escaped-field>": ["<escaped-characters>"],
     "<escaped-characters>": ["<escaped-character><escaped-characters>", ""],
@@ -36,8 +43,15 @@ CSV_HEADERBODY_GRAMMAR = {
     "<csv-string-list>": ["<raw-field>", "<raw-field>;<csv-string-list>"],
     "<raw-field>": ["<simple-field>", "<quoted-field>"],
     "<simple-field>": ["<spaces><simple-characters><spaces>"],
-    "<simple-characters>": ["<simple-character><simple-characters>", "<simple-character>"],
-    "<simple-character>": [c for c in srange(string.printable) if c not in ["\n", ";", '"', " ", "\t", "\r", '"']],
+    "<simple-characters>": [
+        "<simple-character><simple-characters>",
+        "<simple-character>",
+    ],
+    "<simple-character>": [
+        c
+        for c in srange(string.printable)
+        if c not in ["\n", ";", '"', " ", "\t", "\r", '"']
+    ],
     "<quoted-field>": ['"<escaped-field>"'],
     "<escaped-field>": ["<escaped-characters>"],
     "<escaped-characters>": ["<escaped-character><escaped-characters>", ""],
@@ -75,10 +89,12 @@ def csv_lint(tree: isla.derivation_tree.DerivationTree) -> Union[bool, str]:
 #      forall <csv-record> line in start:
 #        count(line, "<raw-field>", colno))))"""
 
-csv_colno_property = '''
+csv_colno_property = """
 exists int num:
   forall <csv-record> elem in start:
     (str.to.int(num) >= 1 and
-     count(elem, "<raw-field>", num))'''
+     count(elem, "<raw-field>", num))"""
 
-CSV_COLNO_PROPERTY = parse_isla(csv_colno_property, CSV_GRAMMAR, semantic_predicates={COUNT_PREDICATE})
+CSV_COLNO_PROPERTY = parse_isla(
+    csv_colno_property, CSV_GRAMMAR, semantic_predicates={COUNT_PREDICATE}
+)

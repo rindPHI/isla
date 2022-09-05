@@ -6,9 +6,19 @@ from grammar_graph.gg import GrammarGraph
 
 from isla import language
 from isla.existential_helpers import insert_tree, DIRECT_EMBEDDING, SELF_EMBEDDING
-from isla.helpers import delete_unreachable, parent_reflexive, parent_or_child, is_nonterminal, \
-    canonical
-from isla.language import SemPredEvalResult, StructuralPredicate, SemanticPredicate, Variable
+from isla.helpers import (
+    delete_unreachable,
+    parent_reflexive,
+    parent_or_child,
+    is_nonterminal,
+    canonical,
+)
+from isla.language import (
+    SemPredEvalResult,
+    StructuralPredicate,
+    SemanticPredicate,
+    Variable,
+)
 from isla.derivation_tree import DerivationTree
 from isla.parser import EarleyParser
 from isla.type_defs import Grammar, Path, ParseTree
@@ -36,8 +46,9 @@ BEFORE_PREDICATE = StructuralPredicate("before", 2, is_before)
 
 
 def is_after(_: DerivationTree, path_1: Path, path_2: Path) -> bool:
-    return (not is_before(_, path_1, path_2)
-            and path_1 != path_2[:len(path_1)])  # No prefix
+    return (
+        not is_before(_, path_1, path_2) and path_1 != path_2[: len(path_1)]
+    )  # No prefix
 
 
 AFTER_PREDICATE = StructuralPredicate("after", 2, is_after)
@@ -47,11 +58,15 @@ def is_same_position(_: Optional[DerivationTree], path_1: Path, path_2: Path) ->
     return path_1 == path_2
 
 
-def is_different_position(_: Optional[DerivationTree], path_1: Path, path_2: Path) -> bool:
+def is_different_position(
+    _: Optional[DerivationTree], path_1: Path, path_2: Path
+) -> bool:
     return not is_same_position(_, path_1, path_2)
 
 
-DIFFERENT_POSITION_PREDICATE = StructuralPredicate("different_position", 2, is_different_position)
+DIFFERENT_POSITION_PREDICATE = StructuralPredicate(
+    "different_position", 2, is_different_position
+)
 
 SAME_POSITION_PREDICATE = StructuralPredicate("same_position", 2, is_same_position)
 
@@ -86,7 +101,7 @@ NTH_PREDICATE = StructuralPredicate("nth", 3, is_nth)
 
 def in_tree(_: Optional[DerivationTree], path_1: Path, path_2: Path) -> bool:
     # path_1 is inside path_2
-    return path_1[:len(path_2)] == path_2
+    return path_1[: len(path_2)] == path_2
 
 
 IN_TREE_PREDICATE = StructuralPredicate("inside", 2, in_tree)
@@ -101,25 +116,33 @@ def consecutive(tree: DerivationTree, path_1: Path, path_2: Path) -> bool:
         return False
 
     longest_common_prefix: Path = max(
-        [path_1[:idx] for idx in range(max([len(path_1), len(path_2)])) if path_1[:idx] == path_2[:idx]],
-        key=len
+        [
+            path_1[:idx]
+            for idx in range(max([len(path_1), len(path_2)]))
+            if path_1[:idx] == path_2[:idx]
+        ],
+        key=len,
     )
 
     return not any(
-        path != path_1 and path != path_2 and
-        is_before(None, path_1, path) and is_before(None, path, path_2)
-        for path, _ in tree.get_subtree(longest_common_prefix).leaves())
+        path != path_1
+        and path != path_2
+        and is_before(None, path_1, path)
+        and is_before(None, path, path_2)
+        for path, _ in tree.get_subtree(longest_common_prefix).leaves()
+    )
 
 
 CONSECUTIVE_PREDICATE = StructuralPredicate("consecutive", 2, consecutive)
 
 
 def level_check(
-        context_tree: DerivationTree,
-        pred: str,
-        nonterminal: str,
-        path_1: Path,
-        path_2: Path) -> bool:
+    context_tree: DerivationTree,
+    pred: str,
+    nonterminal: str,
+    path_1: Path,
+    path_2: Path,
+) -> bool:
     assert pred in ["EQ", "GE", "LE", "GT", "LT"]
 
     # There has to be a common prefix of both paths pointing to a `nonterminal` node, such that
@@ -144,11 +167,14 @@ def level_check(
             common_nonterminal_prefixes.append(prefix)
 
     for prefix in common_nonterminal_prefixes:
-        nonterminal_occs_1, nonterminal_occs_2 = [[
-            path[:idx]
-            for idx in range(len(prefix) + 1, len(path))
-            if context_tree.get_subtree(path[:idx]).value == nonterminal
-        ] for path in [path_1, path_2]]
+        nonterminal_occs_1, nonterminal_occs_2 = [
+            [
+                path[:idx]
+                for idx in range(len(prefix) + 1, len(path))
+                if context_tree.get_subtree(path[:idx]).value == nonterminal
+            ]
+            for path in [path_1, path_2]
+        ]
 
         if pred == "EQ":
             if not nonterminal_occs_1 and not nonterminal_occs_2:
@@ -178,11 +204,13 @@ def reachable(graph: GrammarGraph, fr: str, to: str) -> bool:
     return graph.reachable(f_node, t_node)
 
 
-def count(graph: GrammarGraph,
-          in_tree: DerivationTree,
-          needle: str,
-          num: Variable | DerivationTree,
-          negate: bool = False) -> SemPredEvalResult:
+def count(
+    graph: GrammarGraph,
+    in_tree: DerivationTree,
+    needle: str,
+    num: Variable | DerivationTree,
+    negate: bool = False,
+) -> SemPredEvalResult:
     if isinstance(in_tree, Variable):
         return SemPredEvalResult(None)
 
@@ -192,7 +220,8 @@ def count(graph: GrammarGraph,
 
     more_needles_possible = any(
         reachable(graph, leaf_nonterminal, needle)
-        for leaf_nonterminal in leaf_nonterminals)
+        for leaf_nonterminal in leaf_nonterminals
+    )
 
     if isinstance(num, Variable):
         # Return the number of needle occurrences in in_tree, or "not ready" if in_tree is not
@@ -201,7 +230,9 @@ def count(graph: GrammarGraph,
             return SemPredEvalResult(None)
 
         if negate:
-            result_num = random.choice([i for i in range(15) if i != num_needle_occurrences])
+            result_num = random.choice(
+                [i for i in range(15) if i != num_needle_occurrences]
+            )
         else:
             result_num = num_needle_occurrences
 
@@ -219,7 +250,10 @@ def count(graph: GrammarGraph,
     except ValueError:
         assert False, f"Value {num.value} cannot be converted to an integer."
 
-    if target_num_needle_occurrences < 0 or num_needle_occurrences > target_num_needle_occurrences:
+    if (
+        target_num_needle_occurrences < 0
+        or num_needle_occurrences > target_num_needle_occurrences
+    ):
         return SemPredEvalResult(False)
 
     if not more_needles_possible:
@@ -230,15 +264,23 @@ def count(graph: GrammarGraph,
         else:
             return SemPredEvalResult(False)
 
-    if more_needles_possible and num_needle_occurrences == target_num_needle_occurrences:
+    if (
+        more_needles_possible
+        and num_needle_occurrences == target_num_needle_occurrences
+    ):
         return SemPredEvalResult(None)
 
     if negate:
         try:
-            target_num_needle_occurrences = random.choice([
-                i for i in range(num_needle_occurrences + 1, target_num_needle_occurrences + 1)
-                if i != target_num_needle_occurrences
-            ])
+            target_num_needle_occurrences = random.choice(
+                [
+                    i
+                    for i in range(
+                        num_needle_occurrences + 1, target_num_needle_occurrences + 1
+                    )
+                    if i != target_num_needle_occurrences
+                ]
+            )
         except IndexError:
             return SemPredEvalResult(True)
 
@@ -250,33 +292,53 @@ def count(graph: GrammarGraph,
     num_needles = lambda candidate: len(candidate.filter(lambda t: t.value == needle))
 
     canonical_grammar = canonical(graph.to_grammar())
-    candidates = [candidate for candidate in insert_tree(
-        canonical_grammar, DerivationTree(needle, None), in_tree, graph=graph,
-        methods=DIRECT_EMBEDDING | SELF_EMBEDDING)
-                  if num_needles(candidate) <= target_num_needle_occurrences]
+    candidates = [
+        candidate
+        for candidate in insert_tree(
+            canonical_grammar,
+            DerivationTree(needle, None),
+            in_tree,
+            graph=graph,
+            methods=DIRECT_EMBEDDING | SELF_EMBEDDING,
+        )
+        if num_needles(candidate) <= target_num_needle_occurrences
+    ]
     already_seen = {candidate.structural_hash() for candidate in candidates}
     while candidates:
         candidate = candidates.pop(0)
         candidate_needle_occurrences = num_needles(candidate)
 
-        candidate_more_needles_possible = \
-            any(reachable(graph, leaf_nonterminal, needle)
-                for leaf_nonterminal in [node.value for _, node in candidate.open_leaves()])
+        candidate_more_needles_possible = any(
+            reachable(graph, leaf_nonterminal, needle)
+            for leaf_nonterminal in [node.value for _, node in candidate.open_leaves()]
+        )
 
-        if not candidate_more_needles_possible and candidate_needle_occurrences == target_num_needle_occurrences:
+        if (
+            not candidate_more_needles_possible
+            and candidate_needle_occurrences == target_num_needle_occurrences
+        ):
             return SemPredEvalResult({in_tree: candidate})
 
         if candidate_needle_occurrences < target_num_needle_occurrences:
             new_candidates = [
                 new_candidate
                 for new_candidate in insert_tree(
-                    canonical_grammar, DerivationTree(needle, None), candidate, graph=graph,
-                    methods=DIRECT_EMBEDDING | SELF_EMBEDDING)
-                if (num_needles(new_candidate) <= target_num_needle_occurrences
-                    and not new_candidate.structural_hash() in already_seen)]
+                    canonical_grammar,
+                    DerivationTree(needle, None),
+                    candidate,
+                    graph=graph,
+                    methods=DIRECT_EMBEDDING | SELF_EMBEDDING,
+                )
+                if (
+                    num_needles(new_candidate) <= target_num_needle_occurrences
+                    and not new_candidate.structural_hash() in already_seen
+                )
+            ]
 
             candidates.extend(new_candidates)
-            already_seen.update({new_candidate.structural_hash() for new_candidate in new_candidates})
+            already_seen.update(
+                {new_candidate.structural_hash() for new_candidate in new_candidates}
+            )
 
     return SemPredEvalResult(False)
 
@@ -285,10 +347,12 @@ COUNT_PREDICATE = SemanticPredicate("count", 3, count, binds_tree=True)
 
 
 def embed_tree(
-        orig: DerivationTree,
-        extended: DerivationTree,
-        leaves_to_match: Optional[Tuple[Path, ...]] = None,
-        path_combinations: Optional[Tuple[Tuple[Tuple[Path, DerivationTree], Tuple[Path, DerivationTree]], ...]] = None,
+    orig: DerivationTree,
+    extended: DerivationTree,
+    leaves_to_match: Optional[Tuple[Path, ...]] = None,
+    path_combinations: Optional[
+        Tuple[Tuple[Tuple[Path, DerivationTree], Tuple[Path, DerivationTree]], ...]
+    ] = None,
 ) -> Tuple[Dict[Path, Path], ...]:
     if path_combinations is None:
         assert leaves_to_match is None
@@ -304,22 +368,25 @@ def embed_tree(
     if not path_combinations:
         return
 
-    ((orig_path, orig_subtree), (extended_path, extended_subtree)), *remaining_combinations = path_combinations
+    (
+        (orig_path, orig_subtree),
+        (extended_path, extended_subtree),
+    ), *remaining_combinations = path_combinations
 
     yield from embed_tree(orig, extended, leaves_to_match, remaining_combinations)
 
     remaining_leaves_to_match = tuple(
-        path for path in leaves_to_match
-        if not parent_reflexive(orig_path, path)
+        path for path in leaves_to_match if not parent_reflexive(orig_path, path)
     )
 
     remaining_combinations = tuple(
-        combination for combination in remaining_combinations
+        combination
+        for combination in remaining_combinations
         if (
             other_orig_path := combination[0][0],
             other_extended_path := combination[1][0],
-            not parent_or_child(orig_path, other_orig_path) and
-            not parent_or_child(extended_path, other_extended_path),
+            not parent_or_child(orig_path, other_orig_path)
+            and not parent_or_child(extended_path, other_extended_path),
         )[-1]
     )
 
@@ -328,13 +395,17 @@ def embed_tree(
         yield {extended_path: orig_path}
         return
 
-    for assignment in embed_tree(orig, extended, remaining_leaves_to_match, remaining_combinations):
+    for assignment in embed_tree(
+        orig, extended, remaining_leaves_to_match, remaining_combinations
+    ):
         yield assignment | {extended_path: orig_path}
 
 
-def crop(mk_parser: Callable[[str], Callable[[str], List[ParseTree]]],
-         tree: DerivationTree,
-         width: Union[int, DerivationTree]) -> SemPredEvalResult:
+def crop(
+    mk_parser: Callable[[str], Callable[[str], List[ParseTree]]],
+    tree: DerivationTree,
+    width: Union[int, DerivationTree],
+) -> SemPredEvalResult:
     if not tree.is_complete():
         return SemPredEvalResult(None)
 
@@ -353,16 +424,20 @@ def crop(mk_parser: Callable[[str], Callable[[str], List[ParseTree]]],
         return SemPredEvalResult(True)
 
     parser = mk_parser(tree.value)
-    result = DerivationTree.from_parse_tree(parser(unparsed[:width])[0]).get_subtree((0,))
+    result = DerivationTree.from_parse_tree(parser(unparsed[:width])[0]).get_subtree(
+        (0,)
+    )
     return SemPredEvalResult({tree: result})
 
 
-def just(ljust: bool,
-         crop: bool,
-         mk_parser: Callable[[str], Callable[[str], List[ParseTree]]],
-         tree: DerivationTree,
-         width: Union[int, DerivationTree],
-         fill_char: Optional[str] = None) -> SemPredEvalResult:
+def just(
+    ljust: bool,
+    crop: bool,
+    mk_parser: Callable[[str], Callable[[str], List[ParseTree]]],
+    tree: DerivationTree,
+    width: Union[int, DerivationTree],
+    fill_char: Optional[str] = None,
+) -> SemPredEvalResult:
     if not tree.is_complete():
         return SemPredEvalResult(None)
 
@@ -391,14 +466,22 @@ def just(ljust: bool,
 
     parser = mk_parser(tree.value)
 
-    unparsed_output = unparsed.ljust(width, fill_char) if ljust else unparsed.rjust(width, fill_char)
+    unparsed_output = (
+        unparsed.ljust(width, fill_char) if ljust else unparsed.rjust(width, fill_char)
+    )
 
     assert crop or len(unparsed_output) == width
 
     if crop:
-        unparsed_output = unparsed_output[:width] if ljust else unparsed_output[len(unparsed_output) - width:]
+        unparsed_output = (
+            unparsed_output[:width]
+            if ljust
+            else unparsed_output[len(unparsed_output) - width :]
+        )
 
-    result = DerivationTree.from_parse_tree(parser(unparsed_output)[0]).get_subtree((0,))
+    result = DerivationTree.from_parse_tree(parser(unparsed_output)[0]).get_subtree(
+        (0,)
+    )
 
     return SemPredEvalResult({tree: result})
 
@@ -418,50 +501,79 @@ def mk_parser(grammar: Grammar):
 
 
 CROP_PREDICATE = SemanticPredicate(
-    "crop", 2,
+    "crop",
+    2,
     lambda graph, tree, width: crop(mk_parser(graph.grammar), tree, width),
-    binds_tree=False)
+    binds_tree=False,
+)
 
 LJUST_PREDICATE = SemanticPredicate(
-    "ljust", 3,
-    lambda graph, tree, width, fillchar: just(True, False, mk_parser(graph.grammar), tree, width, fillchar),
-    binds_tree=False)
+    "ljust",
+    3,
+    lambda graph, tree, width, fillchar: just(
+        True, False, mk_parser(graph.grammar), tree, width, fillchar
+    ),
+    binds_tree=False,
+)
 
 LJUST_CROP_PREDICATE = SemanticPredicate(
-    "ljust_crop", 3,
-    lambda graph, tree, width, fillchar: just(True, True, mk_parser(graph.grammar), tree, width, fillchar),
-    binds_tree=False)
+    "ljust_crop",
+    3,
+    lambda graph, tree, width, fillchar: just(
+        True, True, mk_parser(graph.grammar), tree, width, fillchar
+    ),
+    binds_tree=False,
+)
 
 EXTEND_CROP_PREDICATE = SemanticPredicate(
-    "extend_crop", 2,
+    "extend_crop",
+    2,
     lambda graph, tree, width: just(True, True, mk_parser(graph.grammar), tree, width),
-    binds_tree=False)
+    binds_tree=False,
+)
 
 RJUST_PREDICATE = SemanticPredicate(
-    "rjust", 3,
-    lambda graph, tree, width, fillchar: just(False, False, mk_parser(graph.grammar), tree, width, fillchar),
-    binds_tree=False)
+    "rjust",
+    3,
+    lambda graph, tree, width, fillchar: just(
+        False, False, mk_parser(graph.grammar), tree, width, fillchar
+    ),
+    binds_tree=False,
+)
 
 RJUST_CROP_PREDICATE = SemanticPredicate(
-    "rjust_crop", 3,
-    lambda graph, tree, width, fillchar: just(False, True, mk_parser(graph.grammar), tree, width, fillchar),
-    binds_tree=False)
+    "rjust_crop",
+    3,
+    lambda graph, tree, width, fillchar: just(
+        False, True, mk_parser(graph.grammar), tree, width, fillchar
+    ),
+    binds_tree=False,
+)
 
 
 def octal_to_dec(
-        _octal_parser: Callable[[str], List[ParseTree]],
-        _decimal_parser: Callable[[str], List[ParseTree]],
-        octal: language.Variable | DerivationTree,
-        decimal: language.Variable | DerivationTree) -> SemPredEvalResult:
-    assert not isinstance(octal, language.Variable) or not isinstance(decimal, language.Variable)
+    _octal_parser: Callable[[str], List[ParseTree]],
+    _decimal_parser: Callable[[str], List[ParseTree]],
+    octal: language.Variable | DerivationTree,
+    decimal: language.Variable | DerivationTree,
+) -> SemPredEvalResult:
+    assert not isinstance(octal, language.Variable) or not isinstance(
+        decimal, language.Variable
+    )
 
-    decimal_parser = lambda inp: DerivationTree.from_parse_tree(_decimal_parser(inp)[0][1][0])
-    octal_parser = lambda inp: DerivationTree.from_parse_tree(_octal_parser(inp)[0][1][0])
+    decimal_parser = lambda inp: DerivationTree.from_parse_tree(
+        _decimal_parser(inp)[0][1][0]
+    )
+    octal_parser = lambda inp: DerivationTree.from_parse_tree(
+        _octal_parser(inp)[0][1][0]
+    )
 
-    if (isinstance(octal, DerivationTree) and
-            isinstance(decimal, DerivationTree) and
-            not octal.is_complete() and
-            not decimal.is_complete()):
+    if (
+        isinstance(octal, DerivationTree)
+        and isinstance(decimal, DerivationTree)
+        and not octal.is_complete()
+        and not decimal.is_complete()
+    ):
         return SemPredEvalResult(None)
 
     if isinstance(octal, DerivationTree) and octal.is_complete():
@@ -470,7 +582,7 @@ def octal_to_dec(
 
         decimal_number = 0
         for idx, digit in enumerate(reversed(octal_str)):
-            decimal_number += (8 ** idx) * int(digit)
+            decimal_number += (8**idx) * int(digit)
 
         if isinstance(decimal, DerivationTree) and decimal_number == int(str(decimal)):
             return SemPredEvalResult(True)
@@ -518,12 +630,15 @@ def octal_to_dec(
 
 
 OCTAL_TO_DEC_PREDICATE = lambda graph, octal_start, decimal_start: SemanticPredicate(
-    "octal_to_decimal", 2,
+    "octal_to_decimal",
+    2,
     lambda _, octal, decimal: octal_to_dec(
         mk_parser(graph.grammar)(octal_start),
         mk_parser(graph.grammar)(decimal_start),
-        octal, decimal),
-    binds_tree=False
+        octal,
+        decimal,
+    ),
+    binds_tree=False,
 )
 
 
@@ -532,7 +647,7 @@ def is_direct_child(_: Optional[DerivationTree], path_1: Path, path_2: Path) -> 
     if len(path_1) != len(path_2) + 1:
         return False
 
-    return path_1[:len(path_2)] == path_2
+    return path_1[: len(path_2)] == path_2
 
 
 DIRECT_CHILD_PREDICATE = StructuralPredicate("direct_child", 2, is_direct_child)

@@ -7,11 +7,16 @@ from typing import Union
 
 import isla.derivation_tree
 from isla import language
+
 # Based on:
 # Kartik Talwar. Tiny-C Compiler. https://gist.github.com/KartikTalwar/3095780.
 from isla.helpers import srange
 from isla.language import parse_isla
-from isla.isla_predicates import BEFORE_PREDICATE, SAME_POSITION_PREDICATE, LEVEL_PREDICATE
+from isla.isla_predicates import (
+    BEFORE_PREDICATE,
+    SAME_POSITION_PREDICATE,
+    LEVEL_PREDICATE,
+)
 
 SCRIPTSIZE_C_GRAMMAR = {
     "<start>": ["<statement>"],
@@ -22,15 +27,12 @@ SCRIPTSIZE_C_GRAMMAR = {
         "while<paren_expr> <statement>",
         "do <statement> while<paren_expr>;",
         "<expr>;",
-        ";"
+        ";",
     ],
     "<block>": ["{<statements>}"],
     "<statements>": ["<block_statement><statements>", ""],
     "<block_statement>": ["<statement>", "<declaration>"],
-    "<declaration>": [
-        "int <id> = <expr>;",
-        "int <id>;"
-    ],
+    "<declaration>": ["int <id> = <expr>;", "int <id>;"],
     "<paren_expr>": ["(<expr>)"],
     "<expr>": [
         "<id> = <expr>",
@@ -79,7 +81,8 @@ forall <expr> expr in start:
 SCRIPTSIZE_C_DEF_USE_CONSTR = parse_isla(
     SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT,
     SCRIPTSIZE_C_GRAMMAR,
-    structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE})
+    structural_predicates={BEFORE_PREDICATE, LEVEL_PREDICATE},
+)
 
 # TODO: Scoping!
 SCRIPTSIZE_C_NO_REDEF_TEXT = """
@@ -90,15 +93,20 @@ forall <declaration> declaration="int {<id> def_id}[ = <expr>];" in start:
 SCRIPTSIZE_C_NO_REDEF_CONSTR = parse_isla(
     SCRIPTSIZE_C_NO_REDEF_TEXT,
     SCRIPTSIZE_C_GRAMMAR,
-    structural_predicates={SAME_POSITION_PREDICATE})
+    structural_predicates={SAME_POSITION_PREDICATE},
+)
 
 
-def compile_scriptsizec_clang(tree: isla.derivation_tree.DerivationTree) -> Union[bool, str]:
+def compile_scriptsizec_clang(
+    tree: isla.derivation_tree.DerivationTree,
+) -> Union[bool, str]:
     contents = "int main() {\n"
     contents += "\n" + str(tree).replace("\n", "    \t")
     contents += "\n" + "}"
 
-    with tempfile.NamedTemporaryFile(suffix=".c") as tmp, tempfile.NamedTemporaryFile(suffix=".o") as outfile:
+    with tempfile.NamedTemporaryFile(suffix=".c") as tmp, tempfile.NamedTemporaryFile(
+        suffix=".o"
+    ) as outfile:
         tmp.write(contents.encode())
         tmp.flush()
         cmd = ["clang", tmp.name, "-o", outfile.name]

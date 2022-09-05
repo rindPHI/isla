@@ -31,7 +31,8 @@ logger = logging.getLogger("evaluator")
 def std_db_file() -> str:
     return os.path.join(
         *os.path.split(os.path.dirname(os.path.realpath(__file__)))[:-1],
-        "isla_evaluation.sqlite")
+        "isla_evaluation.sqlite",
+    )
 
 
 # Non-Deamon solution from https://stackoverflow.com/questions/6974695/python-process-pool-non-daemonic#answer-53180921
@@ -54,29 +55,31 @@ class NoDaemonContext(type(multiprocessing.get_context())):
 # because the latter is only a wrapper function, not a proper class.
 class NestablePool(multiprocessing.pool.Pool):
     def __init__(self, *args, **kwargs):
-        kwargs['context'] = NoDaemonContext()
+        kwargs["context"] = NoDaemonContext()
         super(NestablePool, self).__init__(*args, **kwargs)
 
 
 class Evaluator:
     def __init__(
-            self,
-            jobname_prefix: str,
-            generators: List[Callable[[int], ISLaSolver] | Grammar],
-            jobnames: List[str],
-            # TODO: Make validators accept ParseTrees instead of DerivationTrees;
-            #       there are ParseTrees in the database, and the conversion to
-            #       DerivationTrees is expensive.
-            validator: Callable[[isla.derivation_tree.DerivationTree], bool],
-            graph: gg.GrammarGraph,
-            db_file: str = std_db_file(),
-            default_timeout: int = 60 * 60,
-            default_sessions: int = 1):
+        self,
+        jobname_prefix: str,
+        generators: List[Callable[[int], ISLaSolver] | Grammar],
+        jobnames: List[str],
+        # TODO: Make validators accept ParseTrees instead of DerivationTrees;
+        #       there are ParseTrees in the database, and the conversion to
+        #       DerivationTrees is expensive.
+        validator: Callable[[isla.derivation_tree.DerivationTree], bool],
+        graph: gg.GrammarGraph,
+        db_file: str = std_db_file(),
+        default_timeout: int = 60 * 60,
+        default_sessions: int = 1,
+    ):
         self.validator = validator
         self.graph = graph
 
         args, print_help = self.parse_command_line(
-            jobname_prefix, db_file, jobnames, default_sessions, default_timeout)
+            jobname_prefix, db_file, jobnames, default_sessions, default_timeout
+        )
 
         if args.listjobs:
             print(f"Available jobs for {jobname_prefix}: " + ", ".join(jobnames))
@@ -106,10 +109,11 @@ class Evaluator:
             exit(1)
 
         self.jobs_and_generators = {
-            f"{jobname_prefix} {job}":
-                generator if isinstance(generator, dict) else generator(self.timeout)
-            for job, generator in
-            zip(jobnames, generators) if job in chosen_jobs
+            f"{jobname_prefix} {job}": generator
+            if isinstance(generator, dict)
+            else generator(self.timeout)
+            for job, generator in zip(jobnames, generators)
+            if job in chosen_jobs
         }
 
         try:
@@ -127,87 +131,162 @@ class Evaluator:
         self.do_compute_kpaths: bool = args.kpaths
         self.dry_run: bool = args.dryrun
 
-        max_ids = {jobname: (get_max_sid(jobname, self.db_file) or 0) for jobname in self.jobs_and_generators}
+        max_ids = {
+            jobname: (get_max_sid(jobname, self.db_file) or 0)
+            for jobname in self.jobs_and_generators
+        }
         session_out_of_bounds = [
-            jobname for jobname in self.jobs_and_generators
-            if (max_ids[jobname] < self.num_sessions
+            jobname
+            for jobname in self.jobs_and_generators
+            if (
+                max_ids[jobname] < self.num_sessions
                 and not self.do_generate
-                and not (self.do_clean and
-                         not (self.do_generate or self.do_evaluate_validity or self.do_compute_kpaths)))
+                and not (
+                    self.do_clean
+                    and not (
+                        self.do_generate
+                        or self.do_evaluate_validity
+                        or self.do_compute_kpaths
+                    )
+                )
+            )
         ]
 
         if session_out_of_bounds:
-            print(f"ERROR: Too large numsessions value (for job(s) {', '.join(session_out_of_bounds)}).",
-                  file=sys.stderr)
+            print(
+                f"ERROR: Too large numsessions value (for job(s) {', '.join(session_out_of_bounds)}).",
+                file=sys.stderr,
+            )
             print_help()
             exit(1)
 
         try:
-            self.kvalues: List[int] = [int(val.strip()) for val in cast(str, args.kvalues).split(",")]
+            self.kvalues: List[int] = [
+                int(val.strip()) for val in cast(str, args.kvalues).split(",")
+            ]
         except ValueError:
-            print("ERROR: kvalues must be a comma-separated list of integers.", file=sys.stderr)
+            print(
+                "ERROR: kvalues must be a comma-separated list of integers.",
+                file=sys.stderr,
+            )
             print_help()
             exit(1)
 
-        if not (self.do_clean or self.do_analyze or self.do_generate
-                or self.do_evaluate_validity or self.do_compute_kpaths):
-            print("ERROR: You have to set at least one of -c, -a, -g, -v, or -p.", file=sys.stderr)
+        if not (
+            self.do_clean
+            or self.do_analyze
+            or self.do_generate
+            or self.do_evaluate_validity
+            or self.do_compute_kpaths
+        ):
+            print(
+                "ERROR: You have to set at least one of -c, -a, -g, -v, or -p.",
+                file=sys.stderr,
+            )
             print_help()
             exit(1)
 
     def parse_command_line(
-            self,
-            jobname_prefix: str,
-            db_file: str,
-            jobnames: List[str],
-            default_sessions: int, default_timeout: int
+        self,
+        jobname_prefix: str,
+        db_file: str,
+        jobnames: List[str],
+        default_sessions: int,
+        default_timeout: int,
     ) -> Tuple[argparse.Namespace, Callable[[], None]]:
         parser = argparse.ArgumentParser(
             description=f"Evaluating the ISLa producer with case study {jobname_prefix}.",
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-        parser.add_argument("--db", default=db_file, help="Path to the sqlite database file.")
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        )
         parser.add_argument(
-            "-n", "--numsessions", default=default_sessions,
+            "--db", default=db_file, help="Path to the sqlite database file."
+        )
+        parser.add_argument(
+            "-n",
+            "--numsessions",
+            default=default_sessions,
             help="The number of sessions to generate or analyze. "
-                 "For analysis, this can be set to -1; in this case, all sessions are analyzed.")
+            "For analysis, this can be set to -1; in this case, all sessions are analyzed.",
+        )
 
         parser.add_argument(
-            "-l", "--listjobs", action="store_true", default=False,
-            help="Shows all jobs for this evaluator.")
+            "-l",
+            "--listjobs",
+            action="store_true",
+            default=False,
+            help="Shows all jobs for this evaluator.",
+        )
         parser.add_argument(
-            "-g", "--generate", action="store_true", default=False,
-            help="Generate inputs with a timeout of [timeout] seconds, [numsessions] times.")
+            "-g",
+            "--generate",
+            action="store_true",
+            default=False,
+            help="Generate inputs with a timeout of [timeout] seconds, [numsessions] times.",
+        )
         parser.add_argument(
-            "-v", "--validity", action="store_true", default=False,
-            help="Compute validity of the inputs of the previous [numsessions] sessions.")
+            "-v",
+            "--validity",
+            action="store_true",
+            default=False,
+            help="Compute validity of the inputs of the previous [numsessions] sessions.",
+        )
         parser.add_argument(
-            "-p", "--kpaths", action="store_true", default=False,
-            help="Compute k-paths for the inputs of the previous [numsessions] sessions.")
+            "-p",
+            "--kpaths",
+            action="store_true",
+            default=False,
+            help="Compute k-paths for the inputs of the previous [numsessions] sessions.",
+        )
         parser.add_argument(
-            "-a", "--analyze", action="store_true", default=False,
-            help="Analyze the accumulated results of the previous [numsessions] sessions.")
+            "-a",
+            "--analyze",
+            action="store_true",
+            default=False,
+            help="Analyze the accumulated results of the previous [numsessions] sessions.",
+        )
         parser.add_argument(
-            "-m", "--print-missing-kpaths", action="store_true", default=False,
-            help="Print the uncovered k-paths of the previous [numsessions] sessions.")
+            "-m",
+            "--print-missing-kpaths",
+            action="store_true",
+            default=False,
+            help="Print the uncovered k-paths of the previous [numsessions] sessions.",
+        )
 
         g = parser.add_mutually_exclusive_group()
         g.add_argument(
-            "-c", "--clean", action="store_true", default=False,
-            help="Removes all data related to the given job(s) from the database. WARNING: This cannot be undone!")
+            "-c",
+            "--clean",
+            action="store_true",
+            default=False,
+            help="Removes all data related to the given job(s) from the database. WARNING: This cannot be undone!",
+        )
         g.add_argument(
-            "-d", "--dryrun", action="store_true", default=False,
-            help="Does not write results to database when *generating* (-g). Does not affect -v and -p.")
+            "-d",
+            "--dryrun",
+            action="store_true",
+            default=False,
+            help="Does not write results to database when *generating* (-g). Does not affect -v and -p.",
+        )
 
         parser.add_argument(
-            "-j", "--jobs", default=", ".join(jobnames),
-            help="Comma-separated list of jobs to run / evaluate.")
+            "-j",
+            "--jobs",
+            default=", ".join(jobnames),
+            help="Comma-separated list of jobs to run / evaluate.",
+        )
         parser.add_argument(
-            "-t", "--timeout", default=default_timeout,
-            help="The timeout for test input generation. Useful with the '-g' option.")
+            "-t",
+            "--timeout",
+            default=default_timeout,
+            help="The timeout for test input generation. Useful with the '-g' option.",
+        )
         parser.add_argument(
-            "-k", "--kvalues", default="3,4",
+            "-k",
+            "--kvalues",
+            default="3,4",
             help="Comma-separated list of the values 'k' for which to compute k-path coverage. "
-                 "Useful with the '-p' option.")
+            "Useful with the '-p' option.",
+        )
         args = parser.parse_args()
 
         return args, lambda: parser.print_help(file=sys.stderr)
@@ -242,30 +321,47 @@ class Evaluator:
 
             with pmp.Pool(processes=pmp.cpu_count()) as pool:
                 pool.starmap(
-                    lambda jobname, generator:
-                    generate_inputs(generator, self.timeout, jobname) if self.dry_run
+                    lambda jobname, generator: generate_inputs(
+                        generator, self.timeout, jobname
+                    )
+                    if self.dry_run
                     else store_inputs(
-                        jobname, self.timeout, generate_inputs(generator, self.timeout, jobname), self.db_file),
-                    list(self.jobs_and_generators.items()))
+                        jobname,
+                        self.timeout,
+                        generate_inputs(generator, self.timeout, jobname),
+                        self.db_file,
+                    ),
+                    list(self.jobs_and_generators.items()),
+                )
 
     def evaluate_validity(self) -> None:
         sids: Dict[str, List[int]] = {
             jobname: get_all_sids(jobname, self.db_file)
-            for jobname in self.jobs_and_generators}
+            for jobname in self.jobs_and_generators
+        }
 
         args: List[
-            Tuple[List[str], List[Callable[[isla.derivation_tree.DerivationTree], bool]], List[str], List[int]]] = [
+            Tuple[
+                List[str],
+                List[Callable[[isla.derivation_tree.DerivationTree], bool]],
+                List[str],
+                List[int],
+            ]
+        ] = [
             (
                 [jobname],
                 [self.validator],
                 [self.db_file],
-                sids[jobname] if self.num_sessions < 0
-                else sids[jobname][len(sids[jobname]) - self.num_sessions:])
+                sids[jobname]
+                if self.num_sessions < 0
+                else sids[jobname][len(sids[jobname]) - self.num_sessions :],
+            )
             for jobname in self.jobs_and_generators
         ]
 
-        args: List[Tuple[str, Callable[[isla.derivation_tree.DerivationTree], bool], str, int]] = [
-            rt for t in args for rt in tuple(itertools.product(*t))]
+        args: List[
+            Tuple[str, Callable[[isla.derivation_tree.DerivationTree], bool], str, int]
+        ] = [rt for t in args for rt in tuple(itertools.product(*t))]
 
         with NestablePool(processes=pmp.cpu_count()) as pool:
             pool.starmap(evaluate_validity, args)
@@ -273,22 +369,28 @@ class Evaluator:
     def compute_kpaths(self) -> None:
         sids: Dict[str, List[int]] = {
             jobname: get_all_sids(jobname, self.db_file)
-            for jobname in self.jobs_and_generators}
+            for jobname in self.jobs_and_generators
+        }
 
-        args: List[Tuple[List[str], List[gg.GrammarGraph], List[int], List[str], List[int]]] = [
+        args: List[
+            Tuple[List[str], List[gg.GrammarGraph], List[int], List[str], List[int]]
+        ] = [
             (
                 [jobname],
                 [self.graph],
                 [k],
                 [self.db_file],
-                sids[jobname] if self.num_sessions < 0
-                else sids[jobname][len(sids[jobname]) - self.num_sessions:])
+                sids[jobname]
+                if self.num_sessions < 0
+                else sids[jobname][len(sids[jobname]) - self.num_sessions :],
+            )
             for jobname in self.jobs_and_generators
             for k in self.kvalues
         ]
 
         args: List[Tuple[str, gg.GrammarGraph, int, str, int]] = [
-            rt for t in args for rt in tuple(itertools.product(*t))]
+            rt for t in args for rt in tuple(itertools.product(*t))
+        ]
 
         if len(args) > 1:
             with NestablePool(processes=pmp.cpu_count()) as pool:
@@ -310,133 +412,145 @@ class Evaluator:
         # nonterminal. This has been fixed by now. For existing evaluation data, we patch the k-paths
         # that are affected by the issue.
         tar_kpath_fix_map: Dict[str, Set[str]] = {
-            '<content> <content>-choice-1 <characters> <characters>-choice-1 <character>': {
-                '<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>',
-                '<maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <character>',
+            "<content> <content>-choice-1 <characters> <characters>-choice-1 <character>": {
+                "<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>",
+                "<maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <character>",
             },
-            '<content> <content>-choice-1 <characters> <characters>-choice-1 <characters>': {
-                '<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>',
-                '<maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters>',
+            "<content> <content>-choice-1 <characters> <characters>-choice-1 <characters>": {
+                "<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>",
+                "<maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters>",
             },
-            '<content> <content>-choice-1 <nuls> <nuls>-choice-1 <NUL>': {
-                '<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>',
-                '<maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <NUL>',
+            "<content> <content>-choice-1 <nuls> <nuls>-choice-1 <NUL>": {
+                "<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>",
+                "<maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <NUL>",
             },
-            '<content> <content>-choice-1 <nuls> <nuls>-choice-1 <nuls>': {
-                '<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>',
-                '<maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>',
+            "<content> <content>-choice-1 <nuls> <nuls>-choice-1 <nuls>": {
+                "<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>",
+                "<maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>",
             },
-            '<entry> <entry>-choice-1 <content> <content>-choice-1 <characters>': {
-                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters>',
-                '<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>',
+            "<entry> <entry>-choice-1 <content> <content>-choice-1 <characters>": {
+                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters>",
+                "<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>",
             },
-            '<entry> <entry>-choice-1 <content> <content>-choice-1 <nuls>': {
-                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls>',
-                '<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>',
+            "<entry> <entry>-choice-1 <content> <content>-choice-1 <nuls>": {
+                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls>",
+                "<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>",
             },
-            '<content> <content>-choice-1 <characters> <characters>-choice-1 <characters> <characters>-choice-1 <character>': {
-                '<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters>',
-                '<maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters> <characters>-choice-1 <character>',
+            "<content> <content>-choice-1 <characters> <characters>-choice-1 <characters> <characters>-choice-1 <character>": {
+                "<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters>",
+                "<maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters> <characters>-choice-1 <character>",
             },
-            '<content> <content>-choice-1 <characters> <characters>-choice-1 <characters> <characters>-choice-1 <characters>': {
-                '<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters>',
-                '<maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters> <characters>-choice-1 <characters>',
+            "<content> <content>-choice-1 <characters> <characters>-choice-1 <characters> <characters>-choice-1 <characters>": {
+                "<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters>",
+                "<maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters> <characters>-choice-1 <characters>",
             },
-            '<content> <content>-choice-1 <nuls> <nuls>-choice-1 <nuls> <nuls>-choice-1 <NUL>': {
-                '<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>',
-                '<maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls> <nuls>-choice-1 <NUL>',
+            "<content> <content>-choice-1 <nuls> <nuls>-choice-1 <nuls> <nuls>-choice-1 <NUL>": {
+                "<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>",
+                "<maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls> <nuls>-choice-1 <NUL>",
             },
-            '<content> <content>-choice-1 <nuls> <nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>': {
-                '<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>',
-                '<maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>',
+            "<content> <content>-choice-1 <nuls> <nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>": {
+                "<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>",
+                "<maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>",
             },
-            '<entries> <entries>-choice-1 <entry> <entry>-choice-1 <content> <content>-choice-1 <characters>': {
-                '<entries> <entries>-choice-1 <entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters>',
-                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>',
+            "<entries> <entries>-choice-1 <entry> <entry>-choice-1 <content> <content>-choice-1 <characters>": {
+                "<entries> <entries>-choice-1 <entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters>",
+                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>",
             },
-            '<entries> <entries>-choice-1 <entry> <entry>-choice-1 <content> <content>-choice-1 <nuls>': {
-                '<entries> <entries>-choice-1 <entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls>',
-                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>',
+            "<entries> <entries>-choice-1 <entry> <entry>-choice-1 <content> <content>-choice-1 <nuls>": {
+                "<entries> <entries>-choice-1 <entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls>",
+                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>",
             },
-            '<entries> <entries>-choice-2 <entry> <entry>-choice-1 <content> <content>-choice-1 <characters>': {
-                '<entries> <entries>-choice-2 <entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters>',
-                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>',
+            "<entries> <entries>-choice-2 <entry> <entry>-choice-1 <content> <content>-choice-1 <characters>": {
+                "<entries> <entries>-choice-2 <entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters>",
+                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>",
             },
-            '<entries> <entries>-choice-2 <entry> <entry>-choice-1 <content> <content>-choice-1 <nuls>': {
-                '<entries> <entries>-choice-2 <entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls>',
-                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>',
+            "<entries> <entries>-choice-2 <entry> <entry>-choice-1 <content> <content>-choice-1 <nuls>": {
+                "<entries> <entries>-choice-2 <entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls>",
+                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>",
             },
-            '<entry> <entry>-choice-1 <content> <content>-choice-1 <characters> <characters>-choice-1 <character>': {
-                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>',
-                '<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <character>',
+            "<entry> <entry>-choice-1 <content> <content>-choice-1 <characters> <characters>-choice-1 <character>": {
+                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>",
+                "<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <character>",
             },
-            '<entry> <entry>-choice-1 <content> <content>-choice-1 <characters> <characters>-choice-1 <characters>': {
-                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>',
-                '<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters>',
+            "<entry> <entry>-choice-1 <content> <content>-choice-1 <characters> <characters>-choice-1 <characters>": {
+                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>",
+                "<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters>",
             },
-            '<entry> <entry>-choice-1 <content> <content>-choice-1 <nuls> <nuls>-choice-1 <NUL>': {
-                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>',
-                '<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <NUL>',
+            "<entry> <entry>-choice-1 <content> <content>-choice-1 <nuls> <nuls>-choice-1 <NUL>": {
+                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>",
+                "<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <NUL>",
             },
-            '<entry> <entry>-choice-1 <content> <content>-choice-1 <nuls> <nuls>-choice-1 <nuls>': {
-                '<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>',
-                '<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>',
+            "<entry> <entry>-choice-1 <content> <content>-choice-1 <nuls> <nuls>-choice-1 <nuls>": {
+                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>",
+                "<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>",
             },
         }
 
         for job in self.jobs_and_generators:
             sids = tuple(get_all_sids(job, self.db_file))
             if self.num_sessions >= 0:
-                sids = sids[len(sids) - self.num_sessions:]
-            assert sids, f"There do not exist sufficient sessions for job {job}, found {len(sids)} sessions."
-            sids_placeholder = ','.join('?' for _ in range(len(sids)))
+                sids = sids[len(sids) - self.num_sessions :]
+            assert (
+                sids
+            ), f"There do not exist sufficient sessions for job {job}, found {len(sids)} sessions."
+            sids_placeholder = ",".join("?" for _ in range(len(sids)))
 
             print(f"Analyzing sessions {', '.join(map(str, sids))} for {job}")
 
             # Analyze efficiency: Inputs / min
             cur.execute(
                 f"SELECT COUNT(*) FROM inputs WHERE testId = ? AND sid IN ({sids_placeholder})",
-                (job,) + sids)
+                (job,) + sids,
+            )
             total_inputs: int = cur.fetchone()[0]
             cur.execute(
                 f"SELECT SUM(seconds) FROM session_lengths WHERE testId = ? AND sid IN ({sids_placeholder})",
-                (job,) + sids)
+                (job,) + sids,
+            )
             time: int = cur.fetchone()[0]
             efficiency[job] = 60 * total_inputs / time
 
             # Analyze precision: Fraction of valid inputs
             cur.execute(
                 f"SELECT COUNT(*) FROM inputs NATURAL JOIN valid WHERE testId = ? AND sid IN ({sids_placeholder})",
-                (job,) + sids)
+                (job,) + sids,
+            )
             valid_inputs: int = cur.fetchone()[0]
             precision[job] = valid_inputs / total_inputs
 
             # Analyze diversity: Fraction of covered k-paths
             all_kpaths: Dict[int, Set[str]] = {
-                k: {path_to_string(p) for p in self.graph.k_paths(k, include_terminals=False)}
-                for k in self.kvalues}
+                k: {
+                    path_to_string(p)
+                    for p in self.graph.k_paths(k, include_terminals=False)
+                }
+                for k in self.kvalues
+            }
             diversity_by_sid: Dict[int, float] = {}
             for sid in sids:
                 diversity_by_k: Dict[int, float] = {}
                 for k in self.kvalues:
                     cur.execute(
                         "SELECT paths FROM inputs NATURAL JOIN kpaths WHERE testId = ? AND sid = ? AND k = ?",
-                        (job, sid, k))
+                        (job, sid, k),
+                    )
 
                     paths: Set[str] = set()
                     for row in cur:
-                        for path in next(ijson.items(row[0].encode('utf-8'), '')):
+                        for path in next(ijson.items(row[0].encode("utf-8"), "")):
                             if path not in all_kpaths[k]:
                                 if path in tar_kpath_fix_map:
                                     for fixed_path in tar_kpath_fix_map[path]:
-                                        assert fixed_path in all_kpaths[k], \
-                                            f'Fixed path {fixed_path} is broken'
+                                        assert (
+                                            fixed_path in all_kpaths[k]
+                                        ), f"Fixed path {fixed_path} is broken"
                                         paths.add(fixed_path)
                                 else:
                                     print(
-                                        f'For {job}, session {sid}, k={k}, found a covered path that is not ' +
-                                        f'in the list of all covered paths (SKIPPING): "{path}"',
-                                        file=sys.stderr)
+                                        f"For {job}, session {sid}, k={k}, found a covered path that is not "
+                                        + f'in the list of all covered paths (SKIPPING): "{path}"',
+                                        file=sys.stderr,
+                                    )
 
                                 continue
 
@@ -445,26 +559,36 @@ class Evaluator:
                     if self.do_print_missing_kpaths:
                         missing_paths = all_kpaths[k].difference(paths)
                         if missing_paths:
-                            print(f'Missing {k}-paths for session {sid} of job "{job}":')
-                            print('\n'.join(map(lambda p: f'- {p}', missing_paths)))
+                            print(
+                                f'Missing {k}-paths for session {sid} of job "{job}":'
+                            )
+                            print("\n".join(map(lambda p: f"- {p}", missing_paths)))
                         else:
-                            print(f'No missing {k}-paths for sesson {sid} of job "{job}"')
+                            print(
+                                f'No missing {k}-paths for sesson {sid} of job "{job}"'
+                            )
 
                     diversity_by_k[k] = len(paths) / len(all_kpaths[k])
 
-                diversity_by_sid[sid] = sum(diversity_by_k.values()) / len(diversity_by_k)
+                diversity_by_sid[sid] = sum(diversity_by_k.values()) / len(
+                    diversity_by_k
+                )
 
             diversity[job] = sum(diversity_by_sid.values()) / len(diversity_by_sid)
 
             # Analyze average / median String length
             cur.execute(
                 f"SELECT inp FROM inputs NATURAL JOIN valid WHERE testId = ? AND sid IN ({sids_placeholder})",
-                (job,) + sids)
+                (job,) + sids,
+            )
             valid_inputs: List[str] = cast(List[str], cur.fetchall())
 
             if valid_inputs:
+
                 def get_input_length(row: Sequence[str]) -> int:
-                    return len(tree_to_string(next(ijson.items(row[0].encode('utf-8'), ''))))
+                    return len(
+                        tree_to_string(next(ijson.items(row[0].encode("utf-8"), "")))
+                    )
 
                 with pmp.ProcessingPool(processes=pmp.cpu_count()) as pool:
                     input_lengths = pool.map(get_input_length, valid_inputs)
@@ -499,10 +623,14 @@ class Evaluator:
         print(sepline)
 
         for job in self.jobs_and_generators:
-            print(f"| {job.ljust(col_1_len)} |     {frac(efficiency[job])} | "
-                  f"{frac(precision[job] * efficiency[job])} ({perc(precision[job])}) |    {perc(diversity[job])} | " +
-                  (frac(avg_inp_length[job]) + " / " + frac(median_inp_length[job])).rjust(
-                      len("Mean/Median Input Length")) + " |")
+            print(
+                f"| {job.ljust(col_1_len)} |     {frac(efficiency[job])} | "
+                f"{frac(precision[job] * efficiency[job])} ({perc(precision[job])}) |    {perc(diversity[job])} | "
+                + (
+                    frac(avg_inp_length[job]) + " / " + frac(median_inp_length[job])
+                ).rjust(len("Mean/Median Input Length"))
+                + " |"
+            )
 
         print(sepline)
 
@@ -512,9 +640,12 @@ def strtime() -> str:
 
 
 def generate_inputs(
-        generator: Generator[isla.derivation_tree.DerivationTree, None, None] | ISLaSolver | Grammar,
-        timeout_seconds: int = 60,
-        jobname: Optional[str] = None) -> Dict[float, isla.derivation_tree.DerivationTree]:
+    generator: Generator[isla.derivation_tree.DerivationTree, None, None]
+    | ISLaSolver
+    | Grammar,
+    timeout_seconds: int = 60,
+    jobname: Optional[str] = None,
+) -> Dict[float, isla.derivation_tree.DerivationTree]:
     start_time = time.time()
     result: Dict[float, isla.derivation_tree.DerivationTree] = {}
     jobname = "" if not jobname else f" ({jobname})"
@@ -528,7 +659,9 @@ def generate_inputs(
         def gen():
             fuzzer = GrammarCoverageFuzzer(grammar)
             while True:
-                yield fuzzer.expand_tree(isla.derivation_tree.DerivationTree("<start>", None))
+                yield fuzzer.expand_tree(
+                    isla.derivation_tree.DerivationTree("<start>", None)
+                )
 
         generator = gen()
 
@@ -538,13 +671,18 @@ def generate_inputs(
         except StopIteration:
             break
         except Exception as exp:
-            print(f"{type(exp).__name__} occurred while executing solver; I'll stop here:\n" + str(exp),
-                  file=sys.stderr)
+            print(
+                f"{type(exp).__name__} occurred while executing solver; I'll stop here:\n"
+                + str(exp),
+                file=sys.stderr,
+            )
             print(traceback.format_exc())
             return result
 
         if not isinstance(inp, isla.derivation_tree.DerivationTree):
-            assert inp == ISLaSolver.TIMEOUT, f'Unexpected return value {inp} from solver'
+            assert (
+                inp == ISLaSolver.TIMEOUT
+            ), f"Unexpected return value {inp} from solver"
             break
 
         logger.debug("Input: %s", str(inp))
@@ -552,29 +690,34 @@ def generate_inputs(
         assert curr_relative_time not in result
         result[curr_relative_time] = inp
 
-    print(f"[{strtime()}] Collected {len(result)} inputs in {timeout_seconds} seconds{jobname}")
+    print(
+        f"[{strtime()}] Collected {len(result)} inputs in {timeout_seconds} seconds{jobname}"
+    )
     return result
 
 
 def create_db_tables(db_file: str = std_db_file()) -> None:
-    inputs_table_sql = \
-        """CREATE TABLE IF NOT EXISTS inputs (
+    inputs_table_sql = """CREATE TABLE IF NOT EXISTS inputs (
     inpId INTEGER PRIMARY KEY ASC, 
     testId TEXT,
     sid INT,
     reltime REAL,
     inp TEXT
 )"""
-    valid_inputs_table_sql = "CREATE TABLE IF NOT EXISTS valid(inpId INTEGER PRIMARY KEY ASC)"
+    valid_inputs_table_sql = (
+        "CREATE TABLE IF NOT EXISTS valid(inpId INTEGER PRIMARY KEY ASC)"
+    )
     kpaths_table_sql = "CREATE TABLE IF NOT EXISTS kpaths(inpId INT, k INT, paths TEXT, UNIQUE(inpId, k))"
-    session_length_sql = "CREATE TABLE IF NOT EXISTS session_lengths(" \
-                         "testId TEXT, sid INT, seconds INT, UNIQUE (testId, sid))"
+    session_length_sql = (
+        "CREATE TABLE IF NOT EXISTS session_lengths("
+        "testId TEXT, sid INT, seconds INT, UNIQUE (testId, sid))"
+    )
 
     tables = {
         "inputs": inputs_table_sql,
         "valid": valid_inputs_table_sql,
         "kpaths": kpaths_table_sql,
-        "session_lengths": session_length_sql
+        "session_lengths": session_length_sql,
     }
 
     con = sqlite3.connect(db_file)
@@ -600,8 +743,10 @@ def create_db_tables(db_file: str = std_db_file()) -> None:
         assert row
         sql: str = preprocess_sql(row[0])
         cmd = preprocess_sql(cmd)
-        assert sql == cmd, f"Table SQL\n---\n{sql}\n---\n" \
-                           f"does not equal required definition\n---\n{cmd}\n---"
+        assert sql == cmd, (
+            f"Table SQL\n---\n{sql}\n---\n"
+            f"does not equal required definition\n---\n{cmd}\n---"
+        )
 
     con.close()
 
@@ -652,7 +797,10 @@ def get_session_length(test_id: str, sid: int, db_file: str = std_db_file()) -> 
 
     with con:
         result = None
-        for row in con.execute("SELECT seconds FROM session_lengths WHERE testId = ? AND sid = ?", (test_id, sid)):
+        for row in con.execute(
+            "SELECT seconds FROM session_lengths WHERE testId = ? AND sid = ?",
+            (test_id, sid),
+        ):
             result = row[0]
             break
 
@@ -662,14 +810,17 @@ def get_session_length(test_id: str, sid: int, db_file: str = std_db_file()) -> 
 
 
 def store_inputs(
-        test_id: str,
-        timeout: int,
-        inputs: Dict[float, isla.derivation_tree.DerivationTree],
-        db_file: str = std_db_file()) -> None:
-    assert isinstance(inputs, dict), f'Expected dictionary, got: {type(inputs)}'
-    assert all(isinstance(key, float) for key in inputs), f'Expected float keys'
-    assert all(isinstance(value, isla.derivation_tree.DerivationTree) for value in inputs.values()), \
-        f'Expected DerivationTree values keys'
+    test_id: str,
+    timeout: int,
+    inputs: Dict[float, isla.derivation_tree.DerivationTree],
+    db_file: str = std_db_file(),
+) -> None:
+    assert isinstance(inputs, dict), f"Expected dictionary, got: {type(inputs)}"
+    assert all(isinstance(key, float) for key in inputs), f"Expected float keys"
+    assert all(
+        isinstance(value, isla.derivation_tree.DerivationTree)
+        for value in inputs.values()
+    ), f"Expected DerivationTree values keys"
 
     sid = (get_max_sid(test_id, db_file) or 0) + 1
 
@@ -682,39 +833,38 @@ def store_inputs(
         with con:
             con.execute(
                 "INSERT INTO inputs(testId, sid, reltime, inp) VALUES (?, ?, ?, ?)",
-                (test_id, sid, reltime, json.dumps(inp.to_parse_tree())))
+                (test_id, sid, reltime, json.dumps(inp.to_parse_tree())),
+            )
 
     with con:
         con.execute(
             "INSERT INTO session_lengths(testId, sid, seconds) VALUES (?, ?, ?)",
-            (test_id, sid, timeout))
+            (test_id, sid, timeout),
+        )
 
     con.close()
 
 
 def get_inputs_from_db(
-        test_id: str,
-        sid: Optional[int] = None,
-        db_file: str = std_db_file(),
-        only_valid: bool = False,
-        only_unkown_validity: bool = False,
-        convert_to_derivation_tree: bool = True,
+    test_id: str,
+    sid: Optional[int] = None,
+    db_file: str = std_db_file(),
+    only_valid: bool = False,
+    only_unkown_validity: bool = False,
+    convert_to_derivation_tree: bool = True,
 ) -> Dict[int, isla.derivation_tree.DerivationTree | ParseTree]:
-    all_inputs_query = \
-        """
+    all_inputs_query = """
         SELECT inpId, inp FROM inputs
         WHERE testId = ? AND sid = ?
         """
 
-    valid_inputs_query = \
-        """
+    valid_inputs_query = """
         SELECT inpId, inp FROM inputs
         NATURAL JOIN valid
         WHERE testId = ? AND sid = ?
         """
 
-    invalid_inputs_query = \
-        """
+    invalid_inputs_query = """
         SELECT inputs.inpId, inputs.inp 
         FROM inputs LEFT JOIN valid 
         ON inputs.inpId = valid.inpId 
@@ -728,7 +878,11 @@ def get_inputs_from_db(
         sid = get_max_sid(test_id, db_file)
         assert sid
 
-    query = valid_inputs_query if only_valid else (invalid_inputs_query if only_unkown_validity else all_inputs_query)
+    query = (
+        valid_inputs_query
+        if only_valid
+        else (invalid_inputs_query if only_unkown_validity else all_inputs_query)
+    )
     con = sqlite3.connect(db_file)
     cur = con.cursor()
     cur.execute(query, (test_id, sid))
@@ -737,22 +891,26 @@ def get_inputs_from_db(
 
     if convert_to_derivation_tree:
         inputs: Dict[int, isla.derivation_tree.DerivationTree] = {
-            row[0]: isla.derivation_tree.DerivationTree.from_parse_tree(next(ijson.items(row[1].encode('utf-8'), '')))
-            for row in rows}
+            row[0]: isla.derivation_tree.DerivationTree.from_parse_tree(
+                next(ijson.items(row[1].encode("utf-8"), ""))
+            )
+            for row in rows
+        }
     else:
         inputs: Dict[int, ParseTree] = {
-            row[0]: next(ijson.items(row[1].encode('utf-8'), ''))
-            for row in rows}
+            row[0]: next(ijson.items(row[1].encode("utf-8"), "")) for row in rows
+        }
 
     return inputs
 
 
 def evaluate_validity(
-        test_id: str,
-        validator: Callable[[isla.derivation_tree.DerivationTree], bool],
-        db_file: str = std_db_file(),
-        sid: Optional[int] = None,
-        parallel: bool = True) -> None:
+    test_id: str,
+    validator: Callable[[isla.derivation_tree.DerivationTree], bool],
+    db_file: str = std_db_file(),
+    sid: Optional[int] = None,
+    parallel: bool = True,
+) -> None:
     create_db_tables(db_file)
 
     # Get newest session ID if not present
@@ -765,7 +923,8 @@ def evaluate_validity(
     # Obtain inputs from session
     print(f"Reading inputs for session {sid} of {test_id} from database...")
     inputs: Dict[int, isla.derivation_tree.DerivationTree] = get_inputs_from_db(
-        test_id, sid, db_file, only_unkown_validity=True)
+        test_id, sid, db_file, only_unkown_validity=True
+    )
 
     print(f"Evaluating validity of inputs for session {sid} of {test_id}...")
 
@@ -774,34 +933,50 @@ def evaluate_validity(
         try:
             return validator(inp) is True
         except Exception as err:
-            print(f"Exception {err} raise when evaluating input {inp}, tree: {repr(inp)}")
+            print(
+                f"Exception {err} raise when evaluating input {inp}, tree: {repr(inp)}"
+            )
             print(f"Interpreting input '{inp}' as invalid.")
             return False
 
     valid_ids = [inp_id for inp_id, inp in inputs.items() if evaluate(inp)]
 
-    print(f"Writing validity data for inputs from session {sid} of {test_id} to database...")
+    print(
+        f"Writing validity data for inputs from session {sid} of {test_id} to database..."
+    )
     # Insert into DB
     con = sqlite3.connect(db_file)
     with con:
-        con.executemany(f"INSERT INTO valid(inpId) VALUES (?)", map(lambda x: (x,), valid_ids))
+        con.executemany(
+            f"INSERT INTO valid(inpId) VALUES (?)", map(lambda x: (x,), valid_ids)
+        )
     con.close()
 
     print(f"[{strtime()}] DONE Evaluating validity for session {sid} of {test_id}")
 
 
 def evaluate_kpaths(
-        test_id: str,
-        graph: gg.GrammarGraph,
-        k: int = 3,
-        db_file: str = std_db_file(),
-        sid: Optional[int] = None) -> None:
+    test_id: str,
+    graph: gg.GrammarGraph,
+    k: int = 3,
+    db_file: str = std_db_file(),
+    sid: Optional[int] = None,
+) -> None:
     if os.environ.get("PYTHONHASHSEED") is None:
-        print("WARNING: Environment variable PYTHONHASHSEED not set, "
-              "should be set to 0 for deterministic hashing of k-paths", file=sys.stderr)
-    if os.environ.get("PYTHONHASHSEED") is not None and os.environ["PYTHONHASHSEED"] != "0":
-        print("WARNING: Environment variable PYTHONHASHSEED not set, "
-              "should be set to 0 for deterministic hashing of k-paths", file=sys.stderr)
+        print(
+            "WARNING: Environment variable PYTHONHASHSEED not set, "
+            "should be set to 0 for deterministic hashing of k-paths",
+            file=sys.stderr,
+        )
+    if (
+        os.environ.get("PYTHONHASHSEED") is not None
+        and os.environ["PYTHONHASHSEED"] != "0"
+    ):
+        print(
+            "WARNING: Environment variable PYTHONHASHSEED not set, "
+            "should be set to 0 for deterministic hashing of k-paths",
+            file=sys.stderr,
+        )
 
     create_db_tables(db_file)
 
@@ -814,11 +989,8 @@ def evaluate_kpaths(
 
     # Obtain inputs from session
     inputs: Dict[int, ParseTree] = get_inputs_from_db(
-        test_id,
-        sid,
-        db_file,
-        only_valid=True,
-        convert_to_derivation_tree=False)
+        test_id, sid, db_file, only_valid=True, convert_to_derivation_tree=False
+    )
 
     def kpaths_already_computed(inp_id: int) -> bool:
         con = sqlite3.connect(db_file)
@@ -828,16 +1000,28 @@ def evaluate_kpaths(
         con.close()
         return result
 
-    inputs = {inp_id: inp for inp_id, inp in inputs.items() if not kpaths_already_computed(inp_id)}
+    inputs = {
+        inp_id: inp
+        for inp_id, inp in inputs.items()
+        if not kpaths_already_computed(inp_id)
+    }
 
     def compute_k_paths(inp: ParseTree) -> List[str]:
         try:
-            assert isinstance(inp, list), f'Expected a list, got: {type(inp).__name__}'
-            assert len(inp) == 2, f'Expected a (node, children) pair, but tree has {len(inp)} items'
-            assert isinstance(inp[0], str), f'Node label should be a str, got {type(inp[0]).__name__}'
-            assert inp[1] is None or isinstance(inp[1], list), \
-                f'Children field should be None or list, is: {type(inp[1]).__name__}'
-            return [path_to_string(path) for path in graph.k_paths_in_tree(inp, k, include_terminals=False)]
+            assert isinstance(inp, list), f"Expected a list, got: {type(inp).__name__}"
+            assert (
+                len(inp) == 2
+            ), f"Expected a (node, children) pair, but tree has {len(inp)} items"
+            assert isinstance(
+                inp[0], str
+            ), f"Node label should be a str, got {type(inp[0]).__name__}"
+            assert inp[1] is None or isinstance(
+                inp[1], list
+            ), f"Children field should be None or list, is: {type(inp[1]).__name__}"
+            return [
+                path_to_string(path)
+                for path in graph.k_paths_in_tree(inp, k, include_terminals=False)
+            ]
         except SyntaxError as err:
             print(f"Could not compute {k}-paths, error: {err}")
             return []
@@ -847,21 +1031,32 @@ def evaluate_kpaths(
     get2nd = lambda t: t[1]
 
     input_bundle: List[Tuple[int, Tuple[int, ParseTree]]]
-    for input_bundle in map(list, map(
+    for input_bundle in map(
+        list,
+        map(
             get2nd,
-            itertools.groupby(enumerate(inputs.items()),
-                              lambda p: p[0] // bundle_size))):
-        print(f'Evaluating {k}-paths for session {sid} of {test_id}: '
-              f'{100 * input_bundle[0][0] / len(inputs):.2f}% done '
-              f'({input_bundle[0][0]} of {len(inputs)} inputs)')
-        covered_k_paths = {inp_id: compute_k_paths(inp) for _, (inp_id, inp) in input_bundle}
+            itertools.groupby(enumerate(inputs.items()), lambda p: p[0] // bundle_size),
+        ),
+    ):
+        print(
+            f"Evaluating {k}-paths for session {sid} of {test_id}: "
+            f"{100 * input_bundle[0][0] / len(inputs):.2f}% done "
+            f"({input_bundle[0][0]} of {len(inputs)} inputs)"
+        )
+        covered_k_paths = {
+            inp_id: compute_k_paths(inp) for _, (inp_id, inp) in input_bundle
+        }
 
         # Insert into DB
         con = sqlite3.connect(db_file)
         with con:
             con.executemany(
                 "INSERT INTO kpaths(inpId, k, paths) VALUES (?, ?, ?)",
-                [(inp_id, k, json.dumps(kpaths)) for inp_id, kpaths in covered_k_paths.items()])
+                [
+                    (inp_id, k, json.dumps(kpaths))
+                    for inp_id, kpaths in covered_k_paths.items()
+                ],
+            )
         con.close()
 
     print(f"[{strtime()}] DONE Evaluating {k}-paths for session {sid} of {test_id}")

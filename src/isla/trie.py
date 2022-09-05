@@ -8,10 +8,11 @@ from isla.type_defs import Path
 
 class SubtreesTrie:
     def __init__(
-            self,
-            init_map: Optional[Dict[Path, Tuple[Path, 'DerivationTree']]] = None,
-            init_trie: Optional[datrie.Trie] = None,
-            root_path: Optional[Path] = None):
+        self,
+        init_map: Optional[Dict[Path, Tuple[Path, "DerivationTree"]]] = None,
+        init_trie: Optional[datrie.Trie] = None,
+        root_path: Optional[Path] = None,
+    ):
         if init_trie:
             self.trie = init_trie
         else:
@@ -22,33 +23,44 @@ class SubtreesTrie:
         if root_path is not None:
             self.root_path: str = path_to_trie_key(root_path)
         else:
-            self.root_path: str = ''
+            self.root_path: str = ""
 
-    def __setitem__(self, key: Path, value: Tuple[Path, 'DerivationTree']):
+    def __setitem__(self, key: Path, value: Tuple[Path, "DerivationTree"]):
         assert is_path(key)
         self.trie[path_to_trie_key(key)] = value
 
-    def __getitem__(self, item: Path) -> Tuple[Path, 'DerivationTree']:
+    def __getitem__(self, item: Path) -> Tuple[Path, "DerivationTree"]:
         assert is_path(item)
         return self.trie[path_to_trie_key(item)]
 
     def keys(self) -> List[Path]:
-        return [trie_key_to_path(chr(1) + suffix) for suffix in self.trie.suffixes(self.root_path)]
-
-    def values(self) -> List[Tuple[Path, 'DerivationTree']]:
         return [
-            (value := self.trie[self.root_path + suffix],
-             (value[0][len(self.root_path) - 1:], value[1]))[-1]
-            for suffix in self.trie.suffixes(self.root_path)]
+            trie_key_to_path(chr(1) + suffix)
+            for suffix in self.trie.suffixes(self.root_path)
+        ]
+
+    def values(self) -> List[Tuple[Path, "DerivationTree"]]:
+        return [
+            (
+                value := self.trie[self.root_path + suffix],
+                (value[0][len(self.root_path) - 1 :], value[1]),
+            )[-1]
+            for suffix in self.trie.suffixes(self.root_path)
+        ]
 
     def items(self) -> List:
         return [
-            (trie_key_to_path(chr(1) + suffix),
-             (value := self.trie[self.root_path + suffix],
-              (value[0][len(self.root_path) - 1:], value[1]))[-1])
-            for suffix in self.trie.suffixes(self.root_path)]
+            (
+                trie_key_to_path(chr(1) + suffix),
+                (
+                    value := self.trie[self.root_path + suffix],
+                    (value[0][len(self.root_path) - 1 :], value[1]),
+                )[-1],
+            )
+            for suffix in self.trie.suffixes(self.root_path)
+        ]
 
-    def get_subtrie(self, new_root_path: Path) -> 'SubtreesTrie':
+    def get_subtrie(self, new_root_path: Path) -> "SubtreesTrie":
         assert is_path(new_root_path)
         return SubtreesTrie(init_trie=self.trie, root_path=new_root_path)
 
@@ -64,7 +76,9 @@ def path_to_trie_key(path: Path) -> str:
 
 def trie_key_to_path(key: str) -> Path:
     if not key or key[0] != chr(1):
-        raise RuntimeError(f"Invalid trie key '{key}' ({[ord(c) for c in key]}), should start with 1")
+        raise RuntimeError(
+            f"Invalid trie key '{key}' ({[ord(c) for c in key]}), should start with 1"
+        )
 
     if key == chr(1):
         return ()

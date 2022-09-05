@@ -2,7 +2,17 @@ import html
 import json
 import zlib
 from functools import lru_cache
-from typing import Optional, Sequence, Dict, Set, Tuple, List, Callable, Union, Generator
+from typing import (
+    Optional,
+    Sequence,
+    Dict,
+    Set,
+    Tuple,
+    List,
+    Callable,
+    Union,
+    Generator,
+)
 
 import ijson
 from grammar_graph import gg
@@ -15,18 +25,22 @@ from isla.type_defs import Path, ParseTree
 
 class DerivationTree:
     """Derivation trees are immutable!"""
+
     next_id: int = 0
 
     TRAVERSE_PREORDER = 0
     TRAVERSE_POSTORDER = 1
 
-    def __init__(self, value: str,
-                 children: Optional[Sequence['DerivationTree']] = None,
-                 id: Optional[int] = None,
-                 k_paths: Optional[Dict[int, Set[Tuple[gg.Node, ...]]]] = None,
-                 hash: Optional[int] = None,
-                 structural_hash: Optional[int] = None,
-                 is_open: Optional[bool] = None):
+    def __init__(
+        self,
+        value: str,
+        children: Optional[Sequence["DerivationTree"]] = None,
+        id: Optional[int] = None,
+        k_paths: Optional[Dict[int, Set[Tuple[gg.Node, ...]]]] = None,
+        hash: Optional[int] = None,
+        structural_hash: Optional[int] = None,
+        is_open: Optional[bool] = None,
+    ):
         self.__value = value
         self.__children = None if children is None else tuple(children)
 
@@ -48,29 +62,33 @@ class DerivationTree:
 
     def to_json(self) -> str:
         the_dict = self.__dict__
-        if '_DerivationTree__k_paths' in the_dict:
-            del the_dict['_DerivationTree__k_paths']
-        if '_DerivationTree__concrete_k_paths' in the_dict:
-            del the_dict['_DerivationTree__concrete_k_paths']
+        if "_DerivationTree__k_paths" in the_dict:
+            del the_dict["_DerivationTree__k_paths"]
+        if "_DerivationTree__concrete_k_paths" in the_dict:
+            del the_dict["_DerivationTree__concrete_k_paths"]
         return json.dumps(the_dict, default=lambda o: o.__dict__)
 
     def __getstate__(self) -> bytes:
-        return zlib.compress(self.to_json().encode('UTF-8'))
+        return zlib.compress(self.to_json().encode("UTF-8"))
 
     @staticmethod
-    def from_json(json_str: str, tree: Optional['DerivationTree'] = None) -> 'DerivationTree':
-        def from_dict(a_dict: dict) -> 'DerivationTree':
+    def from_json(
+        json_str: str, tree: Optional["DerivationTree"] = None
+    ) -> "DerivationTree":
+        def from_dict(a_dict: dict) -> "DerivationTree":
             result = DerivationTree.__new__(DerivationTree)
             result.__k_paths = {}
             result.__concrete_k_paths = {}
 
-            children_key = '_DerivationTree__children'
+            children_key = "_DerivationTree__children"
             ser_children = a_dict[children_key]
 
             if ser_children is None:
                 a_dict[children_key] = None
             else:
-                a_dict[children_key] = tuple([from_dict(child) for child in ser_children])
+                a_dict[children_key] = tuple(
+                    [from_dict(child) for child in ser_children]
+                )
 
             result.__dict__.update(a_dict)
 
@@ -84,16 +102,18 @@ class DerivationTree:
         assert isinstance(json_str, str)
 
         if tree is None:
-            tree = DerivationTree('<start>')
-        tree.__dict__.update(from_dict(next(ijson.items(json_str.encode('utf-8'), ''))).__dict__)
+            tree = DerivationTree("<start>")
+        tree.__dict__.update(
+            from_dict(next(ijson.items(json_str.encode("utf-8"), ""))).__dict__
+        )
 
         return tree
 
     def __setstate__(self, state: bytes):
-        return DerivationTree.from_json(zlib.decompress(state).decode('UTF-8'), self)
+        return DerivationTree.from_json(zlib.decompress(state).decode("UTF-8"), self)
 
     @property
-    def children(self) -> Tuple['DerivationTree']:
+    def children(self) -> Tuple["DerivationTree"]:
         return self.__children
 
     @property
@@ -112,38 +132,59 @@ class DerivationTree:
         return all(
             not any(
                 subt_1 is not subt_2 and subt_1.id == subt_2.id
-                for _, subt_2 in self.paths())
-            for _, subt_1 in self.paths())
+                for _, subt_2 in self.paths()
+            )
+            for _, subt_1 in self.paths()
+        )
 
-    def k_coverage(self, graph: gg.GrammarGraph, k: int, include_potential_paths: bool = True) -> float:
-        tree_paths = self.k_paths(graph, k, include_potential_paths=include_potential_paths)
+    def k_coverage(
+        self, graph: gg.GrammarGraph, k: int, include_potential_paths: bool = True
+    ) -> float:
+        tree_paths = self.k_paths(
+            graph, k, include_potential_paths=include_potential_paths
+        )
         all_paths = graph.k_paths(k, include_terminals=False)
 
         return len(tree_paths) / len(all_paths)
 
-    def k_paths(self, graph: gg.GrammarGraph, k: int, include_potential_paths: bool = True) -> Set[Tuple[gg.Node, ...]]:
+    def k_paths(
+        self, graph: gg.GrammarGraph, k: int, include_potential_paths: bool = True
+    ) -> Set[Tuple[gg.Node, ...]]:
         if not include_potential_paths:
             if k not in self.__concrete_k_paths:
-                self.__concrete_k_paths[k] = set(iter(graph.k_paths_in_tree(
-                    self,
-                    k,
-                    include_potential_paths=include_potential_paths,
-                    include_terminals=False)))
+                self.__concrete_k_paths[k] = set(
+                    iter(
+                        graph.k_paths_in_tree(
+                            self,
+                            k,
+                            include_potential_paths=include_potential_paths,
+                            include_terminals=False,
+                        )
+                    )
+                )
             return self.__concrete_k_paths[k]
 
         if k not in self.__k_paths:
-            self.recompute_k_paths(graph, k, include_potential_paths=include_potential_paths)
+            self.recompute_k_paths(
+                graph, k, include_potential_paths=include_potential_paths
+            )
             assert k in self.__k_paths
 
         return self.__k_paths[k]
 
-    def recompute_k_paths(self, graph: gg.GrammarGraph, k: int, include_potential_paths=True) -> Set[
-        Tuple[gg.Node, ...]]:
-        self.__k_paths[k] = set(iter(graph.k_paths_in_tree(
-            self,
-            k,
-            include_potential_paths=include_potential_paths,
-            include_terminals=False)))
+    def recompute_k_paths(
+        self, graph: gg.GrammarGraph, k: int, include_potential_paths=True
+    ) -> Set[Tuple[gg.Node, ...]]:
+        self.__k_paths[k] = set(
+            iter(
+                graph.k_paths_in_tree(
+                    self,
+                    k,
+                    include_potential_paths=include_potential_paths,
+                    include_terminals=False,
+                )
+            )
+        )
         return self.__k_paths[k]
 
     def root_nonterminal(self) -> str:
@@ -181,7 +222,7 @@ class DerivationTree:
         return not self.is_open()
 
     @lru_cache(maxsize=20)
-    def get_subtree(self, path: Path) -> Optional['DerivationTree']:
+    def get_subtree(self, path: Path) -> Optional["DerivationTree"]:
         """Access a subtree based on `path` (a list of children numbers)"""
         curr_node = self
         while path:
@@ -205,11 +246,11 @@ class DerivationTree:
         return True
 
     @lru_cache
-    def paths(self) -> List[Tuple[Path, 'DerivationTree']]:
+    def paths(self) -> List[Tuple[Path, "DerivationTree"]]:
         def action(path, node):
             result.append((path, node))
 
-        result: List[Tuple[Path, 'DerivationTree']] = []
+        result: List[Tuple[Path, "DerivationTree"]] = []
         self.traverse(action, kind=DerivationTree.TRAVERSE_PREORDER)
         return result
 
@@ -225,20 +266,23 @@ class DerivationTree:
 
         return SubtreesTrie({path: (path, tree) for path, tree in self.paths()})
 
-    def filter(self, f: Callable[['DerivationTree'], bool],
-               enforce_unique: bool = False) -> List[Tuple[Path, 'DerivationTree']]:
-        result: List[Tuple[Path, 'DerivationTree']] = []
+    def filter(
+        self, f: Callable[["DerivationTree"], bool], enforce_unique: bool = False
+    ) -> List[Tuple[Path, "DerivationTree"]]:
+        result: List[Tuple[Path, "DerivationTree"]] = []
 
         for path, subtree in self.paths():
             if f(subtree):
                 result.append((path, subtree))
 
                 if enforce_unique and len(result) > 1:
-                    raise RuntimeError(f"Found searched-for element more than once in {self}")
+                    raise RuntimeError(
+                        f"Found searched-for element more than once in {self}"
+                    )
 
         return result
 
-    def find_node(self, node_or_id: Union['DerivationTree', int]) -> Optional[Path]:
+    def find_node(self, node_or_id: Union["DerivationTree", int]) -> Optional[Path]:
         """
         Finds a node by its (assumed unique) ID. Returns the path relative to this node.
 
@@ -253,16 +297,19 @@ class DerivationTree:
             node_or_id = node_or_id.id
 
         try:
-            return next(path for path, subtree in self.paths() if subtree.id == node_or_id)
+            return next(
+                path for path, subtree in self.paths() if subtree.id == node_or_id
+            )
         except StopIteration:
             return None
 
     def traverse(
-            self,
-            action: Callable[[Path, 'DerivationTree'], None],
-            abort_condition: Callable[[Path, 'DerivationTree'], bool] = lambda p, n: False,
-            kind: int = TRAVERSE_PREORDER,
-            reverse: bool = False) -> None:
+        self,
+        action: Callable[[Path, "DerivationTree"], None],
+        abort_condition: Callable[[Path, "DerivationTree"], bool] = lambda p, n: False,
+        kind: int = TRAVERSE_PREORDER,
+        reverse: bool = False,
+    ) -> None:
         stack_1: List[Tuple[Path, DerivationTree]] = [((), self)]
         stack_2: List[Tuple[Path, DerivationTree]] = []
 
@@ -285,16 +332,20 @@ class DerivationTree:
                 iterator = reversed(node.children) if reverse else iter(node.children)
 
                 for idx, child in enumerate(iterator):
-                    new_path = path + ((len(node.children) - idx - 1) if reverse else idx,)
+                    new_path = path + (
+                        (len(node.children) - idx - 1) if reverse else idx,
+                    )
                     stack_1.append((new_path, child))
 
         if kind == DerivationTree.TRAVERSE_POSTORDER:
             while stack_2:
                 action(*stack_2.pop())
 
-    def bfs(self,
-            action: Callable[[Path, 'DerivationTree'], None],
-            abort_condition: Callable[[Path, 'DerivationTree'], bool] = lambda p, n: False):
+    def bfs(
+        self,
+        action: Callable[[Path, "DerivationTree"], None],
+        abort_condition: Callable[[Path, "DerivationTree"], bool] = lambda p, n: False,
+    ):
         queue: List[Tuple[Path, DerivationTree]] = [((), self)]  # FIFO queue
         explored: Set[Path] = {()}
 
@@ -356,17 +407,15 @@ class DerivationTree:
 
         # Proceed to next root child
         if path and path[0] + 1 < num_children(tuple()):
-            return path[0] + 1,
+            return (path[0] + 1,)
 
         # path already is the last path.
         assert skip_children or list(self.paths())[-1][0] == path
         return None
 
     def replace_path(
-            self,
-            path: Path,
-            replacement_tree: 'DerivationTree',
-            retain_id=False) -> 'DerivationTree':
+        self, path: Path, replacement_tree: "DerivationTree", retain_id=False
+    ) -> "DerivationTree":
         """Returns tree where replacement_tree has been inserted at `path` instead of the original subtree"""
         stack: List[DerivationTree] = [self]
         for idx in path:
@@ -388,10 +437,7 @@ class DerivationTree:
             parent = stack.pop()
 
             children = parent.children
-            new_children = (
-                    children[:idx] +
-                    (replacement,) +
-                    children[idx + 1:])
+            new_children = children[:idx] + (replacement,) + children[idx + 1 :]
 
             if replacement.__is_open is True:
                 is_open = True
@@ -400,35 +446,39 @@ class DerivationTree:
             else:
                 is_open = None
 
-            stack.append(DerivationTree(
-                parent.value,
-                new_children,
-                id=parent.id,
-                is_open=is_open))
+            stack.append(
+                DerivationTree(
+                    parent.value, new_children, id=parent.id, is_open=is_open
+                )
+            )
 
         assert len(stack) == 1
         return stack[0]
 
-    def leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
-        return ((path, sub_tree)
-                for path, sub_tree in self.paths()
-                if not sub_tree.children)
+    def leaves(self) -> Generator[Tuple[Path, "DerivationTree"], None, None]:
+        return (
+            (path, sub_tree) for path, sub_tree in self.paths() if not sub_tree.children
+        )
 
-    def open_leaves(self) -> Generator[Tuple[Path, 'DerivationTree'], None, None]:
-        return ((path, sub_tree)
-                for path, sub_tree in self.paths()
-                if sub_tree.children is None)
+    def open_leaves(self) -> Generator[Tuple[Path, "DerivationTree"], None, None]:
+        return (
+            (path, sub_tree)
+            for path, sub_tree in self.paths()
+            if sub_tree.children is None
+        )
 
     def depth(self) -> int:
         if not self.children:
             return 1
         return 1 + max(child.depth() for child in self.children)
 
-    def new_ids(self) -> 'DerivationTree':
+    def new_ids(self) -> "DerivationTree":
         return DerivationTree(
             self.value,
-            None if self.children is None
-            else [child.new_ids() for child in self.children])
+            None
+            if self.children is None
+            else [child.new_ids() for child in self.children],
+        )
 
     def __len__(self):
         if self.__len is None:
@@ -436,7 +486,9 @@ class DerivationTree:
 
         return self.__len
 
-    def substitute(self, subst_map: Dict['DerivationTree', 'DerivationTree']) -> 'DerivationTree':
+    def substitute(
+        self, subst_map: Dict["DerivationTree", "DerivationTree"]
+    ) -> "DerivationTree":
         # We perform an iterative reverse post-order depth-first traversal and use a stack
         # to store intermediate results from lower levels.
         assert self.has_unique_ids()
@@ -446,11 +498,16 @@ class DerivationTree:
         # We remove "nested" replacements since removing elements in replacements is not intended.
 
         id_subst_map = {
-            tree.id: repl for tree, repl in subst_map.items()
-            if (isinstance(tree, DerivationTree) and
-                all(repl.id == tree.id or repl.find_node(tree.id) is None
+            tree.id: repl
+            for tree, repl in subst_map.items()
+            if (
+                isinstance(tree, DerivationTree)
+                and all(
+                    repl.id == tree.id or repl.find_node(tree.id) is None
                     for otree, repl in subst_map.items()
-                    if isinstance(otree, DerivationTree)))
+                    if isinstance(otree, DerivationTree)
+                )
+            )
         }
 
         result = self
@@ -460,7 +517,7 @@ class DerivationTree:
 
         return result
 
-    def is_prefix(self, other: 'DerivationTree') -> bool:
+    def is_prefix(self, other: "DerivationTree") -> bool:
         if len(self) > len(other):
             return False
 
@@ -468,7 +525,9 @@ class DerivationTree:
             return False
 
         if not self.children:
-            return self.children is None or (not other.children and other.children is not None)
+            return self.children is None or (
+                not other.children and other.children is not None
+            )
 
         if not other.children:
             return False
@@ -479,13 +538,20 @@ class DerivationTree:
         if len(self.children) != len(other.children):
             return False
 
-        return all(self.children[idx].is_prefix(other.children[idx])
-                   for idx, _ in enumerate(self.children))
+        return all(
+            self.children[idx].is_prefix(other.children[idx])
+            for idx, _ in enumerate(self.children)
+        )
 
-    def is_potential_prefix(self, other: 'DerivationTree') -> bool:
+    def is_potential_prefix(self, other: "DerivationTree") -> bool:
         # It's a potential prefix if for all common paths of the two trees, the leaves are equal.
-        common_paths = {path for path, _ in other.paths()}.intersection({path for path, _ in self.paths()})
-        return all(self.get_subtree(path).value == other.get_subtree(path).value for path in common_paths)
+        common_paths = {path for path, _ in other.paths()}.intersection(
+            {path for path, _ in self.paths()}
+        )
+        return all(
+            self.get_subtree(path).value == other.get_subtree(path).value
+            for path in common_paths
+        )
 
     @staticmethod
     def from_parse_tree(tree: ParseTree):
@@ -529,27 +595,27 @@ class DerivationTree:
         assert len(stack) == 1
         return stack.pop()
 
-    def __iter__(self) -> Generator[str | List['DerivationTree'] | None, None, None]:
+    def __iter__(self) -> Generator[str | List["DerivationTree"] | None, None, None]:
         """
         Allows tuple unpacking: node, children = tree
         This, and getting the value / children via index access, is important for backward compatibility
         to plain `ParseTree` (fuzzingbook) objects.
-        
+
         :return: An iterator of two elements: The node value and the children's list.
         """
         yield self.value
         yield None if self.children is None else list(self.children)
 
-    def __getitem__(self, item: int) -> str | Optional[List['DerivationTree']]:
+    def __getitem__(self, item: int) -> str | Optional[List["DerivationTree"]]:
         """
         Allows accessing the tree's value using index 0 and the children list using index 1.
         For backward compatibility with plain fuzzingbook parse trees.
-        
+
         :param item: The index of the item to get (0 -> value, 1 -> children)
         :return: The node's value or children list.
         """
         assert isinstance(item, int)
-        assert 0 <= item <= 1, f'Can only access element 0 (node value) or 1 (children)'
+        assert 0 <= item <= 1, f"Can only access element 0 (node value) or 1 (children)"
         if item == 0:
             return self.value
         else:
@@ -574,12 +640,17 @@ class DerivationTree:
                 return
 
             if node.children is None:
-                node_hash = hash(node.value) if structural else hash((node.value, node.id))
+                node_hash = (
+                    hash(node.value) if structural else hash((node.value, node.id))
+                )
             else:
                 children_values = []
                 for _ in range(len(node.children)):
                     children_values.append(stack.pop())
-                node_hash = hash(((node.value,) if structural else (node.value, node.id)) + tuple(children_values))
+                node_hash = hash(
+                    ((node.value,) if structural else (node.value, node.id))
+                    + tuple(children_values)
+                )
 
             stack.append(node_hash)
             if structural:
@@ -607,13 +678,15 @@ class DerivationTree:
         self.__structural_hash = self.compute_hash_iteratively(structural=True)
         return self.__structural_hash
 
-    def structurally_equal(self, other: 'DerivationTree'):
+    def structurally_equal(self, other: "DerivationTree"):
         if not isinstance(other, DerivationTree):
             return False
 
-        if (self.value != other.value
-                or (self.children is None and other.children is not None)
-                or (other.children is None and self.children is not None)):
+        if (
+            self.value != other.value
+            or (self.children is None and other.children is not None)
+            or (other.children is None and self.children is not None)
+        ):
             return False
 
         if self.children is None:
@@ -622,8 +695,10 @@ class DerivationTree:
         if len(self.children) != len(other.children):
             return False
 
-        return all(self.children[idx].structurally_equal(other.children[idx])
-                   for idx in range(len(self.children)))
+        return all(
+            self.children[idx].structurally_equal(other.children[idx])
+            for idx in range(len(self.children))
+        )
 
     def __eq__(self, other):
         """
@@ -634,12 +709,14 @@ class DerivationTree:
 
         while stack:
             t1, t2 = stack.pop()
-            if (not isinstance(t2, DerivationTree)
-                    or t1.value != t2.value
-                    or t1.id != t2.id
-                    or (t1.children is None and t2.children is not None)
-                    or (t2.children is None and t1.children is not None)
-                    or len(t1.children or []) != len(t2.children or [])):
+            if (
+                not isinstance(t2, DerivationTree)
+                or t1.value != t2.value
+                or t1.id != t2.id
+                or (t1.children is None and t2.children is not None)
+                or (t2.children is None and t1.children is not None)
+                or len(t1.children or []) != len(t2.children or [])
+            ):
                 return False
 
             if t1.children:
@@ -649,7 +726,9 @@ class DerivationTree:
         return True
 
     def __repr__(self):
-        return f"DerivationTree({repr(self.value)}, {repr(self.children)}, id={self.id})"
+        return (
+            f"DerivationTree({repr(self.value)}, {repr(self.children)}, id={self.id})"
+        )
 
     @lru_cache(maxsize=100)
     def to_string(self, show_open_leaves: bool = False) -> str:
@@ -671,17 +750,20 @@ class DerivationTree:
 
             stack = list(children) + stack
 
-        return ''.join(result)
+        return "".join(result)
 
     def __str__(self) -> str:
         return self.to_string(show_open_leaves=True)
 
     def to_dot(self) -> str:
         dot = Digraph(comment="Derivation Tree")
-        dot.attr('node', shape='plain')
+        dot.attr("node", shape="plain")
 
         def action(_, t: DerivationTree):
-            dot.node(repr(t.id), "<" + html.escape(t.value) + f' <FONT COLOR="gray">({t.id})</FONT>>')
+            dot.node(
+                repr(t.id),
+                "<" + html.escape(t.value) + f' <FONT COLOR="gray">({t.id})</FONT>>',
+            )
             for child in t.children or []:
                 dot.edge(repr(t.id), repr(child.id))
 

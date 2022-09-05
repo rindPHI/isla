@@ -17,30 +17,23 @@ SIMPLE_TAR_GRAMMAR = {
     "<start>": ["<entries>"],
     "<entries>": ["<entry>", "<entry><entries>"],
     "<entry>": ["<header><content>"],
-    "<header>": [
-        "<file_name>"
-        "<checksum>"
-        "<typeflag>"
-        "<linked_file_name>"
-    ],
+    "<header>": ["<file_name>" "<checksum>" "<typeflag>" "<linked_file_name>"],
     "<file_name>": ["<file_name_str><maybe_nuls>"],
-    "<file_name_str>": ["<file_name_first_char><file_name_chars>", "<file_name_first_char>"],
-    "<checksum>": ["<octal_digits><NUL><SPACE>"],
-    "<typeflag>": [  # Generalize?
-        "0",  # normal file
-        "2"  # symbolic link
+    "<file_name_str>": [
+        "<file_name_first_char><file_name_chars>",
+        "<file_name_first_char>",
     ],
+    "<checksum>": ["<octal_digits><NUL><SPACE>"],
+    "<typeflag>": ["0", "2"],  # Generalize?  # normal file  # symbolic link
     "<linked_file_name>": ["<file_name_str><maybe_nuls>", "<nuls>"],
-
     "<content>": ["CONTENT"],
-
     "<octal_digits>": ["<octal_digit><octal_digits>", "<octal_digit>"],
     "<octal_digit>": srange("01234567"),
-
     "<file_name_first_char>": srange(string.ascii_letters + string.digits + "_"),
     "<file_name_chars>": ["<file_name_char><file_name_chars>", "<file_name_char>"],
-    "<file_name_char>": list(set(srange(string.printable)) - set(srange(string.whitespace + "\b\f\v"))),
-
+    "<file_name_char>": list(
+        set(srange(string.printable)) - set(srange(string.whitespace + "\b\f\v"))
+    ),
     "<maybe_nuls>": ["", "<nuls>"],
     "<nuls>": ["<NUL>", "<NUL><nuls>"],
     "<NUL>": ["\x00"],
@@ -49,8 +42,10 @@ SIMPLE_TAR_GRAMMAR = {
 
 
 def tar_checksum(
-        graph: gg.GrammarGraph, header: isla.derivation_tree.DerivationTree,
-        checksum_tree: isla.derivation_tree.DerivationTree) -> language.SemPredEvalResult:
+    graph: gg.GrammarGraph,
+    header: isla.derivation_tree.DerivationTree,
+    checksum_tree: isla.derivation_tree.DerivationTree,
+) -> language.SemPredEvalResult:
     if not header.is_complete():
         return language.SemPredEvalResult(None)
 
@@ -58,12 +53,15 @@ def tar_checksum(
 
     checksum_grammar = copy.deepcopy(SIMPLE_TAR_GRAMMAR)
     checksum_grammar["<start>"] = ["<checksum>"]
-    checksum_grammar["<checksum>"] = ["<SPACE><SPACE><SPACE><SPACE><SPACE><SPACE><SPACE><SPACE>"]
+    checksum_grammar["<checksum>"] = [
+        "<SPACE><SPACE><SPACE><SPACE><SPACE><SPACE><SPACE><SPACE>"
+    ]
     delete_unreachable(checksum_grammar)
     checksum_parser = EarleyParser(checksum_grammar)
 
     space_checksum = isla.derivation_tree.DerivationTree.from_parse_tree(
-        next(checksum_parser.parse("        "))).get_subtree((0,))
+        next(checksum_parser.parse("        "))
+    ).get_subtree((0,))
     header_wo_checksum = header.replace_path(current_checksum_path, space_checksum)
 
     header_bytes: List[int] = list(str(header_wo_checksum).encode("ascii"))
@@ -76,7 +74,8 @@ def tar_checksum(
     checksum_parser = EarleyParser(checksum_grammar)
 
     new_checksum_tree = isla.derivation_tree.DerivationTree.from_parse_tree(
-        list(checksum_parser.parse(checksum_value))[0]).get_subtree((0,))
+        list(checksum_parser.parse(checksum_value))[0]
+    ).get_subtree((0,))
 
     if str(new_checksum_tree) == str(checksum_tree):
         return language.SemPredEvalResult(True)
@@ -84,12 +83,15 @@ def tar_checksum(
     return language.SemPredEvalResult({checksum_tree: new_checksum_tree})
 
 
-TAR_CHECKSUM_PREDICATE = language.SemanticPredicate("tar_checksum", 2, tar_checksum, binds_tree=False)
+TAR_CHECKSUM_PREDICATE = language.SemanticPredicate(
+    "tar_checksum", 2, tar_checksum, binds_tree=False
+)
 
 
 def tar_checksum(
-        header: Union[language.Variable, isla.derivation_tree.DerivationTree],
-        checksum: Union[language.Variable, isla.derivation_tree.DerivationTree]) -> language.SemanticPredicateFormula:
+    header: Union[language.Variable, isla.derivation_tree.DerivationTree],
+    checksum: Union[language.Variable, isla.derivation_tree.DerivationTree],
+) -> language.SemanticPredicateFormula:
     return language.SemanticPredicateFormula(TAR_CHECKSUM_PREDICATE, header, checksum)
 
 
@@ -97,43 +99,61 @@ mgr = language.VariableManager(SIMPLE_TAR_GRAMMAR)
 start = mgr.const("$start", "<start>")
 
 link_constraint = sc.forall(
-    mgr.bv("$entry", "<entry>"), start,
+    mgr.bv("$entry", "<entry>"),
+    start,
     sc.forall(
         mgr.bv("$typeflag", "<typeflag>"),
         mgr.bv("$entry"),
-        mgr.smt(cast(z3.BoolRef, z3_eq(mgr.bv("$typeflag").to_smt(), z3.StringVal("0")))) |
-        (mgr.smt(z3_eq(mgr.bv("$typeflag").to_smt(), z3.StringVal("2"))) &
-         sc.forall_bind(
-             mgr.bv("$linked_file_name_str", "<file_name_str>") + "<maybe_nuls>",
-             mgr.bv("$linked_file_name", "<linked_file_name>"),
-             mgr.bv("$entry"),
-             sc.exists(
-                 mgr.bv("$linked_entry", "<entry>"),
-                 start,
-                 (sc.before(mgr.bv("$entry"), mgr.bv("$linked_entry")) |
-                  sc.before(mgr.bv("$linked_entry"), mgr.bv("$entry"))) &
-                 sc.forall_bind(
-                     mgr.bv("$file_name_str", "<file_name_str>") + "<maybe_nuls>",
-                     mgr.bv("$file_name"),
-                     mgr.bv("$linked_entry"),
-                     mgr.smt(z3_eq(
-                         mgr.bv("$file_name_str").to_smt(),
-                         mgr.bv("$linked_file_name_str").to_smt()))))))))
+        mgr.smt(
+            cast(z3.BoolRef, z3_eq(mgr.bv("$typeflag").to_smt(), z3.StringVal("0")))
+        )
+        | (
+            mgr.smt(z3_eq(mgr.bv("$typeflag").to_smt(), z3.StringVal("2")))
+            & sc.forall_bind(
+                mgr.bv("$linked_file_name_str", "<file_name_str>") + "<maybe_nuls>",
+                mgr.bv("$linked_file_name", "<linked_file_name>"),
+                mgr.bv("$entry"),
+                sc.exists(
+                    mgr.bv("$linked_entry", "<entry>"),
+                    start,
+                    (
+                        sc.before(mgr.bv("$entry"), mgr.bv("$linked_entry"))
+                        | sc.before(mgr.bv("$linked_entry"), mgr.bv("$entry"))
+                    )
+                    & sc.forall_bind(
+                        mgr.bv("$file_name_str", "<file_name_str>") + "<maybe_nuls>",
+                        mgr.bv("$file_name"),
+                        mgr.bv("$linked_entry"),
+                        mgr.smt(
+                            z3_eq(
+                                mgr.bv("$file_name_str").to_smt(),
+                                mgr.bv("$linked_file_name_str").to_smt(),
+                            )
+                        ),
+                    ),
+                ),
+            )
+        ),
+    ),
+)
 
 file_name_length_constraint = sc.forall(
     mgr.bv("$file_name", "<file_name>"),
     start,
-    ljust_crop_tar(mgr.bv("$file_name"), 100, "\x00"))
+    ljust_crop_tar(mgr.bv("$file_name"), 100, "\x00"),
+)
 
 linked_file_name_length_constraint = sc.forall(
     mgr.bv("$linked_file_name", "<linked_file_name>"),
     start,
-    ljust_crop_tar(mgr.bv("$linked_file_name"), 100, "\x00"))
+    ljust_crop_tar(mgr.bv("$linked_file_name"), 100, "\x00"),
+)
 
 checksum_length_constraint = sc.forall(
     mgr.bv("$checksum", "<checksum>"),
     start,
-    rjust_crop_tar(mgr.bv("$checksum"), 8, "0"))
+    rjust_crop_tar(mgr.bv("$checksum"), 8, "0"),
+)
 
 checksum_constraint = sc.forall(
     mgr.bv("$header", "<header>"),
@@ -141,14 +161,16 @@ checksum_constraint = sc.forall(
     sc.forall(
         mgr.bv("$checksum", "<checksum>"),
         mgr.bv("$header"),
-        tar_checksum(mgr.bv("$header"), mgr.bv("$checksum"))))
+        tar_checksum(mgr.bv("$header"), mgr.bv("$checksum")),
+    ),
+)
 
 TAR_CONSTRAINTS = mgr.create(
-    file_name_length_constraint &
-    checksum_constraint &
-    checksum_length_constraint &
-    linked_file_name_length_constraint &
-    link_constraint
+    file_name_length_constraint
+    & checksum_constraint
+    & checksum_length_constraint
+    & linked_file_name_length_constraint
+    & link_constraint
     # sc.forall(
     #    mgr.bv("$entry", "<entry>"),
     #    start,

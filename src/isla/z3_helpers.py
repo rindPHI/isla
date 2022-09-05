@@ -10,7 +10,9 @@ from z3.z3 import _coerce_exprs
 
 from isla.three_valued_truth import ThreeValuedTruth
 
-Z3EvalResult = Tuple[Tuple[str, ...], bool | int | str | Callable[[Tuple[str, ...]], bool | int | str]]
+Z3EvalResult = Tuple[
+    Tuple[str, ...], bool | int | str | Callable[[Tuple[str, ...]], bool | int | str]
+]
 
 
 @lru_cache
@@ -22,13 +24,23 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
         raise NotImplementedError("Cannot evaluate expressions with quantifiers.")
 
     def construct_result(
-            constructor: Callable[[Tuple[bool | int | str, ...]], bool | int | str],
-            children_results: Tuple[Z3EvalResult, ...]) -> Z3EvalResult:
-        params: Tuple[str, ...] = tuple(set([
-            param for child_params, _ in children_results for param in child_params]))
+        constructor: Callable[[Tuple[bool | int | str, ...]], bool | int | str],
+        children_results: Tuple[Z3EvalResult, ...],
+    ) -> Z3EvalResult:
+        params: Tuple[str, ...] = tuple(
+            set(
+                [
+                    param
+                    for child_params, _ in children_results
+                    for param in child_params
+                ]
+            )
+        )
 
         if not params:
-            return (), constructor(tuple([child_result for _, child_result in children_results]))
+            return (), constructor(
+                tuple([child_result for _, child_result in children_results])
+            )
 
         def closure(var_insts: Tuple[str, ...]) -> bool | int | str:
             assert len(var_insts) == len(params)
@@ -36,12 +48,16 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
             for child_params, child_result in children_results:
                 if not child_params:
                     assert type(child_result) in {bool, int, str}
-                    instantiated_children_results += (cast(bool | int | str, child_result),)
+                    instantiated_children_results += (
+                        cast(bool | int | str, child_result),
+                    )
                     continue
 
                 instantiated_child_params: Tuple[str] = cast(Tuple[str], ())
                 for child_param in child_params:
-                    instantiated_child_params += (var_insts[params.index(str(child_param))],)
+                    instantiated_child_params += (
+                        var_insts[params.index(str(child_param))],
+                    )
 
                 eval_child_result = child_result(instantiated_child_params)
                 assert type(eval_child_result) in {bool, int, str}
@@ -78,7 +94,9 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
                 try:
                     return int(float(c))
                 except ValueError:
-                    raise DomainError(f"Expression {children_results[0]} cannot be converted to int.")
+                    raise DomainError(
+                        f"Expression {children_results[0]} cannot be converted to int."
+                    )
 
         return construct_result(constructor, children_results)
 
@@ -93,9 +111,13 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
         return construct_result(lambda args: f"[{args[0]}-{args[1]}]", children_results)
 
     if expr.decl().kind() == z3.Z3_OP_RE_LOOP:
-        return construct_result(lambda args: f"{args[0]}{{{expr.params()[0]},{expr.params()[1]}}}", children_results)
+        return construct_result(
+            lambda args: f"{args[0]}{{{expr.params()[0]},{expr.params()[1]}}}",
+            children_results,
+        )
 
     if expr.decl().kind() == z3.Z3_OP_SEQ_TO_RE:
+
         def constructor(args):
             assert len(args) == 1
 
@@ -111,7 +133,9 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
         return construct_result(lambda args: "".join(args), children_results)
 
     if expr.decl().kind() == z3.Z3_OP_SEQ_IN_RE:
-        return construct_result(lambda args: re.match(f"^{args[1]}$", args[0]) is not None, children_results)
+        return construct_result(
+            lambda args: re.match(f"^{args[1]}$", args[0]) is not None, children_results
+        )
 
     if expr.decl().kind() == z3.Z3_OP_RE_STAR:
         return construct_result(lambda args: f"({args[0]})*", children_results)
@@ -123,17 +147,25 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
         return construct_result(lambda args: f"({args[0]})?", children_results)
 
     if expr.decl().kind() == z3.Z3_OP_RE_UNION:
-        return construct_result(lambda args: f"(({args[0]})|({args[1]}))", children_results)
+        return construct_result(
+            lambda args: f"(({args[0]})|({args[1]}))", children_results
+        )
 
     if expr.decl().name() == "re.comp":
         # The argument must be a union of strings or a range.
         child = expr.children()[0]
-        if (child.decl().kind() == z3.Z3_OP_RE_UNION
-                and all(grandchild.decl().kind() == z3.Z3_OP_SEQ_TO_RE for grandchild in child.children()) or
-                child.decl().name() == "re.range"):
+        if (
+            child.decl().kind() == z3.Z3_OP_RE_UNION
+            and all(
+                grandchild.decl().kind() == z3.Z3_OP_SEQ_TO_RE
+                for grandchild in child.children()
+            )
+            or child.decl().name() == "re.range"
+        ):
             return construct_result(
                 lambda args: "[^" + "".join(args) + "]",
-                tuple(map(evaluate_z3_expression, child.children())))
+                tuple(map(evaluate_z3_expression, child.children())),
+            )
 
     if expr.decl().kind() == z3.Z3_OP_RE_FULL_SET:
         return (), ".*?"
@@ -143,10 +175,14 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
         return construct_result(lambda args: not args[0], children_results)
 
     if z3.is_and(expr):
-        return construct_result(lambda args: reduce(operator.and_, args), children_results)
+        return construct_result(
+            lambda args: reduce(operator.and_, args), children_results
+        )
 
     if z3.is_or(expr):
-        return construct_result(lambda args: reduce(operator.or_, args), children_results)
+        return construct_result(
+            lambda args: reduce(operator.or_, args), children_results
+        )
 
     # Comparisons
     if z3.is_eq(expr):
@@ -175,7 +211,9 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
         return construct_result(lambda args: args[0] * args[1], children_results)
 
     if z3.is_div(expr):
-        return construct_result(lambda args: int(float(args[0]) / float(args[1])), children_results)
+        return construct_result(
+            lambda args: int(float(args[0]) / float(args[1])), children_results
+        )
 
     if z3.is_mod(expr):
         return construct_result(lambda args: args[0] % args[1], children_results)
@@ -185,24 +223,31 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
         return construct_result(lambda args: len(args[0]), children_results)
 
     if expr.decl().kind() == z3.Z3_OP_SEQ_CONCAT:
-        return construct_result(lambda args: cast(str, args[0]) + cast(str, args[1]), children_results)
+        return construct_result(
+            lambda args: cast(str, args[0]) + cast(str, args[1]), children_results
+        )
 
     if expr.decl().kind() == z3.Z3_OP_SEQ_AT:
-        return construct_result(lambda args: cast(str, args[0])[cast(int, args[1])], children_results)
+        return construct_result(
+            lambda args: cast(str, args[0])[cast(int, args[1])], children_results
+        )
 
     if expr.decl().kind() == z3.Z3_OP_SEQ_EXTRACT:
         return construct_result(
-            lambda args:
-            cast(str, args[0])[
-            cast(int, args[1]):cast(int, args[1]) + cast(int, args[2])
-            ], children_results)
+            lambda args: cast(str, args[0])[
+                cast(int, args[1]) : cast(int, args[1]) + cast(int, args[2])
+            ],
+            children_results,
+        )
 
     logger = logging.getLogger("Z3 evaluation")
     logger.debug("Evaluation of expression %s not implemented.", expr)
     raise NotImplementedError(f"Evaluation of expression {expr} not implemented.")
 
 
-def z3_solve(formulas: List[z3.BoolRef], timeout_ms=500) -> Tuple[z3.CheckSatResult, Optional[z3.ModelRef]]:
+def z3_solve(
+    formulas: List[z3.BoolRef], timeout_ms=500
+) -> Tuple[z3.CheckSatResult, Optional[z3.ModelRef]]:
     logger = logging.getLogger("z3_solve")
 
     result = z3.unknown  # To remove IDE warning
@@ -222,14 +267,16 @@ def z3_solve(formulas: List[z3.BoolRef], timeout_ms=500) -> Tuple[z3.CheckSatRes
         if result != z3.unknown:
             break
 
-        timeout_ms = int(timeout_ms * .9) + 1
+        timeout_ms = int(timeout_ms * 0.9) + 1
         random.shuffle(formulas)
         parallel = not parallel
         z3.set_param("parallel.enable", parallel)
         z3.set_param("smt.random_seed", random.randint(0, 99999))
 
     if result == z3.unknown:
-        logger.warning("Satisfiability of %s could not be decided", list(map(str, formulas)))
+        logger.warning(
+            "Satisfiability of %s could not be decided", list(map(str, formulas))
+        )
 
     return result, model
 
@@ -281,7 +328,9 @@ def z3_eq(formula_1: z3.ExprRef, formula_2: z3.ExprRef | str | int) -> z3.BoolRe
         return formula_1 is None
 
     a, b = _coerce_exprs(formula_1, formula_2)
-    return z3.BoolRef(z3.Z3_mk_eq(formula_1.ctx_ref(), a.as_ast(), b.as_ast()), formula_1.ctx)
+    return z3.BoolRef(
+        z3.Z3_mk_eq(formula_1.ctx_ref(), a.as_ast(), b.as_ast()), formula_1.ctx
+    )
 
 
 def z3_and(formulas: List[z3.BoolRef]) -> z3.BoolRef:
@@ -305,14 +354,22 @@ def z3_push_in_negations(formula: z3.BoolRef, negate=False) -> z3.BoolRef:
         return z3_push_in_negations(formula.children()[0], negate=not negate)
     elif z3.is_and(formula):
         if negate:
-            return z3.Or(*[z3_push_in_negations(child, True) for child in formula.children()])
+            return z3.Or(
+                *[z3_push_in_negations(child, True) for child in formula.children()]
+            )
         else:
-            return z3.And(*[z3_push_in_negations(child, False) for child in formula.children()])
+            return z3.And(
+                *[z3_push_in_negations(child, False) for child in formula.children()]
+            )
     elif z3.is_or(formula):
         if negate:
-            return z3.And(*[z3_push_in_negations(child, True) for child in formula.children()])
+            return z3.And(
+                *[z3_push_in_negations(child, True) for child in formula.children()]
+            )
         else:
-            return z3.Or(*[z3_push_in_negations(child, False) for child in formula.children()])
+            return z3.Or(
+                *[z3_push_in_negations(child, False) for child in formula.children()]
+            )
     elif isinstance(formula, z3.QuantifierRef):
         vars = [z3.String(formula.var_name(idx)) for idx in range(formula.num_vars())]
         if (negate and formula.is_forall()) or (not negate and formula.is_exists()):
@@ -332,8 +389,10 @@ def is_z3_var(expr: z3.ExprRef) -> bool:
 
 
 def replace_in_z3_expr(
-        e: z3.ExprRef | z3.QuantifierRef,
-        replacement: Callable[[z3.ExprRef | z3.QuantifierRef], Optional[z3.ExprRef | z3.QuantifierRef]]
+    e: z3.ExprRef | z3.QuantifierRef,
+    replacement: Callable[
+        [z3.ExprRef | z3.QuantifierRef], Optional[z3.ExprRef | z3.QuantifierRef]
+    ],
 ) -> z3.ExprRef | z3.QuantifierRef:
     subst_map: Dict[z3.ExprRef | z3.QuantifierRef, z3.ExprRef | z3.QuantifierRef] = {}
 
@@ -345,9 +404,10 @@ def replace_in_z3_expr(
     return z3_subst(e, subst_map)
 
 
-def visit_z3_expr(e: z3.ExprRef | z3.QuantifierRef,
-                  seen: Optional[Dict[Union[z3.ExprRef, z3.QuantifierRef], bool]] = None) -> \
-        Generator[z3.ExprRef | z3.QuantifierRef, None, None]:
+def visit_z3_expr(
+    e: z3.ExprRef | z3.QuantifierRef,
+    seen: Optional[Dict[Union[z3.ExprRef, z3.QuantifierRef], bool]] = None,
+) -> Generator[z3.ExprRef | z3.QuantifierRef, None, None]:
     if seen is None:
         seen = {}
     elif e in seen:
@@ -373,12 +433,17 @@ def get_symbols(expr: z3.ExprRef) -> Set[z3.SeqRef]:
     if is_z3_var(expr):
         if expr.decl().range() != z3.StringSort():
             raise NotImplementedError(
-                f"This class was developed for String symbols only, found {op.range()}")
+                f"This class was developed for String symbols only, found {op.range()}"
+            )
 
         assert isinstance(expr, z3.SeqRef)
         return {expr}
 
-    return reduce(lambda acc, elem: acc | elem, [get_symbols(child) for child in expr.children()], set())
+    return reduce(
+        lambda acc, elem: acc | elem,
+        [get_symbols(child) for child in expr.children()],
+        set(),
+    )
 
 
 def smt_expr_to_str(f: z3.ExprRef, qfd_var_stack: Tuple[str, ...] = ()) -> str:
@@ -394,13 +459,13 @@ def smt_expr_to_str(f: z3.ExprRef, qfd_var_stack: Tuple[str, ...] = ()) -> str:
         assert len(qfd_var_stack) > idx
         return qfd_var_stack[idx]
     if z3.is_string_value(f):
-        return '"' + cast(str, f.as_string()).replace('"', r'\"') + '"'
+        return '"' + cast(str, f.as_string()).replace('"', r"\"") + '"'
     if z3.is_int_value(f):
         return str(f.as_long())
     if z3.is_true(f):
-        return 'true'
+        return "true"
     if z3.is_false(f):
-        return 'false'
+        return "false"
     if is_z3_var(f):
         return str(f)
 
@@ -419,7 +484,10 @@ def smt_expr_to_str(f: z3.ExprRef, qfd_var_stack: Tuple[str, ...] = ()) -> str:
         if not f.children():
             return op
 
-        return f"({op} {' '.join(map(lambda c: smt_expr_to_str(c, qfd_var_stack), f.children()))}".strip() + ")"
+        return (
+            f"({op} {' '.join(map(lambda c: smt_expr_to_str(c, qfd_var_stack), f.children()))}".strip()
+            + ")"
+        )
 
     if isinstance(f, z3.QuantifierRef):
         vars = []

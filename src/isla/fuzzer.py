@@ -47,13 +47,17 @@ def all_terminals(tree: DerivationTree) -> str:
     return str(tree)
 
 
-def expansion_key(symbol: str, expansion: Expansion | DerivationTree | Iterable[DerivationTree]) -> str:
+def expansion_key(
+    symbol: str, expansion: Expansion | DerivationTree | Iterable[DerivationTree]
+) -> str:
     """Convert (symbol, `expansion`) into a key "SYMBOL -> EXPRESSION".
     `expansion` can be an expansion string, a derivation tree, or a list of derivation trees."""
 
     if isinstance(expansion, DerivationTree):
         expansion = expansion.value
-    elif not isinstance(expansion, str) and isinstance(expansion, collections.abc.Iterable):
+    elif not isinstance(expansion, str) and isinstance(
+        expansion, collections.abc.Iterable
+    ):
         # Iterable of derivation trees
         assert all(isinstance(elem, DerivationTree) for elem in expansion)
         expansion = "".join(map(lambda t: t.value, expansion))
@@ -99,13 +103,15 @@ class Fuzzer:
         """Return fuzz input"""
         return ""
 
-    def run(self, runner: Runner = Runner()) \
-            -> Tuple[subprocess.CompletedProcess, Outcome]:
+    def run(
+        self, runner: Runner = Runner()
+    ) -> Tuple[subprocess.CompletedProcess, Outcome]:
         """Run `runner` with fuzz input"""
         return runner.run(self.fuzz())
 
-    def runs(self, runner: Runner = PrintRunner(), trials: int = 10) \
-            -> List[Tuple[subprocess.CompletedProcess, Outcome]]:
+    def runs(
+        self, runner: Runner = PrintRunner(), trials: int = 10
+    ) -> List[Tuple[subprocess.CompletedProcess, Outcome]]:
         """Run `runner` with fuzz input, `trials` times"""
         # Note: the list comprehension below does not invoke self.run() for subclasses
         # return [self.run(runner) for i in range(trials)]
@@ -127,13 +133,14 @@ class GrammarFuzzer(Fuzzer):
     """Produce strings from grammars efficiently, using derivation trees."""
 
     def __init__(
-            self,
-            grammar: Grammar,
-            start_symbol: str = "<start>",
-            min_nonterminals: int = 0,
-            max_nonterminals: int = 10,
-            disp: bool = False,
-            log: bool | int = False) -> None:
+        self,
+        grammar: Grammar,
+        start_symbol: str = "<start>",
+        min_nonterminals: int = 0,
+        max_nonterminals: int = 10,
+        disp: bool = False,
+        log: bool | int = False,
+    ) -> None:
         """Produce strings from `grammar`, starting with `start_symbol`.
         If `min_nonterminals` or `max_nonterminals` is given, use them as limits
         for the number of nonterminals produced.
@@ -159,11 +166,12 @@ class GrammarFuzzer(Fuzzer):
     def init_tree(self) -> DerivationTree:
         return DerivationTree(self.start_symbol, None)
 
-    def choose_node_expansion(self, node: DerivationTree,
-                              children_alternatives: List[List[DerivationTree]]) -> int:
+    def choose_node_expansion(
+        self, node: DerivationTree, children_alternatives: List[List[DerivationTree]]
+    ) -> int:
         """Return index of expansion in `children_alternatives` to be selected.
-           'children_alternatives`: a list of possible children for `node`.
-           Defaults to random. To be overloaded in subclasses."""
+        'children_alternatives`: a list of possible children for `node`.
+        Defaults to random. To be overloaded in subclasses."""
         return random.randrange(0, len(children_alternatives))
 
     def expansion_to_children(self, expansion: Expansion) -> List[DerivationTree]:
@@ -174,9 +182,11 @@ class GrammarFuzzer(Fuzzer):
             return [DerivationTree("", [])]
 
         strings = RE_NONTERMINAL.split(expansion)
-        return [DerivationTree(s, None) if is_nonterminal(s)
-                else DerivationTree(s, [])
-                for s in strings if len(s) > 0]
+        return [
+            DerivationTree(s, None) if is_nonterminal(s) else DerivationTree(s, [])
+            for s in strings
+            if len(s) > 0
+        ]
 
     def possible_expansions(self, node: DerivationTree) -> int:
         if node.children is None:
@@ -194,7 +204,9 @@ class GrammarFuzzer(Fuzzer):
         expansions = self.grammar[symbol]
         return min(self.expansion_cost(e, seen | {symbol}) for e in expansions)
 
-    def expansion_cost(self, expansion: Expansion, seen: Optional[Set[str]] = None) -> int | float:
+    def expansion_cost(
+        self, expansion: Expansion, seen: Optional[Set[str]] = None
+    ) -> int | float:
         if seen is None:
             seen = set()
 
@@ -203,44 +215,55 @@ class GrammarFuzzer(Fuzzer):
             return 1  # no symbol
 
         if any(s in seen for s in symbols):
-            return float('inf')
+            return float("inf")
 
         # the value of a expansion is the sum of all expandable variables
         return sum(self.symbol_cost(s, seen) for s in symbols) + 1
 
     def process_chosen_children(
-            self, chosen_children: List[DerivationTree], expansion: Expansion) -> List[DerivationTree]:
+        self, chosen_children: List[DerivationTree], expansion: Expansion
+    ) -> List[DerivationTree]:
         """Process children after selection.  By default, does nothing."""
         return chosen_children
 
-    def expand_node_by_cost(self, node: DerivationTree, choose: Callable = min) -> DerivationTree:
+    def expand_node_by_cost(
+        self, node: DerivationTree, choose: Callable = min
+    ) -> DerivationTree:
         (symbol, children) = node
         assert children is None
 
         # Fetch the possible expansions from grammar...
         expansions = self.grammar[symbol]
 
-        children_alternatives_with_cost = [(self.expansion_to_children(expansion),
-                                            self.expansion_cost(expansion, {symbol}),
-                                            expansion)
-                                           for expansion in expansions]
+        children_alternatives_with_cost = [
+            (
+                self.expansion_to_children(expansion),
+                self.expansion_cost(expansion, {symbol}),
+                expansion,
+            )
+            for expansion in expansions
+        ]
 
-        costs = [cost for (child, cost, expansion)
-                 in children_alternatives_with_cost]
+        costs = [cost for (child, cost, expansion) in children_alternatives_with_cost]
         chosen_cost = choose(costs)
-        children_with_chosen_cost = [child for (child, child_cost, _)
-                                     in children_alternatives_with_cost
-                                     if child_cost == chosen_cost]
-        expansion_with_chosen_cost = [expansion for (_, child_cost, expansion)
-                                      in children_alternatives_with_cost
-                                      if child_cost == chosen_cost]
+        children_with_chosen_cost = [
+            child
+            for (child, child_cost, _) in children_alternatives_with_cost
+            if child_cost == chosen_cost
+        ]
+        expansion_with_chosen_cost = [
+            expansion
+            for (_, child_cost, expansion) in children_alternatives_with_cost
+            if child_cost == chosen_cost
+        ]
 
         index = self.choose_node_expansion(node, children_with_chosen_cost)
 
         chosen_children = children_with_chosen_cost[index]
         chosen_expansion = expansion_with_chosen_cost[index]
         chosen_children = self.process_chosen_children(
-            chosen_children, chosen_expansion)
+            chosen_children, chosen_expansion
+        )
 
         # Return with a new list
         return DerivationTree(symbol, chosen_children)
@@ -260,50 +283,56 @@ class GrammarFuzzer(Fuzzer):
     def expand_node(self, node: DerivationTree) -> DerivationTree:
         return self.expand_node_max_cost(node)
 
-    def choose_tree_expansion(self,
-                              tree: DerivationTree,
-                              children: List[DerivationTree]) -> int:
+    def choose_tree_expansion(
+        self, tree: DerivationTree, children: List[DerivationTree]
+    ) -> int:
         """Return index of subtree in `children` to be selected for expansion.
-           Defaults to random."""
+        Defaults to random."""
         return random.randrange(0, len(children))
 
     def expand_tree_once(self, tree: DerivationTree) -> DerivationTree:
         """Choose an unexpanded symbol in tree; expand it.
-           Can be overloaded in subclasses."""
+        Can be overloaded in subclasses."""
         if tree.children is None:
             # Expand this node
             return self.expand_node(tree)
 
         # Find all children with possible expansions
         expandable_children = [
-            c for c in tree.children if self.any_possible_expansions(c)]
+            c for c in tree.children if self.any_possible_expansions(c)
+        ]
 
         # `index_map` translates an index in `expandable_children`
         # back into the original index in `children`
-        index_map = [i for (i, c) in enumerate(tree.children)
-                     if c in expandable_children]
+        index_map = [
+            i for (i, c) in enumerate(tree.children) if c in expandable_children
+        ]
 
         # Select a random child
         child_to_be_expanded = self.choose_tree_expansion(tree, expandable_children)
 
         return tree.replace_path(
             (index_map[child_to_be_expanded],),
-            self.expand_tree_once(expandable_children[child_to_be_expanded]))
+            self.expand_tree_once(expandable_children[child_to_be_expanded]),
+        )
 
     def log_tree(self, tree: DerivationTree) -> None:
         """Output a tree if self.log is set; if self.display is also set, show the tree structure"""
         if self.log:
             print("Tree:", all_terminals(tree))
 
-    def expand_tree_with_strategy(self, tree: DerivationTree,
-                                  expand_node_method: Callable,
-                                  limit: Optional[int] = None):
+    def expand_tree_with_strategy(
+        self,
+        tree: DerivationTree,
+        expand_node_method: Callable,
+        limit: Optional[int] = None,
+    ):
         """Expand tree using `expand_node_method` as node expansion function
         until the number of possible expansions reaches `limit`."""
         self.expand_node = expand_node_method  # type: ignore
-        while ((limit is None
-                or self.possible_expansions(tree) < limit)
-               and self.any_possible_expansions(tree)):
+        while (
+            limit is None or self.possible_expansions(tree) < limit
+        ) and self.any_possible_expansions(tree):
             tree = self.expand_tree_once(tree)
             self.log_tree(tree)
         return tree
@@ -326,7 +355,9 @@ class GrammarFuzzer(Fuzzer):
         chosen_children = children_alternatives[index]
 
         # Process children (for subclasses)
-        chosen_children = self.process_chosen_children(chosen_children, expansions[index])
+        chosen_children = self.process_chosen_children(
+            chosen_children, expansions[index]
+        )
 
         # Return with new children
         return DerivationTree(node.value, chosen_children)
@@ -335,11 +366,12 @@ class GrammarFuzzer(Fuzzer):
         """Expand `tree` in a three-phase strategy until all expansions are complete."""
         self.log_tree(tree)
         tree = self.expand_tree_with_strategy(
-            tree, self.expand_node_max_cost, self.min_nonterminals)
+            tree, self.expand_node_max_cost, self.min_nonterminals
+        )
         tree = self.expand_tree_with_strategy(
-            tree, self.expand_node_randomly, self.max_nonterminals)
-        tree = self.expand_tree_with_strategy(
-            tree, self.expand_node_min_cost)
+            tree, self.expand_node_randomly, self.max_nonterminals
+        )
+        tree = self.expand_tree_with_strategy(tree, self.expand_node_min_cost)
 
         assert self.possible_expansions(tree) == 0
 
@@ -379,8 +411,7 @@ class GrammarCoverageFuzzer(GrammarFuzzer):
         """Clear coverage info tracked so far"""
         self.covered_expansions: Set[str] = set()
 
-    def _max_expansion_coverage(self, symbol: str,
-                                max_depth: int | float) -> Set[str]:
+    def _max_expansion_coverage(self, symbol: str, max_depth: int | float) -> Set[str]:
         if max_depth <= 0:
             return set()
 
@@ -393,15 +424,17 @@ class GrammarCoverageFuzzer(GrammarFuzzer):
             for nonterminal in nonterminals(expansion):
                 if nonterminal not in self._symbols_seen:
                     expansions |= self._max_expansion_coverage(
-                        nonterminal, max_depth - 1)
+                        nonterminal, max_depth - 1
+                    )
 
         return expansions
 
-    def max_expansion_coverage(self, symbol: Optional[str] = None,
-                               max_depth: int | float = float('inf')) -> Set[str]:
+    def max_expansion_coverage(
+        self, symbol: Optional[str] = None, max_depth: int | float = float("inf")
+    ) -> Set[str]:
         """Return set of all expansions in a grammar
-           starting with `symbol` (default: start symbol).
-           If `max_depth` is given, expand only to that depth."""
+        starting with `symbol` (default: start symbol).
+        If `max_depth` is given, expand only to that depth."""
         if symbol is None:
             symbol = self.start_symbol
 
@@ -413,7 +446,9 @@ class GrammarCoverageFuzzer(GrammarFuzzer):
 
         return cov
 
-    def add_coverage(self, symbol: str, new_child: Expansion | Iterable[DerivationTree]) -> None:
+    def add_coverage(
+        self, symbol: str, new_child: Expansion | Iterable[DerivationTree]
+    ) -> None:
         key = expansion_key(symbol, new_child)
 
         if self.log and key not in self.covered_expansions:
@@ -425,25 +460,27 @@ class GrammarCoverageFuzzer(GrammarFuzzer):
         return self.max_expansion_coverage() - self.expansion_coverage()
 
     def choose_uncovered_node_expansion(
-            self, node: DerivationTree, children_alternatives: List[List[DerivationTree]]) -> int:
+        self, node: DerivationTree, children_alternatives: List[List[DerivationTree]]
+    ) -> int:
         return random.randrange(0, len(children_alternatives))
 
     def choose_covered_node_expansion(
-            self, node: DerivationTree, children_alternatives: List[List[DerivationTree]]) -> int:
+        self, node: DerivationTree, children_alternatives: List[List[DerivationTree]]
+    ) -> int:
         return random.randrange(0, len(children_alternatives))
 
-    def new_coverages(self, node: DerivationTree,
-                      children_alternatives: List[List[DerivationTree]]) \
-            -> Optional[List[Set[str]]]:
+    def new_coverages(
+        self, node: DerivationTree, children_alternatives: List[List[DerivationTree]]
+    ) -> Optional[List[Set[str]]]:
         """Return coverage to be obtained for each child at minimum depth"""
 
         (symbol, children) = node
         for max_depth in range(len(self.grammar)):
             new_coverages = [
-                self.new_child_coverage(
-                    symbol, c, max_depth) for c in children_alternatives]
-            max_new_coverage = max(len(new_coverage)
-                                   for new_coverage in new_coverages)
+                self.new_child_coverage(symbol, c, max_depth)
+                for c in children_alternatives
+            ]
+            max_new_coverage = max(len(new_coverage) for new_coverage in new_coverages)
             if max_new_coverage > 0:
                 # Uncovered node found
                 return new_coverages
@@ -451,20 +488,23 @@ class GrammarCoverageFuzzer(GrammarFuzzer):
         # All covered
         return None
 
-    def new_child_coverage(self,
-                           symbol: str,
-                           children: List[DerivationTree],
-                           max_depth: int | float = float('inf')) -> Set[str]:
+    def new_child_coverage(
+        self,
+        symbol: str,
+        children: List[DerivationTree],
+        max_depth: int | float = float("inf"),
+    ) -> Set[str]:
         """Return new coverage that would be obtained
-           by expanding (`symbol`, `children`)"""
+        by expanding (`symbol`, `children`)"""
 
         new_cov = self._new_child_coverage(children, max_depth)
         new_cov.add(expansion_key(symbol, children))
         new_cov -= self.expansion_coverage()  # -= is set subtraction
         return new_cov
 
-    def _new_child_coverage(self, children: List[DerivationTree],
-                            max_depth: int | float) -> Set[str]:
+    def _new_child_coverage(
+        self, children: List[DerivationTree], max_depth: int | float
+    ) -> Set[str]:
         new_cov: Set[str] = set()
         for (c_symbol, _) in children:
             if c_symbol in self.grammar:
@@ -472,11 +512,12 @@ class GrammarCoverageFuzzer(GrammarFuzzer):
 
         return new_cov
 
-    def choose_node_expansion(self, node: DerivationTree,
-                              children_alternatives: List[List[DerivationTree]]) -> int:
+    def choose_node_expansion(
+        self, node: DerivationTree, children_alternatives: List[List[DerivationTree]]
+    ) -> int:
         """Choose an expansion of `node` among `children_alternatives`.
-           Return `n` such that expanding `children_alternatives[n]`
-           yields the highest additional coverage."""
+        Return `n` such that expanding `children_alternatives[n]`
+        yields the highest additional coverage."""
 
         (symbol, children) = node
         new_coverages = self.new_coverages(node, children_alternatives)
@@ -487,14 +528,21 @@ class GrammarCoverageFuzzer(GrammarFuzzer):
 
         max_new_coverage = max(len(cov) for cov in new_coverages)
 
-        children_with_max_new_coverage = [c for (i, c) in enumerate(children_alternatives)
-                                          if len(new_coverages[i]) == max_new_coverage]
-        index_map = [i for (i, c) in enumerate(children_alternatives)
-                     if len(new_coverages[i]) == max_new_coverage]
+        children_with_max_new_coverage = [
+            c
+            for (i, c) in enumerate(children_alternatives)
+            if len(new_coverages[i]) == max_new_coverage
+        ]
+        index_map = [
+            i
+            for (i, c) in enumerate(children_alternatives)
+            if len(new_coverages[i]) == max_new_coverage
+        ]
 
         # Select a random expansion
         new_children_index = self.choose_uncovered_node_expansion(
-            node, children_with_max_new_coverage)
+            node, children_with_max_new_coverage
+        )
         new_children = children_with_max_new_coverage[new_children_index]
 
         # Save the expansion as covered

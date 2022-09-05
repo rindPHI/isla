@@ -6,7 +6,13 @@ from grammar_graph.gg import GrammarGraph, NonterminalNode, Node, ChoiceNode
 from orderedset import OrderedSet
 
 from isla import language
-from isla.helpers import is_prefix, path_iterator, dict_of_lists_to_list_of_dicts, assertions_activated, is_nonterminal
+from isla.helpers import (
+    is_prefix,
+    path_iterator,
+    dict_of_lists_to_list_of_dicts,
+    assertions_activated,
+    is_nonterminal,
+)
 from isla.derivation_tree import DerivationTree
 from isla.parser import non_canonical
 from isla.type_defs import Path, CanonicalGrammar, ParseTree
@@ -16,12 +22,14 @@ SELF_EMBEDDING = 0b010
 CONTEXT_ADDITION = 0b100
 
 
-def insert_tree(grammar: CanonicalGrammar,
-                tree: DerivationTree,
-                in_tree: DerivationTree,
-                graph: Optional[GrammarGraph] = None,
-                max_num_solutions: Optional[int] = 50,
-                methods: int = DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION) -> List[DerivationTree]:
+def insert_tree(
+    grammar: CanonicalGrammar,
+    tree: DerivationTree,
+    in_tree: DerivationTree,
+    graph: Optional[GrammarGraph] = None,
+    max_num_solutions: Optional[int] = 50,
+    methods: int = DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION,
+) -> List[DerivationTree]:
     result: List[DerivationTree] = []
     result_hashes: Set[int] = set()
 
@@ -36,10 +44,15 @@ def insert_tree(grammar: CanonicalGrammar,
         #         and not any(existing.is_prefix(new_tree) for existing in result)):
 
         assert graph.tree_is_valid(new_tree)
-        assert all(new_tree.find_node(node.id) is not None for _, node in in_tree.paths())
+        assert all(
+            new_tree.find_node(node.id) is not None for _, node in in_tree.paths()
+        )
 
-        if (new_tree.find_node(tree) is not None  # In rare cases things fail (see simple-tar case study)
-                and new_tree.structural_hash() not in result_hashes):
+        if (
+            new_tree.find_node(tree)
+            is not None  # In rare cases things fail (see simple-tar case study)
+            and new_tree.structural_hash() not in result_hashes
+        ):
             result.append(new_tree)
             result_hashes.add(new_tree.structural_hash())
 
@@ -50,14 +63,24 @@ def insert_tree(grammar: CanonicalGrammar,
         # Note: This can produce max_num_solutions * (number of insertion strategies) many solutions,
         # but, we do not divide the solution "slots" since different solutions are interesting for
         # different problems.
-        num_solutions = None if max_num_solutions is None else max(0, max_num_solutions - len(result))
+        num_solutions = (
+            None
+            if max_num_solutions is None
+            else max(0, max_num_solutions - len(result))
+        )
         if num_solutions is not None and num_solutions <= 0:
             break
 
         if methods & DIRECT_EMBEDDING:
-            add_to_result(compute_direct_embeddings(tree, in_tree, grammar, graph, num_solutions))
+            add_to_result(
+                compute_direct_embeddings(tree, in_tree, grammar, graph, num_solutions)
+            )
         if methods & SELF_EMBEDDING:
-            add_to_result(compute_self_embeddings(current_path, tree, in_tree, grammar, graph, num_solutions))
+            add_to_result(
+                compute_self_embeddings(
+                    current_path, tree, in_tree, grammar, graph, num_solutions
+                )
+            )
 
         # NOTE: "Context addition" has been deactivated, since it leads to a loss of subtrees:
         #       a compatible subtree is replaced, and the lost trees shall be re-inserted into
@@ -67,7 +90,11 @@ def insert_tree(grammar: CanonicalGrammar,
         #       part. Insertion by embedding is, in any case, non-destructive.
         # NOTE: Context addition is needed for XML and possibly other "nested" languages.
         if methods & CONTEXT_ADDITION:
-            add_to_result(compute_context_additions(current_path, tree, in_tree, grammar, graph, num_solutions))
+            add_to_result(
+                compute_context_additions(
+                    current_path, tree, in_tree, grammar, graph, num_solutions
+                )
+            )
 
         current_path = in_tree.next_path(current_path)
 
@@ -75,12 +102,13 @@ def insert_tree(grammar: CanonicalGrammar,
 
 
 def compute_context_additions(
-        current_path: Path,
-        tree: DerivationTree,
-        in_tree: DerivationTree,
-        grammar: CanonicalGrammar,
-        graph: GrammarGraph,
-        max_num_solutions: Optional[int]) -> List[DerivationTree]:
+    current_path: Path,
+    tree: DerivationTree,
+    in_tree: DerivationTree,
+    grammar: CanonicalGrammar,
+    graph: GrammarGraph,
+    max_num_solutions: Optional[int],
+) -> List[DerivationTree]:
     curr_tree = in_tree.get_subtree(current_path)
 
     if curr_tree.value != tree.value:
@@ -92,46 +120,63 @@ def compute_context_additions(
     # Thus, we collect all sibling trees of curr_tree, such that all leaves are retained.
     all_in_tree_subtrees: Dict[Path, DerivationTree] = {current_path: curr_tree}
     for path, tree in in_tree.paths():
-        if (path and
-                not any(p == path or is_prefix(p, path) or is_prefix(path, p)
-                        for p in all_in_tree_subtrees) and
-                tree.id not in [t.id for _, t in into_tree.paths()]):
+        if (
+            path
+            and not any(
+                p == path or is_prefix(p, path) or is_prefix(path, p)
+                for p in all_in_tree_subtrees
+            )
+            and tree.id not in [t.id for _, t in into_tree.paths()]
+        ):
             all_in_tree_subtrees[path] = tree
 
     # TODO: Could also go for reachable instead direct match
     result = insert_trees(
         list(all_in_tree_subtrees.values()),
         into_tree,
-        grammar, graph, max_num_solutions)
+        grammar,
+        graph,
+        max_num_solutions,
+    )
 
     # TODO: Rather than applying the filtering below, we should fix the `insert_trees`
     #       method to *really* insert all trees. The re-insertion failed (see, e.g.,
     #       test case test_insert_lang_3), i.e., it produced an output not containing
     #       the root of the tree that should be re-inserted. Yet, for time reasons I
     #       resorted to this hacky solution. (DS)
-    return [tree for tree in result
-            if (all(tree.find_node(inserted_tree) is not None
-                    for inserted_tree in all_in_tree_subtrees.values()) and
-                tree.find_node(into_tree) is not None) and
-            all(tree.find_node(node.id) is not None for _, node in in_tree.paths())]
+    return [
+        tree
+        for tree in result
+        if (
+            all(
+                tree.find_node(inserted_tree) is not None
+                for inserted_tree in all_in_tree_subtrees.values()
+            )
+            and tree.find_node(into_tree) is not None
+        )
+        and all(tree.find_node(node.id) is not None for _, node in in_tree.paths())
+    ]
 
 
 def compute_self_embeddings(
-        current_path: Path,
-        tree: DerivationTree,
-        in_tree: DerivationTree,
-        grammar: CanonicalGrammar,
-        graph: GrammarGraph,
-        max_num_solutions: Optional[int]) -> List[DerivationTree]:
+    current_path: Path,
+    tree: DerivationTree,
+    in_tree: DerivationTree,
+    grammar: CanonicalGrammar,
+    graph: GrammarGraph,
+    max_num_solutions: Optional[int],
+) -> List[DerivationTree]:
     # We try a self-embedding: embed the current node into a tree starting
     # with the same nonterminal, such that `tree` can be added somewhere before
     # the place where `current_tree` is added.
     curr_tree = in_tree.get_subtree(current_path)
     curr_node = curr_tree.value
 
-    if (not isinstance(curr_node, str) or
-            not is_nonterminal(curr_node) or
-            not graph.reachable(graph.get_node(curr_node), graph.get_node(curr_node))):
+    if (
+        not isinstance(curr_node, str)
+        or not is_nonterminal(curr_node)
+        or not graph.reachable(graph.get_node(curr_node), graph.get_node(curr_node))
+    ):
         return []
 
     results: Dict[int, DerivationTree] = {}
@@ -139,7 +184,8 @@ def compute_self_embeddings(
     self_embedding_trees = [
         self_embedding_tree
         for self_embedding_path in paths_between(graph, curr_node, curr_node)
-        for self_embedding_tree in path_to_tree(grammar, self_embedding_path)]
+        for self_embedding_tree in path_to_tree(grammar, self_embedding_path)
+    ]
 
     assert all(t.has_unique_ids() for t in self_embedding_trees)
     assert curr_tree.has_unique_ids()
@@ -148,7 +194,10 @@ def compute_self_embeddings(
     instantiated_self_embedding_trees: List[DerivationTree] = [
         insert_result
         for self_embedding_tree in self_embedding_trees
-        for insert_result in insert_trees([curr_tree, tree], self_embedding_tree, grammar, graph, max_num_solutions)]
+        for insert_result in insert_trees(
+            [curr_tree, tree], self_embedding_tree, grammar, graph, max_num_solutions
+        )
+    ]
 
     for instantiated_tree in instantiated_self_embedding_trees:
         assert graph.tree_is_valid(instantiated_tree)
@@ -170,7 +219,9 @@ def compute_self_embeddings(
         # assert graph.tree_is_valid(new_tree.to_parse_tree())
         assert new_tree.has_unique_ids()
 
-        assert all(new_tree.find_node(node.id) is not None for _, node in in_tree.paths())
+        assert all(
+            new_tree.find_node(node.id) is not None for _, node in in_tree.paths()
+        )
 
         results[new_tree.structural_hash()] = new_tree
 
@@ -178,11 +229,12 @@ def compute_self_embeddings(
 
 
 def compute_direct_embeddings(
-        tree: DerivationTree,
-        in_tree: DerivationTree,
-        grammar: CanonicalGrammar,
-        graph: GrammarGraph,
-        max_num_solutions: Optional[int]) -> List[DerivationTree]:
+    tree: DerivationTree,
+    in_tree: DerivationTree,
+    grammar: CanonicalGrammar,
+    graph: GrammarGraph,
+    max_num_solutions: Optional[int],
+) -> List[DerivationTree]:
     # perfect_matches: List[Path] = []
     embeddable_matches: List[Tuple[Path, DerivationTree]] = []
 
@@ -205,14 +257,19 @@ def compute_direct_embeddings(
         if len(results) >= (max_num_solutions or sys.maxsize):
             break
 
-        t = wrap_in_tree_starting_in(match_tree.root_nonterminal(), tree, grammar, graph)
+        t = wrap_in_tree_starting_in(
+            match_tree.root_nonterminal(), tree, grammar, graph
+        )
         orig_node = in_tree.get_subtree(match_path_embeddable)
         assert t.value == orig_node.value
         new_tree = in_tree.replace_path(
             match_path_embeddable,
             DerivationTree(t.value, t.children, orig_node.id),
-            retain_id=True)
-        assert all(new_tree.find_node(node.id) is not None for _, node in in_tree.paths())
+            retain_id=True,
+        )
+        assert all(
+            new_tree.find_node(node.id) is not None for _, node in in_tree.paths()
+        )
         results[new_tree.structural_hash()] = new_tree
 
     # NOTE: Removed the attempt to use existing "holes" for now. There is some kind of problem with
@@ -236,18 +293,18 @@ def compute_direct_embeddings(
 
 
 def insert_trees(
-        trees_to_insert: List[DerivationTree],
-        into_tree: DerivationTree,
-        grammar: CanonicalGrammar,
-        graph: GrammarGraph,
-        max_num_solutions: Optional[int]) -> List[DerivationTree]:
+    trees_to_insert: List[DerivationTree],
+    into_tree: DerivationTree,
+    grammar: CanonicalGrammar,
+    graph: GrammarGraph,
+    max_num_solutions: Optional[int],
+) -> List[DerivationTree]:
     assert into_tree.has_unique_ids()
     assert all(tree.has_unique_ids() for tree in trees_to_insert)
     if assertions_activated():
         ids_in_tree_to_insert = {
-            t.id
-            for tree in trees_to_insert
-            for _, t in tree.filter(lambda _: True)}
+            t.id for tree in trees_to_insert for _, t in tree.filter(lambda _: True)
+        }
         ids_in_into_tree = {t.id for _, t in into_tree.filter(lambda _: True)}
         assert ids_in_tree_to_insert.isdisjoint(ids_in_into_tree)
 
@@ -263,27 +320,41 @@ def insert_trees(
 
     possible_insertion_points: Dict[DerivationTree, List[Path]] = {
         tree: [
-            path for path, subtree in into_tree.leaves()
-            if any(subtree.value == insert_tree_subtree.value or
-                   (is_nonterminal(subtree.value) and
-                    is_nonterminal(insert_tree_subtree.value) and
-                    graph.reachable(subtree.value, insert_tree_subtree.value))
-                   for insert_tree_subtree in children_with_at_most_one_parent(tree))
+            path
+            for path, subtree in into_tree.leaves()
+            if any(
+                subtree.value == insert_tree_subtree.value
+                or (
+                    is_nonterminal(subtree.value)
+                    and is_nonterminal(insert_tree_subtree.value)
+                    and graph.reachable(subtree.value, insert_tree_subtree.value)
+                )
+                for insert_tree_subtree in children_with_at_most_one_parent(tree)
+            )
         ]
         for tree in trees_to_insert
     }
-    possible_insertion_points = {t: l for t, l in possible_insertion_points.items() if l}
+    possible_insertion_points = {
+        t: l for t, l in possible_insertion_points.items() if l
+    }
 
-    all_combinations: List[Dict[DerivationTree, Path]] = dict_of_lists_to_list_of_dicts(possible_insertion_points)
+    all_combinations: List[Dict[DerivationTree, Path]] = dict_of_lists_to_list_of_dicts(
+        possible_insertion_points
+    )
     possible_combinations: List[Dict[DerivationTree, Path]] = [
-        combination for combination in all_combinations
-        if combination and all(
-            idx_1 == idx_2 or
-            (path_1 != path_2 and
-             not is_prefix(path_1, path_2) and
-             not is_prefix(path_2, path_1))
+        combination
+        for combination in all_combinations
+        if combination
+        and all(
+            idx_1 == idx_2
+            or (
+                path_1 != path_2
+                and not is_prefix(path_1, path_2)
+                and not is_prefix(path_2, path_1)
+            )
             for idx_1, path_1 in enumerate(combination.values())
-            for idx_2, path_2 in enumerate(combination.values()))
+            for idx_2, path_2 in enumerate(combination.values())
+        )
     ]
 
     result: List[DerivationTree] = []
@@ -305,13 +376,19 @@ def insert_trees(
                     new_tree = result_tree.replace_path(insertion_path, tree)
                     assert graph.tree_is_valid(new_tree)
                     assert new_tree.has_unique_ids()
-                    assert all(new_tree.find_node(node.id) is not None for _, node in tree.paths())
+                    assert all(
+                        new_tree.find_node(node.id) is not None
+                        for _, node in tree.paths()
+                    )
 
                     new_result_trees.append(new_tree)
                     continue
 
                 single_parent_tree_children = [
-                    t for t in children_with_at_most_one_parent(tree) if is_nonterminal(t.value)]
+                    t
+                    for t in children_with_at_most_one_parent(tree)
+                    if is_nonterminal(t.value)
+                ]
 
                 # for subtree in [t for t in single_parent_tree_children if t.value == insertion_point_tree.value]:
                 #     # NOTE: Here, IDs from `tree` might get lost, since we extract subtrees
@@ -322,7 +399,9 @@ def insert_trees(
                 #     assert all(new_tree.find_node(node.id) is not None for _, node in tree.paths())
                 #     new_result_trees.append(new_tree)
 
-                insertion_points: Dict[Path, DerivationTree] = {insertion_path: insertion_point_tree}
+                insertion_points: Dict[Path, DerivationTree] = {
+                    insertion_path: insertion_point_tree
+                }
                 for subtree in single_parent_tree_children:
                     # We might have to insert subtree some steps higher up in the hierarchy.
                     # Example Scriptsize-C: If we insert a <declaration> at a <statement> node,
@@ -338,30 +417,46 @@ def insert_trees(
                         if result_tree.get_subtree(p).value == subtree.value:
                             continue
 
-                        if graph.reachable(result_tree.get_subtree(p).value, subtree.value):
+                        if graph.reachable(
+                            result_tree.get_subtree(p).value, subtree.value
+                        ):
                             insertion_points[p] = result_tree.get_subtree(p)
 
-                for subtree in [t for t in single_parent_tree_children if is_nonterminal(t.value)]:
+                for subtree in [
+                    t for t in single_parent_tree_children if is_nonterminal(t.value)
+                ]:
                     for connecting_tree, insert_leaf_path, insertion_path in (
-                            (connecting_tree, insert_leaf_path, insertion_path)
-                            for insertion_path, insertion_point_tree in insertion_points.items()
-                            if is_nonterminal(insertion_point_tree.value)
-                            for connecting_path in paths_between(graph, insertion_point_tree.value, subtree.value)
-                            for connecting_tree in path_to_tree(grammar, connecting_path)
-                            for insert_leaf_path, (insert_leaf_nonterm, _) in connecting_tree.open_leaves()
-                            if insert_leaf_nonterm == subtree.value):
+                        (connecting_tree, insert_leaf_path, insertion_path)
+                        for insertion_path, insertion_point_tree in insertion_points.items()
+                        if is_nonterminal(insertion_point_tree.value)
+                        for connecting_path in paths_between(
+                            graph, insertion_point_tree.value, subtree.value
+                        )
+                        for connecting_tree in path_to_tree(grammar, connecting_path)
+                        for insert_leaf_path, (
+                            insert_leaf_nonterm,
+                            _,
+                        ) in connecting_tree.open_leaves()
+                        if insert_leaf_nonterm == subtree.value
+                    ):
                         # We have to preserve the ID of the original node at that path.
                         connecting_tree_with_orig_leaf_id = DerivationTree(
                             connecting_tree.value,
                             connecting_tree.children,
-                            result_tree.get_subtree(insertion_path).id)
+                            result_tree.get_subtree(insertion_path).id,
+                        )
                         assert connecting_tree_with_orig_leaf_id.has_unique_ids()
 
-                        instantiated_connecting_tree = connecting_tree_with_orig_leaf_id.replace_path(
-                            insert_leaf_path, subtree)
+                        instantiated_connecting_tree = (
+                            connecting_tree_with_orig_leaf_id.replace_path(
+                                insert_leaf_path, subtree
+                            )
+                        )
                         assert instantiated_connecting_tree.has_unique_ids()
 
-                        new_tree = result_tree.replace_path(insertion_path, instantiated_connecting_tree)
+                        new_tree = result_tree.replace_path(
+                            insertion_path, instantiated_connecting_tree
+                        )
                         assert new_tree.has_unique_ids()
                         assert graph.tree_is_valid(new_tree)
                         new_result_trees.append(new_tree)
@@ -391,20 +486,28 @@ def shrink_tree(tree: DerivationTree) -> DerivationTree:
             break
 
     if contains_constant:
-        return DerivationTree(node, None if children is None else [shrink_tree(child) for child in children])
+        return DerivationTree(
+            node,
+            None if children is None else [shrink_tree(child) for child in children],
+        )
     else:
         return DerivationTree(node, None)
 
 
-def wrap_in_tree_starting_in(start_nonterminal: str,
-                             tree: DerivationTree,
-                             grammar: CanonicalGrammar, graph: GrammarGraph) -> DerivationTree:
+def wrap_in_tree_starting_in(
+    start_nonterminal: str,
+    tree: DerivationTree,
+    grammar: CanonicalGrammar,
+    graph: GrammarGraph,
+) -> DerivationTree:
     start_node = graph.get_node(start_nonterminal)
     end_node = graph.get_node(tree.root_nonterminal())
     parse_tree = tree.to_parse_tree()
     assert graph.reachable(start_node, end_node)
 
-    derivation_path = [n.symbol for n in graph.shortest_non_trivial_path(start_node, end_node)]
+    derivation_path = [
+        n.symbol for n in graph.shortest_non_trivial_path(start_node, end_node)
+    ]
 
     # We work with raw parse trees here since DerivationTree objects are immutable
     result_pt: ParseTree = (start_nonterminal, [])
@@ -412,13 +515,19 @@ def wrap_in_tree_starting_in(start_nonterminal: str,
     for path_idx in range(len(derivation_path) - 1):
         path_nonterminal = derivation_path[path_idx]
         next_nonterminal = derivation_path[path_idx + 1]
-        alternatives_for_path_nonterminal = [a for a in grammar[path_nonterminal]
-                                             if next_nonterminal in a]
-        shortest_alt_for_path_nonterminal = \
-            [a for a in alternatives_for_path_nonterminal
-             if not any(a_ for a_ in alternatives_for_path_nonterminal
-                        if len(a_) < len(a))][0]
-        idx_of_next_nonterminal = shortest_alt_for_path_nonterminal.index(next_nonterminal)
+        alternatives_for_path_nonterminal = [
+            a for a in grammar[path_nonterminal] if next_nonterminal in a
+        ]
+        shortest_alt_for_path_nonterminal = [
+            a
+            for a in alternatives_for_path_nonterminal
+            if not any(
+                a_ for a_ in alternatives_for_path_nonterminal if len(a_) < len(a)
+            )
+        ][0]
+        idx_of_next_nonterminal = shortest_alt_for_path_nonterminal.index(
+            next_nonterminal
+        )
 
         for alt_idx, alt_symbol in enumerate(shortest_alt_for_path_nonterminal):
             if alt_idx == idx_of_next_nonterminal:
@@ -427,7 +536,9 @@ def wrap_in_tree_starting_in(start_nonterminal: str,
                 else:
                     curr_tree[1].append((alt_symbol, []))
             else:
-                curr_tree[1].append((alt_symbol, None if is_nonterminal(alt_symbol) else []))
+                curr_tree[1].append(
+                    (alt_symbol, None if is_nonterminal(alt_symbol) else [])
+                )
 
         curr_tree = curr_tree[1][idx_of_next_nonterminal]
 
@@ -443,8 +554,8 @@ def wrap_in_tree_starting_in(start_nonterminal: str,
 
 
 def path_to_tree(
-        grammar: CanonicalGrammar,
-        path: Union[Tuple[str], List[str]]) -> List[DerivationTree]:
+    grammar: CanonicalGrammar, path: Union[Tuple[str], List[str]]
+) -> List[DerivationTree]:
     assert len(path) > 1
     result: List[DerivationTree] = []
     candidates: List[DerivationTree] = [DerivationTree(path[0], None)]
@@ -455,20 +566,28 @@ def path_to_tree(
         for _ in range(len(candidates)):
             candidate = candidates.pop(0)
             leaf_path, (leaf_node, _) = next(candidate.open_leaves())
-            matching_expansions = [expansion for expansion in grammar[leaf_node]
-                                   if next_nonterminal in expansion]
+            matching_expansions = [
+                expansion
+                for expansion in grammar[leaf_node]
+                if next_nonterminal in expansion
+            ]
             if not matching_expansions:
                 continue
             for matching_expansion in matching_expansions:
-                nonterminal_positions = [i for i, x in enumerate(matching_expansion)
-                                         if x == next_nonterminal]
+                nonterminal_positions = [
+                    i for i, x in enumerate(matching_expansion) if x == next_nonterminal
+                ]
                 for nonterminal_position in nonterminal_positions:
-                    next_children = [DerivationTree(nonterm, [])
-                                     if idx != nonterminal_position
-                                     else DerivationTree(nonterm, None)
-                                     for idx, nonterm in enumerate(matching_expansion)]
+                    next_children = [
+                        DerivationTree(nonterm, [])
+                        if idx != nonterminal_position
+                        else DerivationTree(nonterm, None)
+                        for idx, nonterm in enumerate(matching_expansion)
+                    ]
 
-                    new_candidate = candidate.replace_path(leaf_path, DerivationTree(leaf_node, next_children))
+                    new_candidate = candidate.replace_path(
+                        leaf_path, DerivationTree(leaf_node, next_children)
+                    )
 
                     if len(path) == 1:
                         result.append(new_candidate)
@@ -490,20 +609,28 @@ def make_leaves_open(tree: DerivationTree) -> DerivationTree:
         else:
             return tree
 
-    return DerivationTree(tree.value, [make_leaves_open(child) for child in tree.children], tree.id)
+    return DerivationTree(
+        tree.value, [make_leaves_open(child) for child in tree.children], tree.id
+    )
 
 
 @lru_cache(maxsize=None)
-def paths_between(graph: GrammarGraph, start: str, dest: str) -> OrderedSet[Tuple[str, ...]]:
+def paths_between(
+    graph: GrammarGraph, start: str, dest: str
+) -> OrderedSet[Tuple[str, ...]]:
     start_node = graph.get_node(start)
     dest_node = graph.get_node(dest)
 
     assert isinstance(start_node, NonterminalNode)
 
     prefixes: List[Tuple[Set[Node], List[Node]]] = [
-        (set()
-         if start_node == dest_node and graph.reachable(start_node, start_node)
-         else {start_node}, [start_node])]
+        (
+            set()
+            if start_node == dest_node and graph.reachable(start_node, start_node)
+            else {start_node},
+            [start_node],
+        )
+    ]
     result: OrderedSet[Tuple[str, ...]] = OrderedSet([])
 
     while prefixes:
@@ -513,7 +640,9 @@ def paths_between(graph: GrammarGraph, start: str, dest: str) -> OrderedSet[Tupl
             if child not in visited:
                 new_path = prefix + [child]
                 if child == dest_node:
-                    s_path = tuple([n.symbol for n in new_path if type(n) is not ChoiceNode])
+                    s_path = tuple(
+                        [n.symbol for n in new_path if type(n) is not ChoiceNode]
+                    )
                     if s_path not in result:
                         result.add(s_path)
                         # yield s_path

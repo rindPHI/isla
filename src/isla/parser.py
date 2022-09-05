@@ -6,7 +6,7 @@ from typing import Tuple, Iterable, Generator, List, Dict, Collection
 from isla.helpers import tree_to_string, RE_NONTERMINAL
 from isla.type_defs import Grammar, ParseTree, CanonicalGrammar
 
-START_SYMBOL = '<start>'
+START_SYMBOL = "<start>"
 
 
 def single_char_tokens(grammar: Grammar) -> Dict[str, List[List[Collection[str]]]]:
@@ -41,7 +41,7 @@ def non_canonical(grammar):
         rules = grammar[k]
         new_rules = []
         for rule in rules:
-            new_rules.append(''.join(rule))
+            new_rules.append("".join(rule))
         new_grammar[k] = new_rules
     return new_grammar
 
@@ -50,11 +50,11 @@ class Parser:
     """Base class for parsing."""
 
     def __init__(self, grammar, **kwargs):
-        self._start_symbol = kwargs.get('start_symbol', START_SYMBOL)
-        self.log = kwargs.get('log', False)
-        self.tokens = kwargs.get('tokens', set())
-        self.coalesce_tokens = kwargs.get('coalesce', True)
-        canonical_grammar = kwargs.get('canonical', False)
+        self._start_symbol = kwargs.get("start_symbol", START_SYMBOL)
+        self.log = kwargs.get("log", False)
+        self.tokens = kwargs.get("tokens", set())
+        self.coalesce_tokens = kwargs.get("coalesce", True)
+        canonical_grammar = kwargs.get("canonical", False)
         if canonical_grammar:
             self.cgrammar = single_char_tokens(grammar)
             self._grammar = non_canonical(grammar)
@@ -63,7 +63,7 @@ class Parser:
             self.cgrammar = single_char_tokens(canonical(grammar))
         # we do not require a single rule for the start symbol
         if len(grammar.get(self._start_symbol, [])) != 1:
-            self.cgrammar['<>'] = [[self._start_symbol]]
+            self.cgrammar["<>"] = [[self._start_symbol]]
 
     def grammar(self) -> Grammar:
         """Return the grammar of this parser."""
@@ -75,12 +75,12 @@ class Parser:
 
     def parse_prefix(self, text: str) -> Tuple[int, Iterable[ParseTree]]:
         """Return pair (cursor, forest) for longest prefix of text.
-           To be defined in subclasses."""
+        To be defined in subclasses."""
         raise NotImplementedError()
 
     def parse(self, text: str) -> List[ParseTree]:
         """Parse `text` using the grammar.
-           Return an iterable of parse trees."""
+        Return an iterable of parse trees."""
         cursor, forest = self.parse_prefix(text)
         if cursor < len(text):
             raise SyntaxError("at " + repr(text[cursor:]))
@@ -95,7 +95,7 @@ class Parser:
             self._start_symbol = old_start
 
     def coalesce(self, children: List[ParseTree]) -> List[ParseTree]:
-        last = ''
+        last = ""
         new_lst: List[ParseTree] = []
         for cn, cc in children:
             if cn not in self._grammar:
@@ -103,7 +103,7 @@ class Parser:
             else:
                 if last:
                     new_lst.append((last, []))
-                    last = ''
+                    last = ""
                 new_lst.append((cn, cc))
         if last:
             new_lst.append((last, []))
@@ -111,7 +111,7 @@ class Parser:
 
     def prune_tree(self, tree):
         name, children = tree
-        if name == '<>':
+        if name == "<>":
             assert len(children) == 1
             return self.prune_tree(children[0])
         if self.coalesce_tokens:
@@ -128,8 +128,11 @@ class Column:
         self.states, self._unique = [], {}
 
     def __str__(self):
-        return "%s chart[%d]\n%s" % (self.letter, self.index, "\n".join(
-            str(state) for state in self.states if state.finished()))
+        return "%s chart[%d]\n%s" % (
+            self.letter,
+            self.index,
+            "\n".join(str(state) for state in self.states if state.finished()),
+        )
 
     def add(self, state):
         if state in self._unique:
@@ -163,10 +166,14 @@ class State(Item):
         def idx(var):
             return var.index if var else -1
 
-        return self.name + ':= ' + ' '.join([
-            str(p)
-            for p in [*self.expr[:self.dot], '|', *self.expr[self.dot:]]
-        ]) + "(%d,%d)" % (idx(self.s_col), idx(self.e_col))
+        return (
+            self.name
+            + ":= "
+            + " ".join(
+                [str(p) for p in [*self.expr[: self.dot], "|", *self.expr[self.dot :]]]
+            )
+            + "(%d,%d)" % (idx(self.s_col), idx(self.e_col))
+        )
 
     def copy(self):
         return State(self.name, self.expr, self.dot, self.s_col, self.e_col)
@@ -197,16 +204,14 @@ def fixpoint(f):
 
 
 def rules(grammar):
-    return [(key, choice)
-            for key, choices in grammar.items()
-            for choice in choices]
+    return [(key, choice) for key, choices in grammar.items() for choice in choices]
 
 
 def nullable_expr(expr, nullables):
     return all(token in nullables for token in expr)
 
 
-EPSILON = ''
+EPSILON = ""
 
 
 def nullable(grammar):
@@ -217,7 +222,7 @@ def nullable(grammar):
         for A, expr in productions:
             if nullable_expr(expr, nullables):
                 nullables |= {A}
-        return (nullables)
+        return nullables
 
     return nullable_({EPSILON})
 
@@ -241,9 +246,7 @@ class EarleyParser(Parser):
         return self.earley_complete(col, state)
 
     def earley_complete(self, col, state):
-        parent_states = [
-            st for st in state.s_col.states if st.at_dot() == state.name
-        ]
+        parent_states = [st for st in state.s_col.states if st.at_dot() == state.name]
         for st in parent_states:
             col.add(st.advance())
 
@@ -261,15 +264,13 @@ class EarleyParser(Parser):
                             continue
                         self.scan(chart[i + 1], state, sym)
             if self.log:
-                print(col, '\n')
+                print(col, "\n")
         return chart
 
     def parse_prefix(self, text):
         self.table = self.chart_parse(text, self.start_symbol())
         for col in reversed(self.table):
-            states = [
-                st for st in col.states if st.name == self.start_symbol()
-            ]
+            states = [st for st in col.states if st.name == self.start_symbol()]
             if states:
                 return col.index, states
         return -1, []
@@ -290,27 +291,38 @@ class EarleyParser(Parser):
             if not e:
                 return [[(state, k)]] if start == frm else []
             else:
-                return [[(state, k)] + r
-                        for r in self.parse_paths(e, chart, frm, start)]
+                return [
+                    [(state, k)] + r for r in self.parse_paths(e, chart, frm, start)
+                ]
 
         *expr, var = named_expr
         if var not in self.cgrammar:
-            starts = ([(var, til - len(var),
-                        't')] if til > 0 and chart[til].letter == var else [])
+            starts = (
+                [(var, til - len(var), "t")]
+                if til > 0 and chart[til].letter == var
+                else []
+            )
         else:
-            starts = [(s, s.s_col.index, 'n') for s in chart[til].states
-                      if s.finished() and s.name == var]
+            starts = [
+                (s, s.s_col.index, "n")
+                for s in chart[til].states
+                if s.finished() and s.name == var
+            ]
 
         return [p for s, start, k in starts for p in paths(s, start, k, expr)]
 
     def forest(self, s, kind, chart):
-        return self.parse_forest(chart, s) if kind == 'n' else (s, [])
+        return self.parse_forest(chart, s) if kind == "n" else (s, [])
 
     def parse_forest(self, chart, state):
-        pathexprs = self.parse_paths(state.expr, chart, state.s_col.index,
-                                     state.e_col.index) if state.expr else []
-        return state.name, [[(v, k, chart) for v, k in reversed(pathexpr)]
-                            for pathexpr in pathexprs]
+        pathexprs = (
+            self.parse_paths(state.expr, chart, state.s_col.index, state.e_col.index)
+            if state.expr
+            else []
+        )
+        return state.name, [
+            [(v, k, chart) for v, k in reversed(pathexpr)] for pathexpr in pathexprs
+        ]
 
     def extract_a_tree(self, forest_node):
         name, paths = forest_node
@@ -379,8 +391,12 @@ class ChoiceNode:
         return self._chosen
 
     def __str__(self):
-        return '%d(%s/%s %s)' % (self._i, str(self._chosen),
-                                 str(self._total), str(self.next))
+        return "%d(%s/%s %s)" % (
+            self._i,
+            str(self._chosen),
+            str(self._total),
+            str(self.next),
+        )
 
     def __repr__(self):
         return repr((self._i, self._chosen, self._total))
@@ -425,7 +441,7 @@ class EnhancedExtractor(SimpleExtractor):
             return None, new_choices
         child_nodes = []
         for s, kind, chart in cur_path:
-            if kind == 't':
+            if kind == "t":
                 child_nodes.append((s, []))
                 continue
             nid = (s.name, s.s_col.index, s.e_col.index)
@@ -441,7 +457,9 @@ class EnhancedExtractor(SimpleExtractor):
 
     def extract_a_tree(self):
         while not self.choices.finished():
-            parse_tree, choices = self.extract_a_node(self.my_forest, set(), self.choices)
+            parse_tree, choices = self.extract_a_node(
+                self.my_forest, set(), self.choices
+            )
             choices.increment()
             if parse_tree is not None:
                 return self.parser.prune_tree(parse_tree)
@@ -455,7 +473,7 @@ class PEGParser(Parser):
 
     def unify_rule(self, rule, text, at):
         if self.log:
-            print('unify_rule: %s with %s' % (repr(rule), repr(text[at:])))
+            print("unify_rule: %s with %s" % (repr(rule), repr(text[at:])))
         results = []
         for token in rule:
             at, res = self.unify_key(token, text, at)

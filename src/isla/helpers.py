@@ -5,16 +5,39 @@ import re
 import sys
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Set, Generator, Tuple, List, Dict, Union, TypeVar, Sequence, cast, Callable, Iterable, Any, Optional
+from typing import (
+    Set,
+    Generator,
+    Tuple,
+    List,
+    Dict,
+    Union,
+    TypeVar,
+    Sequence,
+    cast,
+    Callable,
+    Iterable,
+    Any,
+    Optional,
+)
 
-from isla.type_defs import Path, Grammar, ParseTree, ImmutableGrammar, CanonicalGrammar, ImmutableList
+from isla.type_defs import (
+    Path,
+    Grammar,
+    ParseTree,
+    ImmutableGrammar,
+    CanonicalGrammar,
+    ImmutableList,
+)
 
-S = TypeVar('S')
-T = TypeVar('T')
+S = TypeVar("S")
+T = TypeVar("T")
 
 
 def is_path(maybe_path: Any) -> bool:
-    return isinstance(maybe_path, tuple) and all(isinstance(elem, int) for elem in maybe_path)
+    return isinstance(maybe_path, tuple) and all(
+        isinstance(elem, int) for elem in maybe_path
+    )
 
 
 def pop(l: List[S], default: T = None, index=0) -> Union[S, T]:
@@ -26,14 +49,16 @@ def replace_line_breaks(inp: str) -> str:
 
 
 def parent_reflexive(path_1: Path, path_2: Path) -> bool:
-    return len(path_1) <= len(path_2) and path_1 == path_2[:len(path_1)]
+    return len(path_1) <= len(path_2) and path_1 == path_2[: len(path_1)]
 
 
 def parent_or_child(path_1: Path, path_2: Path) -> bool:
-    return path_1[:len(path_2)] == path_2 or path_2[:len(path_1)] == path_1
+    return path_1[: len(path_2)] == path_2 or path_2[: len(path_1)] == path_1
 
 
-def path_iterator(tree: ParseTree, path: Path = ()) -> Generator[Tuple[Path, ParseTree], None, None]:
+def path_iterator(
+    tree: ParseTree, path: Path = ()
+) -> Generator[Tuple[Path, ParseTree], None, None]:
     yield path, tree
     if tree[1] is not None:
         for i, child in enumerate(tree[1]):
@@ -45,7 +70,9 @@ def delete_unreachable(grammar: Grammar) -> None:
         del grammar[unreachable]
 
 
-def replace_tree_path(in_tree: ParseTree, path: Path, replacement_tree: ParseTree) -> ParseTree:
+def replace_tree_path(
+    in_tree: ParseTree, path: Path, replacement_tree: ParseTree
+) -> ParseTree:
     """Returns tree where replacement_tree has been inserted at `path` instead of the original subtree"""
     node, children = in_tree
 
@@ -53,9 +80,11 @@ def replace_tree_path(in_tree: ParseTree, path: Path, replacement_tree: ParseTre
         return replacement_tree
 
     head = path[0]
-    new_children = (children[:head] +
-                    [replace_tree_path(children[head], path[1:], replacement_tree)] +
-                    children[head + 1:])
+    new_children = (
+        children[:head]
+        + [replace_tree_path(children[head], path[1:], replacement_tree)]
+        + children[head + 1 :]
+    )
 
     return node, new_children
 
@@ -81,11 +110,12 @@ TRAVERSE_POSTORDER = 1
 
 
 def traverse(
-        tree: ParseTree,
-        action: Callable[[Path, ParseTree], None],
-        abort_condition: Callable[[Path, ParseTree], bool] = lambda p, n: False,
-        kind: int = TRAVERSE_PREORDER,
-        reverse: bool = False) -> None:
+    tree: ParseTree,
+    action: Callable[[Path, ParseTree], None],
+    abort_condition: Callable[[Path, ParseTree], bool] = lambda p, n: False,
+    kind: int = TRAVERSE_PREORDER,
+    reverse: bool = False,
+) -> None:
     stack_1: List[Tuple[Path, ParseTree]] = [((), tree)]
     stack_2: List[Tuple[Path, ParseTree]] = []
 
@@ -125,13 +155,13 @@ def tree_to_string(tree: ParseTree) -> str:
         symbol, children = stack.pop(0)
 
         if not children:
-            result.append('' if is_nonterminal(symbol) else symbol)
+            result.append("" if is_nonterminal(symbol) else symbol)
             continue
 
         for child in reversed(children):
             stack.insert(0, child)
 
-    return ''.join(result)
+    return "".join(result)
 
 
 def tree_depth(tree: ParseTree) -> int:
@@ -155,10 +185,7 @@ def canonical(grammar: Grammar) -> CanonicalGrammar:
         if isinstance(expansion, tuple):
             expansion = expansion[0]
 
-        return [
-            token
-            for token in RE_NONTERMINAL.split(expansion)
-            if token]
+        return [token for token in RE_NONTERMINAL.split(expansion) if token]
 
     return {
         k: [split(expression) for expression in alternatives]
@@ -166,7 +193,9 @@ def canonical(grammar: Grammar) -> CanonicalGrammar:
     }
 
 
-def dict_of_lists_to_list_of_dicts(dict_of_lists: Dict[S, Iterable[T]]) -> List[Dict[S, T]]:
+def dict_of_lists_to_list_of_dicts(
+    dict_of_lists: Dict[S, Iterable[T]]
+) -> List[Dict[S, T]]:
     keys = list(dict_of_lists.keys())
     list_of_values = [dict_of_lists[key] for key in keys]
     product = list(itertools.product(*list_of_values))
@@ -182,27 +211,33 @@ def powerset(iterable):
     """powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"""
     s = list(iterable)
     return itertools.chain.from_iterable(
-        itertools.combinations(s, r)
-        for r in range(len(s) + 1))
+        itertools.combinations(s, r) for r in range(len(s) + 1)
+    )
 
 
 def weighted_geometric_mean(seq: Sequence[float], weights: Sequence[float]) -> float:
     assert len(seq) == len(weights)
     assert all(w >= 0 for w in weights)
 
-    return (math.prod([(n + 1) ** w for n, w in zip(seq, weights) if w > 0]) **
-            (1 / sum([w for w in weights if w > 0]))) - 1
+    return (
+        math.prod([(n + 1) ** w for n, w in zip(seq, weights) if w > 0])
+        ** (1 / sum([w for w in weights if w > 0]))
+    ) - 1
 
 
 def grammar_to_immutable(grammar: Grammar) -> ImmutableGrammar:
-    return cast(ImmutableGrammar, tuple({k: tuple(v) for k, v in grammar.items()}.items()))
+    return cast(
+        ImmutableGrammar, tuple({k: tuple(v) for k, v in grammar.items()}.items())
+    )
 
 
 def grammar_to_mutable(grammar: ImmutableGrammar) -> Grammar:
     return {nonterminal: list(expansion) for nonterminal, expansion in grammar}
 
 
-def nested_list_to_tuple(l: List[Union[T, List[T]]]) -> Tuple[Union[T, Tuple[T, ...]], ...]:
+def nested_list_to_tuple(
+    l: List[Union[T, List[T]]]
+) -> Tuple[Union[T, Tuple[T, ...]], ...]:
     return tuple([tuple(elem) if isinstance(elem, list) else elem for elem in l])
 
 
@@ -219,11 +254,12 @@ def assertions_activated() -> bool:
 
 
 def split_str_with_nonterminals(expression: str) -> List[str]:
-    return [token for token in re.split(
-        RE_NONTERMINAL, expression) if token]
+    return [token for token in re.split(RE_NONTERMINAL, expression) if token]
 
 
-def cluster_by_common_elements(l: Sequence[T], f: Callable[[T], Set[S]]) -> List[List[T]]:
+def cluster_by_common_elements(
+    l: Sequence[T], f: Callable[[T], Set[S]]
+) -> List[List[T]]:
     """
     Clusters elements of l by shared elements. Elements of interest are obtained using f.
     For instance, to cluster a list of lists based on common list elements:
@@ -245,7 +281,11 @@ def cluster_by_common_elements(l: Sequence[T], f: Callable[[T], Set[S]]) -> List
     result = []
     for c in clusters:
         # Merge clusters with common elements...
-        clusters_with_common_elements = [c1 for c1 in result if any(not f(e).isdisjoint(f(e1)) for e in c for e1 in c1)]
+        clusters_with_common_elements = [
+            c1
+            for c1 in result
+            if any(not f(e).isdisjoint(f(e1)) for e in c for e1 in c1)
+        ]
         for c1 in clusters_with_common_elements:
             result.remove(c1)
 
@@ -272,7 +312,7 @@ def crange(character_start: str, character_end: str) -> List[str]:
     return [chr(i) for i in range(ord(character_start), ord(character_end) + 1)]
 
 
-RE_EXTENDED_NONTERMINAL = re.compile(r'(<[^<> ]*>[?+*])')
+RE_EXTENDED_NONTERMINAL = re.compile(r"(<[^<> ]*>[?+*])")
 
 
 def extended_nonterminals(expansion: str) -> List[str]:
@@ -317,8 +357,9 @@ def convert_ebnf_operators(ebnf_grammar: Grammar) -> Grammar:
             for extended_symbol in extended_symbols:
                 operator = extended_symbol[-1:]
                 original_symbol = extended_symbol[:-1]
-                assert original_symbol in ebnf_grammar, \
-                    f"{original_symbol} is not defined in grammar"
+                assert (
+                    original_symbol in ebnf_grammar
+                ), f"{original_symbol} is not defined in grammar"
 
                 new_sym = new_symbol(grammar, original_symbol)
 
@@ -334,18 +375,17 @@ def convert_ebnf_operators(ebnf_grammar: Grammar) -> Grammar:
                 else:
                     grammar[nonterminal][i] = new_exp
 
-                if operator == '?':
+                if operator == "?":
                     grammar[new_sym] = ["", original_symbol]
-                elif operator == '*':
+                elif operator == "*":
                     grammar[new_sym] = ["", original_symbol + new_sym]
-                elif operator == '+':
-                    grammar[new_sym] = [
-                        original_symbol, original_symbol + new_sym]
+                elif operator == "+":
+                    grammar[new_sym] = [original_symbol, original_symbol + new_sym]
 
     return grammar
 
 
-RE_PARENTHESIZED_EXPR = re.compile(r'\([^()]*\)[?+*]')
+RE_PARENTHESIZED_EXPR = re.compile(r"\([^()]*\)[?+*]")
 
 
 def parenthesized_expressions(expansion: str) -> List[str]:
@@ -400,7 +440,7 @@ def convert_ebnf_grammar(ebnf_grammar: Grammar) -> Grammar:
     return convert_ebnf_operators(convert_ebnf_parentheses(ebnf_grammar))
 
 
-RE_NONTERMINAL = re.compile(r'(<[^<> ]*>)')
+RE_NONTERMINAL = re.compile(r"(<[^<> ]*>)")
 
 
 @lru_cache(maxsize=None)
@@ -427,9 +467,8 @@ def transitive_closure(relation: Iterable[Tuple[S, T]]) -> Set[Tuple[S, T]]:
     closure = set(relation)
     while True:
         new_relations: Set[Tuple[S, T]] = {
-            (x, w)
-            for x, y in closure
-            for q, w in closure if q == y}
+            (x, w) for x, y in closure for q, w in closure if q == y
+        }
 
         closure_until_now = closure | new_relations
 
@@ -442,11 +481,12 @@ def transitive_closure(relation: Iterable[Tuple[S, T]]) -> Set[Tuple[S, T]]:
 
 
 def start_symbol():
-    return '<start>'
+    return "<start>"
 
 
-def def_used_nonterminals(grammar: Grammar, _start_symbol: str = start_symbol()) -> \
-        Tuple[Optional[Set[str]], Optional[Set[str]]]:
+def def_used_nonterminals(
+    grammar: Grammar, _start_symbol: str = start_symbol()
+) -> Tuple[Optional[Set[str]], Optional[Set[str]]]:
     """Return a pair (`defined_nonterminals`, `used_nonterminals`) in `grammar`.
     In case of error, return (`None`, `None`)."""
 
@@ -457,22 +497,26 @@ def def_used_nonterminals(grammar: Grammar, _start_symbol: str = start_symbol())
         defined_nonterminals.add(defined_nonterminal)
         expansions = grammar[defined_nonterminal]
         if not isinstance(expansions, list):
-            print(repr(defined_nonterminal) + ": expansion is not a list",
-                  file=sys.stderr)
+            print(
+                repr(defined_nonterminal) + ": expansion is not a list", file=sys.stderr
+            )
             return None, None
 
         if len(expansions) == 0:
-            print(repr(defined_nonterminal) + ": expansion list empty",
-                  file=sys.stderr)
+            print(repr(defined_nonterminal) + ": expansion list empty", file=sys.stderr)
             return None, None
 
         for expansion in expansions:
             if isinstance(expansion, tuple):
                 expansion = expansion[0]
             if not isinstance(expansion, str):
-                print(repr(defined_nonterminal) + ": "
-                      + repr(expansion) + ": not a string",
-                      file=sys.stderr)
+                print(
+                    repr(defined_nonterminal)
+                    + ": "
+                    + repr(expansion)
+                    + ": not a string",
+                    file=sys.stderr,
+                )
                 return None, None
 
             for used_nonterminal in nonterminals(expansion):
@@ -481,7 +525,9 @@ def def_used_nonterminals(grammar: Grammar, _start_symbol: str = start_symbol())
     return defined_nonterminals, used_nonterminals
 
 
-def reachable_nonterminals(grammar: Grammar, _start_symbol: str = start_symbol()) -> Set[str]:
+def reachable_nonterminals(
+    grammar: Grammar, _start_symbol: str = start_symbol()
+) -> Set[str]:
     reachable = set()
 
     def _find_reachable_nonterminals(grammar, symbol):
@@ -496,17 +542,23 @@ def reachable_nonterminals(grammar: Grammar, _start_symbol: str = start_symbol()
     return reachable
 
 
-def unreachable_nonterminals(grammar: Grammar, _start_symbol=start_symbol()) -> Set[str]:
+def unreachable_nonterminals(
+    grammar: Grammar, _start_symbol=start_symbol()
+) -> Set[str]:
     return grammar.keys() - reachable_nonterminals(grammar, _start_symbol)
 
 
-def is_valid_grammar(grammar: Grammar, _start_symbol: str = start_symbol(), ) -> bool:
+def is_valid_grammar(
+    grammar: Grammar,
+    _start_symbol: str = start_symbol(),
+) -> bool:
     """Check if the given `grammar` is valid.
-       `start_symbol`: optional start symbol (default: `<start>`)
-       `supported_opts`: options supported (default: none)"""
+    `start_symbol`: optional start symbol (default: `<start>`)
+    `supported_opts`: options supported (default: none)"""
 
-    defined_nonterminals, used_nonterminals = \
-        def_used_nonterminals(grammar, _start_symbol)
+    defined_nonterminals, used_nonterminals = def_used_nonterminals(
+        grammar, _start_symbol
+    )
     if defined_nonterminals is None or used_nonterminals is None:
         return False
 
@@ -516,11 +568,9 @@ def is_valid_grammar(grammar: Grammar, _start_symbol: str = start_symbol(), ) ->
         used_nonterminals.add(start_symbol())
 
     for unused_nonterminal in defined_nonterminals - used_nonterminals:
-        print(repr(unused_nonterminal) + ": defined, but not used",
-              file=sys.stderr)
+        print(repr(unused_nonterminal) + ": defined, but not used", file=sys.stderr)
     for undefined_nonterminal in used_nonterminals - defined_nonterminals:
-        print(repr(undefined_nonterminal) + ": used, but not defined",
-              file=sys.stderr)
+        print(repr(undefined_nonterminal) + ": used, but not defined", file=sys.stderr)
 
     # Symbols must be reachable either from <start> or given start symbol
     unreachable = unreachable_nonterminals(grammar, _start_symbol)
@@ -532,8 +582,10 @@ def is_valid_grammar(grammar: Grammar, _start_symbol: str = start_symbol(), ) ->
             msg_start_symbol += " or " + start_symbol()
 
     for unreachable_nonterminal in unreachable:
-        print(repr(unreachable_nonterminal) + ": unreachable from " + msg_start_symbol,
-              file=sys.stderr)
+        print(
+            repr(unreachable_nonterminal) + ": unreachable from " + msg_start_symbol,
+            file=sys.stderr,
+        )
 
     return used_nonterminals == defined_nonterminals and len(unreachable) == 0
 
@@ -559,7 +611,7 @@ def replace_in_list(l: List[T], repl: S | List[S], idx: int) -> List[T | S]:
     assert -len(l) <= idx < len(l)
     if idx < 0:
         idx = len(l) + idx
-    return l[0:idx] + (repl if isinstance(repl, list) else [repl]) + l[idx + 1:]
+    return l[0:idx] + (repl if isinstance(repl, list) else [repl]) + l[idx + 1 :]
 
 
 def nth_occ(haystack: Sequence[T], needle: T, n: int) -> Optional[int]:
@@ -575,4 +627,6 @@ def nth_occ(haystack: Sequence[T], needle: T, n: int) -> Optional[int]:
 
 
 def list_set(ilist: ImmutableList[T], repl_idx: int, new_elem: T) -> ImmutableList[T]:
-    return tuple([new_elem if idx == repl_idx else elem for idx, elem in enumerate(ilist)])
+    return tuple(
+        [new_elem if idx == repl_idx else elem for idx, elem in enumerate(ilist)]
+    )
