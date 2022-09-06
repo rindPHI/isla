@@ -3,6 +3,7 @@ import itertools
 import math
 import re
 import sys
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import (
@@ -19,6 +20,7 @@ from typing import (
     Iterable,
     Any,
     Optional,
+    Generic,
 )
 
 from isla.type_defs import (
@@ -30,6 +32,7 @@ from isla.type_defs import (
     ImmutableList,
 )
 
+R = TypeVar("R")
 S = TypeVar("S")
 T = TypeVar("T")
 
@@ -632,3 +635,49 @@ def list_set(ilist: ImmutableList[T], repl_idx: int, new_elem: T) -> ImmutableLi
     return tuple(
         [new_elem if idx == repl_idx else elem for idx, elem in enumerate(ilist)]
     )
+
+
+class Monad(ABC, Generic[T]):
+    def __init__(self, a: T):
+        self.a = a
+
+    @abstractmethod
+    def bind(self, f: Callable[[T], "Monad[S]"]) -> "Monad[S]":
+        raise NotImplementedError()
+
+
+class MonadPlus(ABC, Generic[T]):
+    @staticmethod
+    @abstractmethod
+    def nothing() -> "MonadPlus[T]":
+        raise NotImplementedError()
+
+    @abstractmethod
+    def mplus(self, other: "MonadPlus[T]") -> "MonadPlus[T]":
+        raise NotImplementedError()
+
+
+class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
+    def __init__(self, a: Optional[T]):
+        self.a = a
+
+    @staticmethod
+    def nothing() -> "MonadPlus[T]":
+        return MaybeMonadPlus(None)
+
+    def mplus(self, other: "MonadPlus[T]") -> "MonadPlus[T]":
+        return other if self.a is None else self
+
+
+class ApplyUntilResultExistsMonad(Generic[R, T], Monad[T]):
+    def __init__(self, a: T, result: Optional[R]):
+        super().__init__(a)
+        self.result = result
+
+    def bind(
+        self, f: Callable[[T], "ApplyUntilResultExistsMonad[S]"]
+    ) -> "ApplyUntilResultExistsMonad[S]":
+        if self.result is not None:
+            return self
+
+        return f(self.a)
