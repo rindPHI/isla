@@ -306,7 +306,7 @@ def well_formed(
         if unbound_variables:
             return (
                 False,
-                f"Unbound variables "
+                "Unbound variables "
                 + ", ".join(map(repr, unbound_variables))
                 + f" in {formula}",
             )
@@ -344,7 +344,7 @@ def well_formed(
         if unbound_variables:
             return (
                 False,
-                f"Unbound variables "
+                "Unbound variables "
                 + ", ".join(map(repr, unbound_variables))
                 + f" in {formula}",
             )
@@ -447,7 +447,7 @@ def well_formed(
         if unbound_variables:
             return (
                 False,
-                f"Unbound variables "
+                "Unbound variables "
                 + ", ".join(map(repr, unbound_variables))
                 + f" in {formula}",
             )

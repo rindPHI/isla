@@ -1,4 +1,4 @@
-import itertools as I
+import itertools
 import random
 from functools import lru_cache
 from typing import Tuple, Iterable, Generator, List, Dict, Collection
@@ -337,7 +337,7 @@ class EarleyParser(Parser):
 
         for path in paths:
             ptrees = [self.extract_trees(self.forest(*p)) for p in path]
-            for p in I.product(*ptrees):
+            for p in itertools.product(*ptrees):
                 yield (name, p)
 
     def predict(self, col, sym, state):

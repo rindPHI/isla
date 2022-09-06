@@ -21,7 +21,7 @@ from grammar_graph.gg import path_to_string
 
 import isla.derivation_tree
 from isla.fuzzer import GrammarCoverageFuzzer
-from isla.helpers import tree_to_string, assertions_activated
+from isla.helpers import tree_to_string
 from isla.solver import ISLaSolver
 from isla.type_defs import Grammar, ParseTree
 
@@ -436,13 +436,19 @@ class Evaluator:
                 "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls>",
                 "<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>",
             },
-            "<content> <content>-choice-1 <characters> <characters>-choice-1 <characters> <characters>-choice-1 <character>": {
-                "<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters>",
-                "<maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters> <characters>-choice-1 <character>",
+            "<content> <content>-choice-1 <characters> <characters>-choice-1 "
+            "<characters> <characters>-choice-1 <character>": {
+                "<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 "
+                "<characters> <characters>-choice-1 <characters>",
+                "<maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 "
+                "<characters> <characters>-choice-1 <character>",
             },
-            "<content> <content>-choice-1 <characters> <characters>-choice-1 <characters> <characters>-choice-1 <characters>": {
-                "<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters>",
-                "<maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters> <characters>-choice-1 <characters>",
+            "<content> <content>-choice-1 <characters> <characters>-choice-1 "
+            "<characters> <characters>-choice-1 <characters>": {
+                "<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 "
+                "<characters> <characters>-choice-1 <characters>",
+                "<maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 "
+                "<characters> <characters>-choice-1 <characters>",
             },
             "<content> <content>-choice-1 <nuls> <nuls>-choice-1 <nuls> <nuls>-choice-1 <NUL>": {
                 "<content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls> <nuls>-choice-1 <nuls>",
@@ -454,7 +460,8 @@ class Evaluator:
             },
             "<entries> <entries>-choice-1 <entry> <entry>-choice-1 <content> <content>-choice-1 <characters>": {
                 "<entries> <entries>-choice-1 <entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters>",
-                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>",
+                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> "
+                "<maybe_characters>-choice-1 <characters>",
             },
             "<entries> <entries>-choice-1 <entry> <entry>-choice-1 <content> <content>-choice-1 <nuls>": {
                 "<entries> <entries>-choice-1 <entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls>",
@@ -462,19 +469,24 @@ class Evaluator:
             },
             "<entries> <entries>-choice-2 <entry> <entry>-choice-1 <content> <content>-choice-1 <characters>": {
                 "<entries> <entries>-choice-2 <entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters>",
-                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>",
+                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> "
+                "<maybe_characters>-choice-1 <characters>",
             },
             "<entries> <entries>-choice-2 <entry> <entry>-choice-1 <content> <content>-choice-1 <nuls>": {
                 "<entries> <entries>-choice-2 <entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls>",
                 "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>",
             },
             "<entry> <entry>-choice-1 <content> <content>-choice-1 <characters> <characters>-choice-1 <character>": {
-                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>",
-                "<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <character>",
+                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> "
+                "<maybe_characters>-choice-1 <characters>",
+                "<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 "
+                "<characters> <characters>-choice-1 <character>",
             },
             "<entry> <entry>-choice-1 <content> <content>-choice-1 <characters> <characters>-choice-1 <characters>": {
-                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters>",
-                "<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 <characters> <characters>-choice-1 <characters>",
+                "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_characters> "
+                "<maybe_characters>-choice-1 <characters>",
+                "<content> <content>-choice-1 <maybe_characters> <maybe_characters>-choice-1 "
+                "<characters> <characters>-choice-1 <characters>",
             },
             "<entry> <entry>-choice-1 <content> <content>-choice-1 <nuls> <nuls>-choice-1 <NUL>": {
                 "<entry> <entry>-choice-1 <content> <content>-choice-1 <maybe_nuls> <maybe_nuls>-choice-1 <nuls>",
@@ -698,7 +710,7 @@ def generate_inputs(
 
 def create_db_tables(db_file: str = std_db_file()) -> None:
     inputs_table_sql = """CREATE TABLE IF NOT EXISTS inputs (
-    inpId INTEGER PRIMARY KEY ASC, 
+    inpId INTEGER PRIMARY KEY ASC,
     testId TEXT,
     sid INT,
     reltime REAL,
@@ -816,11 +828,11 @@ def store_inputs(
     db_file: str = std_db_file(),
 ) -> None:
     assert isinstance(inputs, dict), f"Expected dictionary, got: {type(inputs)}"
-    assert all(isinstance(key, float) for key in inputs), f"Expected float keys"
+    assert all(isinstance(key, float) for key in inputs), "Expected float keys"
     assert all(
         isinstance(value, isla.derivation_tree.DerivationTree)
         for value in inputs.values()
-    ), f"Expected DerivationTree values keys"
+    ), "Expected DerivationTree values keys"
 
     sid = (get_max_sid(test_id, db_file) or 0) + 1
 
@@ -865,11 +877,11 @@ def get_inputs_from_db(
         """
 
     invalid_inputs_query = """
-        SELECT inputs.inpId, inputs.inp 
-        FROM inputs LEFT JOIN valid 
-        ON inputs.inpId = valid.inpId 
-        WHERE valid.inpId IS NULL 
-              AND inputs.testId = ? 
+        SELECT inputs.inpId, inputs.inp
+        FROM inputs LEFT JOIN valid
+        ON inputs.inpId = valid.inpId
+        WHERE valid.inpId IS NULL
+              AND inputs.testId = ?
               AND inputs.sid = ?
         """
 
@@ -948,7 +960,7 @@ def evaluate_validity(
     con = sqlite3.connect(db_file)
     with con:
         con.executemany(
-            f"INSERT INTO valid(inpId) VALUES (?)", map(lambda x: (x,), valid_ids)
+            "INSERT INTO valid(inpId) VALUES (?)", map(lambda x: (x,), valid_ids)
         )
     con.close()
 
@@ -1028,7 +1040,9 @@ def evaluate_kpaths(
 
     # We evaluate inputs in bundles of `bundle_size` inputs at a time
     bundle_size = 1
-    get2nd = lambda t: t[1]
+
+    def get2nd(t):
+        return t[1]
 
     input_bundle: List[Tuple[int, Tuple[int, ParseTree]]]
     for input_bundle in map(

@@ -40,8 +40,8 @@ def is_path(maybe_path: Any) -> bool:
     )
 
 
-def pop(l: List[S], default: T = None, index=0) -> Union[S, T]:
-    return default if not l else l.pop(index)
+def pop(a_list: List[S], default: T = None, index=0) -> Union[S, T]:
+    return default if not a_list else a_list.pop(index)
 
 
 def replace_line_breaks(inp: str) -> str:
@@ -236,9 +236,9 @@ def grammar_to_mutable(grammar: ImmutableGrammar) -> Grammar:
 
 
 def nested_list_to_tuple(
-    l: List[Union[T, List[T]]]
+    a_list: List[Union[T, List[T]]]
 ) -> Tuple[Union[T, Tuple[T, ...]], ...]:
-    return tuple([tuple(elem) if isinstance(elem, list) else elem for elem in l])
+    return tuple([tuple(elem) if isinstance(elem, list) else elem for elem in a_list])
 
 
 def assertions_activated() -> bool:
@@ -258,13 +258,13 @@ def split_str_with_nonterminals(expression: str) -> List[str]:
 
 
 def cluster_by_common_elements(
-    l: Sequence[T], f: Callable[[T], Set[S]]
+    a_list: Sequence[T], f: Callable[[T], Set[S]]
 ) -> List[List[T]]:
     """
     Clusters elements of l by shared elements. Elements of interest are obtained using f.
     For instance, to cluster a list of lists based on common list elements:
 
-    >>> cluster_by_common_elements([[1,2], [2,3], [3,4], [5,6]], lambda l: {e for e in l})
+    >>> cluster_by_common_elements([[1,2], [2,3], [3,4], [5,6]], lambda l: {e for e in a_list})
 
     Gives [[[2, 3], [3, 4], [1, 2]], [[5, 6]]].
 
@@ -272,11 +272,11 @@ def cluster_by_common_elements(
 
     Outputs [[2, 5], [3, 6], [4, 7, 1]].
 
-    :param l: The list to cluster.
+    :param a_list: The list to cluster.
     :param f: The function to determine commonality.
     :return: The clusters w.r.t. f.
     """
-    clusters = [[e2 for e2 in l if not f(e1).isdisjoint(f(e2))] for e1 in l]
+    clusters = [[e2 for e2 in a_list if not f(e1).isdisjoint(f(e2))] for e1 in a_list]
 
     result = []
     for c in clusters:
@@ -607,11 +607,13 @@ class lazystr:
         return str(self.c())
 
 
-def replace_in_list(l: List[T], repl: S | List[S], idx: int) -> List[T | S]:
-    assert -len(l) <= idx < len(l)
+def replace_in_list(a_list: List[T], repl: S | List[S], idx: int) -> List[T | S]:
+    assert -len(a_list) <= idx < len(a_list)
     if idx < 0:
-        idx = len(l) + idx
-    return l[0:idx] + (repl if isinstance(repl, list) else [repl]) + l[idx + 1 :]
+        idx = len(a_list) + idx
+    return (
+        a_list[0:idx] + (repl if isinstance(repl, list) else [repl]) + a_list[idx + 1 :]
+    )
 
 
 def nth_occ(haystack: Sequence[T], needle: T, n: int) -> Optional[int]:

@@ -1,15 +1,17 @@
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Generic, TypeVar
 
 import datrie
 
 from isla.helpers import is_path
 from isla.type_defs import Path
 
+T = TypeVar("T")
 
-class SubtreesTrie:
+
+class SubtreesTrie(Generic[T]):
     def __init__(
         self,
-        init_map: Optional[Dict[Path, Tuple[Path, "DerivationTree"]]] = None,
+        init_map: Optional[Dict[Path, Tuple[Path, T]]] = None,
         init_trie: Optional[datrie.Trie] = None,
         root_path: Optional[Path] = None,
     ):
@@ -25,11 +27,11 @@ class SubtreesTrie:
         else:
             self.root_path: str = ""
 
-    def __setitem__(self, key: Path, value: Tuple[Path, "DerivationTree"]):
+    def __setitem__(self, key: Path, value: Tuple[Path, T]):
         assert is_path(key)
         self.trie[path_to_trie_key(key)] = value
 
-    def __getitem__(self, item: Path) -> Tuple[Path, "DerivationTree"]:
+    def __getitem__(self, item: Path) -> Tuple[Path, T]:
         assert is_path(item)
         return self.trie[path_to_trie_key(item)]
 
@@ -39,7 +41,7 @@ class SubtreesTrie:
             for suffix in self.trie.suffixes(self.root_path)
         ]
 
-    def values(self) -> List[Tuple[Path, "DerivationTree"]]:
+    def values(self) -> List[Tuple[Path, T]]:
         return [
             (
                 value := self.trie[self.root_path + suffix],

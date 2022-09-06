@@ -433,7 +433,7 @@ def get_symbols(expr: z3.ExprRef) -> Set[z3.SeqRef]:
     if is_z3_var(expr):
         if expr.decl().range() != z3.StringSort():
             raise NotImplementedError(
-                f"This class was developed for String symbols only, found {op.range()}"
+                f"This class was developed for String symbols only, found {expr.decl().range()}"
             )
 
         assert isinstance(expr, z3.SeqRef)

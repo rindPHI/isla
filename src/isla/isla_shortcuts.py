@@ -1,19 +1,21 @@
-from isla.language import *
+from typing import Union
+
+import z3
+
+from isla.derivation_tree import DerivationTree
 from isla.isla_predicates import (
     BEFORE_PREDICATE,
-    COUNT_PREDICATE,
-    LJUST_PREDICATE,
-    LJUST_CROP_PREDICATE,
-    RJUST_CROP_PREDICATE,
-    RJUST_PREDICATE,
-    AFTER_PREDICATE,
-    OCTAL_TO_DEC_PREDICATE,
-    CROP_PREDICATE,
 )
-
-
-def const(bound_variable: BoundVariable, inner_formula: Formula) -> ExistsIntFormula:
-    return ExistsIntFormula(bound_variable, inner_formula)
+from isla.language import (
+    BoundVariable,
+    Formula,
+    BindExpression,
+    Variable,
+    ForallFormula,
+    ExistsFormula,
+    StructuralPredicateFormula,
+    SMTFormula,
+)
 
 
 def bexpr(terminal_symbol: str) -> BindExpression:
@@ -58,63 +60,6 @@ def before(
     var: Union[Variable, DerivationTree], before_var: Union[Variable, DerivationTree]
 ) -> StructuralPredicateFormula:
     return StructuralPredicateFormula(BEFORE_PREDICATE, var, before_var)
-
-
-def after(
-    var: Union[Variable, DerivationTree], before_var: Union[Variable, DerivationTree]
-) -> StructuralPredicateFormula:
-    return StructuralPredicateFormula(AFTER_PREDICATE, var, before_var)
-
-
-def count(
-    grammar: Grammar,
-    in_tree: Union[Variable, DerivationTree],
-    needle: str,
-    num: Union[Constant, DerivationTree],
-) -> SemanticPredicateFormula:
-    return SemanticPredicateFormula(COUNT_PREDICATE, in_tree, needle, num)
-
-
-def crop(
-    grammar: Grammar, tree: Union[Variable, DerivationTree], width: int
-) -> SemanticPredicateFormula:
-    return SemanticPredicateFormula(CROP_PREDICATE, tree, width)
-
-
-def ljust(
-    grammar: Grammar, tree: Union[Variable, DerivationTree], width: int, fillchar: str
-) -> SemanticPredicateFormula:
-    return SemanticPredicateFormula(LJUST_PREDICATE, tree, width, fillchar)
-
-
-def ljust_crop(
-    grammar: Grammar, tree: Union[Variable, DerivationTree], width: int, fillchar: str
-) -> SemanticPredicateFormula:
-    return SemanticPredicateFormula(LJUST_CROP_PREDICATE, tree, width, fillchar)
-
-
-def rjust(
-    grammar: Grammar, tree: Union[Variable, DerivationTree], width: int, fillchar: str
-) -> SemanticPredicateFormula:
-    return SemanticPredicateFormula(RJUST_PREDICATE, tree, width, fillchar)
-
-
-def rjust_crop(
-    grammar: Grammar, tree: Union[Variable, DerivationTree], width: int, fillchar: str
-) -> SemanticPredicateFormula:
-    return SemanticPredicateFormula(RJUST_CROP_PREDICATE, tree, width, fillchar)
-
-
-def octal_to_decimal(
-    grammar: Grammar,
-    octal_start: str,
-    decimal_start: str,
-    octal: Union[Variable, DerivationTree],
-    decimal: Union[Variable, DerivationTree],
-) -> SemanticPredicateFormula:
-    return SemanticPredicateFormula(
-        OCTAL_TO_DEC_PREDICATE(grammar, octal_start, decimal_start), octal, decimal
-    )
 
 
 def true():

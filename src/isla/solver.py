@@ -522,9 +522,9 @@ class ISLaSolver:
                 self.current_state = state
                 self.state_tree.setdefault(state, [])
             self.logger.debug(
-                f"Polling new state %s (hash %d, cost %f)", state, hash(state), cost
+                "Polling new state %s (hash %d, cost %f)", state, hash(state), cost
             )
-            self.logger.debug(f"Queue length: %s", len(self.queue))
+            self.logger.debug("Queue length: %s", len(self.queue))
 
             assert not isinstance(state.constraint, language.DisjunctiveFormula)
 

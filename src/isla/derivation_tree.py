@@ -615,7 +615,7 @@ class DerivationTree:
         :return: The node's value or children list.
         """
         assert isinstance(item, int)
-        assert 0 <= item <= 1, f"Can only access element 0 (node value) or 1 (children)"
+        assert 0 <= item <= 1, "Can only access element 0 (node value) or 1 (children)"
         if item == 0:
             return self.value
         else:

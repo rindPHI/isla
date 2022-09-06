@@ -289,8 +289,8 @@ class BindExpression:
                     tree = parse_earley(flattened_bind_expr_str).children[0]
                 except SyntaxError:
                     language_core_logger.warning(
-                        f'Parsing match expression string "%s" caused a syntax error. If this is not a '
-                        f"test case where this behavior is intended, it should probably be investigated.",
+                        'Parsing match expression string "%s" caused a syntax error. If this is not a '
+                        "test case where this behavior is intended, it should probably be investigated.",
                         flattened_bind_expr_str,
                     )
                     continue

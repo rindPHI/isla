@@ -289,7 +289,8 @@ def count(
     # Try to add more needles to in_tree, such that no more needles can be obtained
     # in the resulting tree from expanding leaf nonterminals.
 
-    num_needles = lambda candidate: len(candidate.filter(lambda t: t.value == needle))
+    def num_needles(candidate):
+        return len(candidate.filter(lambda t: t.value == needle))
 
     canonical_grammar = canonical(graph.to_grammar())
     candidates = [
@@ -561,12 +562,11 @@ def octal_to_dec(
         decimal, language.Variable
     )
 
-    decimal_parser = lambda inp: DerivationTree.from_parse_tree(
-        _decimal_parser(inp)[0][1][0]
-    )
-    octal_parser = lambda inp: DerivationTree.from_parse_tree(
-        _octal_parser(inp)[0][1][0]
-    )
+    def decimal_parser(inp):
+        return DerivationTree.from_parse_tree(_decimal_parser(inp)[0][1][0])
+
+    def octal_parser(inp):
+        return DerivationTree.from_parse_tree(_octal_parser(inp)[0][1][0])
 
     if (
         isinstance(octal, DerivationTree)
@@ -629,17 +629,18 @@ def octal_to_dec(
     assert False
 
 
-OCTAL_TO_DEC_PREDICATE = lambda graph, octal_start, decimal_start: SemanticPredicate(
-    "octal_to_decimal",
-    2,
-    lambda _, octal, decimal: octal_to_dec(
-        mk_parser(graph.grammar)(octal_start),
-        mk_parser(graph.grammar)(decimal_start),
-        octal,
-        decimal,
-    ),
-    binds_tree=False,
-)
+def OCTAL_TO_DEC_PREDICATE(graph, octal_start, decimal_start):
+    return SemanticPredicate(
+        "octal_to_decimal",
+        2,
+        lambda _, octal, decimal: octal_to_dec(
+            mk_parser(graph.grammar)(octal_start),
+            mk_parser(graph.grammar)(decimal_start),
+            octal,
+            decimal,
+        ),
+        binds_tree=False,
+    )
 
 
 def is_direct_child(_: Optional[DerivationTree], path_1: Path, path_2: Path) -> bool:
