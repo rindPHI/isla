@@ -646,6 +646,7 @@ class Monad(ABC, Generic[T]):
         raise NotImplementedError()
 
 
+@dataclass(frozen=True)
 class MonadPlus(ABC, Generic[T]):
     @staticmethod
     @abstractmethod
@@ -657,27 +658,18 @@ class MonadPlus(ABC, Generic[T]):
         raise NotImplementedError()
 
 
+@dataclass(frozen=True)
 class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
-    def __init__(self, a: Optional[T]):
-        self.a = a
+    a: Optional[T]
 
     @staticmethod
-    def nothing() -> "MonadPlus[T]":
+    def nothing() -> "MaybeMonadPlus[T]":
         return MaybeMonadPlus(None)
 
-    def mplus(self, other: "MonadPlus[T]") -> "MonadPlus[T]":
+    def mplus(self, other: "MaybeMonadPlus[T]") -> "MaybeMonadPlus[T]":
         return other if self.a is None else self
 
-
-class ApplyUntilResultExistsMonad(Generic[R, T], Monad[T]):
-    def __init__(self, a: T, result: Optional[R]):
-        super().__init__(a)
-        self.result = result
-
-    def bind(
-        self, f: Callable[[T], "ApplyUntilResultExistsMonad[S]"]
-    ) -> "ApplyUntilResultExistsMonad[S]":
-        if self.result is not None:
-            return self
-
-        return f(self.a)
+    def lazy_mplus(
+        self, f: Callable[[T], "MaybeMonadPlus[T]"], arg: T
+    ) -> "MaybeMonadPlus[T]":
+        return f(arg) if self.a is None else self

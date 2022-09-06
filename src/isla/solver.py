@@ -61,6 +61,7 @@ from isla.helpers import (
     lazystr,
     is_prefix,
     ApplyUntilResultExistsMonad,
+    MaybeMonadPlus,
 )
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
@@ -532,16 +533,13 @@ class ISLaSolver:
             # Instantiate all top-level structural predicate formulas.
             state = self.instantiate_structural_predicates(state)
 
-            def to_monad_f(
+            def maybe_monad_f(
                 elim_proc: Callable[[SolutionState], Optional[List[SolutionState]]]
-            ) -> Callable[
-                [SolutionState],
-                ApplyUntilResultExistsMonad[SolutionState, List[SolutionState]],
-            ]:
+            ) -> Callable[[SolutionState], MaybeMonadPlus[List[SolutionState]],]:
                 def result_function(
                     a_state: SolutionState,
-                ) -> ApplyUntilResultExistsMonad[SolutionState, List[SolutionState]]:
-                    return ApplyUntilResultExistsMonad(a_state, elim_proc(a_state))
+                ) -> MaybeMonadPlus[List[SolutionState]]:
+                    return MaybeMonadPlus(elim_proc(a_state))
 
                 return result_function
 
@@ -679,21 +677,36 @@ class ISLaSolver:
                 return self.expand_state(a_state, fuzzer)
 
             result_states = (
-                ApplyUntilResultExistsMonad(state, None)
-                .bind(to_monad_f(false_elim_proc))
-                .bind(to_monad_f(self.eliminate_existential_integer_quantifiers))
-                .bind(to_monad_f(self.instantiate_universal_integer_quantifiers))
-                .bind(to_monad_f(self.match_all_universal_formulas))
-                .bind(to_monad_f(expand_to_match_quantifiers))
-                .bind(to_monad_f(self.eliminate_all_semantic_formulas))
-                .bind(to_monad_f(self.eliminate_all_ready_semantic_predicate_formulas))
-                .bind(
-                    to_monad_f(eliminate_and_match_first_existential_formula_and_expand)
+                MaybeMonadPlus.nothing()
+                .lazy_mplus(maybe_monad_f(false_elim_proc), state)
+                .lazy_mplus(
+                    maybe_monad_f(self.eliminate_existential_integer_quantifiers),
+                    state,
                 )
-                .bind(to_monad_f(assert_remaining_formulas_are_lazy_binding_semantic))
-                .bind(to_monad_f(finish_unconstrained_trees))
-                .bind(to_monad_f(expand))
-            ).result
+                .lazy_mplus(
+                    maybe_monad_f(self.instantiate_universal_integer_quantifiers),
+                    state,
+                )
+                .lazy_mplus(maybe_monad_f(self.match_all_universal_formulas), state)
+                .lazy_mplus(maybe_monad_f(expand_to_match_quantifiers), state)
+                .lazy_mplus(maybe_monad_f(self.eliminate_all_semantic_formulas), state)
+                .lazy_mplus(
+                    maybe_monad_f(self.eliminate_all_ready_semantic_predicate_formulas),
+                    state,
+                )
+                .lazy_mplus(
+                    maybe_monad_f(
+                        eliminate_and_match_first_existential_formula_and_expand
+                    ),
+                    state,
+                )
+                .lazy_mplus(
+                    maybe_monad_f(assert_remaining_formulas_are_lazy_binding_semantic),
+                    state,
+                )
+                .lazy_mplus(maybe_monad_f(finish_unconstrained_trees), state)
+                .lazy_mplus(maybe_monad_f(expand), state)
+            ).a
 
             assert result_states is not None
             self.solutions.extend(self.process_new_states(result_states))
