@@ -1544,16 +1544,15 @@ class ISLaSolver:
     def eliminate_existential_formula(
         self, existential_formula: language.ExistsFormula, state: SolutionState
     ) -> List[SolutionState]:
-        if existential_formula.bind_expression is not None:
-            inserted_trees_and_bind_paths = (
+        inserted_trees_and_bind_paths = (
+            [(DerivationTree(existential_formula.bound_variable.n_type, None), {})]
+            if existential_formula.bind_expression is None
+            else (
                 existential_formula.bind_expression.to_tree_prefix(
                     existential_formula.bound_variable.n_type, self.grammar
                 )
             )
-        else:
-            inserted_trees_and_bind_paths = [
-                (DerivationTree(existential_formula.bound_variable.n_type, None), {})
-            ]
+        )
 
         result: List[SolutionState] = []
 
