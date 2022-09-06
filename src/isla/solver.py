@@ -79,6 +79,7 @@ from isla.language import (
     get_conjuncts,
     QuantifiedFormula,
     parse_bnf,
+    ForallIntFormula,
 )
 from isla.parser import EarleyParser
 from isla.three_valued_truth import ThreeValuedTruth
@@ -828,179 +829,21 @@ class ISLaSolver:
     def instantiate_universal_integer_quantifier(
         self, state: SolutionState, universal_int_formula: language.ForallIntFormula
     ) -> List[SolutionState]:
-        constant = language.Constant(
-            universal_int_formula.bound_variable.name,
-            universal_int_formula.bound_variable.n_type,
+        results = self.instantiate_universal_integer_quantifier_by_enumeration(
+            state, universal_int_formula
         )
-        # noinspection PyTypeChecker
-        inner_formula = universal_int_formula.inner_formula.substitute_variables(
-            {universal_int_formula.bound_variable: constant}
-        )
-
-        def infer_satisfying_assignments(
-            smt_formula: language.SMTFormula,
-        ) -> Set[int | language.Constant]:
-            free_variables = smt_formula.free_variables()
-            max_instantiations = (
-                self.max_number_free_instantiations if len(free_variables) == 1 else 1
-            )
-
-            try:
-                solver_result = self.solve_quantifier_free_formula(
-                    (smt_formula,), max_instantiations=max_instantiations
-                )
-
-                solutions: Dict[language.Constant, Set[int]] = {
-                    c: {
-                        int(solution[cast(language.Constant, c)].value)
-                        for solution in solver_result
-                    }
-                    for c in free_variables
-                }
-            except ValueError:
-                assert False, "Expected numeric solution."
-
-            if solutions:
-                if len(free_variables) == 1:
-                    return solutions[constant]
-                else:
-                    assert all(len(solution) == 1 for solution in solutions.values())
-                    # In situations with multiple variables, we might have to abstract from concrete values.
-                    # Currently, we only support simple equality inference (based on one sample...). Note that
-                    # for supporting *more complex* terms (e.g., additions), we would have to extend the whole
-                    # infrastructure: Substitutions with complex terms, and complex terms in semantic predicate
-                    # arguments, are unsupported as of now.
-                    candidates = {
-                        c
-                        for c in solutions
-                        if c != constant
-                        and next(iter(solutions[c])) == next(iter(solutions[constant]))
-                    }
-
-                    # Filter working candidates
-                    return {
-                        c
-                        for c in candidates
-                        if self.solve_quantifier_free_formula(
-                            (
-                                cast(
-                                    language.SMTFormula,
-                                    smt_formula.substitute_variables({constant: c}),
-                                ),
-                            ),
-                            max_instantiations=1,
-                        )
-                    }
-
-        instantiations: List[
-            Dict[
-                language.Constant | DerivationTree,
-                int | language.Constant | DerivationTree,
-            ]
-        ] = []
-
-        if isinstance(universal_int_formula.inner_formula, language.DisjunctiveFormula):
-            # In the disjunctive case, we attempt to falsify all SMT formulas in the inner formula
-            # (on top level) that contain the bound variable as argument.
-            smt_disjuncts = [
-                formula
-                for formula in language.split_disjunction(inner_formula)
-                if isinstance(formula, language.SMTFormula)
-                and constant in formula.free_variables()
-            ]
-
-            if smt_disjuncts and len(smt_disjuncts) < len(
-                language.split_disjunction(inner_formula)
-            ):
-                instantiation_values = infer_satisfying_assignments(
-                    -reduce(language.SMTFormula.disjunction, smt_disjuncts)
-                )
-
-                # We also try to falsify (negated) semantic predicate formulas, if present,
-                # if there exist any remaining disjuncts.
-                semantic_predicate_formulas: List[
-                    Tuple[language.SemanticPredicateFormula, bool]
-                ] = [
-                    (pred_formula, False)
-                    if isinstance(pred_formula, language.SemanticPredicateFormula)
-                    else (cast(language.NegatedFormula, pred_formula).args[0], True)
-                    for pred_formula in language.FilterVisitor(
-                        lambda f: (
-                            constant in f.free_variables()
-                            and (
-                                isinstance(f, language.SemanticPredicateFormula)
-                                or isinstance(f, language.NegatedFormula)
-                                and isinstance(
-                                    f.args[0], language.SemanticPredicateFormula
-                                )
-                            )
-                        ),
-                        do_continue=lambda f: isinstance(
-                            f, language.DisjunctiveFormula
-                        ),
-                    ).collect(inner_formula)
-                    if all(
-                        not isinstance(var, language.BoundVariable)
-                        for var in pred_formula.free_variables()
-                    )
-                ]
-
-                if semantic_predicate_formulas and len(
-                    semantic_predicate_formulas
-                ) + len(smt_disjuncts) < len(language.split_disjunction(inner_formula)):
-                    for value in instantiation_values:
-                        instantiation: Dict[
-                            language.Constant | DerivationTree,
-                            int | language.Constant | DerivationTree,
-                        ] = {constant: value}
-                        for (
-                            semantic_predicate_formula,
-                            negated,
-                        ) in semantic_predicate_formulas:
-                            eval_result = cast(
-                                language.SemanticPredicateFormula,
-                                language.substitute(
-                                    semantic_predicate_formula, {constant: value}
-                                ),
-                            ).evaluate(self.graph, negate=not negated)
-                            if eval_result.ready() and not eval_result.is_boolean():
-                                instantiation.update(eval_result.result)
-                        instantiations.append(instantiation)
-                else:
-                    instantiations.extend(
-                        [{constant: value} for value in instantiation_values]
-                    )
-
-        results: List[SolutionState] = []
-        for instantiation in instantiations:
-            self.logger.debug(
-                "Instantiating universal integer quantifier (%s -> %s) %s",
-                universal_int_formula.bound_variable,
-                instantiation[constant],
-                universal_int_formula,
-            )
-
-            formula = language.replace_formula(
-                state.constraint,
-                universal_int_formula,
-                language.substitute(inner_formula, instantiation),
-            )
-            formula = language.substitute(formula, instantiation)
-
-            tree = state.tree.substitute(
-                {
-                    tree: subst
-                    for tree, subst in instantiation.items()
-                    if isinstance(tree, DerivationTree)
-                }
-            )
-
-            results.append(SolutionState(formula, tree))
 
         if results:
             return results
 
-        # If the above approach was not successful, we con transform the universal int
+        return self.instantiate_universal_integer_quantifier_by_transformation(
+            state, universal_int_formula
+        )
+
+    def instantiate_universal_integer_quantifier_by_transformation(
+        self, state: SolutionState, universal_int_formula: language.ForallIntFormula
+    ) -> List[SolutionState]:
+        # If the enumeration approach was not successful, we con transform the universal int
         # quantifier to an existential one in a particular situation:
         #
         # Let phi(elem, i) be such that phi(elem) (for fixed first argument) is a unary
@@ -1109,7 +952,186 @@ class ISLaSolver:
             + "Discarding this state. Please report this to your nearest ISLa developer.",
             universal_int_formula,
         )
+
         return []
+
+    def instantiate_universal_integer_quantifier_by_enumeration(
+        self, state: SolutionState, universal_int_formula: ForallIntFormula
+    ) -> Optional[List[SolutionState]]:
+        constant = language.Constant(
+            universal_int_formula.bound_variable.name,
+            universal_int_formula.bound_variable.n_type,
+        )
+
+        # noinspection PyTypeChecker
+        inner_formula = universal_int_formula.inner_formula.substitute_variables(
+            {universal_int_formula.bound_variable: constant}
+        )
+
+        instantiations: List[
+            Dict[
+                language.Constant | DerivationTree,
+                int | language.Constant | DerivationTree,
+            ]
+        ] = []
+
+        if isinstance(universal_int_formula.inner_formula, language.DisjunctiveFormula):
+            # In the disjunctive case, we attempt to falsify all SMT formulas in the inner formula
+            # (on top level) that contain the bound variable as argument.
+            smt_disjuncts = [
+                formula
+                for formula in language.split_disjunction(inner_formula)
+                if isinstance(formula, language.SMTFormula)
+                and constant in formula.free_variables()
+            ]
+
+            if smt_disjuncts and len(smt_disjuncts) < len(
+                language.split_disjunction(inner_formula)
+            ):
+                instantiation_values = (
+                    self.infer_satisfying_assignments_for_smt_formula(
+                        -reduce(language.SMTFormula.disjunction, smt_disjuncts),
+                        constant,
+                    )
+                )
+
+                # We also try to falsify (negated) semantic predicate formulas, if present,
+                # if there exist any remaining disjuncts.
+                semantic_predicate_formulas: List[
+                    Tuple[language.SemanticPredicateFormula, bool]
+                ] = [
+                    (pred_formula, False)
+                    if isinstance(pred_formula, language.SemanticPredicateFormula)
+                    else (cast(language.NegatedFormula, pred_formula).args[0], True)
+                    for pred_formula in language.FilterVisitor(
+                        lambda f: (
+                            constant in f.free_variables()
+                            and (
+                                isinstance(f, language.SemanticPredicateFormula)
+                                or isinstance(f, language.NegatedFormula)
+                                and isinstance(
+                                    f.args[0], language.SemanticPredicateFormula
+                                )
+                            )
+                        ),
+                        do_continue=lambda f: isinstance(
+                            f, language.DisjunctiveFormula
+                        ),
+                    ).collect(inner_formula)
+                    if all(
+                        not isinstance(var, language.BoundVariable)
+                        for var in pred_formula.free_variables()
+                    )
+                ]
+
+                if semantic_predicate_formulas and len(
+                    semantic_predicate_formulas
+                ) + len(smt_disjuncts) < len(language.split_disjunction(inner_formula)):
+                    for value in instantiation_values:
+                        instantiation: Dict[
+                            language.Constant | DerivationTree,
+                            int | language.Constant | DerivationTree,
+                        ] = {constant: value}
+                        for (
+                            semantic_predicate_formula,
+                            negated,
+                        ) in semantic_predicate_formulas:
+                            eval_result = cast(
+                                language.SemanticPredicateFormula,
+                                language.substitute(
+                                    semantic_predicate_formula, {constant: value}
+                                ),
+                            ).evaluate(self.graph, negate=not negated)
+                            if eval_result.ready() and not eval_result.is_boolean():
+                                instantiation.update(eval_result.result)
+                        instantiations.append(instantiation)
+                else:
+                    instantiations.extend(
+                        [{constant: value} for value in instantiation_values]
+                    )
+
+        results: List[SolutionState] = []
+        for instantiation in instantiations:
+            self.logger.debug(
+                "Instantiating universal integer quantifier (%s -> %s) %s",
+                universal_int_formula.bound_variable,
+                instantiation[constant],
+                universal_int_formula,
+            )
+
+            formula = language.replace_formula(
+                state.constraint,
+                universal_int_formula,
+                language.substitute(inner_formula, instantiation),
+            )
+            formula = language.substitute(formula, instantiation)
+
+            tree = state.tree.substitute(
+                {
+                    tree: subst
+                    for tree, subst in instantiation.items()
+                    if isinstance(tree, DerivationTree)
+                }
+            )
+
+            results.append(SolutionState(formula, tree))
+
+        return results
+
+    def infer_satisfying_assignments_for_smt_formula(
+        self, smt_formula: language.SMTFormula, constant: language.Constant
+    ) -> Set[int | language.Constant]:
+        free_variables = smt_formula.free_variables()
+        max_instantiations = (
+            self.max_number_free_instantiations if len(free_variables) == 1 else 1
+        )
+
+        try:
+            solver_result = self.solve_quantifier_free_formula(
+                (smt_formula,), max_instantiations=max_instantiations
+            )
+
+            solutions: Dict[language.Constant, Set[int]] = {
+                c: {
+                    int(solution[cast(language.Constant, c)].value)
+                    for solution in solver_result
+                }
+                for c in free_variables
+            }
+        except ValueError:
+            assert False, "Expected numeric solution."
+
+        if solutions:
+            if len(free_variables) == 1:
+                return solutions[constant]
+            else:
+                assert all(len(solution) == 1 for solution in solutions.values())
+                # In situations with multiple variables, we might have to abstract from concrete values.
+                # Currently, we only support simple equality inference (based on one sample...). Note that
+                # for supporting *more complex* terms (e.g., additions), we would have to extend the whole
+                # infrastructure: Substitutions with complex terms, and complex terms in semantic predicate
+                # arguments, are unsupported as of now.
+                candidates = {
+                    c
+                    for c in solutions
+                    if c != constant
+                    and next(iter(solutions[c])) == next(iter(solutions[constant]))
+                }
+
+                # Filter working candidates
+                return {
+                    c
+                    for c in candidates
+                    if self.solve_quantifier_free_formula(
+                        (
+                            cast(
+                                language.SMTFormula,
+                                smt_formula.substitute_variables({constant: c}),
+                            ),
+                        ),
+                        max_instantiations=1,
+                    )
+                }
 
     def eliminate_all_semantic_formulas(
         self, state: SolutionState, max_instantiations: Optional[int] = None
