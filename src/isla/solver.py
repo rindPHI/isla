@@ -2866,37 +2866,6 @@ def compute_symbol_costs(graph: GrammarGraph) -> Dict[str, int]:
             ]
         )
 
-    def all_paths(
-        from_node: gg.NonterminalNode,
-        to_node: gg.NonterminalNode,
-        cycles_allowed: int = 2,
-    ) -> List[List[gg.NonterminalNode]]:
-        """Compute all paths between two nodes. Note: We allow to visit each nonterminal twice.
-        This is not really allowing up to `cycles_allowed` cycles (which was the original intention
-        of the parameter), since then we would have to check per path; yet, the number of paths would
-        explode then and the current implementation provides reasonably good results."""
-        result: List[List[gg.NonterminalNode]] = []
-        visited: Dict[gg.NonterminalNode, int] = {n: 0 for n in graph.all_nodes}
-
-        queue: List[List[gg.NonterminalNode]] = [[from_node]]
-        while queue:
-            p = queue.pop(0)
-            if p[-1] == to_node:
-                result.append(p)
-                continue
-
-            for child in p[-1].children:
-                if (
-                    not isinstance(child, gg.NonterminalNode)
-                    or visited[child] > cycles_allowed + 1
-                ):
-                    continue
-
-                visited[child] += 1
-                queue.append(p + [child])
-
-        return [[n for n in p if not isinstance(n, gg.ChoiceNode)] for p in result]
-
     nonterminal_parents = [
         nonterminal
         for nonterminal in canonical_grammar
@@ -2914,7 +2883,7 @@ def compute_symbol_costs(graph: GrammarGraph) -> Dict[str, int]:
     # decreasing.
     for nonterminal_parent in nonterminal_parents:
         # noinspection PyTypeChecker
-        for path in all_paths(graph.root, graph.get_node(nonterminal_parent)):
+        for path in all_paths(graph, graph.root, graph.get_node(nonterminal_parent)):
             for idx in reversed(range(1, len(path))):
                 source: gg.Node = path[idx - 1]
                 target: gg.Node = path[idx]
@@ -2923,6 +2892,39 @@ def compute_symbol_costs(graph: GrammarGraph) -> Dict[str, int]:
                     result[source.symbol] = result[target.symbol] + 1
 
     return result
+
+
+def all_paths(
+    graph,
+    from_node: gg.NonterminalNode,
+    to_node: gg.NonterminalNode,
+    cycles_allowed: int = 2,
+) -> List[List[gg.NonterminalNode]]:
+    """Compute all paths between two nodes. Note: We allow to visit each nonterminal twice.
+    This is not really allowing up to `cycles_allowed` cycles (which was the original intention
+    of the parameter), since then we would have to check per path; yet, the number of paths would
+    explode then and the current implementation provides reasonably good results."""
+    result: List[List[gg.NonterminalNode]] = []
+    visited: Dict[gg.NonterminalNode, int] = {n: 0 for n in graph.all_nodes}
+
+    queue: List[List[gg.NonterminalNode]] = [[from_node]]
+    while queue:
+        p = queue.pop(0)
+        if p[-1] == to_node:
+            result.append(p)
+            continue
+
+        for child in p[-1].children:
+            if (
+                not isinstance(child, gg.NonterminalNode)
+                or visited[child] > cycles_allowed + 1
+            ):
+                continue
+
+            visited[child] += 1
+            queue.append(p + [child])
+
+    return [[n for n in p if not isinstance(n, gg.ChoiceNode)] for p in result]
 
 
 def implies(
