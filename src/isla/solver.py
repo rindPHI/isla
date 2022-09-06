@@ -2164,50 +2164,8 @@ class ISLaSolver:
         #  for predicate_formula in get_conjuncts(state.constraint)
         #  if isinstance(predicate_formula, language.StructuralPredicateFormula)]
 
-        if assertions_activated() or self.debug:
-            dangling_predicate_argument_trees = [
-                (predicate_formula, arg)
-                for predicate_formula in language.FilterVisitor(
-                    lambda f: isinstance(f, language.StructuralPredicateFormula)
-                ).collect(state.constraint)
-                for arg in cast(
-                    language.StructuralPredicateFormula, predicate_formula
-                ).args
-                if isinstance(arg, DerivationTree) and state.tree.find_node(arg) is None
-            ]
-
-            if dangling_predicate_argument_trees:
-                assert False, (
-                    "Dangling predicate arguments: ["
-                    + ", ".join(
-                        [
-                            str(f) + ", " + repr(a)
-                            for f, a in dangling_predicate_argument_trees
-                        ]
-                    )
-                    + "]"
-                )
-
-            dangling_smt_formula_argument_trees = [
-                (smt_formula, arg)
-                for smt_formula in language.FilterVisitor(
-                    lambda f: isinstance(f, language.SMTFormula)
-                ).collect(state.constraint)
-                for arg in cast(language.SMTFormula, smt_formula).substitutions.values()
-                if isinstance(arg, DerivationTree) and state.tree.find_node(arg) is None
-            ]
-
-            if dangling_smt_formula_argument_trees:
-                assert False, (
-                    "Dangling SMT formula arguments: ["
-                    + ", ".join(
-                        [
-                            str(f) + ", " + repr(a)
-                            for f, a in dangling_smt_formula_argument_trees
-                        ]
-                    )
-                    + "]"
-                )
+        self.assert_no_dangling_predicate_argument_trees(state)
+        self.assert_no_dangling_smt_formula_argument_trees(state)
 
         if (
             self.enforce_unique_trees_in_queue
@@ -2224,7 +2182,6 @@ class ISLaSolver:
             self.logger.debug("Discarding state %s, already in queue", state)
             return False
 
-        # if state.constraint == sc.false():
         if self.propositionally_unsatisfiable(state.constraint):
             self.logger.debug("Discarding state %s", state)
             return False
@@ -2233,21 +2190,12 @@ class ISLaSolver:
             state.constraint, state.tree, level=self.current_level + 1
         )
 
+        self.recompute_costs()
+
         cost = self.compute_cost(state)
         heapq.heappush(self.queue, (cost, state))
         self.tree_hashes_in_queue.add(state.tree.structural_hash())
         self.state_hashes_in_queue.add(hash(state))
-
-        if self.step_cnt % 400 == 0 and self.step_cnt > self.last_cost_recomputation:
-            self.last_cost_recomputation = self.step_cnt
-            self.logger.info(
-                f"Recomputing costs in queue after {self.step_cnt} solver steps"
-            )
-            old_queue = list(self.queue)
-            self.queue = []
-            for _, state in old_queue:
-                cost = self.compute_cost(state)
-                heapq.heappush(self.queue, (cost, state))
 
         if self.debug:
             self.state_tree[self.current_state].append(state)
@@ -2260,14 +2208,68 @@ class ISLaSolver:
         if len(self.queue) % 100 == 0:
             self.logger.info("Queue length: %d", len(self.queue))
 
-        # if self.queue_size_limit is not None and len(queue) > self.queue_size_limit:
-        #     self.logger.debug(f"Balancing queue")
-        #     nlargest = heapq.nlargest(self.queue_no_removed_items, queue)
-        #     for elem in nlargest:
-        #         queue.remove(elem)
-        #     heapq.heapify(queue)
-
         return False
+
+    def recompute_costs(self):
+        if self.step_cnt % 400 != 0 or self.step_cnt <= self.last_cost_recomputation:
+            return
+
+        self.last_cost_recomputation = self.step_cnt
+        self.logger.info(
+            f"Recomputing costs in queue after {self.step_cnt} solver steps"
+        )
+        old_queue = list(self.queue)
+        self.queue = []
+        for _, state in old_queue:
+            cost = self.compute_cost(state)
+            heapq.heappush(self.queue, (cost, state))
+
+    def assert_no_dangling_smt_formula_argument_trees(
+        self, state: SolutionState
+    ) -> None:
+        if not assertions_activated() and not self.debug:
+            return
+
+        dangling_smt_formula_argument_trees = [
+            (smt_formula, arg)
+            for smt_formula in language.FilterVisitor(
+                lambda f: isinstance(f, language.SMTFormula)
+            ).collect(state.constraint)
+            for arg in cast(language.SMTFormula, smt_formula).substitutions.values()
+            if isinstance(arg, DerivationTree) and state.tree.find_node(arg) is None
+        ]
+
+        if dangling_smt_formula_argument_trees:
+            message = "Dangling SMT formula arguments: ["
+            message += ", ".join(
+                [
+                    str(f) + ", " + repr(a)
+                    for f, a in dangling_smt_formula_argument_trees
+                ]
+            )
+            message += "]"
+            assert False, message
+
+    def assert_no_dangling_predicate_argument_trees(self, state: SolutionState) -> None:
+        if not assertions_activated() and not self.debug:
+            return
+
+        dangling_predicate_argument_trees = [
+            (predicate_formula, arg)
+            for predicate_formula in language.FilterVisitor(
+                lambda f: isinstance(f, language.StructuralPredicateFormula)
+            ).collect(state.constraint)
+            for arg in cast(language.StructuralPredicateFormula, predicate_formula).args
+            if isinstance(arg, DerivationTree) and state.tree.find_node(arg) is None
+        ]
+
+        if dangling_predicate_argument_trees:
+            message = "Dangling predicate arguments: ["
+            message += ", ".join(
+                [str(f) + ", " + repr(a) for f, a in dangling_predicate_argument_trees]
+            )
+            message += "]"
+            assert False, message
 
     def propositionally_unsatisfiable(self, formula: language.Formula) -> bool:
         return formula == sc.false()
