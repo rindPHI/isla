@@ -3,6 +3,7 @@ import itertools
 import math
 import re
 import sys
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import (
@@ -19,6 +20,7 @@ from typing import (
     Iterable,
     Any,
     Optional,
+    Generic,
 )
 
 from isla.type_defs import (
@@ -30,6 +32,7 @@ from isla.type_defs import (
     ImmutableList,
 )
 
+R = TypeVar("R")
 S = TypeVar("S")
 T = TypeVar("T")
 
@@ -632,3 +635,62 @@ def list_set(ilist: ImmutableList[T], repl_idx: int, new_elem: T) -> ImmutableLi
     return tuple(
         [new_elem if idx == repl_idx else elem for idx, elem in enumerate(ilist)]
     )
+
+
+class Monad(ABC, Generic[T]):
+    def __init__(self, a: T):
+        self.a = a
+
+    @abstractmethod
+    def bind(self, f: Callable[[T], "Monad[S]"]) -> "Monad[S]":
+        raise NotImplementedError()
+
+
+@dataclass(frozen=True)
+class MonadPlus(ABC, Generic[T]):
+    @staticmethod
+    @abstractmethod
+    def nothing() -> "MonadPlus[T]":
+        raise NotImplementedError()
+
+    @abstractmethod
+    def mplus(self, other: "MonadPlus[T]") -> "MonadPlus[T]":
+        raise NotImplementedError()
+
+
+@dataclass(frozen=True)
+class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
+    a: Optional[T]
+
+    @staticmethod
+    def nothing() -> "MaybeMonadPlus[T]":
+        return MaybeMonadPlus(None)
+
+    def mplus(self, other: "MaybeMonadPlus[T]") -> "MaybeMonadPlus[T]":
+        return other if self.a is None else self
+
+    def __add__(
+        self, other: "MaybeMonadPlus[T]" | Tuple[Callable[[T], "MaybeMonadPlus[T]"], T]
+    ) -> "MaybeMonadPlus[T]":
+        if isinstance(other, MaybeMonadPlus):
+            return self.mplus(other)
+
+        assert isinstance(other, tuple)
+        assert len(other) == 2
+        return self.lazy_mplus(*other)
+
+    def lazy_mplus(
+        self, f: Callable[[T], "MaybeMonadPlus[T]"], arg: T
+    ) -> "MaybeMonadPlus[T]":
+        return f(arg) if self.a is None else self
+
+    def if_present(self, f: Callable[[T], None]) -> None:
+        if self.a is not None:
+            f(self.a)
+
+
+def maybe_monad_f(f: Callable[[S], Optional[T]]) -> Callable[[S], MaybeMonadPlus[T]]:
+    def result_function(arg: S) -> MaybeMonadPlus[T]:
+        return MaybeMonadPlus(f(arg))
+
+    return result_function
