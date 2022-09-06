@@ -2766,7 +2766,31 @@ def quantified_formula_might_match(
     # This leaf won't reach the "root node" of the match tree for `qfd_formula`.
     assert qfd_nonterminal != node.value and not reachable(node.value, qfd_nonterminal)
 
+    return can_extend_leaf_to_make_quantifier_match_parent(
+        qfd_formula, path_to_nonterminal, tree, grammar, reachable
+    )
+
+
+def can_extend_leaf_to_make_quantifier_match_parent(
+    qfd_formula: QuantifiedFormula,
+    path_to_nonterminal: Path,
+    tree: DerivationTree,
+    grammar: Grammar,
+    reachable: Callable[[str, str], bool],
+) -> bool:
+    """
+    This function returns `True` if expanding at the given path makes `qfd_formula` match some parent.
+
+    :param qfd_formula: The quantified formula for which to check if the given tree path might become a match.
+    :param path_to_nonterminal: The path in the tree to check.
+    :param tree: The context tree.
+    :param grammar: The reference grammar.
+    :param reachable: A reachability function in the grammar.
+    :return: `True` iff expanding the given path makes `qfd_formula` match higher up in the tree.
+    """
     # Return true if extending this leaf makes the quantifier match some parent.
+    node = tree.get_subtree(path_to_nonterminal)
+
     maybe_prefix_tree: DerivationTree
     for maybe_prefix_tree, var_map in qfd_formula.bind_expression.to_tree_prefix(
         qfd_formula.bound_variable.n_type, grammar
@@ -2775,38 +2799,41 @@ def quantified_formula_might_match(
 
         for idx in reversed(range(len(path_to_nonterminal))):
             subtree = tree.get_subtree(path_to_nonterminal[:idx])
-            if maybe_prefix_tree.is_potential_prefix(
+            if not maybe_prefix_tree.is_potential_prefix(
                 subtree
-            ) and not qfd_formula.is_already_matched(subtree):
-                # If the current nonterminal does not need to be further expanded to match
-                # the prefix tree, we need to return false; otherwise, we would needlessly
-                # expand nonterminals that could actually be freely instantiated.
+            ) or qfd_formula.is_already_matched(subtree):
+                continue
 
-                path_to_node_in_prefix_tree = path_to_nonterminal[idx:]
+            # If the current nonterminal does not need to be further expanded to match
+            # the prefix tree, we need to return false; otherwise, we would needlessly
+            # expand nonterminals that could actually be freely instantiated.
 
-                while not maybe_prefix_tree.is_valid_path(path_to_node_in_prefix_tree):
-                    path_to_node_in_prefix_tree = path_to_node_in_prefix_tree[:-1]
+            path_to_node_in_prefix_tree = path_to_nonterminal[idx:]
 
-                # If this path in the prefix tree is sub-path of a path associated with a dummy
-                # variable, we do not resport a possible match; such an element can be freely instantiated.
-                mapping_paths = [
-                    path
-                    for path in reverse_var_map
-                    if is_prefix(path_to_node_in_prefix_tree, path)
-                ]
-                assert mapping_paths
-                if all(
-                    isinstance(reverse_var_map[mapping_path], language.DummyVariable)
-                    for mapping_path in mapping_paths
-                ):
-                    continue
+            while not maybe_prefix_tree.is_valid_path(path_to_node_in_prefix_tree):
+                path_to_node_in_prefix_tree = path_to_node_in_prefix_tree[:-1]
 
-                node_in_prefix_tree = maybe_prefix_tree.get_subtree(
-                    path_to_node_in_prefix_tree
-                )
+            # If this path in the prefix tree is sub-path of a path associated with a dummy
+            # variable, we do not resport a possible match; such an element can be freely instantiated.
+            mapping_paths = [
+                path
+                for path in reverse_var_map
+                if is_prefix(path_to_node_in_prefix_tree, path)
+            ]
+            assert mapping_paths
 
-                if reachable(node.value, node_in_prefix_tree.value):
-                    return True
+            if all(
+                isinstance(reverse_var_map[mapping_path], language.DummyVariable)
+                for mapping_path in mapping_paths
+            ):
+                continue
+
+            node_in_prefix_tree = maybe_prefix_tree.get_subtree(
+                path_to_node_in_prefix_tree
+            )
+
+            if reachable(node.value, node_in_prefix_tree.value):
+                return True
 
     return False
 
