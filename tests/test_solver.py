@@ -748,7 +748,9 @@ forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
             instantiated_variables=OrderedSet([var_2]),
             substitutions={var_2: var_node})
 
-        self.assertEqual([], solver.eliminate_all_semantic_formulas(SolutionState(formula_1 & formula_2, tree)))
+        result = solver.eliminate_all_semantic_formulas(SolutionState(formula_1 & formula_2, tree))
+        self.assertTrue(result.is_present())
+        result.if_present(lambda a: self.assertEqual([], a))
 
     def test_unsatisfiable_forall_exists_formula(self):
         solver = ISLaSolver(
