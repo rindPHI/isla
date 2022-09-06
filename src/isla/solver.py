@@ -490,23 +490,6 @@ class ISLaSolver:
         :return: A solution for the ISLa formula passed to the `ISLaSolver`, or `ISLaSolver.TIMEOUT` (if
         a timeout occurred) or `ISLaSolver.UNSAT` if no more solutions or none at all could be found.
         """
-        elimination_functions = map(
-            maybe_monad_f,
-            [
-                self.noop_on_false_constraint,
-                self.eliminate_existential_integer_quantifiers,
-                self.instantiate_universal_integer_quantifiers,
-                self.match_all_universal_formulas,
-                self.expand_to_match_quantifiers,
-                self.eliminate_all_semantic_formulas,
-                self.eliminate_all_ready_semantic_predicate_formulas,
-                self.eliminate_and_match_first_existential_formula_and_expand,
-                self.assert_remaining_formulas_are_lazy_binding_semantic,
-                self.finish_unconstrained_trees,
-                self.expand,
-            ],
-        )
-
         if self.timeout_seconds is not None and self.start_time is None:
             self.start_time = int(time.time())
 
@@ -549,6 +532,23 @@ class ISLaSolver:
 
             # Instantiate all top-level structural predicate formulas.
             state = self.instantiate_structural_predicates(state)
+
+            elimination_functions = map(
+                maybe_monad_f,
+                [
+                    self.noop_on_false_constraint,
+                    self.eliminate_existential_integer_quantifiers,
+                    self.instantiate_universal_integer_quantifiers,
+                    self.match_all_universal_formulas,
+                    self.expand_to_match_quantifiers,
+                    self.eliminate_all_semantic_formulas,
+                    self.eliminate_all_ready_semantic_predicate_formulas,
+                    self.eliminate_and_match_first_existential_formula_and_expand,
+                    self.assert_remaining_formulas_are_lazy_binding_semantic,
+                    self.finish_unconstrained_trees,
+                    self.expand,
+                ],
+            )
 
             monad = MaybeMonadPlus.nothing()
             for elimination_function in elimination_functions:
