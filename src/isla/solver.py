@@ -48,6 +48,7 @@ from isla.existential_helpers import (
 )
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer, expansion_key
 from isla.helpers import (
+    maybe_monad_f,
     delete_unreachable,
     dict_of_lists_to_list_of_dicts,
     replace_line_breaks,
@@ -60,7 +61,6 @@ from isla.helpers import (
     lazyjoin,
     lazystr,
     is_prefix,
-    ApplyUntilResultExistsMonad,
     MaybeMonadPlus,
 )
 from isla.isla_predicates import (
@@ -533,191 +533,162 @@ class ISLaSolver:
             # Instantiate all top-level structural predicate formulas.
             state = self.instantiate_structural_predicates(state)
 
-            def maybe_monad_f(
-                elim_proc: Callable[[SolutionState], Optional[List[SolutionState]]]
-            ) -> Callable[[SolutionState], MaybeMonadPlus[List[SolutionState]],]:
-                def result_function(
-                    a_state: SolutionState,
-                ) -> MaybeMonadPlus[List[SolutionState]]:
-                    return MaybeMonadPlus(elim_proc(a_state))
+            elimination_functions = map(
+                maybe_monad_f,
+                [
+                    self.noop_on_false_constraint,
+                    self.eliminate_existential_integer_quantifiers,
+                    self.instantiate_universal_integer_quantifiers,
+                    self.match_all_universal_formulas,
+                    self.expand_to_match_quantifiers,
+                    self.eliminate_all_semantic_formulas,
+                    self.eliminate_all_ready_semantic_predicate_formulas,
+                    self.eliminate_and_match_first_existential_formula_and_expand,
+                    self.assert_remaining_formulas_are_lazy_binding_semantic,
+                    self.finish_unconstrained_trees,
+                    self.expand,
+                ],
+            )
 
-                return result_function
+            monad = MaybeMonadPlus.nothing()
+            for elimination_function in elimination_functions:
+                monad += (elimination_function, state)
 
-            def false_elim_proc(
-                a_state: SolutionState,
-            ) -> Optional[List[SolutionState]]:
-                if a_state.constraint == sc.false():
-                    # This state can be silently discarded.
-                    return [a_state]
+            def process_and_extend_solutions(
+                result_states: List[SolutionState],
+            ) -> None:
+                assert result_states is not None
+                self.solutions.extend(self.process_new_states(result_states))
 
-                return None
-
-            def expand_to_match_quantifiers(
-                a_state: SolutionState,
-            ) -> Optional[List[SolutionState]]:
-                if all(
-                    not isinstance(conjunct, language.ForallFormula)
-                    for conjunct in get_conjuncts(a_state.constraint)
-                ):
-                    return None
-
-                expansion_result = self.expand_tree(a_state)
-
-                assert (
-                    len(expansion_result) > 0
-                ), f"State {a_state} will never leave the queue."
-                self.logger.debug(
-                    "Expanding state %s (%d successors)", a_state, len(expansion_result)
-                )
-
-                return expansion_result
-
-            def eliminate_and_match_first_existential_formula_and_expand(
-                a_state: SolutionState,
-            ) -> Optional[List[SolutionState]]:
-                elim_result = self.eliminate_and_match_first_existential_formula(
-                    a_state
-                )
-                if elim_result is None:
-                    return None
-
-                # Also add some expansions of the original state, to create a larger
-                # solution stream (otherwise, it might be possible that only a small
-                # finite number of solutions are generated for existential formulas).
-                return elim_result + self.expand_tree(
-                    a_state, limit=2, only_universal=False
-                )
-
-            def assert_remaining_formulas_are_lazy_binding_semantic(
-                a_state: SolutionState,
-            ) -> Optional[List[SolutionState]]:
-                # SEMANTIC PREDICATE FORMULAS can remain if they bind lazily. In that case, we can choose a random
-                # instantiation and let the predicate "fix" the resulting tree.
-                assert a_state.constraint == sc.true() or all(
-                    isinstance(conjunct, language.SemanticPredicateFormula)
-                    or (
-                        isinstance(conjunct, language.NegatedFormula)
-                        and isinstance(
-                            conjunct.args[0], language.SemanticPredicateFormula
-                        )
-                    )
-                    for conjunct in get_conjuncts(a_state.constraint)
-                ), (
-                    "Constraint is not true and contains formulas "
-                    f"other than semantic predicate formulas: {a_state.constraint}"
-                )
-
-                assert (
-                    a_state.constraint == sc.true()
-                    or all(
-                        not pred_formula.binds_tree(leaf)
-                        for pred_formula in get_conjuncts(a_state.constraint)
-                        if isinstance(pred_formula, language.SemanticPredicateFormula)
-                        for _, leaf in a_state.tree.open_leaves()
-                    )
-                    or all(
-                        not cast(
-                            language.SemanticPredicateFormula, pred_formula.args[0]
-                        ).binds_tree(leaf)
-                        for pred_formula in get_conjuncts(a_state.constraint)
-                        if isinstance(pred_formula, language.NegatedFormula)
-                        and isinstance(
-                            pred_formula.args[0], language.SemanticPredicateFormula
-                        )
-                    )
-                    for _, leaf in a_state.tree.open_leaves()
-                ), (
-                    "Constraint is not true and contains semantic predicate formulas binding open tree leaves: "
-                    f"{a_state.constraint}, leaves: "
-                    + ", ".join(
-                        [str(leaf) for _, leaf in a_state.tree.open_leaves()],
-                    )
-                )
-
-                return None
-
-            def finish_unconstrained_trees(
-                a_state: SolutionState,
-            ) -> Optional[List[SolutionState]]:
-                fuzzer = (
-                    self.fuzzer
-                    if self.global_fuzzer
-                    else self.fuzzer_factory(self.grammar)
-                )
-
-                if isinstance(fuzzer, GrammarCoverageFuzzer):
-                    fuzzer.covered_expansions.update(self.seen_coverages)
-
-                if a_state.constraint != sc.true():
-                    return None
-
-                closed_results: List[SolutionState] = []
-                for _ in range(self.max_number_free_instantiations):
-                    result = a_state.tree
-                    for path, leaf in a_state.tree.open_leaves():
-                        leaf_inst = fuzzer.expand_tree(DerivationTree(leaf.value, None))
-                        result = result.replace_path(path, leaf_inst)
-
-                    closed_results.append(SolutionState(a_state.constraint, result))
-
-                return closed_results
-
-            def expand(
-                a_state: SolutionState,
-            ) -> Optional[List[SolutionState]]:
-                fuzzer = (
-                    self.fuzzer
-                    if self.global_fuzzer
-                    else self.fuzzer_factory(self.grammar)
-                )
-
-                if isinstance(fuzzer, GrammarCoverageFuzzer):
-                    fuzzer.covered_expansions.update(self.seen_coverages)
-
-                return self.expand_state(a_state, fuzzer)
-
-            result_states = (
-                MaybeMonadPlus.nothing()
-                .lazy_mplus(maybe_monad_f(false_elim_proc), state)
-                .lazy_mplus(
-                    maybe_monad_f(self.eliminate_existential_integer_quantifiers),
-                    state,
-                )
-                .lazy_mplus(
-                    maybe_monad_f(self.instantiate_universal_integer_quantifiers),
-                    state,
-                )
-                .lazy_mplus(maybe_monad_f(self.match_all_universal_formulas), state)
-                .lazy_mplus(maybe_monad_f(expand_to_match_quantifiers), state)
-                .lazy_mplus(maybe_monad_f(self.eliminate_all_semantic_formulas), state)
-                .lazy_mplus(
-                    maybe_monad_f(self.eliminate_all_ready_semantic_predicate_formulas),
-                    state,
-                )
-                .lazy_mplus(
-                    maybe_monad_f(
-                        eliminate_and_match_first_existential_formula_and_expand
-                    ),
-                    state,
-                )
-                .lazy_mplus(
-                    maybe_monad_f(assert_remaining_formulas_are_lazy_binding_semantic),
-                    state,
-                )
-                .lazy_mplus(maybe_monad_f(finish_unconstrained_trees), state)
-                .lazy_mplus(maybe_monad_f(expand), state)
-            ).a
-
-            assert result_states is not None
-            self.solutions.extend(self.process_new_states(result_states))
+            monad.if_present(process_and_extend_solutions)
         if self.solutions:
             return self.solutions.pop(0)
         else:
             return ISLaSolver.UNSAT
 
-    def expand_state(
-        self, state: SolutionState, fuzzer: GrammarCoverageFuzzer
-    ) -> List[SolutionState]:
+    @staticmethod
+    def noop_on_false_constraint(
+        state: SolutionState,
+    ) -> Optional[List[SolutionState]]:
+        if state.constraint == sc.false():
+            # This state can be silently discarded.
+            return [state]
+
+        return None
+
+    def expand_to_match_quantifiers(
+        self,
+        state: SolutionState,
+    ) -> Optional[List[SolutionState]]:
+        if all(
+            not isinstance(conjunct, language.ForallFormula)
+            for conjunct in get_conjuncts(state.constraint)
+        ):
+            return None
+
+        expansion_result = self.expand_tree(state)
+
+        assert len(expansion_result) > 0, f"State {state} will never leave the queue."
+        self.logger.debug(
+            "Expanding state %s (%d successors)", state, len(expansion_result)
+        )
+
+        return expansion_result
+
+    def eliminate_and_match_first_existential_formula_and_expand(
+        self,
+        state: SolutionState,
+    ) -> Optional[List[SolutionState]]:
+        elim_result = self.eliminate_and_match_first_existential_formula(state)
+        if elim_result is None:
+            return None
+
+        # Also add some expansions of the original state, to create a larger
+        # solution stream (otherwise, it might be possible that only a small
+        # finite number of solutions are generated for existential formulas).
+        return elim_result + self.expand_tree(state, limit=2, only_universal=False)
+
+    def assert_remaining_formulas_are_lazy_binding_semantic(
+        self,
+        state: SolutionState,
+    ) -> Optional[List[SolutionState]]:
+        # SEMANTIC PREDICATE FORMULAS can remain if they bind lazily. In that case, we can choose a random
+        # instantiation and let the predicate "fix" the resulting tree.
+        assert state.constraint == sc.true() or all(
+            isinstance(conjunct, language.SemanticPredicateFormula)
+            or (
+                isinstance(conjunct, language.NegatedFormula)
+                and isinstance(conjunct.args[0], language.SemanticPredicateFormula)
+            )
+            for conjunct in get_conjuncts(state.constraint)
+        ), (
+            "Constraint is not true and contains formulas "
+            f"other than semantic predicate formulas: {state.constraint}"
+        )
+
+        assert (
+            state.constraint == sc.true()
+            or all(
+                not pred_formula.binds_tree(leaf)
+                for pred_formula in get_conjuncts(state.constraint)
+                if isinstance(pred_formula, language.SemanticPredicateFormula)
+                for _, leaf in state.tree.open_leaves()
+            )
+            or all(
+                not cast(
+                    language.SemanticPredicateFormula, pred_formula.args[0]
+                ).binds_tree(leaf)
+                for pred_formula in get_conjuncts(state.constraint)
+                if isinstance(pred_formula, language.NegatedFormula)
+                and isinstance(pred_formula.args[0], language.SemanticPredicateFormula)
+            )
+            for _, leaf in state.tree.open_leaves()
+        ), (
+            "Constraint is not true and contains semantic predicate formulas binding open tree leaves: "
+            f"{state.constraint}, leaves: "
+            + ", ".join(
+                [str(leaf) for _, leaf in state.tree.open_leaves()],
+            )
+        )
+
+        return None
+
+    def finish_unconstrained_trees(
+        self,
+        state: SolutionState,
+    ) -> Optional[List[SolutionState]]:
+        fuzzer = (
+            self.fuzzer if self.global_fuzzer else self.fuzzer_factory(self.grammar)
+        )
+
+        if isinstance(fuzzer, GrammarCoverageFuzzer):
+            fuzzer.covered_expansions.update(self.seen_coverages)
+
+        if state.constraint != sc.true():
+            return None
+
+        closed_results: List[SolutionState] = []
+        for _ in range(self.max_number_free_instantiations):
+            result = state.tree
+            for path, leaf in state.tree.open_leaves():
+                leaf_inst = fuzzer.expand_tree(DerivationTree(leaf.value, None))
+                result = result.replace_path(path, leaf_inst)
+
+            closed_results.append(SolutionState(state.constraint, result))
+
+        return closed_results
+
+    def expand(
+        self,
+        state: SolutionState,
+    ) -> Optional[List[SolutionState]]:
+        fuzzer = (
+            self.fuzzer if self.global_fuzzer else self.fuzzer_factory(self.grammar)
+        )
+
+        if isinstance(fuzzer, GrammarCoverageFuzzer):
+            fuzzer.covered_expansions.update(self.seen_coverages)
+
         result: List[SolutionState] = []
         for _ in range(self.max_number_free_instantiations):
             substitutions: Dict[DerivationTree, DerivationTree] = {
