@@ -697,10 +697,3 @@ class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
         assert isinstance(other, tuple)
         assert len(other) == 2
         return self.lazy_mplus(*other)
-
-
-def maybe_monad_f(f: Callable[[S], Optional[T]]) -> Callable[[S], MaybeMonadPlus[T]]:
-    def result_function(arg: S) -> MaybeMonadPlus[T]:
-        return MaybeMonadPlus(f(arg))
-
-    return result_function

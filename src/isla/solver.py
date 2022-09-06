@@ -48,7 +48,6 @@ from isla.existential_helpers import (
 )
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer, expansion_key
 from isla.helpers import (
-    maybe_monad_f,
     delete_unreachable,
     dict_of_lists_to_list_of_dicts,
     replace_line_breaks,
@@ -535,8 +534,9 @@ class ISLaSolver:
             state = self.instantiate_structural_predicates(state)
 
             monad = functools.reduce(
-                lambda monad, elimination_function: monad
-                + (elimination_function, state),
+                lambda monad, elimination_function: (
+                    monad + (elimination_function, state)
+                ),
                 [
                     self.noop_on_false_constraint,
                     self.eliminate_existential_integer_quantifiers,
