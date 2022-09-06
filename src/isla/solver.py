@@ -1878,25 +1878,12 @@ class ISLaSolver:
 
         # If any SMT formula refers to *sub*trees in the instantiations of other SMT formulas,
         # we have to instantiate those first.
-        def get_conflicts(smt_formulas: Iterable[language.SMTFormula]):
-            return [
-                formula
-                for formula_idx, formula in enumerate(smt_formulas)
-                if any(
-                    other_subst_tree != subst_tree
-                    and other_subst_tree.find_node(subst_tree) is not None
-                    for subst_tree in formula.substitutions.values()
-                    for other_formula_idx, other_formula in enumerate(smt_formulas)
-                    if formula_idx != other_formula_idx
-                    for other_subst_tree in other_formula.substitutions.values()
-                )
-            ]
 
-        conflicts = get_conflicts(smt_formulas)
+        conflicts = self.get_conflicts(smt_formulas)
 
         if conflicts:
             smt_formulas = conflicts
-            assert not get_conflicts(smt_formulas)
+            assert not self.get_conflicts(smt_formulas)
 
         tree_substitutions = reduce(
             lambda d1, d2: d1 | d2,
@@ -1920,30 +1907,9 @@ class ISLaSolver:
 
         num_instantiations = max_instantiations or self.max_number_smt_instantiations
         for _ in range(num_instantiations):
-            formulas: List[z3.BoolRef] = []
-
-            for constant in constants:
-                if constant.is_numeric():
-                    regex = z3.Union(
-                        z3.Re("0"),
-                        z3.Concat(z3.Range("1", "9"), z3.Star(z3.Range("0", "9"))),
-                    )
-                elif constant in tree_substitutions:
-                    # We have a more concrete shape of the desired instantiation available
-                    regexes = [
-                        self.extract_regular_expression(t)
-                        if is_nonterminal(t)
-                        else z3.Re(t)
-                        for t in split_str_with_nonterminals(
-                            str(tree_substitutions[constant])
-                        )
-                    ]
-                    assert regexes
-                    regex = z3.Concat(*regexes) if len(regexes) > 1 else regexes[0]
-                else:
-                    regex = self.extract_regular_expression(constant.n_type)
-
-                formulas.append(z3.InRe(z3.String(constant.name), regex))
+            formulas: List[z3.BoolRef] = self.compute_language_constraints(
+                constants, tree_substitutions
+            )
 
             for prev_solution in internal_solutions:
                 prev_solution_formula = z3_and(
@@ -2006,6 +1972,59 @@ class ISLaSolver:
                     break
 
         return solutions
+
+    def compute_language_constraints(
+        self,
+        constants: Iterable[language.Constant],
+        tree_substitutions: Dict[language.Variable, DerivationTree],
+    ) -> List[z3.BoolRef]:
+        formulas: List[z3.BoolRef] = []
+        for constant in constants:
+            if constant.is_numeric():
+                regex = z3.Union(
+                    z3.Re("0"),
+                    z3.Concat(z3.Range("1", "9"), z3.Star(z3.Range("0", "9"))),
+                )
+            elif constant in tree_substitutions:
+                # We have a more concrete shape of the desired instantiation available
+                regexes = [
+                    self.extract_regular_expression(t)
+                    if is_nonterminal(t)
+                    else z3.Re(t)
+                    for t in split_str_with_nonterminals(
+                        str(tree_substitutions[constant])
+                    )
+                ]
+                assert regexes
+                regex = z3.Concat(*regexes) if len(regexes) > 1 else regexes[0]
+            else:
+                regex = self.extract_regular_expression(constant.n_type)
+
+            formulas.append(z3.InRe(z3.String(constant.name), regex))
+
+        return formulas
+
+    @staticmethod
+    def get_conflicts(
+        smt_formulas: Iterable[language.SMTFormula],
+    ) -> List[language.SMTFormula]:
+        """
+        Returns a list of *conflicting* SMT formulas which refer to subtrees in the instantiations of other formulas.
+        :param smt_formulas: The formulas to search for conflicts.
+        :return: The list of conflicting formulas that cannot be solved individually.
+        """
+        return [
+            formula
+            for formula_idx, formula in enumerate(smt_formulas)
+            if any(
+                other_subst_tree != subst_tree
+                and other_subst_tree.find_node(subst_tree) is not None
+                for subst_tree in formula.substitutions.values()
+                for other_formula_idx, other_formula in enumerate(smt_formulas)
+                if formula_idx != other_formula_idx
+                for other_subst_tree in other_formula.substitutions.values()
+            )
+        ]
 
     def rename_instantiated_variables_in_smt_formulas(self, smt_formulas):
         old_smt_formulas = smt_formulas
