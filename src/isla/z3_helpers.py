@@ -29,9 +29,6 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
         map(evaluate_z3_expression, expr.children())
     )
 
-    def close(evaluation_function: callable) -> callable:
-        return lambda f: evaluation_function(f, children_results)
-
     def raise_not_implemented_error(
         expr: z3.ExprRef, _
     ) -> MaybeMonadPlus[Z3EvalResult]:
@@ -39,7 +36,10 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
         logger.debug("Evaluation of expression %s not implemented.", expr)
         raise NotImplementedError(f"Evaluation of expression {expr} not implemented.")
 
-    monad = functools.reduce(
+    def close(evaluation_function: callable) -> callable:
+        return lambda f: evaluation_function(f, children_results)
+
+    return functools.reduce(
         lambda monad, evaluation_function: (monad + (evaluation_function, expr)),
         map(
             close,
@@ -91,9 +91,7 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
             ],
         ),
         MaybeMonadPlus.nothing(),
-    )
-
-    return monad.a
+    ).get()
 
 
 def evaluate_z3_string_value(expr: z3.ExprRef, _) -> MaybeMonadPlus[Z3EvalResult]:
@@ -769,7 +767,9 @@ def get_symbols(expr: z3.ExprRef) -> Set[z3.SeqRef]:
     )
 
 
-def smt_expr_to_str(f: z3.ExprRef, qfd_var_stack: Tuple[str, ...] = ()) -> str:  # noqa
+def smt_expr_to_str(
+    f: z3.ExprRef, qfd_var_stack: Tuple[str, ...] = ()
+) -> str:  # noqa: C901
     op_strings = {
         z3.Z3_OP_SEQ_IN_RE: "str.in_re",
         z3.Z3_OP_SEQ_CONCAT: "str.++",

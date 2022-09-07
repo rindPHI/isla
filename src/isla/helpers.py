@@ -688,6 +688,12 @@ class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
     def is_present(self) -> bool:
         return self.a is not None
 
+    def raise_if_not_present(self, exc: Callable[[], Exception]) -> "MaybeMonadPlus[T]":
+        if self.a is None:
+            raise exc()
+
+        return self
+
     def get(self) -> T:
         if self.a is None:
             raise AttributeError("No element present")

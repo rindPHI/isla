@@ -268,7 +268,6 @@ class BindExpression:
         in_nonterminal: str,
         immutable_grammar: ImmutableGrammar,
     ) -> MaybeMonadPlus[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
-
         flattened_bind_expr_str = "".join(
             map(
                 lambda elem: f"{{{elem.n_type} {elem.name}}}"
@@ -2094,7 +2093,7 @@ class FilterVisitor(FormulaVisitor):
             self.result.append(formula)
 
 
-def replace_formula(
+def replace_formula(  # noqa: C901
     in_formula: Formula,
     to_replace: Union[Formula, Callable[[Formula], bool | Formula]],
     replace_with: Optional[Formula] = None,
@@ -2116,9 +2115,8 @@ def replace_formula(
         if result:
             assert replace_with is not None
             return replace_with
-    else:
-        if in_formula == to_replace:
-            return replace_with
+    elif in_formula == to_replace:
+        return replace_with
 
     if isinstance(in_formula, ConjunctiveFormula):
         return reduce(
@@ -2177,96 +2175,174 @@ def replace_formula(
 
 def convert_to_nnf(formula: Formula, negate=False) -> Formula:
     """Pushes negations inside the formula."""
-    if isinstance(formula, NegatedFormula):
-        return convert_to_nnf(formula.args[0], not negate)
-    elif isinstance(formula, ConjunctiveFormula):
-        args = [convert_to_nnf(arg, negate) for arg in formula.args]
-        if negate:
-            return reduce(lambda a, b: a | b, args)
-        else:
-            return reduce(lambda a, b: a & b, args)
-    elif isinstance(formula, DisjunctiveFormula):
-        args = [convert_to_nnf(arg, negate) for arg in formula.args]
-        if negate:
-            return reduce(lambda a, b: a & b, args)
-        else:
-            return reduce(lambda a, b: a | b, args)
-    elif isinstance(formula, StructuralPredicateFormula) or isinstance(
+
+    def close(evaluation_function: callable) -> callable:
+        return lambda f: evaluation_function(f, negate)
+
+    return (
+        functools.reduce(
+            lambda monad, evaluation_function: (monad + (evaluation_function, formula)),
+            map(
+                close,
+                [
+                    convert_negated_formula_to_nnf,
+                    convert_conjunctive_formula_to_nnf,
+                    convert_disjunctive_formula_to_nnf,
+                    convert_structural_predicate_formula_to_nnf,
+                    convert_smt_formula_to_nnf,
+                    convert_exists_int_formula_to_nnf,
+                    convert_quantified_formula_to_nnf,
+                ],
+            ),
+            MaybeMonadPlus.nothing(),
+        )
+        .raise_if_not_present(
+            lambda: NotImplementedError(f"Unexpected formula type {type(formula).__name__}")
+        )
+        .get()
+    )
+
+
+def convert_negated_formula_to_nnf(
+    formula: Formula, negate: bool
+) -> MaybeMonadPlus[Formula]:
+    if not isinstance(formula, NegatedFormula):
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(convert_to_nnf(formula.args[0], not negate))
+
+
+def convert_conjunctive_formula_to_nnf(
+    formula: Formula, negate: bool
+) -> MaybeMonadPlus[Formula]:
+    if not isinstance(formula, ConjunctiveFormula):
+        return MaybeMonadPlus.nothing()
+
+    args = [convert_to_nnf(arg, negate) for arg in formula.args]
+    if negate:
+        return MaybeMonadPlus(reduce(lambda a, b: a | b, args))
+    else:
+        return MaybeMonadPlus(reduce(lambda a, b: a & b, args))
+
+
+def convert_disjunctive_formula_to_nnf(
+    formula: Formula, negate: bool
+) -> MaybeMonadPlus[Formula]:
+    if not isinstance(formula, DisjunctiveFormula):
+        return MaybeMonadPlus.nothing()
+
+    args = [convert_to_nnf(arg, negate) for arg in formula.args]
+    if negate:
+        return MaybeMonadPlus(reduce(lambda a, b: a & b, args))
+    else:
+        return MaybeMonadPlus(reduce(lambda a, b: a | b, args))
+
+
+def convert_structural_predicate_formula_to_nnf(
+    formula: Formula, negate: bool
+) -> MaybeMonadPlus[Formula]:
+    if not isinstance(formula, StructuralPredicateFormula) and not isinstance(
         formula, SemanticPredicateFormula
     ):
-        if negate:
-            return -formula
-        else:
-            return formula
-    elif isinstance(formula, SMTFormula):
-        negated_smt_formula = z3_push_in_negations(formula.formula, negate)
-        # Automatic simplification can remove free variables from the formula!
-        actual_symbols = get_symbols(negated_smt_formula)
-        free_variables = [
-            var for var in formula.free_variables() if var.to_smt() in actual_symbols
-        ]
-        instantiated_variables = OrderedSet(
-            [
-                var
-                for var in formula.instantiated_variables
-                if var.to_smt() in actual_symbols
-            ]
-        )
-        substitutions = {
-            var: repl
-            for var, repl in formula.substitutions.items()
-            if var.to_smt() in actual_symbols
-        }
+        return MaybeMonadPlus.nothing()
 
-        return SMTFormula(
+    return MaybeMonadPlus(-formula if negate else formula)
+
+
+def convert_smt_formula_to_nnf(
+    formula: Formula, negate: bool
+) -> MaybeMonadPlus[Formula]:
+    if not isinstance(formula, SMTFormula):
+        return MaybeMonadPlus.nothing()
+
+    negated_smt_formula = z3_push_in_negations(formula.formula, negate)
+    # Automatic simplification can remove free variables from the formula!
+    actual_symbols = get_symbols(negated_smt_formula)
+    free_variables = [
+        var for var in formula.free_variables() if var.to_smt() in actual_symbols
+    ]
+    instantiated_variables = OrderedSet(
+        [
+            var
+            for var in formula.instantiated_variables
+            if var.to_smt() in actual_symbols
+        ]
+    )
+    substitutions = {
+        var: repl
+        for var, repl in formula.substitutions.items()
+        if var.to_smt() in actual_symbols
+    }
+
+    return MaybeMonadPlus(
+        SMTFormula(
             negated_smt_formula,
             *free_variables,
             instantiated_variables=instantiated_variables,
             substitutions=substitutions,
             auto_eval=formula.auto_eval,
         )
-    elif isinstance(formula, ExistsIntFormula) or isinstance(formula, ForallIntFormula):
-        inner_formula = (
-            convert_to_nnf(formula.inner_formula, negate)
-            if negate
-            else formula.inner_formula
-        )
+    )
 
-        if (isinstance(formula, ForallIntFormula) and negate) or (
-            isinstance(formula, ExistsIntFormula) and not negate
-        ):
-            return ExistsIntFormula(formula.bound_variable, inner_formula)
-        else:
-            return ForallIntFormula(formula.bound_variable, inner_formula)
-    elif isinstance(formula, QuantifiedFormula):
-        inner_formula = (
-            convert_to_nnf(formula.inner_formula, negate)
-            if negate
-            else formula.inner_formula
-        )
-        already_matched: Set[int] = (
-            formula.already_matched if isinstance(formula, ForallFormula) else set()
-        )
 
-        if (isinstance(formula, ForallFormula) and negate) or (
-            isinstance(formula, ExistsFormula) and not negate
-        ):
-            return ExistsFormula(
+def convert_exists_int_formula_to_nnf(
+    formula: Formula, negate: bool
+) -> MaybeMonadPlus[Formula]:
+    if not isinstance(formula, ExistsIntFormula) and not isinstance(
+        formula, ForallIntFormula
+    ):
+        return MaybeMonadPlus.nothing()
+
+    inner_formula = (
+        convert_to_nnf(formula.inner_formula, negate)
+        if negate
+        else formula.inner_formula
+    )
+
+    if (isinstance(formula, ForallIntFormula) and negate) or (
+        isinstance(formula, ExistsIntFormula) and not negate
+    ):
+        return MaybeMonadPlus(ExistsIntFormula(formula.bound_variable, inner_formula))
+    else:
+        return MaybeMonadPlus(ForallIntFormula(formula.bound_variable, inner_formula))
+
+
+def convert_quantified_formula_to_nnf(
+    formula: Formula, negate: bool
+) -> MaybeMonadPlus[Formula]:
+    if not isinstance(formula, QuantifiedFormula):
+        return MaybeMonadPlus.nothing()
+
+    inner_formula = (
+        convert_to_nnf(formula.inner_formula, negate)
+        if negate
+        else formula.inner_formula
+    )
+    already_matched: Set[int] = (
+        formula.already_matched if isinstance(formula, ForallFormula) else set()
+    )
+
+    if (isinstance(formula, ForallFormula) and negate) or (
+        isinstance(formula, ExistsFormula) and not negate
+    ):
+        return MaybeMonadPlus(
+            ExistsFormula(
                 formula.bound_variable,
                 formula.in_variable,
                 inner_formula,
                 formula.bind_expression,
             )
-        else:
-            return ForallFormula(
+        )
+    else:
+        return MaybeMonadPlus(
+            ForallFormula(
                 formula.bound_variable,
                 formula.in_variable,
                 inner_formula,
                 formula.bind_expression,
                 already_matched,
             )
-    else:
-        assert False, f"Unexpected formula type {type(formula).__name__}"
+        )
 
 
 def convert_to_dnf(formula: Formula) -> Formula:
@@ -2667,155 +2743,173 @@ def univ_close_over_var_push_in(
     return ForallFormula(var, in_var, formula, bind_expression=mexpr)
 
 
+class AddMexprTransformer(NoopFormulaTransformer):
+    def __init__(
+        self,
+        qfd_var: BoundVariable,
+        mexprs: Iterable[BindExpression],
+        grammar: Grammar,
+    ):
+        super().__init__()
+        self.qfd_var: BoundVariable = qfd_var
+        self.mexprs: Iterable[BindExpression] = mexprs
+        self.grammar = grammar
+
+    def transform_quantified_formula(self, formula: QuantifiedFormula) -> Formula:
+        if formula.bound_variable != self.qfd_var:
+            return formula
+
+        if formula.bind_expression is not None:
+            mexprs = self.__add_mexprs_to_qfr_with_existing_mexpr(formula)
+        else:
+            mexprs = self.mexprs
+
+        return reduce(
+            Formula.__and__ if isinstance(formula, ForallFormula) else Formula.__or__,
+            [
+                type(formula)(
+                    formula.bound_variable,
+                    formula.in_variable,
+                    formula.inner_formula,
+                    mexpr,
+                )
+                for mexpr in mexprs
+            ],
+        )
+
+    def __add_mexprs_to_qfr_with_existing_mexpr(
+        self, formula: QuantifiedFormula
+    ) -> List[BindExpression]:
+        orig_trees_and_paths = formula.bind_expression.to_tree_prefix(
+            formula.bound_variable.n_type, self.grammar
+        )
+
+        mexprs = [
+            self.__add_mexpr_to_qfr_with_existing_mexpr(
+                formula, mexpr, orig_trees_and_paths
+            )
+            for mexpr in self.mexprs
+        ]
+
+        if not mexprs:
+            raise RuntimeError(
+                "Could not merge the match expression of a formula with new match expressions "
+                + f"(there were conflicts), formula: {formula}, match expressions: {self.mexprs}"
+            )
+
+        return mexprs
+
+    def __add_mexpr_to_qfr_with_existing_mexpr(
+        self,
+        formula: QuantifiedFormula,
+        mexpr: BindExpression,
+        orig_trees_and_paths: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]],
+    ) -> BindExpression:
+        new_trees_and_paths = mexpr.to_tree_prefix(
+            formula.bound_variable.n_type, self.grammar
+        )
+
+        product: List[
+            Tuple[
+                Tuple[DerivationTree, Dict[BoundVariable, Path]],
+                Tuple[DerivationTree, Dict[BoundVariable, Path]],
+            ]
+        ] = [
+            ((orig_tree, orig_paths), (new_tree, new_paths))
+            for (orig_tree, orig_paths), (new_tree, new_paths) in itertools.product(
+                orig_trees_and_paths, new_trees_and_paths
+            )
+            # The two paths maps conflict if (1) two paths bind different variables or
+            # (2) one path to a bound variable is the prefix of another one.
+            if not any(
+                is_prefix(path, other_path)
+                or is_prefix(other_path, path)
+                or (path == other_path and var != other_var)
+                for var, path in orig_paths.items()
+                if not isinstance(var, DummyVariable)
+                for other_var, other_path in new_paths.items()
+                if not isinstance(other_var, DummyVariable)
+            )
+        ]
+
+        for (orig_tree, orig_paths), (
+            new_tree,
+            new_paths,
+        ) in product:
+            # Merge the trees
+            resulting_tree = orig_tree
+            resulting_paths: Dict[Path, BoundVariable] = {
+                path: var
+                for var, path in orig_paths.items()
+                if not isinstance(var, DummyVariable)
+            }
+
+            conflict = False
+            for new_var, new_path in new_paths.items():
+                # Take the more specific path. They should not conflict,
+                # i.e., have a common sub-path pointing to the same nonterminal.
+                if resulting_tree.is_valid_path(new_path):
+                    # `resulting_tree` has a longer (or as long) path.
+                    if any(
+                        resulting_tree.get_subtree(new_path[:idx]).value
+                        != new_tree.get_subtree(new_path[:idx]).value
+                        for idx in range(len(new_path))
+                    ):
+                        conflict = True
+                        break
+
+                    if not isinstance(new_var, DummyVariable):
+                        if resulting_tree.get_subtree(new_path).children:
+                            conflict = True
+                            break
+
+                        resulting_paths[new_path] = new_var
+                else:
+                    # `new_tree` has a longer (or as long) path.
+                    # First, find the valid prefix in `resulting_tree`.
+                    assert new_path
+                    valid_path = new_path[:-1]
+                    while valid_path and not resulting_tree.is_valid_path(valid_path):
+                        valid_path = valid_path[:-1]
+
+                    if any(
+                        resulting_tree.get_subtree(valid_path[:idx]).value
+                        != new_tree.get_subtree(valid_path[:idx]).value
+                        for idx in range(len(valid_path))
+                    ):
+                        conflict = True
+                        break
+
+                    resulting_tree = resulting_tree.replace_path(
+                        valid_path, new_tree.get_subtree(valid_path)
+                    )
+
+                    if not isinstance(new_var, DummyVariable):
+                        resulting_paths[new_path] = new_var
+
+            if conflict:
+                continue
+
+            mexpr_elems = [
+                resulting_paths[path] if path in resulting_paths else leaf.value
+                for path, leaf in resulting_tree.leaves()
+            ]
+
+            return BindExpression(*mexpr_elems)
+
+    def transform_forall_formula(self, formula: ForallFormula) -> Formula:
+        return self.transform_quantified_formula(formula)
+
+    def transform_exists_formula(self, formula: ExistsFormula) -> Formula:
+        return self.transform_quantified_formula(formula)
+
+
 def add_mexpr_to_qfr_over_var(
     formula: Formula,
     qfd_var: BoundVariable,
     mexprs: Iterable[BindExpression],
     grammar: Grammar,
 ) -> Formula:
-    class AddMexprTransformer(NoopFormulaTransformer):
-        def __init__(
-            self,
-            qfd_var: BoundVariable,
-            mexprs: Iterable[BindExpression],
-            grammar: Grammar,
-        ):
-            super().__init__()
-            self.qfd_var: BoundVariable = qfd_var
-            self.mexprs: Iterable[BindExpression] = mexprs
-            self.grammar = grammar
-
-        def transform_quantified_formula(self, formula: QuantifiedFormula) -> Formula:
-            if formula.bound_variable != self.qfd_var:
-                return formula
-
-            if formula.bind_expression is not None:
-                mexprs = []
-
-                orig_trees_and_paths = formula.bind_expression.to_tree_prefix(
-                    formula.bound_variable.n_type, grammar
-                )
-                for mexpr in self.mexprs:
-                    new_trees_and_paths = mexpr.to_tree_prefix(
-                        formula.bound_variable.n_type, grammar
-                    )
-
-                    orig_tree: DerivationTree
-                    new_tree: DerivationTree
-                    orig_paths: Dict[BoundVariable, Path]
-                    new_paths: Dict[BoundVariable, Path]
-                    for (orig_tree, orig_paths), (
-                        new_tree,
-                        new_paths,
-                    ) in itertools.product(orig_trees_and_paths, new_trees_and_paths):
-                        # The two paths maps conflict if (1) two paths bind different variables or
-                        # (2) one path to a bound variable is the prefix of another one.
-                        if any(
-                            is_prefix(path, other_path)
-                            or is_prefix(other_path, path)
-                            or path == other_path
-                            and var != other_var
-                            for var, path in orig_paths.items()
-                            if not isinstance(var, DummyVariable)
-                            for other_var, other_path in new_paths.items()
-                            if not isinstance(other_var, DummyVariable)
-                        ):
-                            continue
-
-                        # Merge the trees
-                        resulting_tree = orig_tree
-                        resulting_paths: Dict[Path, BoundVariable] = {
-                            path: var
-                            for var, path in orig_paths.items()
-                            if not isinstance(var, DummyVariable)
-                        }
-
-                        conflict = False
-                        for new_var, new_path in new_paths.items():
-                            # Take the more specific path. They should not conflict,
-                            # i.e., have a common sub-path pointing to the same nonterminal.
-                            if resulting_tree.is_valid_path(new_path):
-                                # `resulting_tree` has a longer (or as long) path.
-                                if any(
-                                    resulting_tree.get_subtree(new_path[:idx]).value
-                                    != new_tree.get_subtree(new_path[:idx]).value
-                                    for idx in range(len(new_path))
-                                ):
-                                    conflict = True
-                                    break
-
-                                if not isinstance(new_var, DummyVariable):
-                                    if resulting_tree.get_subtree(new_path).children:
-                                        conflict = True
-                                        break
-
-                                    resulting_paths[new_path] = new_var
-                            else:
-                                # `new_tree` has a longer (or as long) path.
-                                # First, find the valid prefix in `resulting_tree`.
-                                assert new_path
-                                valid_path = new_path[:-1]
-                                while valid_path and not resulting_tree.is_valid_path(
-                                    valid_path
-                                ):
-                                    valid_path = valid_path[:-1]
-
-                                if any(
-                                    resulting_tree.get_subtree(valid_path[:idx]).value
-                                    != new_tree.get_subtree(valid_path[:idx]).value
-                                    for idx in range(len(valid_path))
-                                ):
-                                    conflict = True
-                                    break
-
-                                resulting_tree = resulting_tree.replace_path(
-                                    valid_path, new_tree.get_subtree(valid_path)
-                                )
-
-                                if not isinstance(new_var, DummyVariable):
-                                    resulting_paths[new_path] = new_var
-
-                        if conflict:
-                            continue
-
-                        mexpr_elems = []
-                        for path, leaf in resulting_tree.leaves():
-                            if path in resulting_paths:
-                                mexpr_elems.append(resulting_paths[path])
-                            else:
-                                mexpr_elems.append(leaf.value)
-
-                        mexprs.append(BindExpression(*mexpr_elems))
-
-                if not mexprs:
-                    raise RuntimeError(
-                        "Could not merge the match expression of a formula with new match expressions "
-                        + f"(there were conflicts), formula: {formula}, match expressions: {self.mexprs}"
-                    )
-            else:
-                mexprs = self.mexprs
-
-            return reduce(
-                Formula.__and__
-                if isinstance(formula, ForallFormula)
-                else Formula.__or__,
-                [
-                    type(formula)(
-                        formula.bound_variable,
-                        formula.in_variable,
-                        formula.inner_formula,
-                        mexpr,
-                    )
-                    for mexpr in mexprs
-                ],
-            )
-
-        def transform_forall_formula(self, formula: ForallFormula) -> Formula:
-            return self.transform_quantified_formula(formula)
-
-        def transform_exists_formula(self, formula: ExistsFormula) -> Formula:
-            return self.transform_quantified_formula(formula)
-
     return formula.transform(AddMexprTransformer(qfd_var, mexprs, grammar))
 
 
