@@ -1191,8 +1191,7 @@ def approximate_isla_to_smt_formula(
     predicate_mapping: Optional[Dict[Formula, z3.BoolRef]] = None,
 ) -> z3.BoolRef:
     assert not predicate_mapping or replace_untranslatable_with_predicate
-    if predicate_mapping is None:
-        predicate_mapping = {}
+    predicate_mapping = {}if predicate_mapping is None else predicate_mapping
 
     if isinstance(formula, SMTFormula):
         return formula.formula
