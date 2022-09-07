@@ -116,7 +116,9 @@ def evaluate_z3_rat_value(expr: z3.ExprRef, _) -> MaybeMonadPlus[Z3EvalResult]:
         return MaybeMonadPlus.nothing()
 
     expr: z3.RatVal
-    return MaybeMonadPlus(((), expr.numerator().as_long() / expr.denominator().as_long()))
+    return MaybeMonadPlus(
+        ((), expr.numerator().as_long() / expr.denominator().as_long())
+    )
 
 
 def evaluate_z3_str_to_int(
@@ -767,7 +769,7 @@ def get_symbols(expr: z3.ExprRef) -> Set[z3.SeqRef]:
     )
 
 
-def smt_expr_to_str(f: z3.ExprRef, qfd_var_stack: Tuple[str, ...] = ()) -> str:
+def smt_expr_to_str(f: z3.ExprRef, qfd_var_stack: Tuple[str, ...] = ()) -> str:  # noqa
     op_strings = {
         z3.Z3_OP_SEQ_IN_RE: "str.in_re",
         z3.Z3_OP_SEQ_CONCAT: "str.++",
