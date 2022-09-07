@@ -2197,7 +2197,9 @@ def convert_to_nnf(formula: Formula, negate=False) -> Formula:
             MaybeMonadPlus.nothing(),
         )
         .raise_if_not_present(
-            lambda: NotImplementedError(f"Unexpected formula type {type(formula).__name__}")
+            lambda: NotImplementedError(
+                f"Unexpected formula type {type(formula).__name__}"
+            )
         )
         .get()
     )
@@ -3155,19 +3157,6 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
             return self.close_over_xpath_expressions(formula)
 
-        # We eliminate the first XPath segment by
-        #
-        # 1. Creating a suitable match expression. If there is only one XPath segment,
-        #    the match expression binds `final_bound_variable`; otherwise, it binds
-        #    a fresh variable.
-        # 2. We attach the match expression to the corresponding quantifier, which might
-        #    involve "merging" match expressions.
-        # 3. We update `self.vars_for_xpath_expressions if more XPath segments remain.
-        #    Then, we replace the first remaining segment to point by the new bound variable.
-        # 4. Finally, we proceed recursively until `self.vars_for_xpath_expressions` is empty.
-
-        # 1. Create a suitable match expression.
-
         def find_var(var_name: str, error_message: str) -> Variable:
             try:
                 return next(
@@ -3186,8 +3175,43 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             ),
         )
 
-        partial_mexpr_trees = self.expand_mexpr_trees(first_var.n_type, xpath_expr[0])
+        # We eliminate the first XPath segment by
+        #
+        # 1. Creating a suitable match expression. If there is only one XPath segment,
+        #    the match expression binds `final_bound_variable`; otherwise, it binds
+        #    a fresh variable.
+        # 2. We attach the match expression to the corresponding quantifier, which might
+        #    involve "merging" match expressions.
+        # 3. We update `self.vars_for_xpath_expressions if more XPath segments remain.
+        #    Then, we replace the first remaining segment to point by the new bound variable.
+        # 4. Finally, we proceed recursively until `self.vars_for_xpath_expressions` is empty.
 
+        # 1. Create a suitable match expression.
+        bound_var, match_expressions = self.__create_match_expr_for_first_xpath_segment(
+            xpath_expr, final_bound_variable, first_var
+        )
+
+        # 2. Attach match expression to existing quantifier
+        formula = add_mexpr_to_qfr_over_var(
+            formula, first_var, match_expressions, self.grammar
+        )
+
+        # 3. Update `self.vars_for_xpath_expressions if more XPath segments remain.
+        if len(xpath_expr) > 1:
+            self.vars_for_xpath_expressions[
+                list_set(xpath_expr, 0, ((bound_var.name, 0),))
+            ] = final_bound_variable
+
+        # 4. Proceed recursively.
+        return self.close_over_xpath_expressions(formula)
+
+    def __create_match_expr_for_first_xpath_segment(
+        self,
+        xpath_expr: ParsedXPathExpr,
+        final_bound_variable: BoundVariable,
+        first_var: BoundVariable,
+    ) -> Tuple[BoundVariable, List[BindExpression]]:
+        partial_mexpr_trees = self.expand_mexpr_trees(first_var.n_type, xpath_expr[0])
         if not partial_mexpr_trees:
             raise RuntimeError(
                 "Could not convert XPath expressions to match expressions. "
@@ -3222,19 +3246,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
             match_expressions.append(BindExpression(*mexpr_elems))
 
-        # 2. Attach match expression to existing quantifier
-        formula = add_mexpr_to_qfr_over_var(
-            formula, first_var, match_expressions, self.grammar
-        )
-
-        # 3. Update `self.vars_for_xpath_expressions if more XPath segments remain.
-        if len(xpath_expr) > 1:
-            self.vars_for_xpath_expressions[
-                list_set(xpath_expr, 0, ((bound_var.name, 0),))
-            ] = final_bound_variable
-
-        # 4. Proceed recursively.
-        return self.close_over_xpath_expressions(formula)
+        return bound_var, match_expressions
 
     def expand_mexpr_trees(
         self, start_nonterminal: str, xpath_segment: ImmutableList[Tuple[str, int]]
