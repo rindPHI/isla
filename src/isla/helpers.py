@@ -637,9 +637,9 @@ def list_set(ilist: ImmutableList[T], repl_idx: int, new_elem: T) -> ImmutableLi
     )
 
 
+@dataclass(frozen=True)
 class Monad(ABC, Generic[T]):
-    def __init__(self, a: T):
-        self.a = a
+    a: T
 
     @abstractmethod
     def bind(self, f: Callable[[T], "Monad[S]"]) -> "Monad[S]":
@@ -647,7 +647,7 @@ class Monad(ABC, Generic[T]):
 
 
 @dataclass(frozen=True)
-class MonadPlus(ABC, Generic[T]):
+class MonadPlus(Generic[T], Monad[T]):
     @staticmethod
     @abstractmethod
     def nothing() -> "MonadPlus[T]":
@@ -665,6 +665,9 @@ class MonadPlus(ABC, Generic[T]):
 @dataclass(frozen=True)
 class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
     a: Optional[T]
+
+    def bind(self, f: Callable[[T], "MaybeMonadPlus[T]"]) -> "MaybeMonadPlus[T]":
+        return self if self.a is None else f(self.a)
 
     @staticmethod
     def nothing() -> "MaybeMonadPlus[T]":
@@ -685,9 +688,6 @@ class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
     def is_present(self) -> bool:
         return self.a is not None
 
-    def flat_map(self, f: Callable[[T], "MaybeMonadPlus[T]"]) -> "MaybeMonadPlus[T]":
-        return self if self.a is None else f(self.a)
-
     def __add__(
         self, other: "MaybeMonadPlus[T]" | Tuple[Callable[[T], "MaybeMonadPlus[T]"], T]
     ) -> "MaybeMonadPlus[T]":
@@ -696,4 +696,5 @@ class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
 
         assert isinstance(other, tuple)
         assert len(other) == 2
+        assert callable(other[0])
         return self.lazy_mplus(*other)

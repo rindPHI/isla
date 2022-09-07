@@ -533,6 +533,8 @@ class ISLaSolver:
             # Instantiate all top-level structural predicate formulas.
             state = self.instantiate_structural_predicates(state)
 
+            # Apply the first elimination function that is applicable.
+            # The later ones are ignored.
             monad = functools.reduce(
                 lambda monad, elimination_function: (
                     monad + (elimination_function, state)
@@ -2106,7 +2108,7 @@ class ISLaSolver:
                     and not self.eliminate_all_semantic_formulas(
                         new_state, max_instantiations=1
                     )
-                    .flat_map(lambda a: MaybeMonadPlus(a if a else None))
+                    .bind(lambda a: MaybeMonadPlus(a if a else None))
                     .is_present()
                 ):
                     new_states.remove(new_state)

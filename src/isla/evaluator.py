@@ -1,15 +1,16 @@
 import copy
+import functools
 import itertools
 import logging
 from functools import reduce
-from typing import Union, Optional, Set, Dict, cast, Tuple, List
 
 import z3
 from grammar_graph import gg
 from orderedset import OrderedSet
+from typing import Union, Optional, Set, Dict, cast, Tuple, List
 
 from isla.derivation_tree import DerivationTree
-from isla.helpers import is_nonterminal
+from isla.helpers import is_nonterminal, MaybeMonadPlus
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
     STANDARD_SEMANTIC_PREDICATES,
@@ -42,6 +43,7 @@ from isla.language import (
     split_conjunction,
     split_disjunction,
     parse_bnf,
+    unparse_isla,
 )
 from isla.three_valued_truth import ThreeValuedTruth
 from isla.trie import SubtreesTrie
@@ -482,42 +484,96 @@ def evaluate_legacy(
     assert reference_tree is not None
     assert isinstance(reference_tree, DerivationTree)
 
-    if isinstance(grammar, str):
-        grammar = parse_bnf(grammar)
+    grammar = parse_bnf(grammar) if isinstance(grammar, str) else grammar
+    graph = gg.GrammarGraph.from_grammar(grammar) if graph is None else graph
+    trie = reference_tree.trie() if trie is None else trie
+    vacuously_satisfied = set() if vacuously_satisfied is None else vacuously_satisfied
 
-    if graph is None:
-        graph = gg.GrammarGraph.from_grammar(grammar)
-
-    if trie is None:
-        trie = reference_tree.trie()
-
-    if vacuously_satisfied is None:
-        vacuously_satisfied = set()
-
-    if isinstance(formula, ExistsIntFormula):
+    def raise_not_implemented_error(
+        formula: Formula,
+    ) -> MaybeMonadPlus[ThreeValuedTruth]:
         raise NotImplementedError(
-            "This method cannot evaluate IntroduceNumericConstantFormula formulas."
+            f"Don't know how to evaluate the formula {unparse_isla(formula)}"
         )
-    elif isinstance(formula, SMTFormula):
+
+    def close(evaluation_function: callable) -> callable:
+        return lambda f: evaluation_function(
+            f,
+            assignments,
+            reference_tree,
+            graph,
+            grammar,
+            vacuously_satisfied,
+            trie,
+        )
+
+    monad = functools.reduce(
+        lambda monad, evaluation_function: (monad + (evaluation_function, formula)),
+        map(
+            close,
+            [
+                evaluate_exists_int_formula,
+                evaluate_smt_formula,
+                evaluate_quantified_formula,
+                evaluate_structural_predicate_formula,
+                evaluate_semantic_predicate_formula,
+                evaluate_negated_formula_formula,
+                evaluate_conjunctive_formula_formula,
+                evaluate_disjunctive_formula,
+                raise_not_implemented_error,
+            ],
+        ),
+        MaybeMonadPlus.nothing(),
+    )
+
+    return monad.a
+
+
+def evaluate_exists_int_formula(
+    formula: Formula, _1, _2, _3, _4, _5, _6
+) -> MaybeMonadPlus[ThreeValuedTruth]:
+    if not isinstance(formula, ExistsIntFormula):
+        return MaybeMonadPlus.nothing()
+
+    raise NotImplementedError(
+        "This method cannot evaluate IntroduceNumericConstantFormula formulas."
+    )
+
+
+def evaluate_smt_formula(
+    formula: Formula,
+    assignments: Dict[Variable, Tuple[Path, DerivationTree]],
+    _1,
+    _2,
+    _3,
+    _4,
+    _5,
+) -> MaybeMonadPlus[ThreeValuedTruth]:
+    if not isinstance(formula, SMTFormula):
+        return MaybeMonadPlus.nothing()
+
+    try:
+        translation = evaluate_z3_expression(formula.formula)
+
         try:
-            translation = evaluate_z3_expression(formula.formula)
+            var_map: Dict[str, Variable] = {var.name: var for var in assignments}
 
-            try:
-                var_map: Dict[str, Variable] = {var.name: var for var in assignments}
+            args_instantiation = tuple(
+                [str(assignments[var_map[arg]][1]) for arg in translation[0]]
+            )
 
-                args_instantiation = tuple(
-                    [str(assignments[var_map[arg]][1]) for arg in translation[0]]
-                )
-
-                return ThreeValuedTruth.from_bool(
+            return MaybeMonadPlus(
+                ThreeValuedTruth.from_bool(
                     translation[1](args_instantiation)
                     if args_instantiation
                     else translation[1]
                 )
-            except DomainError:
-                return ThreeValuedTruth.false()
-        except NotImplementedError:
-            return is_valid(
+            )
+        except DomainError:
+            return MaybeMonadPlus(ThreeValuedTruth.false())
+    except NotImplementedError:
+        return MaybeMonadPlus(
+            is_valid(
                 z3.substitute(
                     formula.formula,
                     *tuple(
@@ -530,120 +586,181 @@ def evaluate_legacy(
                     ),
                 )
             )
-    elif isinstance(formula, QuantifiedFormula):
-        if isinstance(formula.in_variable, DerivationTree):
-            in_path, in_inst = next(
-                (path, subtree)
-                for path, subtree in reference_tree.paths()
-                if subtree.id == formula.in_variable.id
-            )
-        else:
-            assert formula.in_variable in assignments
-            in_path, in_inst = assignments[formula.in_variable]
-
-        if formula.bind_expression is None:
-            sub_trie = trie.get_subtrie(in_path)
-
-            new_assignments: List[Dict[Variable, Tuple[Path, DerivationTree]]] = []
-            for path_key, (path, subtree) in sub_trie.items():
-                if subtree.value == formula.bound_variable.n_type:
-                    new_assignments.append(
-                        {formula.bound_variable: (in_path + path, subtree)}
-                    )
-        else:
-            new_assignments = [
-                {
-                    var: (in_path + path, tree)
-                    for var, (path, tree) in new_assignment.items()
-                }
-                for new_assignment in matches_for_quantified_formula(
-                    formula, grammar, in_inst, {}
-                )
-            ]
-
-        new_assignments = [
-            new_assignment | assignments for new_assignment in new_assignments
-        ]
-
-        assert all(
-            reference_tree.is_valid_path(path)
-            and reference_tree.find_node(tree) is not None
-            and reference_tree.get_subtree(path) == tree
-            for assignment in new_assignments
-            for path, tree in assignment.values()
         )
 
-        if isinstance(formula, ForallFormula):
-            if not new_assignments:
-                vacuously_satisfied.add(formula)
 
-            return ThreeValuedTruth.all(
-                evaluate_legacy(
-                    formula.inner_formula,
-                    grammar,
-                    new_assignment,
-                    reference_tree,
-                    vacuously_satisfied,
-                    trie,
-                    graph=graph,
+def evaluate_quantified_formula(
+    formula: Formula,
+    assignments: Dict[Variable, Tuple[Path, DerivationTree]],
+    reference_tree: DerivationTree,
+    graph: gg.GrammarGraph,
+    grammar: Grammar,
+    vacuously_satisfied: Set[Formula],
+    trie: SubtreesTrie,
+) -> MaybeMonadPlus[ThreeValuedTruth]:
+    if not isinstance(formula, QuantifiedFormula):
+        return MaybeMonadPlus.nothing()
+
+    if isinstance(formula.in_variable, DerivationTree):
+        in_path, in_inst = next(
+            (path, subtree)
+            for path, subtree in reference_tree.paths()
+            if subtree.id == formula.in_variable.id
+        )
+    else:
+        assert formula.in_variable in assignments
+        in_path, in_inst = assignments[formula.in_variable]
+
+    if formula.bind_expression is None:
+        sub_trie = trie.get_subtrie(in_path)
+
+        new_assignments: List[Dict[Variable, Tuple[Path, DerivationTree]]] = []
+        for path_key, (path, subtree) in sub_trie.items():
+            if subtree.value == formula.bound_variable.n_type:
+                new_assignments.append(
+                    {formula.bound_variable: (in_path + path, subtree)}
                 )
-                for new_assignment in new_assignments
+    else:
+        new_assignments = [
+            {
+                var: (in_path + path, tree)
+                for var, (path, tree) in new_assignment.items()
+            }
+            for new_assignment in matches_for_quantified_formula(
+                formula, grammar, in_inst, {}
             )
-        elif isinstance(formula, ExistsFormula):
-            return ThreeValuedTruth.any(
-                evaluate_legacy(
-                    formula.inner_formula,
-                    grammar,
-                    new_assignment,
-                    reference_tree,
-                    vacuously_satisfied,
-                    trie,
-                    graph=graph,
-                )
-                for new_assignment in new_assignments
-            )
-    elif isinstance(formula, StructuralPredicateFormula):
-        arg_insts = [
-            arg
-            if isinstance(arg, str)
-            else next(
-                path for path, subtree in reference_tree.paths() if subtree.id == arg.id
-            )
-            if isinstance(arg, DerivationTree)
-            else assignments[arg][0]
-            for arg in formula.args
         ]
-        return ThreeValuedTruth.from_bool(
+
+    new_assignments = [
+        new_assignment | assignments for new_assignment in new_assignments
+    ]
+
+    assert all(
+        reference_tree.is_valid_path(path)
+        and reference_tree.find_node(tree) is not None
+        and reference_tree.get_subtree(path) == tree
+        for assignment in new_assignments
+        for path, tree in assignment.values()
+    )
+
+    if isinstance(formula, ForallFormula):
+        if not new_assignments:
+            vacuously_satisfied.add(formula)
+
+        return MaybeMonadPlus(
+            ThreeValuedTruth.all(
+                evaluate_legacy(
+                    formula.inner_formula,
+                    grammar,
+                    new_assignment,
+                    reference_tree,
+                    vacuously_satisfied,
+                    trie,
+                    graph=graph,
+                )
+                for new_assignment in new_assignments
+            )
+        )
+    elif isinstance(formula, ExistsFormula):
+        return MaybeMonadPlus(
+            ThreeValuedTruth.any(
+                evaluate_legacy(
+                    formula.inner_formula,
+                    grammar,
+                    new_assignment,
+                    reference_tree,
+                    vacuously_satisfied,
+                    trie,
+                    graph=graph,
+                )
+                for new_assignment in new_assignments
+            )
+        )
+
+
+def evaluate_structural_predicate_formula(
+    formula: Formula,
+    assignments: Dict[Variable, Tuple[Path, DerivationTree]],
+    reference_tree: DerivationTree,
+    _1,
+    _2,
+    _3,
+    _4,
+) -> MaybeMonadPlus[ThreeValuedTruth]:
+    if not isinstance(formula, StructuralPredicateFormula):
+        return MaybeMonadPlus.nothing()
+
+    arg_insts = [
+        arg
+        if isinstance(arg, str)
+        else next(
+            path for path, subtree in reference_tree.paths() if subtree.id == arg.id
+        )
+        if isinstance(arg, DerivationTree)
+        else assignments[arg][0]
+        for arg in formula.args
+    ]
+    return MaybeMonadPlus(
+        ThreeValuedTruth.from_bool(
             formula.predicate.evaluate(reference_tree, *arg_insts)
         )
-    elif isinstance(formula, SemanticPredicateFormula):
-        arg_insts = [
-            arg
-            if isinstance(arg, DerivationTree) or arg not in assignments
-            else assignments[arg][1]
-            for arg in formula.args
-        ]
-        eval_res = formula.predicate.evaluate(graph, *arg_insts)
+    )
 
-        if eval_res.true():
-            return ThreeValuedTruth.true()
-        elif eval_res.false():
-            return ThreeValuedTruth.false()
 
-        if not eval_res.ready() or not all(
-            isinstance(key, Constant) for key in eval_res.result
-        ):
-            # Evaluation resulted in a tree update; that is, the formula is satisfiable, but only
-            # after an update of its arguments. This result happens when evaluating formulas during
-            # solution search after instantiating variables with concrete trees.
-            return ThreeValuedTruth.unknown()
+def evaluate_semantic_predicate_formula(
+    formula: Formula,
+    assignments: Dict[Variable, Tuple[Path, DerivationTree]],
+    _1,
+    graph: gg.GrammarGraph,
+    _2,
+    _3,
+    _4,
+) -> MaybeMonadPlus[ThreeValuedTruth]:
+    if not isinstance(formula, SemanticPredicateFormula):
+        return MaybeMonadPlus.nothing()
 
-        assignments.update(
-            {const: (tuple(), assgn) for const, assgn in eval_res.result.items()}
-        )
-        return ThreeValuedTruth.true()
-    elif isinstance(formula, NegatedFormula):
-        return ThreeValuedTruth.not_(
+    arg_insts = [
+        arg
+        if isinstance(arg, DerivationTree) or arg not in assignments
+        else assignments[arg][1]
+        for arg in formula.args
+    ]
+    eval_res = formula.predicate.evaluate(graph, *arg_insts)
+
+    if eval_res.true():
+        return MaybeMonadPlus(ThreeValuedTruth.true())
+    elif eval_res.false():
+        return MaybeMonadPlus(ThreeValuedTruth.false())
+
+    if not eval_res.ready() or not all(
+        isinstance(key, Constant) for key in eval_res.result
+    ):
+        # Evaluation resulted in a tree update; that is, the formula is satisfiable, but only
+        # after an update of its arguments. This result happens when evaluating formulas during
+        # solution search after instantiating variables with concrete trees.
+        return MaybeMonadPlus(ThreeValuedTruth.unknown())
+
+    assignments.update(
+        {const: (tuple(), assgn) for const, assgn in eval_res.result.items()}
+    )
+
+    return MaybeMonadPlus(ThreeValuedTruth.true())
+
+
+def evaluate_negated_formula_formula(
+    formula: Formula,
+    assignments: Dict[Variable, Tuple[Path, DerivationTree]],
+    reference_tree: DerivationTree,
+    graph: gg.GrammarGraph,
+    grammar: Grammar,
+    vacuously_satisfied: Set[Formula],
+    trie: SubtreesTrie,
+) -> MaybeMonadPlus[ThreeValuedTruth]:
+    if not isinstance(formula, NegatedFormula):
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        ThreeValuedTruth.not_(
             evaluate_legacy(
                 formula.args[0],
                 grammar,
@@ -654,8 +771,23 @@ def evaluate_legacy(
                 graph=graph,
             )
         )
-    elif isinstance(formula, ConjunctiveFormula):
-        return ThreeValuedTruth.all(
+    )
+
+
+def evaluate_conjunctive_formula_formula(
+    formula: Formula,
+    assignments: Dict[Variable, Tuple[Path, DerivationTree]],
+    reference_tree: DerivationTree,
+    graph: gg.GrammarGraph,
+    grammar: Grammar,
+    vacuously_satisfied: Set[Formula],
+    trie: SubtreesTrie,
+) -> MaybeMonadPlus[ThreeValuedTruth]:
+    if not isinstance(formula, ConjunctiveFormula):
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        ThreeValuedTruth.all(
             evaluate_legacy(
                 sub_formula,
                 grammar,
@@ -667,8 +799,23 @@ def evaluate_legacy(
             )
             for sub_formula in formula.args
         )
-    elif isinstance(formula, DisjunctiveFormula):
-        return ThreeValuedTruth.any(
+    )
+
+
+def evaluate_disjunctive_formula(
+    formula: Formula,
+    assignments: Dict[Variable, Tuple[Path, DerivationTree]],
+    reference_tree: DerivationTree,
+    graph: gg.GrammarGraph,
+    grammar: Grammar,
+    vacuously_satisfied: Set[Formula],
+    trie: SubtreesTrie,
+) -> MaybeMonadPlus[ThreeValuedTruth]:
+    if not isinstance(formula, DisjunctiveFormula):
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        ThreeValuedTruth.any(
             evaluate_legacy(
                 sub_formula,
                 grammar,
@@ -680,8 +827,7 @@ def evaluate_legacy(
             )
             for sub_formula in formula.args
         )
-    else:
-        raise NotImplementedError()
+    )
 
 
 def eliminate_quantifiers(
