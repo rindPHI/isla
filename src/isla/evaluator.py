@@ -165,7 +165,8 @@ def evaluate(
 
         # Evaluate predicates
         without_predicates: Formula = replace_formula(
-            assumptions_instantiated, lambda f: evaluate_predicates_action(f, reference_tree, graph)
+            assumptions_instantiated,
+            lambda f: evaluate_predicates_action(f, reference_tree, graph),
         )
 
         # The remaining formula is a pure SMT formula if there were no quantifiers over open trees.
@@ -950,14 +951,17 @@ def eliminate_quantifiers(
     keep_existential_quantifiers=False,
 ) -> Formula:
     # TODO: Use pre-computed paths
-    if numeric_constants is None:
-        numeric_constants = {
+    numeric_constants = (
+        {
             var
             for var in VariablesCollector().collect(formula)
             if isinstance(var, Constant) and var.is_numeric()
         }
-    if graph is None:
-        graph = gg.GrammarGraph.from_grammar(grammar)
+        if numeric_constants is None
+        else numeric_constants
+    )
+
+    graph = gg.GrammarGraph.from_grammar(grammar) if graph is None else graph
 
     # We eliminate all quantified formulas over derivation tree elements
     # by replacing them by the finite set of matches in the inner trees.
@@ -967,58 +971,15 @@ def eliminate_quantifiers(
         if isinstance(f, QuantifiedFormula)
     ]
 
-    if quantified_formulas:
-        for quantified_formula in quantified_formulas:
-            assert isinstance(quantified_formula.in_variable, DerivationTree)
-
-            # We can only eliminate this quantifier if in the in_expr, there is no open tree
-            # from which the nonterminal of the bound variale can be reached. In that case,
-            # we don't know whether the formula holds. We can still instantiate all matches,
-            # but have to keep the original formula.
-
-            keep_orig_formula = keep_existential_quantifiers or any(
-                graph.reachable(leaf.value, quantified_formula.bound_variable.n_type)
-                for _, leaf in quantified_formula.in_variable.open_leaves()
-            )
-
-            matches = [
-                {var: tree for var, (_, tree) in match.items()}
-                for match in matches_for_quantified_formula(
-                    quantified_formula, grammar, quantified_formula.in_variable
-                )
-            ]
-            instantiations = [
-                eliminate_quantifiers(
-                    quantified_formula.inner_formula.substitute_expressions(match),
-                    grammar,
-                    graph=graph,
-                    numeric_constants=numeric_constants,
-                    keep_existential_quantifiers=keep_existential_quantifiers,
-                )
-                for match in matches
-            ]
-
-            reduce_op = (
-                Formula.__and__
-                if isinstance(quantified_formula, ForallFormula)
-                else Formula.__or__
-            )
-
-            if instantiations:
-                replacement = reduce(reduce_op, instantiations)
-                if keep_orig_formula:
-                    replacement = reduce_op(quantified_formula, replacement)
-
-                formula = replace_formula(formula, quantified_formula, replacement)
-            else:
-                if not keep_orig_formula:
-                    formula = replace_formula(
-                        formula,
-                        quantified_formula,
-                        SMTFormula(
-                            z3.BoolVal(isinstance(quantified_formula, ForallFormula))
-                        ),
-                    )
+    for quantified_formula in quantified_formulas:
+        formula = eliminate_quantifiers_in_quantified_formula(
+            formula,
+            grammar,
+            graph,
+            keep_existential_quantifiers,
+            numeric_constants,
+            quantified_formula,
+        )
 
     numeric_quantified_formulas = [
         f
@@ -1026,57 +987,132 @@ def eliminate_quantifiers(
         if isinstance(f, NumericQuantifiedFormula)
     ]
 
-    if numeric_quantified_formulas:
-        for quantified_formula in numeric_quantified_formulas:
-            if isinstance(quantified_formula, ExistsIntFormula):
-                # There might be a constant for which this formula is satisfied
-                formula = replace_formula(
-                    formula,
-                    quantified_formula,
-                    ExistsIntFormula(
-                        quantified_formula.bound_variable,
-                        eliminate_quantifiers(
-                            quantified_formula.inner_formula,
-                            grammar,
-                            graph=graph,
-                            numeric_constants=numeric_constants,
-                            keep_existential_quantifiers=keep_existential_quantifiers,
-                        ),
-                    ),
-                )
-
-                formula = formula | reduce(
-                    Formula.__or__,
-                    [
-                        eliminate_quantifiers(
-                            quantified_formula.inner_formula.substitute_variables(
-                                {quantified_formula.bound_variable: constant}
-                            ),
-                            grammar,
-                            graph=graph,
-                            numeric_constants=numeric_constants,
-                        )
-                        for constant in numeric_constants
-                    ],
-                    SMTFormula(z3.BoolVal(False)),
-                )
-            elif isinstance(quantified_formula, ForallIntFormula):
-                formula = replace_formula(
-                    formula,
-                    quantified_formula,
-                    ForallIntFormula(
-                        quantified_formula.bound_variable,
-                        eliminate_quantifiers(
-                            quantified_formula.inner_formula,
-                            grammar,
-                            graph=graph,
-                            numeric_constants=numeric_constants,
-                            keep_existential_quantifiers=keep_existential_quantifiers,
-                        ),
-                    ),
-                )
+    for quantified_formula in numeric_quantified_formulas:
+        formula = eliminate_quantifiers_in_numeric_quantified_formula(
+            formula,
+            grammar,
+            graph,
+            keep_existential_quantifiers,
+            numeric_constants,
+            quantified_formula,
+        )
 
     return formula
+
+
+def eliminate_quantifiers_in_numeric_quantified_formula(
+    context_formula: Formula,
+    grammar: Grammar,
+    graph: gg.GrammarGraph,
+    keep_existential_quantifiers: bool,
+    numeric_constants: Set[Constant],
+    quantified_formula: NumericQuantifiedFormula,
+) -> Formula:
+    if isinstance(quantified_formula, ExistsIntFormula):
+        # There might be a constant for which this formula is satisfied
+        context_formula = replace_formula(
+            context_formula,
+            quantified_formula,
+            ExistsIntFormula(
+                quantified_formula.bound_variable,
+                eliminate_quantifiers(
+                    quantified_formula.inner_formula,
+                    grammar,
+                    graph=graph,
+                    numeric_constants=numeric_constants,
+                    keep_existential_quantifiers=keep_existential_quantifiers,
+                ),
+            ),
+        )
+
+        context_formula = context_formula | reduce(
+            Formula.__or__,
+            [
+                eliminate_quantifiers(
+                    quantified_formula.inner_formula.substitute_variables(
+                        {quantified_formula.bound_variable: constant}
+                    ),
+                    grammar,
+                    graph=graph,
+                    numeric_constants=numeric_constants,
+                )
+                for constant in numeric_constants
+            ],
+            SMTFormula(z3.BoolVal(False)),
+        )
+    elif isinstance(quantified_formula, ForallIntFormula):
+        context_formula = replace_formula(
+            context_formula,
+            quantified_formula,
+            ForallIntFormula(
+                quantified_formula.bound_variable,
+                eliminate_quantifiers(
+                    quantified_formula.inner_formula,
+                    grammar,
+                    graph=graph,
+                    numeric_constants=numeric_constants,
+                    keep_existential_quantifiers=keep_existential_quantifiers,
+                ),
+            ),
+        )
+
+    return context_formula
+
+
+def eliminate_quantifiers_in_quantified_formula(
+    context_formula: Formula,
+    grammar: Grammar,
+    graph: gg.GrammarGraph,
+    keep_existential_quantifiers: bool,
+    numeric_constants: Set[Constant],
+    quantified_formula: QuantifiedFormula,
+) -> Formula:
+    assert isinstance(quantified_formula.in_variable, DerivationTree)
+    # We can only eliminate this quantifier if in the in_expr, there is no open tree
+    # from which the nonterminal of the bound variale can be reached. In that case,
+    # we don't know whether the formula holds. We can still instantiate all matches,
+    # but have to keep the original formula.
+    keep_orig_formula = keep_existential_quantifiers or any(
+        graph.reachable(leaf.value, quantified_formula.bound_variable.n_type)
+        for _, leaf in quantified_formula.in_variable.open_leaves()
+    )
+    matches = [
+        {var: tree for var, (_, tree) in match.items()}
+        for match in matches_for_quantified_formula(
+            quantified_formula, grammar, quantified_formula.in_variable
+        )
+    ]
+    instantiations = [
+        eliminate_quantifiers(
+            quantified_formula.inner_formula.substitute_expressions(match),
+            grammar,
+            graph=graph,
+            numeric_constants=numeric_constants,
+            keep_existential_quantifiers=keep_existential_quantifiers,
+        )
+        for match in matches
+    ]
+    reduce_op = (
+        Formula.__and__
+        if isinstance(quantified_formula, ForallFormula)
+        else Formula.__or__
+    )
+
+    if instantiations:
+        replacement = reduce(reduce_op, instantiations)
+        if keep_orig_formula:
+            replacement = reduce_op(quantified_formula, replacement)
+
+        return replace_formula(context_formula, quantified_formula, replacement)
+
+    if not keep_orig_formula:
+        return replace_formula(
+            context_formula,
+            quantified_formula,
+            SMTFormula(z3.BoolVal(isinstance(quantified_formula, ForallFormula))),
+        )
+
+    return context_formula
 
 
 def matches_for_quantified_formula(
