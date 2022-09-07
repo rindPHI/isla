@@ -2393,7 +2393,7 @@ def convert_to_dnf(formula: Formula) -> Formula:
         return formula
 
 
-def ensure_unique_bound_variables(
+def ensure_unique_bound_variables(  # noqa: C901
     formula: Formula, used_names: Optional[Set[str]] = None
 ) -> Formula:
     used_names: Set[str] = set() if used_names is None else used_names
