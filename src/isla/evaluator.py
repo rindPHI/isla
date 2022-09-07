@@ -91,15 +91,14 @@ def evaluate(
 
     assert reference_tree is not None
     assert isinstance(reference_tree, DerivationTree)
-    if subtrees_trie is None:
-        subtrees_trie = reference_tree.trie()
-    if graph is None:
-        graph = gg.GrammarGraph.from_grammar(grammar)
+    subtrees_trie = reference_tree.trie() if subtrees_trie is None else subtrees_trie
+    graph = gg.GrammarGraph.from_grammar(grammar) if graph is None else graph
 
-    if isinstance(formula, str):
-        formula = parse_isla(
-            formula, grammar, structural_predicates, semantic_predicates
-        )
+    formula = (
+        parse_isla(formula, grammar, structural_predicates, semantic_predicates)
+        if isinstance(formula, str)
+        else formula
+    )
 
     top_level_constants = {
         c
@@ -107,10 +106,13 @@ def evaluate(
         if isinstance(c, Constant) and not c.is_numeric()
     }
     assert len(top_level_constants) <= 1
-    if len(top_level_constants) > 0:
-        formula = formula.substitute_expressions(
+    formula = (
+        formula.substitute_expressions(
             {next(iter(top_level_constants)): reference_tree}
         )
+        if len(top_level_constants) > 0
+        else formula
+    )
 
     # NOTE: Deactivated, might be too strict for evaluation (though maybe
     #       necessary for solving). See comment in well_formed.
@@ -144,36 +146,9 @@ def evaluate(
     # First, eliminate quantifiers in assumptions. We don't supply any numeric constants
     # here, as this would be unsound in assumptions: We know that the core holds for any
     # int, but not for which one.
-    # NOTE: We could eliminate unsatisfiable preconditions already here, but that turned
-    #       out to be quite expensive. Rather, we check whether the precondition was
-    #       unsatisfiable before returning a negative evaluation result.
-    # NOTE: We only check propositional unsatisfiability, which is an approximation; thus,
-    #       it is theoretically possible that we return a negative result for an actually
-    #       true formula. This, however, only happens with assumptions present, which are
-    #       used in the solver when checking whether an existential quantifier can be quickly
-    #       removed. Not removing the quantifier is thus not soundness critical. Also,
-    #       false negative results should generally be less critical than false positive ones.
-    qfr_free_assumptions_set: Set[Tuple[Formula, ...]] = {
-        assumptions
-        for assumptions in itertools.product(
-            *[
-                split_disjunction(conjunct)
-                for assumption in assumptions
-                for conjunct in split_conjunction(
-                    eliminate_quantifiers(
-                        assumption, grammar=grammar, keep_existential_quantifiers=True
-                    )
-                )
-                # By quantifier elimination, we might obtain the original formula the same way
-                # it was derived before. This has to be excluded, to ensure that the formula
-                # is not trivially satisfied
-                if conjunct != formula
-            ]
-        )
-        # if not propositionally_unsatisfiable(
-        #     reduce(Formula.__and__, assumptions, SMTFormula(z3.BoolVal(True))))  # <- See comment above
-    }
-
+    qfr_free_assumptions_set = eliminate_quantifiers_in_assumptions(
+        assumptions, formula, grammar
+    )
     assert qfr_free_assumptions_set
 
     # The assumptions in qfr_free_assumptions_set have to be regarded as a disjunction,
@@ -189,43 +164,8 @@ def evaluate(
             )
 
         # Evaluate predicates
-        def evaluate_predicates_action(formula: Formula) -> bool | Formula:
-            if isinstance(formula, StructuralPredicateFormula):
-                return SMTFormula(z3.BoolVal(formula.evaluate(reference_tree)))
-
-            if isinstance(formula, SemanticPredicateFormula):
-                eval_result = formula.evaluate(graph)
-
-                if not eval_result.ready():
-                    return False
-
-                if eval_result.true():
-                    return SMTFormula(z3.BoolVal(True))
-                elif eval_result.false():
-                    return SMTFormula(z3.BoolVal(False))
-
-                substs: Dict[
-                    Variable | DerivationTree, DerivationTree
-                ] = eval_result.result
-                assert isinstance(substs, dict)
-                assert all(
-                    isinstance(key, Variable) and key.n_type == Variable.NUMERIC_NTYPE
-                    for key in substs
-                )
-                return SMTFormula(
-                    z3_and(
-                        [
-                            cast(z3.BoolRef, z3_eq(const.to_smt(), str(substs[const])))
-                            for const in substs
-                        ]
-                    ),
-                    *substs.keys(),
-                )
-
-            return False
-
         without_predicates: Formula = replace_formula(
-            assumptions_instantiated, evaluate_predicates_action
+            assumptions_instantiated, lambda f: evaluate_predicates_action(f, reference_tree, graph)
         )
 
         # The remaining formula is a pure SMT formula if there were no quantifiers over open trees.
@@ -254,6 +194,76 @@ def evaluate(
     return ThreeValuedTruth.true()
 
 
+def evaluate_predicates_action(
+    formula: Formula, reference_tree: DerivationTree, graph: gg.GrammarGraph
+) -> bool | Formula:
+    if isinstance(formula, StructuralPredicateFormula):
+        return SMTFormula(z3.BoolVal(formula.evaluate(reference_tree)))
+
+    if isinstance(formula, SemanticPredicateFormula):
+        eval_result = formula.evaluate(graph)
+
+        if not eval_result.ready():
+            return False
+
+        if eval_result.true():
+            return SMTFormula(z3.BoolVal(True))
+        elif eval_result.false():
+            return SMTFormula(z3.BoolVal(False))
+
+        substs: Dict[Variable | DerivationTree, DerivationTree] = eval_result.result
+        assert isinstance(substs, dict)
+        assert all(
+            isinstance(key, Variable) and key.n_type == Variable.NUMERIC_NTYPE
+            for key in substs
+        )
+        return SMTFormula(
+            z3_and(
+                [
+                    cast(z3.BoolRef, z3_eq(const.to_smt(), str(substs[const])))
+                    for const in substs
+                ]
+            ),
+            *substs.keys(),
+        )
+
+    return False
+
+
+def eliminate_quantifiers_in_assumptions(
+    assumptions: Set[Formula], formula: Formula, grammar: Grammar
+) -> Set[Tuple[Formula, ...]]:
+    # NOTE: We could eliminate unsatisfiable preconditions already here, but that turned
+    #       out to be quite expensive. Rather, we check whether the precondition was
+    #       unsatisfiable before returning a negative evaluation result.
+    # NOTE: We only check propositional unsatisfiability, which is an approximation; thus,
+    #       it is theoretically possible that we return a negative result for an actually
+    #       true formula. This, however, only happens with assumptions present, which are
+    #       used in the solver when checking whether an existential quantifier can be quickly
+    #       removed. Not removing the quantifier is thus not soundness critical. Also,
+    #       false negative results should generally be less critical than false positive ones.
+    return {
+        assumptions
+        for assumptions in itertools.product(
+            *[
+                split_disjunction(conjunct)
+                for assumption in assumptions
+                for conjunct in split_conjunction(
+                    eliminate_quantifiers(
+                        assumption, grammar=grammar, keep_existential_quantifiers=True
+                    )
+                )
+                # By quantifier elimination, we might obtain the original formula the same way
+                # it was derived before. This has to be excluded, to ensure that the formula
+                # is not trivially satisfied
+                if conjunct != formula
+            ]
+        )
+        # if not propositionally_unsatisfiable(
+        #     reduce(Formula.__and__, assumptions, SMTFormula(z3.BoolVal(True))))  # <- See comment above
+    }
+
+
 def well_formed(
     formula: Formula,
     grammar: Grammar,
@@ -274,9 +284,9 @@ def well_formed(
     #  evaluating, only when generating. With two symbols for the SMT formula, I simply received
     #  a timeout. Can we defer the Z3 call in the solver until `container` is fixed?
 
-    bound_vars = OrderedSet([])if bound_vars is None else bound_vars
+    bound_vars = OrderedSet([]) if bound_vars is None else bound_vars
     in_expr_vars = OrderedSet([]) if in_expr_vars is None else in_expr_vars
-    bound_by_smt = OrderedSet([])if bound_by_smt is None else bound_by_smt
+    bound_by_smt = OrderedSet([]) if bound_by_smt is None else bound_by_smt
 
     unknown_typed_variables = [
         var
