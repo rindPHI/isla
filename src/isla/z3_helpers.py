@@ -8,7 +8,9 @@ from typing import Callable, Tuple, cast, List, Optional, Dict, Union, Generator
 import z3
 from z3.z3 import _coerce_exprs
 
+from isla.helpers import MaybeMonadPlus
 from isla.three_valued_truth import ThreeValuedTruth
+import functools
 
 Z3EvalResult = Tuple[
     Tuple[str, ...], bool | int | str | Callable[[Tuple[str, ...]], bool | int | str]
@@ -23,226 +25,543 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
     if z3.is_quantifier(expr):
         raise NotImplementedError("Cannot evaluate expressions with quantifiers.")
 
-    def construct_result(
-        constructor: Callable[[Tuple[bool | int | str, ...]], bool | int | str],
-        children_results: Tuple[Z3EvalResult, ...],
-    ) -> Z3EvalResult:
-        params: Tuple[str, ...] = tuple(
-            set(
-                [
-                    param
-                    for child_params, _ in children_results
-                    for param in child_params
-                ]
-            )
-        )
+    children_results: Tuple[Z3EvalResult, ...] = tuple(
+        map(evaluate_z3_expression, expr.children())
+    )
 
-        if not params:
-            return (), constructor(
-                tuple([child_result for _, child_result in children_results])
-            )
+    def close(evaluation_function: callable) -> callable:
+        return lambda f: evaluation_function(f, children_results)
 
-        def closure(var_insts: Tuple[str, ...]) -> bool | int | str:
-            assert len(var_insts) == len(params)
-            instantiated_children_results: Tuple[bool | int | str, ...] = ()
-            for child_params, child_result in children_results:
-                if not child_params:
-                    assert type(child_result) in {bool, int, str}
-                    instantiated_children_results += (
-                        cast(bool | int | str, child_result),
-                    )
-                    continue
+    def raise_not_implemented_error(
+        expr: z3.ExprRef, _
+    ) -> MaybeMonadPlus[Z3EvalResult]:
+        logger = logging.getLogger("Z3 evaluation")
+        logger.debug("Evaluation of expression %s not implemented.", expr)
+        raise NotImplementedError(f"Evaluation of expression {expr} not implemented.")
 
-                instantiated_child_params: Tuple[str] = cast(Tuple[str], ())
-                for child_param in child_params:
-                    instantiated_child_params += (
-                        var_insts[params.index(str(child_param))],
-                    )
+    monad = functools.reduce(
+        lambda monad, evaluation_function: (monad + (evaluation_function, expr)),
+        map(
+            close,
+            [
+                # Literals
+                evaluate_z3_string_value,
+                evaluate_z3_int_value,
+                evaluate_z3_rat_value,
+                evaluate_z3_str_to_int,
+                evaluate_z3_false_value,
+                evaluate_z3_true_value,
+                # Regular Expressions
+                evaluate_z3_re_range,
+                evaluate_z3_re_loop,
+                evaluate_z3_seq_to_re,
+                evaluate_z3_re_concat,
+                evaluate_z3_seq_in_re,
+                evaluate_z3_re_star,
+                evaluate_z3_re_plus,
+                evaluate_z3_re_option,
+                evaluate_z3_re_union,
+                evaluate_z3_re_comp,
+                evaluate_z3_re_full_set,
+                # Boolean Combinations
+                evaluate_z3_not,
+                evaluate_z3_and,
+                evaluate_z3_or,
+                # Comparisons
+                evaluate_z3_eq,
+                evaluate_z3_lt,
+                evaluate_z3_le,
+                evaluate_z3_gt,
+                evaluate_z3_ge,
+                # Arithmetic Operations
+                evaluate_z3_add,
+                evaluate_z3_sub,
+                evaluate_z3_mul,
+                evaluate_z3_div,
+                evaluate_z3_mod,
+                evaluate_z3_pow,
+                # String Operations
+                evaluate_z3_seq_length,
+                evaluate_z3_seq_concat,
+                evaluate_z3_seq_at,
+                evaluate_z3_seq_extract,
+                evaluate_z3_str_to_code,
+                # Fallback
+                raise_not_implemented_error,
+            ],
+        ),
+        MaybeMonadPlus.nothing(),
+    )
 
-                eval_child_result = child_result(instantiated_child_params)
-                assert type(eval_child_result) in {bool, int, str}
-                instantiated_children_results += (eval_child_result,)
+    return monad.a
 
-            return constructor(instantiated_children_results)
 
-        return params, closure
+def evaluate_z3_string_value(expr: z3.ExprRef, _) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_string_value(expr):
+        return MaybeMonadPlus.nothing()
+    expr: z3.StringVal
+    return MaybeMonadPlus(((), expr.as_string()))
 
-    children_results = tuple(map(evaluate_z3_expression, expr.children()))
 
-    # Literals
-    if z3.is_string_value(expr):
-        expr: z3.StringVal
-        return (), expr.as_string()
+def evaluate_z3_int_value(expr: z3.ExprRef, _) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_int_value(expr):
+        return MaybeMonadPlus.nothing()
 
-    if z3.is_int_value(expr):
-        expr: z3.IntVal
-        return (), expr.as_long()
+    expr: z3.IntVal
+    return MaybeMonadPlus(((), expr.as_long()))
 
+
+def evaluate_z3_rat_value(expr: z3.ExprRef, _) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_rational_value(expr):
+        return MaybeMonadPlus.nothing()
+
+    expr: z3.RatVal
+    return MaybeMonadPlus(((), expr.numerator().as_long() / expr.denominator().as_long()))
+
+
+def evaluate_z3_str_to_int(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
     # NOTE: We convert a float string to int by rounding! This differs from the standard
     #       SMT-LIB/Z3 semantics, where str.to.int returns -1 for all strings that don't
     #       represent positive integers.
-    if expr.decl().kind() == z3.Z3_OP_STR_TO_INT:
-        if isinstance(children_results[0], str) and not children_results[0]:
-            raise DomainError("Empty string cannot be converted to int.")
+    if expr.decl().kind() != z3.Z3_OP_STR_TO_INT:
+        return MaybeMonadPlus.nothing()
 
-        def constructor(args):
-            assert len(args) == 1
-            c = args[0]
+    if isinstance(children_results[0], str) and not children_results[0]:
+        raise DomainError("Empty string cannot be converted to int.")
+
+    def constructor(args):
+        assert len(args) == 1
+        c = args[0]
+        try:
+            return int(c)
+        except ValueError:
             try:
-                return int(c)
+                return int(float(c))
             except ValueError:
-                try:
-                    return int(float(c))
-                except ValueError:
-                    raise DomainError(
-                        f"Expression {children_results[0]} cannot be converted to int."
-                    )
+                raise DomainError(
+                    f"Expression {children_results[0]} cannot be converted to int."
+                )
 
-        return construct_result(constructor, children_results)
+    return MaybeMonadPlus(construct_result(constructor, children_results))
 
-    if z3.is_false(expr):
-        return (), False
 
-    if z3.is_true(expr):
-        return (), True
+def evaluate_z3_false_value(expr: z3.ExprRef, _) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_false(expr):
+        return MaybeMonadPlus.nothing()
+    return MaybeMonadPlus(((), False))
 
-    # Regular Expressions
-    if expr.decl().name() == "re.range":
-        return construct_result(lambda args: f"[{args[0]}-{args[1]}]", children_results)
 
-    if expr.decl().kind() == z3.Z3_OP_RE_LOOP:
-        return construct_result(
+def evaluate_z3_true_value(expr: z3.ExprRef, _) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_true(expr):
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(((), True))
+
+
+# Regular Expressions
+def evaluate_z3_re_range(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if expr.decl().name() != "re.range":
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(lambda args: f"[{args[0]}-{args[1]}]", children_results)
+    )
+
+
+def evaluate_z3_re_loop(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if expr.decl().kind() != z3.Z3_OP_RE_LOOP:
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(
             lambda args: f"{args[0]}{{{expr.params()[0]},{expr.params()[1]}}}",
             children_results,
         )
+    )
 
-    if expr.decl().kind() == z3.Z3_OP_SEQ_TO_RE:
 
-        def constructor(args):
-            assert len(args) == 1
+def evaluate_z3_seq_to_re(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if expr.decl().kind() != z3.Z3_OP_SEQ_TO_RE:
+        return MaybeMonadPlus.nothing()
 
-            child_string = args[0]
-            for symbol, ctrl_character in zip("tnrvf", "\t\n\r\v\f"):
-                child_string = child_string.replace("\\" + symbol, ctrl_character)
+    def constructor(args):
+        assert len(args) == 1
 
-            return re.escape(child_string)
+        child_string = args[0]
+        for symbol, ctrl_character in zip("tnrvf", "\t\n\r\v\f"):
+            child_string = child_string.replace("\\" + symbol, ctrl_character)
 
-        return construct_result(constructor, children_results)
+        return re.escape(child_string)
 
-    if expr.decl().kind() == z3.Z3_OP_RE_CONCAT:
-        return construct_result(lambda args: "".join(args), children_results)
+    return MaybeMonadPlus(construct_result(constructor, children_results))
 
-    if expr.decl().kind() == z3.Z3_OP_SEQ_IN_RE:
-        return construct_result(
-            lambda args: re.match(f"^{args[1]}$", args[0]) is not None, children_results
+
+def evaluate_z3_re_concat(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if expr.decl().kind() != z3.Z3_OP_RE_CONCAT:
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(lambda args: "".join(args), children_results)
+    )
+
+
+def evaluate_z3_seq_in_re(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if expr.decl().kind() != z3.Z3_OP_SEQ_IN_RE:
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(
+            lambda args: re.match(f"^{args[1]}$", args[0]) is not None,
+            children_results,
         )
+    )
 
-    if expr.decl().kind() == z3.Z3_OP_RE_STAR:
-        return construct_result(lambda args: f"({args[0]})*", children_results)
 
-    if expr.decl().kind() == z3.Z3_OP_RE_PLUS:
-        return construct_result(lambda args: f"({args[0]})+", children_results)
+def evaluate_z3_re_star(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if expr.decl().kind() != z3.Z3_OP_RE_STAR:
+        return MaybeMonadPlus.nothing()
 
-    if expr.decl().kind() == z3.Z3_OP_RE_OPTION:
-        return construct_result(lambda args: f"({args[0]})?", children_results)
+    return MaybeMonadPlus(
+        construct_result(lambda args: f"({args[0]})*", children_results)
+    )
 
-    if expr.decl().kind() == z3.Z3_OP_RE_UNION:
-        return construct_result(
-            lambda args: f"(({args[0]})|({args[1]}))", children_results
+
+def evaluate_z3_re_plus(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if expr.decl().kind() != z3.Z3_OP_RE_PLUS:
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(lambda args: f"({args[0]})+", children_results)
+    )
+
+
+def evaluate_z3_re_option(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if expr.decl().kind() != z3.Z3_OP_RE_OPTION:
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(lambda args: f"({args[0]})?", children_results)
+    )
+
+
+def evaluate_z3_re_union(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if expr.decl().kind() != z3.Z3_OP_RE_UNION:
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(lambda args: f"(({args[0]})|({args[1]}))", children_results)
+    )
+
+
+def evaluate_z3_re_comp(expr: z3.ExprRef, _) -> MaybeMonadPlus[Z3EvalResult]:
+    if expr.decl().name() != "re.comp":
+        return MaybeMonadPlus.nothing()
+
+    # The argument must be a union of strings or a range.
+    child = expr.children()[0]
+    if (
+        child.decl().kind() == z3.Z3_OP_RE_UNION
+        and all(
+            grandchild.decl().kind() == z3.Z3_OP_SEQ_TO_RE
+            for grandchild in child.children()
         )
-
-    if expr.decl().name() == "re.comp":
-        # The argument must be a union of strings or a range.
-        child = expr.children()[0]
-        if (
-            child.decl().kind() == z3.Z3_OP_RE_UNION
-            and all(
-                grandchild.decl().kind() == z3.Z3_OP_SEQ_TO_RE
-                for grandchild in child.children()
-            )
-            or child.decl().name() == "re.range"
-        ):
-            return construct_result(
+        or child.decl().name() == "re.range"
+    ):
+        return MaybeMonadPlus(
+            construct_result(
                 lambda args: "[^" + "".join(args) + "]",
                 tuple(map(evaluate_z3_expression, child.children())),
             )
-
-    if expr.decl().kind() == z3.Z3_OP_RE_FULL_SET:
-        return (), ".*?"
-
-    # Boolean Combinations
-    if z3.is_not(expr):
-        return construct_result(lambda args: not args[0], children_results)
-
-    if z3.is_and(expr):
-        return construct_result(
-            lambda args: reduce(operator.and_, args), children_results
         )
 
-    if z3.is_or(expr):
-        return construct_result(
-            lambda args: reduce(operator.or_, args), children_results
-        )
+    return MaybeMonadPlus.nothing()
 
-    # Comparisons
-    if z3.is_eq(expr):
-        return construct_result(lambda args: args[0] == args[1], children_results)
 
-    if z3.is_lt(expr):
-        return construct_result(lambda args: args[0] < args[1], children_results)
+def evaluate_z3_re_full_set(expr: z3.ExprRef, _) -> MaybeMonadPlus[Z3EvalResult]:
+    if expr.decl().kind() != z3.Z3_OP_RE_FULL_SET:
+        return MaybeMonadPlus.nothing()
 
-    if z3.is_le(expr):
-        return construct_result(lambda args: args[0] <= args[1], children_results)
+    return MaybeMonadPlus(((), ".*?"))
 
-    if z3.is_gt(expr):
-        return construct_result(lambda args: args[0] > args[1], children_results)
 
-    if z3.is_ge(expr):
-        return construct_result(lambda args: args[0] >= args[1], children_results)
+# Boolean Combinations
+def evaluate_z3_not(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_not(expr):
+        return MaybeMonadPlus.nothing()
 
-    # Arithmetic Operations
-    if z3.is_add(expr):
-        return construct_result(lambda args: args[0] + args[1], children_results)
+    return MaybeMonadPlus(construct_result(lambda args: not args[0], children_results))
 
-    if z3.is_sub(expr):
-        return construct_result(lambda args: args[0] - args[1], children_results)
 
-    if z3.is_mul(expr):
-        return construct_result(lambda args: args[0] * args[1], children_results)
+def evaluate_z3_and(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_and(expr):
+        return MaybeMonadPlus.nothing()
 
-    if z3.is_div(expr):
-        return construct_result(
+    return MaybeMonadPlus(
+        construct_result(lambda args: reduce(operator.and_, args), children_results)
+    )
+
+
+def evaluate_z3_or(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_or(expr):
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(lambda args: reduce(operator.or_, args), children_results)
+    )
+
+
+# Comparisons
+def evaluate_z3_eq(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_eq(expr):
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(lambda args: args[0] == args[1], children_results)
+    )
+
+
+def evaluate_z3_lt(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_lt(expr):
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(lambda args: args[0] < args[1], children_results)
+    )
+
+
+def evaluate_z3_le(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_le(expr):
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(lambda args: args[0] <= args[1], children_results)
+    )
+
+
+def evaluate_z3_gt(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_gt(expr):
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(lambda args: args[0] > args[1], children_results)
+    )
+
+
+def evaluate_z3_ge(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_ge(expr):
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(lambda args: args[0] >= args[1], children_results)
+    )
+
+
+# Arithmetic Operations
+def evaluate_z3_add(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_add(expr):
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(lambda args: args[0] + args[1], children_results)
+    )
+
+
+def evaluate_z3_sub(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_sub(expr):
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(lambda args: args[0] - args[1], children_results)
+    )
+
+
+def evaluate_z3_mul(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_mul(expr):
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(lambda args: args[0] * args[1], children_results)
+    )
+
+
+def evaluate_z3_div(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_div(expr):
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(
             lambda args: int(float(args[0]) / float(args[1])), children_results
         )
+    )
 
-    if z3.is_mod(expr):
-        return construct_result(lambda args: args[0] % args[1], children_results)
 
-    # String Operations
-    if expr.decl().kind() == z3.Z3_OP_SEQ_LENGTH:
-        return construct_result(lambda args: len(args[0]), children_results)
+def evaluate_z3_mod(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if not z3.is_mod(expr):
+        return MaybeMonadPlus.nothing()
 
-    if expr.decl().kind() == z3.Z3_OP_SEQ_CONCAT:
-        return construct_result(
+    return MaybeMonadPlus(
+        construct_result(lambda args: args[0] % args[1], children_results)
+    )
+
+
+def evaluate_z3_pow(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if expr.decl().kind() != z3.Z3_OP_POWER:
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(lambda args: args[0] ** args[1], children_results)
+    )
+
+
+# String Operations
+def evaluate_z3_seq_length(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if expr.decl().kind() != z3.Z3_OP_SEQ_LENGTH:
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(construct_result(lambda args: len(args[0]), children_results))
+
+
+def evaluate_z3_seq_concat(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if expr.decl().kind() != z3.Z3_OP_SEQ_CONCAT:
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(
             lambda args: cast(str, args[0]) + cast(str, args[1]), children_results
         )
+    )
 
-    if expr.decl().kind() == z3.Z3_OP_SEQ_AT:
-        return construct_result(
+
+def evaluate_z3_seq_at(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if expr.decl().kind() != z3.Z3_OP_SEQ_AT:
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(
             lambda args: cast(str, args[0])[cast(int, args[1])], children_results
         )
+    )
 
-    if expr.decl().kind() == z3.Z3_OP_SEQ_EXTRACT:
-        return construct_result(
+
+def evaluate_z3_seq_extract(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if expr.decl().kind() != z3.Z3_OP_SEQ_EXTRACT:
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(
             lambda args: cast(str, args[0])[
                 cast(int, args[1]) : cast(int, args[1]) + cast(int, args[2])
             ],
             children_results,
         )
+    )
 
-    logger = logging.getLogger("Z3 evaluation")
-    logger.debug("Evaluation of expression %s not implemented.", expr)
-    raise NotImplementedError(f"Evaluation of expression {expr} not implemented.")
+
+def evaluate_z3_str_to_code(
+    expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
+) -> MaybeMonadPlus[Z3EvalResult]:
+    if expr.decl().kind() != z3.Z3_OP_STR_TO_CODE:
+        return MaybeMonadPlus.nothing()
+
+    return MaybeMonadPlus(
+        construct_result(
+            lambda args: ord(args[0]),
+            children_results,
+        )
+    )
+
+
+def construct_result(
+    constructor: Callable[[Tuple[bool | int | str, ...]], bool | int | str],
+    children_results: Tuple[Z3EvalResult, ...],
+) -> Z3EvalResult:
+    params: Tuple[str, ...] = tuple(
+        set([param for child_params, _ in children_results for param in child_params])
+    )
+
+    if not params:
+        return (), constructor(
+            tuple([child_result for _, child_result in children_results])
+        )
+
+    def closure(var_insts: Tuple[str, ...]) -> bool | int | str:
+        assert len(var_insts) == len(params)
+        instantiated_children_results: Tuple[bool | int | str, ...] = ()
+        for child_params, child_result in children_results:
+            if not child_params:
+                assert type(child_result) in {bool, int, str}
+                instantiated_children_results += (cast(bool | int | str, child_result),)
+                continue
+
+            instantiated_child_params: Tuple[str] = cast(Tuple[str], ())
+            for child_param in child_params:
+                instantiated_child_params += (
+                    var_insts[params.index(str(child_param))],
+                )
+
+            eval_child_result = child_result(instantiated_child_params)
+            assert type(eval_child_result) in {bool, int, str}
+            instantiated_children_results += (eval_child_result,)
+
+        return constructor(instantiated_children_results)
+
+    return params, closure
 
 
 def z3_solve(
@@ -303,7 +622,9 @@ def is_valid(formula: z3.BoolRef, timeout: int = 500) -> ThreeValuedTruth:
             # There must not be any uninstantiated variables left
             return ThreeValuedTruth.false()
 
-        assert isinstance(eval_result[1], bool)
+        assert isinstance(
+            eval_result[1], bool
+        ), f"Received {eval_result[1]} (type {type(eval_result[1]).__name__}), not bool"
 
         return ThreeValuedTruth.from_bool(eval_result[1])
     except NotImplementedError:
