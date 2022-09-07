@@ -767,9 +767,9 @@ def get_symbols(expr: z3.ExprRef) -> Set[z3.SeqRef]:
     )
 
 
-def smt_expr_to_str(
+def smt_expr_to_str(  # noqa: C901
     f: z3.ExprRef, qfd_var_stack: Tuple[str, ...] = ()
-) -> str:  # noqa: C901
+) -> str:
     op_strings = {
         z3.Z3_OP_SEQ_IN_RE: "str.in_re",
         z3.Z3_OP_SEQ_CONCAT: "str.++",
