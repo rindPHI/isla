@@ -274,12 +274,9 @@ def well_formed(
     #  evaluating, only when generating. With two symbols for the SMT formula, I simply received
     #  a timeout. Can we defer the Z3 call in the solver until `container` is fixed?
 
-    if bound_vars is None:
-        bound_vars = OrderedSet([])
-    if in_expr_vars is None:
-        in_expr_vars = OrderedSet([])
-    if bound_by_smt is None:
-        bound_by_smt = OrderedSet([])
+    bound_vars = OrderedSet([])if bound_vars is None else bound_vars
+    in_expr_vars = OrderedSet([]) if in_expr_vars is None else in_expr_vars
+    bound_by_smt = OrderedSet([])if bound_by_smt is None else bound_by_smt
 
     unknown_typed_variables = [
         var
@@ -291,171 +288,276 @@ def well_formed(
             map(repr, unknown_typed_variables)
         )
 
-    if isinstance(formula, ExistsIntFormula) or isinstance(formula, ForallIntFormula):
-        if formula.bound_variables().intersection(bound_vars):
-            return (
+    def raise_not_implemented_error(
+        formula: Formula,
+    ) -> MaybeMonadPlus[Tuple[bool, str]]:
+        raise NotImplementedError(f"Unsupported formula type {type(formula).__name__}")
+
+    def close(check_function: callable) -> callable:
+        return lambda f: check_function(
+            f,
+            grammar,
+            bound_vars,
+            in_expr_vars,
+            bound_by_smt,
+        )
+
+    monad = functools.reduce(
+        lambda monad, check_function: (monad + (check_function, formula)),
+        map(
+            close,
+            [
+                wellformed_exists_int_formula,
+                wellformed_quantified_formula,
+                wellformed_smt_formula,
+                wellformed_propositional_formula,
+                wellformed_structural_predicate_formula,
+                raise_not_implemented_error,
+            ],
+        ),
+        MaybeMonadPlus.nothing(),
+    )
+
+    return monad.a
+
+
+def wellformed_exists_int_formula(
+    formula: Formula,
+    grammar: Grammar,
+    bound_vars: OrderedSet[BoundVariable],
+    in_expr_vars: OrderedSet[Variable],
+    bound_by_smt: OrderedSet[Variable],
+) -> MaybeMonadPlus[Tuple[bool, str]]:
+    if not isinstance(formula, ExistsIntFormula):
+        return MaybeMonadPlus.nothing()
+
+    if formula.bound_variables().intersection(bound_vars):
+        return MaybeMonadPlus(
+            (
                 False,
                 f"Variables {', '.join(map(str, formula.bound_variables().intersection(bound_vars)))} "
                 f"already bound in outer scope",
             )
+        )
 
-        unbound_variables = [
-            free_var
-            for free_var in formula.free_variables()
-            if type(free_var) is BoundVariable
-            if free_var not in bound_vars
-        ]
-        if unbound_variables:
-            return (
+    unbound_variables = [
+        free_var
+        for free_var in formula.free_variables()
+        if type(free_var) is BoundVariable
+        if free_var not in bound_vars
+    ]
+    if unbound_variables:
+        return MaybeMonadPlus(
+            (
                 False,
                 "Unbound variables "
                 + ", ".join(map(repr, unbound_variables))
                 + f" in {formula}",
             )
+        )
 
-        return well_formed(
+    return MaybeMonadPlus(
+        well_formed(
             formula.inner_formula,
             grammar,
             bound_vars | formula.bound_variables(),
             in_expr_vars,
             bound_by_smt,
         )
-    elif isinstance(formula, QuantifiedFormula):
-        if formula.in_variable in bound_by_smt:
-            return (
+    )
+
+
+def wellformed_quantified_formula(
+    formula: Formula,
+    grammar: Grammar,
+    bound_vars: OrderedSet[BoundVariable],
+    in_expr_vars: OrderedSet[Variable],
+    bound_by_smt: OrderedSet[Variable],
+) -> MaybeMonadPlus[Tuple[bool, str]]:
+    if not isinstance(formula, QuantifiedFormula):
+        return MaybeMonadPlus.nothing()
+
+    if formula.in_variable in bound_by_smt:
+        return MaybeMonadPlus(
+            (
                 False,
                 f"Variable {formula.in_variable} in {formula} bound be outer SMT formula",
             )
-        if formula.bound_variables().intersection(bound_vars):
-            return (
+        )
+    if formula.bound_variables().intersection(bound_vars):
+        return MaybeMonadPlus(
+            (
                 False,
                 f"Variables {', '.join(map(str, formula.bound_variables().intersection(bound_vars)))} "
                 f"already bound in outer scope",
             )
-        if (
-            type(formula.in_variable) is BoundVariable
-            and formula.in_variable not in bound_vars
-        ):
-            return False, f"Unbound variable {formula.in_variable} in {formula}"
-        unbound_variables = [
-            free_var
-            for free_var in formula.free_variables()
-            if type(free_var) is BoundVariable
-            if free_var not in bound_vars
-        ]
-        if unbound_variables:
-            return (
+        )
+    if (
+        type(formula.in_variable) is BoundVariable
+        and formula.in_variable not in bound_vars
+    ):
+        return MaybeMonadPlus(
+            (False, f"Unbound variable {formula.in_variable} in {formula}")
+        )
+    unbound_variables = [
+        free_var
+        for free_var in formula.free_variables()
+        if type(free_var) is BoundVariable
+        if free_var not in bound_vars
+    ]
+    if unbound_variables:
+        return MaybeMonadPlus(
+            (
                 False,
                 "Unbound variables "
                 + ", ".join(map(repr, unbound_variables))
                 + f" in {formula}",
             )
+        )
 
-        unknown_typed_variables = [
-            var
-            for var in formula.bound_variables()
-            if is_nonterminal(var.n_type) and var.n_type not in grammar
-        ]
-        if unknown_typed_variables:
-            return (
+    unknown_typed_variables = [
+        var
+        for var in formula.bound_variables()
+        if is_nonterminal(var.n_type) and var.n_type not in grammar
+    ]
+    if unknown_typed_variables:
+        return MaybeMonadPlus(
+            (
                 False,
                 "Unkown types of variables "
                 + ", ".join(map(repr, unknown_typed_variables))
                 + f" in {formula}",
             )
+        )
 
-        if formula.bind_expression is not None:
-            unknown_typed_variables = [
-                var
-                for var in formula.bind_expression.all_bound_variables(grammar)
-                if is_nonterminal(var.n_type) and var.n_type not in grammar
-            ]
-            if unknown_typed_variables:
-                return (
+    if formula.bind_expression is not None:
+        unknown_typed_variables = [
+            var
+            for var in formula.bind_expression.all_bound_variables(grammar)
+            if is_nonterminal(var.n_type) and var.n_type not in grammar
+        ]
+        if unknown_typed_variables:
+            return MaybeMonadPlus(
+                (
                     False,
                     "Unkown types of variables "
                     + ", ".join(map(repr, unknown_typed_variables))
                     + f" in match expression {formula.bind_expression}",
                 )
+            )
 
-        return well_formed(
+    return MaybeMonadPlus(
+        well_formed(
             formula.inner_formula,
             grammar,
             bound_vars | formula.bound_variables(),
             in_expr_vars | OrderedSet([formula.in_variable]),
             bound_by_smt,
         )
-    elif isinstance(formula, SMTFormula):
-        if any(free_var in in_expr_vars for free_var in formula.free_variables()):
-            return (
+    )
+
+
+def wellformed_smt_formula(
+    formula: Formula,
+    _1,
+    bound_vars: OrderedSet[BoundVariable],
+    in_expr_vars: OrderedSet[Variable],
+    _2,
+) -> MaybeMonadPlus[Tuple[bool, str]]:
+    if not isinstance(formula, SMTFormula):
+        return MaybeMonadPlus.nothing()
+
+    if any(free_var in in_expr_vars for free_var in formula.free_variables()):
+        return MaybeMonadPlus(
+            (
                 False,
                 f"Formula {formula} binding variables of 'in' expressions in an outer quantifier.",
             )
+        )
 
-        if any(
-            free_var not in bound_vars
-            for free_var in formula.free_variables()
-            if type(free_var) is BoundVariable
-        ):
-            return False, "(TODO)"
-
-        return True, ""
-    elif isinstance(formula, PropositionalCombinator):
-        if isinstance(formula, ConjunctiveFormula):
-            smt_formulas = [f for f in formula.args if type(f) is SMTFormula]
-            other_formulas = [f for f in formula.args if type(f) is not SMTFormula]
-
-            for smt_formula in smt_formulas:
-                res, msg = well_formed(
-                    smt_formula, grammar, bound_vars, in_expr_vars, bound_by_smt
-                )
-                if not res:
-                    return False, msg
-
-            for smt_formula in smt_formulas:
-                bound_vars |= [
-                    var
-                    for var in smt_formula.free_variables()
-                    if type(var) is BoundVariable
-                ]
-                bound_by_smt |= smt_formula.free_variables()
-
-            for f in other_formulas:
-                res, msg = well_formed(
-                    f, grammar, bound_vars, in_expr_vars, bound_by_smt
-                )
-                if not res:
-                    return False, msg
-
-            return True, ""
-        else:
-            for subformula in formula.args:
-                res, msg = well_formed(
-                    subformula, grammar, bound_vars, in_expr_vars, bound_by_smt
-                )
-                if not res:
-                    return False, msg
-
-            return True, ""
-    elif isinstance(formula, StructuralPredicateFormula) or isinstance(
-        formula, SemanticPredicateFormula
+    if any(
+        free_var not in bound_vars
+        for free_var in formula.free_variables()
+        if type(free_var) is BoundVariable
     ):
-        unbound_variables = [
-            free_var
-            for free_var in formula.free_variables()
-            if type(free_var) is BoundVariable
-            if free_var not in bound_vars
-        ]
-        if unbound_variables:
-            return (
+        return MaybeMonadPlus((False, "(TODO)"))
+
+    return MaybeMonadPlus((True, ""))
+
+
+def wellformed_propositional_formula(
+    formula: Formula,
+    grammar: Grammar,
+    bound_vars: OrderedSet[BoundVariable],
+    in_expr_vars: OrderedSet[Variable],
+    bound_by_smt: OrderedSet[Variable],
+) -> MaybeMonadPlus[Tuple[bool, str]]:
+    if not isinstance(formula, PropositionalCombinator):
+        return MaybeMonadPlus.nothing()
+
+    if isinstance(formula, ConjunctiveFormula):
+        smt_formulas = [f for f in formula.args if type(f) is SMTFormula]
+        other_formulas = [f for f in formula.args if type(f) is not SMTFormula]
+
+        for smt_formula in smt_formulas:
+            res, msg = well_formed(
+                smt_formula, grammar, bound_vars, in_expr_vars, bound_by_smt
+            )
+            if not res:
+                return MaybeMonadPlus((False, msg))
+
+        for smt_formula in smt_formulas:
+            bound_vars |= [
+                var
+                for var in smt_formula.free_variables()
+                if type(var) is BoundVariable
+            ]
+            bound_by_smt |= smt_formula.free_variables()
+
+        for f in other_formulas:
+            res, msg = well_formed(f, grammar, bound_vars, in_expr_vars, bound_by_smt)
+            if not res:
+                return MaybeMonadPlus((False, msg))
+
+        return MaybeMonadPlus((True, ""))
+    else:
+        for subformula in formula.args:
+            res, msg = well_formed(
+                subformula, grammar, bound_vars, in_expr_vars, bound_by_smt
+            )
+            if not res:
+                return MaybeMonadPlus((False, msg))
+
+        return MaybeMonadPlus((True, ""))
+
+
+def wellformed_structural_predicate_formula(
+    formula: Formula,
+    _1,
+    bound_vars: OrderedSet[BoundVariable],
+    _2,
+    _3,
+) -> MaybeMonadPlus[Tuple[bool, str]]:
+    if not isinstance(formula, StructuralPredicateFormula):
+        return MaybeMonadPlus.nothing()
+
+    unbound_variables = [
+        free_var
+        for free_var in formula.free_variables()
+        if type(free_var) is BoundVariable
+        if free_var not in bound_vars
+    ]
+    if unbound_variables:
+        return MaybeMonadPlus(
+            (
                 False,
                 "Unbound variables "
                 + ", ".join(map(repr, unbound_variables))
                 + f" in {formula}",
             )
-        return True, ""
-    else:
-        raise NotImplementedError(f"Unsupported formula type {type(formula).__name__}")
+        )
+
+    return MaybeMonadPlus((True, ""))
 
 
 def evaluate_legacy(
