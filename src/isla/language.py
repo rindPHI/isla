@@ -48,6 +48,7 @@ from isla.helpers import (
     grammar_to_mutable,
     list_set,
     is_prefix,
+    MaybeMonadPlus,
 )
 from isla.helpers import (
     replace_line_breaks,
@@ -249,146 +250,129 @@ class BindExpression:
         result: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]] = []
         immutable_grammar = grammar_to_immutable(grammar)
 
-        def parse_peg(inp: str) -> DerivationTree:
-            peg_parser = PEGParser(
-                grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar)
-            )
-            return DerivationTree.from_parse_tree(peg_parser.parse(inp)[0])
-
-        def parse_earley(inp: str) -> DerivationTree:
-            # Should we address ambiguities and return multiple parse trees?
-            earley_parser = EarleyParser(
-                grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar)
-            )
-            return DerivationTree.from_parse_tree(next(earley_parser.parse(inp)))
-
         for bound_elements in flatten_bound_elements(
             nested_list_to_tuple(self.bound_elements),
             immutable_grammar,
             in_nonterminal=in_nonterminal,
         ):
-            flattened_bind_expr_str = "".join(
-                map(
-                    lambda elem: f"{{{elem.n_type} {elem.name}}}"
-                    if type(elem) == BoundVariable
-                    else str(elem),
-                    bound_elements,
-                )
-            )
-
-            try:
-                # Try the PEG parser first, it's faster if it works (and returns only one tree).
-                tree = parse_peg(flattened_bind_expr_str).children[0]
-            except Exception:
-                try:
-                    # Fall back to the more general Earley parser.
-                    language_core_logger.debug(
-                        "Parsing match expression %s with EarleyParser",
-                        flattened_bind_expr_str,
-                    )
-                    tree = parse_earley(flattened_bind_expr_str).children[0]
-                except SyntaxError:
-                    language_core_logger.warning(
-                        'Parsing match expression string "%s" caused a syntax error. If this is not a '
-                        "test case where this behavior is intended, it should probably be investigated.",
-                        flattened_bind_expr_str,
-                    )
-                    continue
-
-            assert tree.value == in_nonterminal
-
-            split_bound_elements = []
-            dummy_var_map: Dict[DummyVariable, List[DummyVariable]] = {}
-            for elem in bound_elements:
-                if not isinstance(elem, DummyVariable) or is_nonterminal(elem.n_type):
-                    split_bound_elements.append(elem)
-                    continue
-
-                new_dummies = [DummyVariable(char) for char in elem.n_type]
-                split_bound_elements.extend(new_dummies)
-                dummy_var_map[elem] = new_dummies
-
-            match_expr_tree = tree
-            match_expr_matches: Dict[BoundVariable, Path] = {}
-            skip_paths_below = set()
-            remaining_bound_elements = list(split_bound_elements)
-
-            def search(path: Path, child: DerivationTree):
-                nonlocal match_expr_tree
-                if any(
-                    len(path) > len(skip_path) and path[: len(skip_path)] == skip_path
-                    for skip_path in skip_paths_below
-                ):
-                    return
-
-                if (
-                    len(child.children) == 7
-                    and child.children[0].value == "{"
-                    and child.children[1].value == "<LANGLE>"
-                ):
-                    assert is_nonterminal(child.value)
-                    skip_paths_below.add(path)
-                    match_expr_tree = match_expr_tree.replace_path(
-                        path, DerivationTree(child.value, None)
-                    )
-                    var_n_type = "<" + child.children[2].value + ">"
-                    var_name = str(child.children[5])
-
-                    var = next(
-                        var for var in remaining_bound_elements if var.name == var_name
-                    )
-                    assert var.n_type == var_n_type
-                    remaining_bound_elements.remove(var)
-                    match_expr_matches[var] = path
-                elif str(child) == child.value:
-                    match_expr_tree = match_expr_tree.replace_path(
-                        path,
-                        DerivationTree(
-                            child.value, None if is_nonterminal(child.value) else ()
-                        ),
-                    )
-                    skip_paths_below.add(path)
-
-                    for char in (
-                        [child.value]
-                        if is_nonterminal(child.value)
-                        else list(child.value)
-                    ):
-                        var = next(
-                            var
-                            for var in remaining_bound_elements
-                            if var.n_type == char
-                        )
-                        assert isinstance(var, DummyVariable)
-                        remaining_bound_elements.remove(var)
-                        match_expr_matches[var] = path
-
-            tree.traverse(
-                search, abort_condition=lambda p, t: not remaining_bound_elements
-            )
-
-            # In the result, we have to combine all terminals that point to the same path.
-            consolidated_matches = consolidate_match_expression_matches(
-                match_expr_matches
-            )
-            result.append((match_expr_tree, consolidated_matches))
-
-            assert all(
-                var in consolidated_matches
-                for var in bound_elements
-                if not isinstance(var, DummyVariable)
-            )
-            assert all(
-                any(
-                    len(match_path) <= len(leaf_path)
-                    and leaf_path[: len(match_path)] == match_path
-                    for match_path in consolidated_matches.values()
-                )
-                for leaf_path, _ in tree.leaves()
-            )
+            BindExpression.__combination_to_tree_prefix(
+                bound_elements, in_nonterminal, immutable_grammar
+            ).if_present(lambda r: result.append(r))
 
         self.prefixes[in_nonterminal] = result
         return result
+
+    @staticmethod
+    def __combination_to_tree_prefix(
+        bound_elements: Tuple[BoundVariable, ...],
+        in_nonterminal: str,
+        immutable_grammar: ImmutableGrammar,
+    ) -> MaybeMonadPlus[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
+
+        flattened_bind_expr_str = "".join(
+            map(
+                lambda elem: f"{{{elem.n_type} {elem.name}}}"
+                if type(elem) == BoundVariable
+                else str(elem),
+                bound_elements,
+            )
+        )
+
+        maybe_tree = parse(flattened_bind_expr_str, in_nonterminal, immutable_grammar)
+        if not maybe_tree.is_present():
+            language_core_logger.warning(
+                'Parsing match expression string "%s" caused a syntax error. If this is not a '
+                "test case where this behavior is intended, it should probably be investigated.",
+                flattened_bind_expr_str,
+            )
+            return MaybeMonadPlus.nothing()
+
+        tree = maybe_tree.get()
+
+        assert tree.value == in_nonterminal
+
+        split_bound_elements = []
+        dummy_var_map: Dict[DummyVariable, List[DummyVariable]] = {}
+        for elem in bound_elements:
+            if not isinstance(elem, DummyVariable) or is_nonterminal(elem.n_type):
+                split_bound_elements.append(elem)
+                continue
+
+            new_dummies = [DummyVariable(char) for char in elem.n_type]
+            split_bound_elements.extend(new_dummies)
+            dummy_var_map[elem] = new_dummies
+
+        match_expr_tree = tree
+        match_expr_matches: Dict[BoundVariable, Path] = {}
+        skip_paths_below = set()
+        remaining_bound_elements = list(split_bound_elements)
+
+        def search(path: Path, child: DerivationTree):
+            nonlocal match_expr_tree
+            if any(
+                len(path) > len(skip_path) and path[: len(skip_path)] == skip_path
+                for skip_path in skip_paths_below
+            ):
+                return
+
+            if (
+                len(child.children) == 7
+                and child.children[0].value == "{"
+                and child.children[1].value == "<LANGLE>"
+            ):
+                assert is_nonterminal(child.value)
+                skip_paths_below.add(path)
+                match_expr_tree = match_expr_tree.replace_path(
+                    path, DerivationTree(child.value, None)
+                )
+                var_n_type = "<" + child.children[2].value + ">"
+                var_name = str(child.children[5])
+
+                var = next(
+                    var for var in remaining_bound_elements if var.name == var_name
+                )
+                assert var.n_type == var_n_type
+                remaining_bound_elements.remove(var)
+                match_expr_matches[var] = path
+            elif str(child) == child.value:
+                match_expr_tree = match_expr_tree.replace_path(
+                    path,
+                    DerivationTree(
+                        child.value, None if is_nonterminal(child.value) else ()
+                    ),
+                )
+                skip_paths_below.add(path)
+
+                for char in (
+                    [child.value] if is_nonterminal(child.value) else list(child.value)
+                ):
+                    var = next(
+                        var for var in remaining_bound_elements if var.n_type == char
+                    )
+                    assert isinstance(var, DummyVariable)
+                    remaining_bound_elements.remove(var)
+                    match_expr_matches[var] = path
+
+        tree.traverse(search, abort_condition=lambda p, t: not remaining_bound_elements)
+
+        # In the result, we have to combine all terminals that point to the same path.
+        consolidated_matches = consolidate_match_expression_matches(match_expr_matches)
+
+        assert all(
+            var in consolidated_matches
+            for var in bound_elements
+            if not isinstance(var, DummyVariable)
+        )
+        assert all(
+            any(
+                len(match_path) <= len(leaf_path)
+                and leaf_path[: len(match_path)] == match_path
+                for match_path in consolidated_matches.values()
+            )
+            for leaf_path, _ in tree.leaves()
+        )
+
+        return MaybeMonadPlus((match_expr_tree, consolidated_matches))
 
     def match(
         self, tree: DerivationTree, grammar: Grammar
@@ -4014,3 +3998,54 @@ def match(
 
     assert is_complete_match(t, result)
     return result
+
+
+def parse_peg(
+    inp: str, in_nonterminal: str, immutable_grammar: ImmutableGrammar
+) -> MaybeMonadPlus[DerivationTree]:
+    peg_parser = PEGParser(
+        grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar)
+    )
+    try:
+        result = DerivationTree.from_parse_tree(peg_parser.parse(inp)[0])
+        return MaybeMonadPlus(
+            result if in_nonterminal == "<start>" else result.children[0]
+        )
+    except Exception:
+        return MaybeMonadPlus.nothing()
+
+
+def parse_earley(
+    inp: str, in_nonterminal: str, immutable_grammar: ImmutableGrammar
+) -> MaybeMonadPlus[DerivationTree]:
+    # Should we address ambiguities and return multiple parse trees?
+    earley_parser = EarleyParser(
+        grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar)
+    )
+
+    try:
+        result = DerivationTree.from_parse_tree(next(earley_parser.parse(inp)))
+        return MaybeMonadPlus(
+            result if in_nonterminal == "<start>" else result.children[0]
+        )
+    except SyntaxError:
+        return MaybeMonadPlus.nothing()
+
+
+def parse(
+    inp: str, in_nonterminal: str, immutable_grammar: ImmutableGrammar
+) -> MaybeMonadPlus[DerivationTree]:
+    monad = parse_peg(inp, in_nonterminal, immutable_grammar)
+
+    if not monad.is_present():
+        language_core_logger.debug(
+            "Parsing match expression %s with EarleyParser",
+            inp,
+        )
+
+    monad += (
+        lambda _inp: parse_earley(inp, in_nonterminal, immutable_grammar),
+        inp,
+    )
+
+    return monad

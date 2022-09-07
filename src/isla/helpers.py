@@ -658,7 +658,7 @@ class MonadPlus(Generic[T], Monad[T]):
         raise NotImplementedError()
 
     @abstractmethod
-    def lazy_mplus(self, f: Callable[[T], "MonadPlus[T]"], arg: T) -> "MonadPlus[T]":
+    def lazy_mplus(self, f: Callable[[S], "MonadPlus[T]"], arg: S) -> "MonadPlus[T]":
         raise NotImplementedError()
 
 
@@ -666,7 +666,7 @@ class MonadPlus(Generic[T], Monad[T]):
 class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
     a: Optional[T]
 
-    def bind(self, f: Callable[[T], "MaybeMonadPlus[T]"]) -> "MaybeMonadPlus[T]":
+    def bind(self, f: Callable[[T], "MaybeMonadPlus[S]"]) -> "MaybeMonadPlus[S]":
         return self if self.a is None else f(self.a)
 
     @staticmethod
@@ -677,7 +677,7 @@ class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
         return other if self.a is None else self
 
     def lazy_mplus(
-        self, f: Callable[[T], "MaybeMonadPlus[T]"], arg: T
+        self, f: Callable[[S], "MaybeMonadPlus[T]"], arg: S
     ) -> "MaybeMonadPlus[T]":
         return f(arg) if self.a is None else self
 
@@ -688,8 +688,13 @@ class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
     def is_present(self) -> bool:
         return self.a is not None
 
+    def get(self) -> T:
+        if self.a is None:
+            raise AttributeError("No element present")
+        return self.a
+
     def __add__(
-        self, other: "MaybeMonadPlus[T]" | Tuple[Callable[[T], "MaybeMonadPlus[T]"], T]
+        self, other: "MaybeMonadPlus[T]" | Tuple[Callable[[S], "MaybeMonadPlus[T]"], S]
     ) -> "MaybeMonadPlus[T]":
         if isinstance(other, MaybeMonadPlus):
             return self.mplus(other)
