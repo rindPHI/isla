@@ -2848,46 +2848,16 @@ class AddMexprTransformer(NoopFormulaTransformer):
 
             conflict = False
             for new_var, new_path in new_paths.items():
-                # Take the more specific path. They should not conflict,
-                # i.e., have a common sub-path pointing to the same nonterminal.
-                if resulting_tree.is_valid_path(new_path):
-                    # `resulting_tree` has a longer (or as long) path.
-                    if any(
-                        resulting_tree.get_subtree(new_path[:idx]).value
-                        != new_tree.get_subtree(new_path[:idx]).value
-                        for idx in range(len(new_path))
-                    ):
-                        conflict = True
-                        break
+                monad = AddMexprTransformer.__merge_trees_at_path(
+                    resulting_tree, new_tree, new_var, new_path
+                )
+                if not monad.is_present():
+                    conflict = True
+                    break
 
-                    if not isinstance(new_var, DummyVariable):
-                        if resulting_tree.get_subtree(new_path).children:
-                            conflict = True
-                            break
-
-                        resulting_paths[new_path] = new_var
-                else:
-                    # `new_tree` has a longer (or as long) path.
-                    # First, find the valid prefix in `resulting_tree`.
-                    assert new_path
-                    valid_path = new_path[:-1]
-                    while valid_path and not resulting_tree.is_valid_path(valid_path):
-                        valid_path = valid_path[:-1]
-
-                    if any(
-                        resulting_tree.get_subtree(valid_path[:idx]).value
-                        != new_tree.get_subtree(valid_path[:idx]).value
-                        for idx in range(len(valid_path))
-                    ):
-                        conflict = True
-                        break
-
-                    resulting_tree = resulting_tree.replace_path(
-                        valid_path, new_tree.get_subtree(valid_path)
-                    )
-
-                    if not isinstance(new_var, DummyVariable):
-                        resulting_paths[new_path] = new_var
+                resulting_tree = monad.get()
+                if not isinstance(new_var, DummyVariable):
+                    resulting_paths[new_path] = new_var
 
             if conflict:
                 continue
@@ -2898,6 +2868,49 @@ class AddMexprTransformer(NoopFormulaTransformer):
             ]
 
             return BindExpression(*mexpr_elems)
+
+    @staticmethod
+    def __merge_trees_at_path(
+        merged_tree: DerivationTree,
+        new_tree: DerivationTree,
+        new_var: BoundVariable,
+        new_path: Path,
+    ) -> MaybeMonadPlus[Tuple[DerivationTree]]:
+        # Take the more specific path. They should not conflict,
+        # i.e., have a common sub-path pointing to the same nonterminal.
+
+        if merged_tree.is_valid_path(new_path):
+            # `resulting_tree` has a longer (or as long) path.
+            if any(
+                merged_tree.get_subtree(new_path[:idx]).value
+                != new_tree.get_subtree(new_path[:idx]).value
+                for idx in range(len(new_path))
+            ):
+                return MaybeMonadPlus.nothing()
+
+            if not isinstance(new_var, DummyVariable):
+                if merged_tree.get_subtree(new_path).children:
+                    return MaybeMonadPlus.nothing()
+
+            return MaybeMonadPlus(merged_tree)
+        else:
+            # `new_tree` has a longer (or as long) path.
+            # First, find the valid prefix in `resulting_tree`.
+            assert new_path
+            valid_path = new_path[:-1]
+            while valid_path and not merged_tree.is_valid_path(valid_path):
+                valid_path = valid_path[:-1]
+
+            if any(
+                merged_tree.get_subtree(valid_path[:idx]).value
+                != new_tree.get_subtree(valid_path[:idx]).value
+                for idx in range(len(valid_path))
+            ):
+                return MaybeMonadPlus.nothing()
+
+            return MaybeMonadPlus(
+                merged_tree.replace_path(valid_path, new_tree.get_subtree(valid_path))
+            )
 
     def transform_forall_formula(self, formula: ForallFormula) -> Formula:
         return self.transform_quantified_formula(formula)
