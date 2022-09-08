@@ -700,7 +700,8 @@ class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
         return self.a
 
     def __add__(
-        self, other: "MaybeMonadPlus[T]" | Tuple[Callable[[S, ...], "MaybeMonadPlus[T]"], S]
+        self,
+        other: "MaybeMonadPlus[T]" | Tuple[Callable[[S, ...], "MaybeMonadPlus[T]"], S],
     ) -> "MaybeMonadPlus[T]":
         if isinstance(other, MaybeMonadPlus):
             return self.mplus(other)

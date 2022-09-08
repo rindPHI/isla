@@ -419,7 +419,9 @@ def insert_trees(
                     t for t in single_parent_tree_children if is_nonterminal(t.value)
                 )
                 new_result_trees.extend(
-                    connect_trees(subtree, result_tree, insertion_points, grammar, graph)
+                    connect_trees(
+                        subtree, result_tree, insertion_points, grammar, graph
+                    )
                 )
 
             result_trees.extend(new_result_trees)
@@ -493,7 +495,9 @@ def connect_trees(
         )
         assert instantiated_connecting_tree.has_unique_ids()
 
-        new_tree = parent_tree.replace_path(insertion_path, instantiated_connecting_tree)
+        new_tree = parent_tree.replace_path(
+            insertion_path, instantiated_connecting_tree
+        )
         assert new_tree.has_unique_ids()
         assert graph.tree_is_valid(new_tree)
         result.append(new_tree)
