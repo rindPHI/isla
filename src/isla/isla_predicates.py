@@ -165,9 +165,8 @@ def level_check(  # noqa: C901
             break
 
         prefix = path_1[:idx]
-        common_nonterminal_prefixes.extend(
-            [] if context_tree.get_subtree(prefix).value == nonterminal else [prefix]
-        )
+        if context_tree.get_subtree(prefix).value == nonterminal:
+            common_nonterminal_prefixes.append(prefix)
 
     for prefix in common_nonterminal_prefixes:
         nonterminal_occs_1, nonterminal_occs_2 = [
