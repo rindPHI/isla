@@ -669,8 +669,8 @@ def octal_to_dec_variable_octal(
 def octal_to_dec_variable_decimal(
     octal: language.Variable | DerivationTree,
     decimal: language.Variable | DerivationTree,
+    octal_parser,
     _,
-    decimal_parser,
 ) -> MaybeMonadPlus[SemPredEvalResult]:
     if not isinstance(decimal, language.Variable) or not isinstance(
         octal, DerivationTree
