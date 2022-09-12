@@ -10,7 +10,7 @@ from orderedset import OrderedSet
 from typing import Union, Optional, Set, Dict, cast, Tuple, List
 
 from isla.derivation_tree import DerivationTree
-from isla.helpers import is_nonterminal, MaybeMonadPlus
+from isla.helpers import is_nonterminal, MaybeMonadPlus, chain_functions
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
     STANDARD_SEMANTIC_PREDICATES,
@@ -313,8 +313,7 @@ def well_formed(
             bound_by_smt,
         )
 
-    monad = functools.reduce(
-        lambda monad, check_function: (monad + (check_function, formula)),
+    monad = chain_functions(
         map(
             close,
             [
@@ -326,7 +325,7 @@ def well_formed(
                 raise_not_implemented_error,
             ],
         ),
-        MaybeMonadPlus.nothing(),
+        formula,
     )
 
     return monad.a
@@ -620,8 +619,7 @@ def evaluate_legacy(
             trie,
         )
 
-    monad = functools.reduce(
-        lambda monad, evaluation_function: (monad + (evaluation_function, formula)),
+    monad = chain_functions(
         map(
             close,
             [
@@ -636,7 +634,7 @@ def evaluate_legacy(
                 raise_not_implemented_error,
             ],
         ),
-        MaybeMonadPlus.nothing(),
+        formula,
     )
 
     return monad.a

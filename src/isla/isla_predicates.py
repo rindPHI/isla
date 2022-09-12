@@ -15,6 +15,7 @@ from isla.helpers import (
     is_nonterminal,
     canonical,
     MaybeMonadPlus,
+    chain_functions,
 )
 from isla.language import (
     SemPredEvalResult,
@@ -571,16 +572,16 @@ def octal_to_dec(
     def octal_parser(inp):
         return DerivationTree.from_parse_tree(_octal_parser(inp)[0][1][0])
 
-    monad = functools.reduce(
-        lambda monad, elimination_function: (
-            monad + (elimination_function, octal, decimal, octal_parser, decimal_parser)
-        ),
+    monad = chain_functions(
         [
             octal_to_dec_concrete_octal,
             octal_to_dec_concrete_decimal,
             octal_to_dec_both_trees,
         ],
-        MaybeMonadPlus.nothing(),
+        octal,
+        decimal,
+        octal_parser,
+        decimal_parser,
     )
 
     if not monad.is_present():

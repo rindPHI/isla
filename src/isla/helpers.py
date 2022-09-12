@@ -1,4 +1,5 @@
 import copy
+import functools
 import itertools
 import math
 import re
@@ -709,3 +710,13 @@ class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
         assert isinstance(other, tuple)
         assert callable(other[0])
         return self.lazy_mplus(*other)
+
+
+def chain_functions(
+    functions: Iterable[Callable[[S, ...], MaybeMonadPlus[T]]], *args: S
+) -> MaybeMonadPlus[T]:
+    return functools.reduce(
+        lambda monad, f: (monad + (f, *args)),
+        functions,
+        MaybeMonadPlus.nothing(),
+    )

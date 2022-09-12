@@ -50,6 +50,7 @@ from isla.helpers import (
     list_set,
     is_prefix,
     MaybeMonadPlus,
+    chain_functions,
 )
 from isla.helpers import (
     replace_line_breaks,
@@ -2183,8 +2184,7 @@ def convert_to_nnf(formula: Formula, negate=False) -> Formula:
         return lambda f: evaluation_function(f, negate)
 
     return (
-        functools.reduce(
-            lambda monad, evaluation_function: (monad + (evaluation_function, formula)),
+        chain_functions(
             map(
                 close,
                 [
@@ -2197,7 +2197,7 @@ def convert_to_nnf(formula: Formula, negate=False) -> Formula:
                     convert_quantified_formula_to_nnf,
                 ],
             ),
-            MaybeMonadPlus.nothing(),
+            formula,
         )
         .raise_if_not_present(
             lambda: NotImplementedError(

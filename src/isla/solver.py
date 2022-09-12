@@ -61,6 +61,7 @@ from isla.helpers import (
     lazystr,
     is_prefix,
     MaybeMonadPlus,
+    chain_functions,
 )
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
@@ -539,10 +540,7 @@ class ISLaSolver:
 
             # Apply the first elimination function that is applicable.
             # The later ones are ignored.
-            monad = functools.reduce(
-                lambda monad, elimination_function: (
-                    monad + (elimination_function, state)
-                ),
+            monad = chain_functions(
                 [
                     self.noop_on_false_constraint,
                     self.eliminate_existential_integer_quantifiers,
@@ -556,7 +554,7 @@ class ISLaSolver:
                     self.finish_unconstrained_trees,
                     self.expand,
                 ],
-                MaybeMonadPlus.nothing(),
+                state,
             )
 
             def process_and_extend_solutions(

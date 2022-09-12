@@ -8,9 +8,8 @@ from typing import Callable, Tuple, cast, List, Optional, Dict, Union, Generator
 import z3
 from z3.z3 import _coerce_exprs
 
-from isla.helpers import MaybeMonadPlus
+from isla.helpers import MaybeMonadPlus, chain_functions
 from isla.three_valued_truth import ThreeValuedTruth
-import functools
 
 Z3EvalResult = Tuple[
     Tuple[str, ...], bool | int | str | Callable[[Tuple[str, ...]], bool | int | str]
@@ -39,8 +38,7 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
     def close(evaluation_function: callable) -> callable:
         return lambda f: evaluation_function(f, children_results)
 
-    return functools.reduce(
-        lambda monad, evaluation_function: (monad + (evaluation_function, expr)),
+    return chain_functions(
         map(
             close,
             [
@@ -90,7 +88,7 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
                 raise_not_implemented_error,
             ],
         ),
-        MaybeMonadPlus.nothing(),
+        expr,
     ).get()
 
 
