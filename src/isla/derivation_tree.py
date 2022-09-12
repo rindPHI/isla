@@ -731,7 +731,7 @@ class DerivationTree:
         )
 
     @lru_cache(maxsize=100)
-    def to_string(self, show_open_leaves: bool = False) -> str:
+    def to_string(self, show_open_leaves: bool = False, show_ids: bool = False) -> str:
         result = []
         stack = [self]
 
@@ -744,7 +744,11 @@ class DerivationTree:
                 if children is not None:
                     result.append("" if is_nonterminal(symbol) else symbol)
                 else:
-                    result.append(symbol if show_open_leaves else "")
+                    result.append(
+                        (f"{symbol} [{node.id}]" if show_ids else symbol)
+                        if show_open_leaves
+                        else ""
+                    )
 
                 continue
 

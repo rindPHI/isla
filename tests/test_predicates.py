@@ -336,16 +336,60 @@ class TestPredicates(unittest.TestCase):
 
         graph = gg.GrammarGraph.from_grammar(octal_conv_grammar)
 
-        for _ in range(100):
+        for _ in range(500):
             octal = octal_value()
             decimal = decimal_value()
             try:
-                octal_to_dec(
+                result = octal_to_dec(
                     mk_parser(graph.grammar)("<octal_digits>"),
                     mk_parser(graph.grammar)("<decimal_digits>"),
                     octal,
                     decimal,
                 )
+
+                if (
+                    (
+                        isinstance(octal, language.BoundVariable)
+                        or not octal.is_complete()
+                    )
+                    and isinstance(decimal, DerivationTree)
+                    and decimal.is_complete()
+                ):
+                    self.assertEqual(
+                        oct(int(str(decimal)))[2:], str(result.result[octal])
+                    )
+                elif (
+                    (
+                        isinstance(decimal, language.BoundVariable)
+                        or not decimal.is_complete()
+                    )
+                    and isinstance(octal, DerivationTree)
+                    and octal.is_complete()
+                ):
+                    self.assertEqual(
+                        str(eval("0o" + str(octal))), str(result.result[decimal])
+                    )
+                elif isinstance(octal, language.BoundVariable) or isinstance(
+                    decimal, language.BoundVariable
+                ):
+                    self.assertTrue(
+                        not isinstance(octal, language.BoundVariable)
+                        or isinstance(decimal, DerivationTree)
+                        and not decimal.is_complete()
+                    )
+                    self.assertTrue(
+                        not isinstance(decimal, language.BoundVariable)
+                        or isinstance(octal, DerivationTree)
+                        and not octal.is_complete()
+                    )
+                else:
+                    self.assertTrue(isinstance(octal, DerivationTree))
+                    self.assertTrue(isinstance(decimal, DerivationTree))
+
+                    if octal.is_complete() and decimal.is_complete():
+                        self.assertTrue(oct(int(str(decimal)))[2:], str(octal))
+                    else:
+                        self.assertTrue(not result.ready())
 
                 # No crash
             except AssertionError:

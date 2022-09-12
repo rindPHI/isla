@@ -1130,7 +1130,14 @@ class SemanticPredicateFormula(Formula):
 
     def __str__(self):
         arg_strings = [
-            f'"{arg}"' if isinstance(arg, str) else str(arg) for arg in self.args
+            f'"{arg}"'
+            if isinstance(arg, str)
+            else (
+                arg.to_string(show_open_leaves=True, show_ids=True)
+                if isinstance(arg, DerivationTree)
+                else str(arg)
+            )
+            for arg in self.args
         ]
 
         return f"{self.predicate}({', '.join(arg_strings)})"

@@ -571,14 +571,6 @@ def octal_to_dec(
     def octal_parser(inp):
         return DerivationTree.from_parse_tree(_octal_parser(inp)[0][1][0])
 
-    if (
-        isinstance(octal, DerivationTree)
-        and isinstance(decimal, DerivationTree)
-        and not octal.is_complete()
-        and not decimal.is_complete()
-    ):
-        return SemPredEvalResult(None)
-
     monad = functools.reduce(
         lambda monad, elimination_function: (
             monad + (elimination_function, octal, decimal, octal_parser, decimal_parser)
@@ -601,8 +593,10 @@ def octal_to_dec_concrete_octal(
     _,
     decimal_parser,
 ) -> MaybeMonadPlus[SemPredEvalResult]:
-    if not isinstance(octal, DerivationTree) or not isinstance(
-        decimal, language.Variable
+    if (
+        not isinstance(octal, DerivationTree)
+        or not isinstance(decimal, language.Variable)
+        and decimal.is_complete()
     ):
         return MaybeMonadPlus.nothing()
 
@@ -616,9 +610,6 @@ def octal_to_dec_concrete_octal(
     for idx, digit in enumerate(reversed(octal_str)):
         decimal_number += (8**idx) * int(digit)
 
-    if isinstance(decimal, DerivationTree) and decimal_number == int(str(decimal)):
-        return MaybeMonadPlus(SemPredEvalResult(True))
-
     return MaybeMonadPlus(
         SemPredEvalResult({decimal: decimal_parser(str(decimal_number))})
     )
@@ -630,8 +621,10 @@ def octal_to_dec_concrete_decimal(
     octal_parser,
     _,
 ) -> MaybeMonadPlus[SemPredEvalResult]:
-    if not isinstance(decimal, DerivationTree) or not isinstance(
-        octal, language.Variable
+    if (
+        not isinstance(decimal, DerivationTree)
+        or not isinstance(octal, language.Variable)
+        and octal.is_complete()
     ):
         return MaybeMonadPlus.nothing()
 
