@@ -34,6 +34,7 @@ from isla.type_defs import Grammar
 from isla.z3_helpers import z3_eq
 from isla_formalizations import rest, tar, simple_tar, scriptsizec
 from isla_formalizations.csv import csv_lint, CSV_GRAMMAR, CSV_HEADERBODY_GRAMMAR
+from isla_formalizations.tar import extract_tar
 from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, \
     XML_NAMESPACE_CONSTRAINT, XML_WELLFORMEDNESS_CONSTRAINT, XML_GRAMMAR, validate_xml, XML_NO_ATTR_REDEF_CONSTRAINT
 from test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR
@@ -566,11 +567,11 @@ forall int colno:
             # debug=True,
             num_solutions=60,
             precompute_reachability=False,
-            # custom_test_func=extract_tar,
+            custom_test_func=extract_tar,
             cost_computer=GrammarBasedBlackboxCostComputer(CostSettings(
                 CostWeightVector(
-                    tree_closing_cost=3,
-                    constraint_cost=0,
+                    tree_closing_cost=12,
+                    constraint_cost=1,
                     derivation_depth_penalty=2,
                     low_k_coverage_penalty=0,
                     low_global_k_path_coverage_penalty=0),

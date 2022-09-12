@@ -1,4 +1,5 @@
 import copy
+import dataclasses
 import functools
 import itertools
 import logging
@@ -934,11 +935,9 @@ class StructuralPredicateFormula(Formula):
         )
 
 
+@dataclasses.dataclass(frozen=True)
 class SemPredEvalResult:
-    def __init__(
-        self, result: Optional[bool | Dict[Variable | DerivationTree, DerivationTree]]
-    ):
-        self.result = result
+    result: Optional[bool | Dict[Variable | DerivationTree, DerivationTree]]
 
     def is_boolean(self) -> bool:
         return self.true() or self.false()
@@ -951,9 +950,6 @@ class SemPredEvalResult:
 
     def ready(self) -> bool:
         return self.result is not None
-
-    def __eq__(self, other):
-        return isinstance(other, SemPredEvalResult) and self.result == other.result
 
     def __str__(self):
         if self.ready():
@@ -1134,7 +1130,14 @@ class SemanticPredicateFormula(Formula):
 
     def __str__(self):
         arg_strings = [
-            f'"{arg}"' if isinstance(arg, str) else str(arg) for arg in self.args
+            f'"{arg}"'
+            if isinstance(arg, str)
+            else (
+                arg.to_string(show_open_leaves=True, show_ids=True)
+                if isinstance(arg, DerivationTree)
+                else str(arg)
+            )
+            for arg in self.args
         ]
 
         return f"{self.predicate}({', '.join(arg_strings)})"

@@ -524,7 +524,11 @@ class ISLaSolver:
                 self.current_state = state
                 self.state_tree.setdefault(state, [])
             self.logger.debug(
-                "Polling new state %s (hash %d, cost %f)", state, hash(state), cost
+                "Polling new state (%s, %s) (hash %d, cost %f)",
+                state.constraint,
+                state.tree.to_string(show_open_leaves=True, show_ids=True),
+                hash(state),
+                cost,
             )
             self.logger.debug("Queue length: %s", len(self.queue))
 
@@ -2233,7 +2237,11 @@ class ISLaSolver:
             self.costs[state] = cost
 
         self.logger.debug(
-            "Pushing new state %s (hash %d, cost %f)", state, hash(state), cost
+            "Pushing new state (%s, %s) (hash %d, cost %f)",
+            state.constraint,
+            state.tree.to_string(show_open_leaves=True, show_ids=True),
+            hash(state),
+            cost,
         )
         self.logger.debug("Queue length: %d", len(self.queue))
         if len(self.queue) % 100 == 0:

@@ -677,9 +677,9 @@ class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
         return other if self.a is None else self
 
     def lazy_mplus(
-        self, f: Callable[[S], "MaybeMonadPlus[T]"], arg: S
+        self, f: Callable[[S, ...], "MaybeMonadPlus[T]"], *args: S
     ) -> "MaybeMonadPlus[T]":
-        return f(arg) if self.a is None else self
+        return f(*args) if self.a is None else self
 
     def if_present(self, f: Callable[[T], None]) -> None:
         if self.a is not None:
@@ -700,12 +700,12 @@ class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
         return self.a
 
     def __add__(
-        self, other: "MaybeMonadPlus[T]" | Tuple[Callable[[S], "MaybeMonadPlus[T]"], S]
+        self,
+        other: "MaybeMonadPlus[T]" | Tuple[Callable[[S, ...], "MaybeMonadPlus[T]"], S],
     ) -> "MaybeMonadPlus[T]":
         if isinstance(other, MaybeMonadPlus):
             return self.mplus(other)
 
         assert isinstance(other, tuple)
-        assert len(other) == 2
         assert callable(other[0])
         return self.lazy_mplus(*other)

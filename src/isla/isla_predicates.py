@@ -1,4 +1,5 @@
 import copy
+import functools
 import random
 from typing import Union, List, Optional, Dict, Tuple, Callable
 
@@ -12,6 +13,7 @@ from isla.helpers import (
     parent_or_child,
     is_nonterminal,
     canonical,
+    MaybeMonadPlus,
 )
 from isla.language import (
     SemPredEvalResult,
@@ -136,7 +138,7 @@ def consecutive(tree: DerivationTree, path_1: Path, path_2: Path) -> bool:
 CONSECUTIVE_PREDICATE = StructuralPredicate("consecutive", 2, consecutive)
 
 
-def level_check(
+def level_check(  # noqa: C901
     context_tree: DerivationTree,
     pred: str,
     nonterminal: str,
@@ -204,7 +206,7 @@ def reachable(graph: GrammarGraph, fr: str, to: str) -> bool:
     return graph.reachable(f_node, t_node)
 
 
-def count(
+def count(  # noqa: C901
     graph: GrammarGraph,
     in_tree: DerivationTree,
     needle: str,
@@ -489,11 +491,12 @@ def just(
 
 def mk_parser(grammar: Grammar):
     def Parser(start: str) -> Callable[[str], List[ParseTree]]:
+        specialized_grammar = copy.deepcopy(grammar)
+        specialized_grammar["<start>"] = [start]
+        delete_unreachable(specialized_grammar)
+        parser = EarleyParser(specialized_grammar)
+
         def result(inp: str) -> List[ParseTree]:
-            specialized_grammar = copy.deepcopy(grammar)
-            specialized_grammar["<start>"] = [start]
-            delete_unreachable(specialized_grammar)
-            parser = EarleyParser(specialized_grammar)
             return list(parser.parse(inp))
 
         return result
@@ -568,65 +571,91 @@ def octal_to_dec(
     def octal_parser(inp):
         return DerivationTree.from_parse_tree(_octal_parser(inp)[0][1][0])
 
+    monad = functools.reduce(
+        lambda monad, elimination_function: (
+            monad + (elimination_function, octal, decimal, octal_parser, decimal_parser)
+        ),
+        [
+            octal_to_dec_concrete_octal,
+            octal_to_dec_concrete_decimal,
+            octal_to_dec_both_trees,
+        ],
+        MaybeMonadPlus.nothing(),
+    )
+
+    assert monad.is_present()
+    return monad.get()
+
+
+def octal_to_dec_concrete_octal(
+    octal: language.Variable | DerivationTree,
+    decimal: language.Variable | DerivationTree,
+    _,
+    decimal_parser,
+) -> MaybeMonadPlus[SemPredEvalResult]:
     if (
-        isinstance(octal, DerivationTree)
-        and isinstance(decimal, DerivationTree)
-        and not octal.is_complete()
-        and not decimal.is_complete()
+        not isinstance(octal, DerivationTree)
+        or not isinstance(decimal, language.Variable)
+        and decimal.is_complete()
     ):
-        return SemPredEvalResult(None)
+        return MaybeMonadPlus.nothing()
 
-    if isinstance(octal, DerivationTree) and octal.is_complete():
-        # Conversion to decimal
-        octal_str = str(octal)
+    if not octal.is_complete():
+        return MaybeMonadPlus(SemPredEvalResult(None))
 
-        decimal_number = 0
-        for idx, digit in enumerate(reversed(octal_str)):
-            decimal_number += (8**idx) * int(digit)
+    # Conversion to decimal
+    octal_str = str(octal)
 
-        if isinstance(decimal, DerivationTree) and decimal_number == int(str(decimal)):
-            return SemPredEvalResult(True)
+    decimal_number = 0
+    for idx, digit in enumerate(reversed(octal_str)):
+        decimal_number += (8**idx) * int(digit)
 
-        return SemPredEvalResult({decimal: decimal_parser(str(decimal_number))})
+    return MaybeMonadPlus(
+        SemPredEvalResult({decimal: decimal_parser(str(decimal_number))})
+    )
 
-    if isinstance(decimal, DerivationTree) and decimal.is_complete():
-        # Conversion to decimal
-        decimal_number = int(str(decimal))
 
-        octal_str = ""
-        while decimal_number > 0:
-            octal_str = str(decimal_number % 8) + octal_str
-            decimal_number = decimal_number // 8
+def octal_to_dec_concrete_decimal(
+    octal: language.Variable | DerivationTree,
+    decimal: language.Variable | DerivationTree,
+    octal_parser,
+    _,
+) -> MaybeMonadPlus[SemPredEvalResult]:
+    if (
+        not isinstance(decimal, DerivationTree)
+        or not isinstance(octal, language.Variable)
+        and octal.is_complete()
+    ):
+        return MaybeMonadPlus.nothing()
 
-        if isinstance(octal, DerivationTree) and octal_str == str(decimal):
-            return SemPredEvalResult(True)
+    if not decimal.is_complete():
+        return MaybeMonadPlus(SemPredEvalResult(None))
 
-        return SemPredEvalResult({octal: octal_parser(octal_str)})
+    # Conversion to octal
+    decimal_number = int(str(decimal))
+    octal_str = oct(decimal_number)[2:]
 
-    if isinstance(octal, language.Variable) and isinstance(decimal, DerivationTree):
-        if not decimal.is_complete():
-            return SemPredEvalResult(None)
+    return MaybeMonadPlus(SemPredEvalResult({octal: octal_parser(octal_str)}))
 
-        decimal_number = int(str(decimal))
-        octal_str = str(oct(decimal_number))[2:]
 
-        if isinstance(octal, DerivationTree) and octal_str == str(octal):
-            return SemPredEvalResult(True)
+def octal_to_dec_both_trees(
+    octal: language.Variable | DerivationTree,
+    decimal: language.Variable | DerivationTree,
+    _1,
+    _2,
+) -> MaybeMonadPlus[SemPredEvalResult]:
+    if not isinstance(decimal, DerivationTree) or not isinstance(octal, DerivationTree):
+        return MaybeMonadPlus.nothing()
 
-        return SemPredEvalResult({octal: octal_parser(octal_str)})
+    if not decimal.is_complete() or not octal.is_complete():
+        return MaybeMonadPlus(SemPredEvalResult(None))
 
-    if isinstance(decimal, language.Variable) and isinstance(octal, DerivationTree):
-        if not octal.is_complete():
-            return SemPredEvalResult(None)
+    decimal_number = int(str(decimal))
+    octal_number = int(str(octal))
 
-        decimal_str = str(int(str(octal), 8))
-
-        if isinstance(decimal, DerivationTree) and decimal_str == str(decimal):
-            return SemPredEvalResult(True)
-
-        return SemPredEvalResult({decimal: octal_parser(decimal_str)})
-
-    assert False
+    return MaybeMonadPlus(
+        SemPredEvalResult(int(oct(octal_number)[2:]) == decimal_number)
+    )
 
 
 def OCTAL_TO_DEC_PREDICATE(graph, octal_start, decimal_start):

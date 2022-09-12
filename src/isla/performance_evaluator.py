@@ -12,6 +12,7 @@ import sys
 import time
 import traceback
 from datetime import datetime
+from sqlite3 import Cursor
 from typing import List, Generator, Dict, Callable, Set, Tuple, Optional, cast, Sequence
 
 import ijson
@@ -60,7 +61,7 @@ class NestablePool(multiprocessing.pool.Pool):
 
 
 class Evaluator:
-    def __init__(
+    def __init__(  # noqa: C901
         self,
         jobname_prefix: str,
         generators: List[Callable[[int], ISLaSolver] | Grammar],
@@ -408,6 +409,115 @@ class Evaluator:
         avg_inp_length: Dict[str, float] = {}
         median_inp_length: Dict[str, float] = {}
 
+        job: str
+        for job in self.jobs_and_generators:
+            sids = tuple(get_all_sids(job, self.db_file))
+            if self.num_sessions >= 0:
+                sids = sids[len(sids) - self.num_sessions :]
+            assert (
+                sids
+            ), f"There do not exist sufficient sessions for job {job}, found {len(sids)} sessions."
+            sids_placeholder = ",".join("?" for _ in range(len(sids)))
+
+            print(f"Analyzing sessions {', '.join(map(str, sids))} for {job}")
+
+            # Analyze efficiency: Inputs / min
+            cur.execute(
+                f"SELECT COUNT(*) FROM inputs WHERE testId = ? AND sid IN ({sids_placeholder})",
+                (job,) + sids,
+            )
+            total_inputs: int = cur.fetchone()[0]
+            cur.execute(
+                f"SELECT SUM(seconds) FROM session_lengths WHERE testId = ? AND sid IN ({sids_placeholder})",
+                (job,) + sids,
+            )
+            time: int = cur.fetchone()[0]
+            efficiency[job] = 60 * total_inputs / time
+
+            # Analyze precision: Fraction of valid inputs
+            cur.execute(
+                f"SELECT COUNT(*) FROM inputs NATURAL JOIN valid WHERE testId = ? AND sid IN ({sids_placeholder})",
+                (job,) + sids,
+            )
+            valid_inputs: int = cur.fetchone()[0]
+            precision[job] = valid_inputs / total_inputs
+
+            # Analyze diversity: Fraction of covered k-paths
+            all_kpaths: Dict[int, Set[str]] = {
+                k: {
+                    path_to_string(p)
+                    for p in self.graph.k_paths(k, include_terminals=False)
+                }
+                for k in self.kvalues
+            }
+
+            diversity[job] = self.__analyze_diversity(all_kpaths, cur, job, sids)
+
+            # Analyze average / median String length
+            cur.execute(
+                f"SELECT inp FROM inputs NATURAL JOIN valid WHERE testId = ? AND sid IN ({sids_placeholder})",
+                (job,) + sids,
+            )
+            valid_inputs: List[str] = cast(List[str], cur.fetchall())
+
+            if valid_inputs:
+
+                def get_input_length(row: Sequence[str]) -> int:
+                    return len(
+                        tree_to_string(next(ijson.items(row[0].encode("utf-8"), "")))
+                    )
+
+                with pmp.ProcessingPool(processes=pmp.cpu_count()) as pool:
+                    input_lengths = pool.map(get_input_length, valid_inputs)
+
+                # input_lengths = []
+                # for row in cur:
+                #     input_lengths.append(len(str(isla.derivation_tree.DerivationTree.from_parse_tree(
+                #         next(ijson.items(row[0].encode('utf-8'), ''))))))
+
+                avg_inp_length[job] = statistics.mean(input_lengths)
+                median_inp_length[job] = statistics.median(input_lengths)
+            else:
+                avg_inp_length[job] = 0
+                median_inp_length[job] = 0
+
+        con.close()
+
+        def perc(inp: float) -> str:
+            return frac(inp * 100) + "%"
+
+        def frac(inp: float) -> str:
+            return "{:6.2f}".format(inp)
+
+        print("\n")
+
+        col_1_len = max([len(job) for job in self.jobs_and_generators])
+        row_1 = f"| {'Job'.ljust(col_1_len)} | Efficiency |    Precision     | Diversity  | Mean/Median Input Length |"
+        sepline = f"+-{'-'.ljust(col_1_len, '-')}-+------------+------------------+------------+--------------------------+"
+
+        print(sepline)
+        print(row_1)
+        print(sepline)
+
+        for job in self.jobs_and_generators:
+            print(
+                f"| {job.ljust(col_1_len)} |     {frac(efficiency[job])} | "
+                f"{frac(precision[job] * efficiency[job])} ({perc(precision[job])}) |    {perc(diversity[job])} | "
+                + (
+                    frac(avg_inp_length[job]) + " / " + frac(median_inp_length[job])
+                ).rjust(len("Mean/Median Input Length"))
+                + " |"
+            )
+
+        print(sepline)
+
+    def __analyze_diversity(
+        self,
+        all_kpaths: Dict[int, Set[str]],
+        cur: Cursor,
+        job: str,
+        sids: Tuple[int, ...],
+    ) -> float:
         # The custom TAR parser is inconsistent with the TAR grammar for the expansion of the `<content>`
         # nonterminal. This has been fixed by now. For existing evaluation data, we patch the k-paths
         # that are affected by the issue.
@@ -498,153 +608,49 @@ class Evaluator:
             },
         }
 
-        for job in self.jobs_and_generators:
-            sids = tuple(get_all_sids(job, self.db_file))
-            if self.num_sessions >= 0:
-                sids = sids[len(sids) - self.num_sessions :]
-            assert (
-                sids
-            ), f"There do not exist sufficient sessions for job {job}, found {len(sids)} sessions."
-            sids_placeholder = ",".join("?" for _ in range(len(sids)))
-
-            print(f"Analyzing sessions {', '.join(map(str, sids))} for {job}")
-
-            # Analyze efficiency: Inputs / min
-            cur.execute(
-                f"SELECT COUNT(*) FROM inputs WHERE testId = ? AND sid IN ({sids_placeholder})",
-                (job,) + sids,
-            )
-            total_inputs: int = cur.fetchone()[0]
-            cur.execute(
-                f"SELECT SUM(seconds) FROM session_lengths WHERE testId = ? AND sid IN ({sids_placeholder})",
-                (job,) + sids,
-            )
-            time: int = cur.fetchone()[0]
-            efficiency[job] = 60 * total_inputs / time
-
-            # Analyze precision: Fraction of valid inputs
-            cur.execute(
-                f"SELECT COUNT(*) FROM inputs NATURAL JOIN valid WHERE testId = ? AND sid IN ({sids_placeholder})",
-                (job,) + sids,
-            )
-            valid_inputs: int = cur.fetchone()[0]
-            precision[job] = valid_inputs / total_inputs
-
-            # Analyze diversity: Fraction of covered k-paths
-            all_kpaths: Dict[int, Set[str]] = {
-                k: {
-                    path_to_string(p)
-                    for p in self.graph.k_paths(k, include_terminals=False)
-                }
-                for k in self.kvalues
-            }
-            diversity_by_sid: Dict[int, float] = {}
-            for sid in sids:
-                diversity_by_k: Dict[int, float] = {}
-                for k in self.kvalues:
-                    cur.execute(
-                        "SELECT paths FROM inputs NATURAL JOIN kpaths WHERE testId = ? AND sid = ? AND k = ?",
-                        (job, sid, k),
-                    )
-
-                    paths: Set[str] = set()
-                    for row in cur:
-                        for path in next(ijson.items(row[0].encode("utf-8"), "")):
-                            if path not in all_kpaths[k]:
-                                if path in tar_kpath_fix_map:
-                                    for fixed_path in tar_kpath_fix_map[path]:
-                                        assert (
-                                            fixed_path in all_kpaths[k]
-                                        ), f"Fixed path {fixed_path} is broken"
-                                        paths.add(fixed_path)
-                                else:
-                                    print(
-                                        f"For {job}, session {sid}, k={k}, found a covered path that is not "
-                                        + f'in the list of all covered paths (SKIPPING): "{path}"',
-                                        file=sys.stderr,
-                                    )
-
-                                continue
-
-                            paths.add(path)
-
-                    if self.do_print_missing_kpaths:
-                        missing_paths = all_kpaths[k].difference(paths)
-                        if missing_paths:
-                            print(
-                                f'Missing {k}-paths for session {sid} of job "{job}":'
-                            )
-                            print("\n".join(map(lambda p: f"- {p}", missing_paths)))
-                        else:
-                            print(
-                                f'No missing {k}-paths for sesson {sid} of job "{job}"'
-                            )
-
-                    diversity_by_k[k] = len(paths) / len(all_kpaths[k])
-
-                diversity_by_sid[sid] = sum(diversity_by_k.values()) / len(
-                    diversity_by_k
+        diversity_by_sid: Dict[int, float] = {}
+        for sid in sids:
+            diversity_by_k: Dict[int, float] = {}
+            for k in self.kvalues:
+                cur.execute(
+                    "SELECT paths FROM inputs NATURAL JOIN kpaths WHERE testId = ? AND sid = ? AND k = ?",
+                    (job, sid, k),
                 )
 
-            diversity[job] = sum(diversity_by_sid.values()) / len(diversity_by_sid)
+                paths: Set[str] = set()
+                for row in cur:
+                    for path in next(ijson.items(row[0].encode("utf-8"), "")):
+                        if path not in all_kpaths[k]:
+                            if path in tar_kpath_fix_map:
+                                for fixed_path in tar_kpath_fix_map[path]:
+                                    assert (
+                                        fixed_path in all_kpaths[k]
+                                    ), f"Fixed path {fixed_path} is broken"
+                                    paths.add(fixed_path)
+                            else:
+                                print(
+                                    f"For {job}, session {sid}, k={k}, found a covered path that is not "
+                                    + f'in the list of all covered paths (SKIPPING): "{path}"',
+                                    file=sys.stderr,
+                                )
 
-            # Analyze average / median String length
-            cur.execute(
-                f"SELECT inp FROM inputs NATURAL JOIN valid WHERE testId = ? AND sid IN ({sids_placeholder})",
-                (job,) + sids,
-            )
-            valid_inputs: List[str] = cast(List[str], cur.fetchall())
+                            continue
 
-            if valid_inputs:
+                        paths.add(path)
 
-                def get_input_length(row: Sequence[str]) -> int:
-                    return len(
-                        tree_to_string(next(ijson.items(row[0].encode("utf-8"), "")))
-                    )
+                if self.do_print_missing_kpaths:
+                    missing_paths = all_kpaths[k].difference(paths)
+                    if missing_paths:
+                        print(f'Missing {k}-paths for session {sid} of job "{job}":')
+                        print("\n".join(map(lambda p: f"- {p}", missing_paths)))
+                    else:
+                        print(f'No missing {k}-paths for sesson {sid} of job "{job}"')
 
-                with pmp.ProcessingPool(processes=pmp.cpu_count()) as pool:
-                    input_lengths = pool.map(get_input_length, valid_inputs)
+                diversity_by_k[k] = len(paths) / len(all_kpaths[k])
 
-                # input_lengths = []
-                # for row in cur:
-                #     input_lengths.append(len(str(isla.derivation_tree.DerivationTree.from_parse_tree(
-                #         next(ijson.items(row[0].encode('utf-8'), ''))))))
+            diversity_by_sid[sid] = sum(diversity_by_k.values()) / len(diversity_by_k)
 
-                avg_inp_length[job] = statistics.mean(input_lengths)
-                median_inp_length[job] = statistics.median(input_lengths)
-            else:
-                avg_inp_length[job] = 0
-                median_inp_length[job] = 0
-
-        con.close()
-
-        def perc(inp: float) -> str:
-            return frac(inp * 100) + "%"
-
-        def frac(inp: float) -> str:
-            return "{:6.2f}".format(inp)
-
-        print("\n")
-
-        col_1_len = max([len(job) for job in self.jobs_and_generators])
-        row_1 = f"| {'Job'.ljust(col_1_len)} | Efficiency |    Precision     | Diversity  | Mean/Median Input Length |"
-        sepline = f"+-{'-'.ljust(col_1_len, '-')}-+------------+------------------+------------+--------------------------+"
-
-        print(sepline)
-        print(row_1)
-        print(sepline)
-
-        for job in self.jobs_and_generators:
-            print(
-                f"| {job.ljust(col_1_len)} |     {frac(efficiency[job])} | "
-                f"{frac(precision[job] * efficiency[job])} ({perc(precision[job])}) |    {perc(diversity[job])} | "
-                + (
-                    frac(avg_inp_length[job]) + " / " + frac(median_inp_length[job])
-                ).rjust(len("Mean/Median Input Length"))
-                + " |"
-            )
-
-        print(sepline)
+        return sum(diversity_by_sid.values()) / len(diversity_by_sid)
 
 
 def strtime() -> str:

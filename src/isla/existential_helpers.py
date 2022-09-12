@@ -292,6 +292,17 @@ def compute_direct_embeddings(
     return list(results.values())
 
 
+def children_with_at_most_one_parent(tree: DerivationTree) -> List[DerivationTree]:
+    result: List[DerivationTree] = [tree]
+
+    curr_tree = tree
+    while curr_tree.children and len(curr_tree.children) < 2:
+        curr_tree = curr_tree.children[0]
+        result.append(curr_tree)
+
+    return result
+
+
 def insert_trees(
     trees_to_insert: List[DerivationTree],
     into_tree: DerivationTree,
@@ -307,16 +318,6 @@ def insert_trees(
         }
         ids_in_into_tree = {t.id for _, t in into_tree.filter(lambda _: True)}
         assert ids_in_tree_to_insert.isdisjoint(ids_in_into_tree)
-
-    def children_with_at_most_one_parent(tree: DerivationTree) -> List[DerivationTree]:
-        result: List[DerivationTree] = [tree]
-
-        curr_tree = tree
-        while curr_tree.children and len(curr_tree.children) < 2:
-            curr_tree = curr_tree.children[0]
-            result.append(curr_tree)
-
-        return result
 
     possible_insertion_points: Dict[DerivationTree, List[Path]] = {
         tree: [
@@ -341,6 +342,7 @@ def insert_trees(
     all_combinations: List[Dict[DerivationTree, Path]] = dict_of_lists_to_list_of_dicts(
         possible_insertion_points
     )
+
     possible_combinations: List[Dict[DerivationTree, Path]] = [
         combination
         for combination in all_combinations
@@ -402,75 +404,108 @@ def insert_trees(
                 insertion_points: Dict[Path, DerivationTree] = {
                     insertion_path: insertion_point_tree
                 }
-                for subtree in single_parent_tree_children:
-                    # We might have to insert subtree some steps higher up in the hierarchy.
-                    # Example Scriptsize-C: If we insert a <declaration> at a <statement> node,
-                    # we need a complex connection, but if there is a <block_statement> node
-                    # above the <statement>, we can directly insert the <declaration> below.
-                    p = insertion_path
-                    while p:
-                        p = p[:-1]
 
-                        if len(result_tree.get_subtree(p).children or []) > 1:
-                            break
+                insertion_points.update(
+                    find_higher_up_insertion_points(
+                        result_tree,
+                        insertion_path,
+                        single_parent_tree_children,
+                        graph,
+                    )
+                )
 
-                        if result_tree.get_subtree(p).value == subtree.value:
-                            continue
-
-                        if graph.reachable(
-                            result_tree.get_subtree(p).value, subtree.value
-                        ):
-                            insertion_points[p] = result_tree.get_subtree(p)
-
-                for subtree in [
+                # (DS): To consider: Should we consider all such subtrees? Seems to work with one, though...
+                subtree = next(
                     t for t in single_parent_tree_children if is_nonterminal(t.value)
-                ]:
-                    for connecting_tree, insert_leaf_path, insertion_path in (
-                        (connecting_tree, insert_leaf_path, insertion_path)
-                        for insertion_path, insertion_point_tree in insertion_points.items()
-                        if is_nonterminal(insertion_point_tree.value)
-                        for connecting_path in paths_between(
-                            graph, insertion_point_tree.value, subtree.value
-                        )
-                        for connecting_tree in path_to_tree(grammar, connecting_path)
-                        for insert_leaf_path, (
-                            insert_leaf_nonterm,
-                            _,
-                        ) in connecting_tree.open_leaves()
-                        if insert_leaf_nonterm == subtree.value
-                    ):
-                        # We have to preserve the ID of the original node at that path.
-                        connecting_tree_with_orig_leaf_id = DerivationTree(
-                            connecting_tree.value,
-                            connecting_tree.children,
-                            result_tree.get_subtree(insertion_path).id,
-                        )
-                        assert connecting_tree_with_orig_leaf_id.has_unique_ids()
-
-                        instantiated_connecting_tree = (
-                            connecting_tree_with_orig_leaf_id.replace_path(
-                                insert_leaf_path, subtree
-                            )
-                        )
-                        assert instantiated_connecting_tree.has_unique_ids()
-
-                        new_tree = result_tree.replace_path(
-                            insertion_path, instantiated_connecting_tree
-                        )
-                        assert new_tree.has_unique_ids()
-                        assert graph.tree_is_valid(new_tree)
-                        new_result_trees.append(new_tree)
-                        continue
-                    else:
-                        # Inserting bigger subtrees is better (retains more identifiers that might
-                        # be referred in formulas), so we stop after the first successfully inserted subtree.
-                        break
+                )
+                new_result_trees.extend(
+                    connect_trees(
+                        subtree, result_tree, insertion_points, grammar, graph
+                    )
+                )
 
             result_trees.extend(new_result_trees)
 
         result.extend(result_trees)
 
     return result
+
+
+def find_higher_up_insertion_points(
+    tree: DerivationTree,
+    insertion_path: Path,
+    single_parent_tree_children: List[DerivationTree],
+    graph: GrammarGraph,
+) -> Dict[Path, DerivationTree]:
+    result: Dict[Path, DerivationTree] = {}
+
+    for subtree in single_parent_tree_children:
+        # We might have to insert subtree some steps higher up in the hierarchy.
+        # Example Scriptsize-C: If we insert a <declaration> at a <statement> node,
+        # we need a complex connection, but if there is a <block_statement> node
+        # above the <statement>, we can directly insert the <declaration> below.
+        p = insertion_path
+        while p:
+            p = p[:-1]
+
+            if len(tree.get_subtree(p).children or []) > 1:
+                return result
+
+            if tree.get_subtree(p).value == subtree.value:
+                continue
+
+            if graph.reachable(tree.get_subtree(p).value, subtree.value):
+                result[p] = tree.get_subtree(p)
+
+    return result
+
+
+def connect_trees(
+    tree_to_add: DerivationTree,
+    parent_tree: DerivationTree,
+    insertion_points: Dict[Path, DerivationTree],
+    canonical_grammar: CanonicalGrammar,
+    graph: GrammarGraph,
+) -> List[DerivationTree]:
+    result: List[DerivationTree] = []
+    for connecting_tree, insert_leaf_path, insertion_path in (
+        (connecting_tree, insert_leaf_path, insertion_path)
+        for insertion_path, insertion_point_tree in insertion_points.items()
+        if is_nonterminal(insertion_point_tree.value)
+        for connecting_path in paths_between(
+            graph, insertion_point_tree.value, tree_to_add.value
+        )
+        for connecting_tree in path_to_tree(canonical_grammar, connecting_path)
+        for insert_leaf_path, (
+            insert_leaf_nonterm,
+            _,
+        ) in connecting_tree.open_leaves()
+        if insert_leaf_nonterm == tree_to_add.value
+    ):
+        # We have to preserve the ID of the original node at that path.
+        connecting_tree_with_orig_leaf_id = DerivationTree(
+            connecting_tree.value,
+            connecting_tree.children,
+            parent_tree.get_subtree(insertion_path).id,
+        )
+        assert connecting_tree_with_orig_leaf_id.has_unique_ids()
+
+        instantiated_connecting_tree = connecting_tree_with_orig_leaf_id.replace_path(
+            insert_leaf_path, tree_to_add
+        )
+        assert instantiated_connecting_tree.has_unique_ids()
+
+        new_tree = parent_tree.replace_path(
+            insertion_path, instantiated_connecting_tree
+        )
+        assert new_tree.has_unique_ids()
+        assert graph.tree_is_valid(new_tree)
+        result.append(new_tree)
+        continue
+    else:
+        # Inserting bigger subtrees is better (retains more identifiers that might
+        # be referred in formulas), so we stop after the first successfully inserted subtree.
+        return result
 
 
 def shrink_tree(tree: DerivationTree) -> DerivationTree:

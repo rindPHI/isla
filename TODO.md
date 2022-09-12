@@ -1,5 +1,6 @@
 # TODOs and Open Issues
 
+- Fix TAR test! Problem introduced in commit with ID 9a82766f76247c1ff0cab738ef7c3133b36e44ce (10.0.9)
 - Fix test case `test_predicates.test_count_pred_var_as_third_arg`
 - Test derivation tree (de)serialization (pickle)
 - Translation of formulas with XPath expressions in `in` qualifiers of quantifiers; see test
