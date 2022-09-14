@@ -1,10 +1,13 @@
 import argparse
+import logging
 import sys
+from contextlib import redirect_stdout, redirect_stderr
 from typing import Dict
 
 from grammar_graph import gg
 
 from isla import __version__ as isla_version
+from isla.derivation_tree import DerivationTree
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
     STANDARD_SEMANTIC_PREDICATES,
@@ -19,28 +22,39 @@ from isla.solver import (
 )
 
 
-def main():
-    parser = create_parsers()
+def main(*args: str, stdout=sys.stdout, stderr=sys.stderr):
+    parser = create_parsers(stdout, stderr)
 
-    args = parser.parse_args()
+    with redirect_stdout(stdout):
+        with redirect_stderr(stderr):
+            args = parser.parse_args(args or sys.argv[1:])
 
     if not args.command and not args.version:
-        parser.print_usage(file=sys.stderr)
+        parser.print_usage(file=stderr)
         print(
             "isla: error: You have to choose a global option or one of the commands "
             + "`solve`, `fuzz`, `check`, or `parse`",
-            file=sys.stderr,
+            file=stderr,
         )
         exit(2)
 
     if args.version:
-        print(f"ISLa version {isla_version}")
+        print(f"ISLa version {isla_version}", file=stdout)
         sys.exit(0)
+
+    level_mapping = {
+        0: logging.ERROR,
+        1: logging.WARNING,
+        2: logging.INFO,
+        3: logging.DEBUG,
+    }
+
+    logging.basicConfig(stream=stderr, level=level_mapping[args.log_level])
 
     args.func(args)
 
 
-def create_parsers():
+def create_parsers(stdout, stderr):
     parser = argparse.ArgumentParser(
         prog="isla",
         description="""
@@ -53,17 +67,17 @@ The ISLa command line interface.""",
 
     subparsers = parser.add_subparsers(title="Commands", dest="command", required=False)
 
-    create_solve_parser(subparsers)
-    create_fuzz_parser(subparsers)
-    create_check_parser(subparsers)
-    create_parse_parser(subparsers)
+    create_solve_parser(subparsers, stdout, stderr)
+    create_fuzz_parser(subparsers, stdout, stderr)
+    create_check_parser(subparsers, stdout, stderr)
+    create_parse_parser(subparsers, stdout, stderr)
 
     return parser
 
 
-def solve(parser, args):
+def solve(stdout, stderr, parser, args):
     files = read_files(args)
-    ensure_grammar_constraint_present(parser, args, files)
+    ensure_grammar_constraint_present(stderr, parser, args, files)
 
     grammar = {}
     for grammar_file_name in filter(lambda f: f.endswith(".bnf"), files):
@@ -111,20 +125,30 @@ def solve(parser, args):
         grammar_unwinding_threshold=args.unwinding_depth,
     )
 
-    # TODO: Write to files if directory is given
-    for solution in solver.solve():
-        print(solution)
+    num_solutions = args.num_solutions
+    i = 0
+    while True:
+        if 0 < num_solutions <= i:
+            break
+
+        result = solver.fuzz()
+        if isinstance(result, DerivationTree):
+            print(result, flush=True, file=stdout)
+        else:
+            break
+
+        i += 1
 
 
-def fuzz(parser, args):
+def fuzz(stdout, stderr, parser, args):
     print(args)
 
 
-def check(parser, args):
+def check(stdout, stderr, parser, args):
     print(args)
 
 
-def parse(parser, args):
+def parse(stdout, stderr, parser, args):
     print(args)
 
 
@@ -132,29 +156,31 @@ def read_files(args) -> Dict[str, str]:
     return {io_wrapper.name: io_wrapper.read() for io_wrapper in args.files}
 
 
-def ensure_grammar_constraint_present(parser, args, files: Dict[str, str]) -> None:
+def ensure_grammar_constraint_present(
+    stderr, parser, args, files: Dict[str, str]
+) -> None:
     if not args.grammar and all(not file.endswith(".bnf") for file in files):
-        parser.print_usage(file=sys.stderr)
+        parser.print_usage(file=stderr)
         print(
             "isla solve: error: You must specify a grammar by `--grammar` "
             "or FILES arguments with `.bnf` ending.",
-            file=sys.stderr,
+            file=stderr,
         )
 
         exit(2)
 
     if not args.constraint and all(not file.endswith(".isla") for file in files):
-        parser.print_usage(file=sys.stderr)
+        parser.print_usage(file=stderr)
         print(
             "isla solve: error: You must specify a constraint by `--constraint` "
             "or FILES arguments with `.isla` ending.",
-            file=sys.stderr,
+            file=stderr,
         )
 
         exit(2)
 
 
-def create_solve_parser(subparsers):
+def create_solve_parser(subparsers, stdout, stderr):
     parser = subparsers.add_parser(
         "solve",
         help="create solutions to ISLa constraints or check their unsatisfiability",
@@ -162,7 +188,7 @@ def create_solve_parser(subparsers):
         description="""
 Create solutions to an ISLa constraint and a reference grammar.""",
     )
-    parser.set_defaults(func=lambda *args: solve(parser, *args))
+    parser.set_defaults(func=lambda *args: solve(stdout, stderr, parser, *args))
 
     grammar_arg(parser)
     constraint_arg(parser)
@@ -188,7 +214,7 @@ generator for satisfiable formulas""",
     files_arg(parser)
 
 
-def create_fuzz_parser(subparsers):
+def create_fuzz_parser(subparsers, stdout, stderr):
     parser = subparsers.add_parser(
         "fuzz",
         help="pass solutions to an ISLa constraint to a test subject",
@@ -197,7 +223,7 @@ Create solutions to an ISLa constraint and a reference grammar, and pass these t
 a test subject.""",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.set_defaults(func=lambda *args: fuzz(parser, *args))
+    parser.set_defaults(func=lambda *args: fuzz(stdout, stderr, parser, *args))
 
     parser.add_argument(
         "test_target",
@@ -232,7 +258,7 @@ test target expects a particular format""",
     files_arg(parser)
 
 
-def create_check_parser(subparsers):
+def create_check_parser(subparsers, stdout, stderr):
     parser = subparsers.add_parser(
         "check",
         help="check whether an input satisfies an ISLa constraint",
@@ -241,7 +267,7 @@ Check whether an input is derivable from a grammar and satisfies and an ISLa
 constraint.""",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.set_defaults(func=lambda *args: check(parser, *args))
+    parser.set_defaults(func=lambda *args: check(stdout, stderr, parser, *args))
 
     input_string_arg(parser)
     input_file_arg(parser)
@@ -252,7 +278,7 @@ constraint.""",
     files_arg(parser)
 
 
-def create_parse_parser(subparsers):
+def create_parse_parser(subparsers, stdout, stderr):
     parser = subparsers.add_parser(
         "parse",
         help="parse an input into a derivation tree if it satisfies an ISLa constraint",
@@ -261,7 +287,7 @@ Parse an input into a derivation tree if it is derivable from a grammar and
 satisfies an ISLa constraint.""",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.set_defaults(func=lambda *args: parse(parser, *args))
+    parser.set_defaults(func=lambda *args: parse(stdout, stderr, parser, *args))
 
     input_string_arg(parser)
     input_file_arg(parser)

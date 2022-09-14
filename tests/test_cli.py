@@ -1,27 +1,25 @@
-import subprocess
+import io
 import unittest
 from tempfile import NamedTemporaryFile
 from typing import Tuple
 
 from isla import __version__ as isla_version
-from isla.language import unparse_grammar, unparse_isla
+from isla import cli
+from isla.language import unparse_grammar
 from isla.solver import ISLaSolver
 from isla.type_defs import Grammar
 from test_data import LANG_GRAMMAR
 
 
 def run_isla(*args) -> Tuple[str, str, int]:
+    stdout, stderr = io.StringIO(), io.StringIO()
     try:
-        result = subprocess.run(
-            ["isla"] + [str(arg) for arg in args],
-            capture_output=True,
-            check=True,
-            text=True,
-        )
-    except subprocess.CalledProcessError as cpe:
-        return cpe.stdout, cpe.stderr, cpe.returncode
+        cli.main(*[str(arg) for arg in args], stdout=stdout, stderr=stderr)
+        code = 0
+    except SystemExit as sys_exit:
+        code = sys_exit.code
 
-    return result.stdout, result.stderr, 0
+    return stdout.getvalue().strip(), stderr.getvalue().strip(), code
 
 
 def write_constraint_file(formula: str) -> NamedTemporaryFile:
