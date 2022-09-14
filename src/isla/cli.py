@@ -7,7 +7,7 @@ from typing import Dict
 
 from grammar_graph import gg
 
-from isla import __version__ as isla_version
+from isla import __version__ as isla_version, language
 from isla.derivation_tree import DerivationTree
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
@@ -20,7 +20,13 @@ from isla.solver import (
     GrammarBasedBlackboxCostComputer,
     CostSettings,
     CostWeightVector,
+    CostComputer,
 )
+from isla.type_defs import Grammar
+
+# Exit Codes
+USAGE_ERROR = 2
+DATA_FORMAT_ERROR = 65
 
 
 def main(*args: str, stdout=sys.stdout, stderr=sys.stderr):
@@ -37,7 +43,7 @@ def main(*args: str, stdout=sys.stdout, stderr=sys.stderr):
             + "`solve`, `fuzz`, `check`, or `parse`",
             file=stderr,
         )
-        exit(2)
+        exit(USAGE_ERROR)
 
     if args.version:
         print(f"ISLa version {isla_version}", file=stdout)
@@ -59,38 +65,11 @@ def solve(stdout, stderr, parser, args):
     files = read_files(args)
     ensure_grammar_constraint_present(stderr, parser, args, files)
 
-    grammar = {}
-    for grammar_file_name in filter(lambda f: f.endswith(".bnf"), files):
-        with open(grammar_file_name, "r") as grammar_file:
-            grammar |= parse_bnf(grammar_file.read())
-
-    constraint = true()
-    for constraint_file_name in filter(lambda f: f.endswith(".isla"), files):
-        with open(constraint_file_name, "r") as constraint_file:
-            constraint &= parse_isla(
-                constraint_file.read(),
-                structural_predicates=STANDARD_STRUCTURAL_PREDICATES,
-                semantic_predicates=STANDARD_SEMANTIC_PREDICATES,
-                grammar=grammar,
-            )
-
-    weight_vector = args.weight_vector.split(",")
-    assert len(weight_vector) == 5  # TODO: Exit w/ error message
-    assert all(w.isnumeric() for w in weight_vector)
-    weight_vector = list(map(int, weight_vector))
-
-    cost_computer = GrammarBasedBlackboxCostComputer(
-        CostSettings(
-            CostWeightVector(
-                tree_closing_cost=weight_vector[0],
-                constraint_cost=weight_vector[1],
-                derivation_depth_penalty=weight_vector[2],
-                low_k_coverage_penalty=weight_vector[3],
-                low_global_k_path_coverage_penalty=weight_vector[4],
-            ),
-            k=args.k,
-        ),
-        gg.GrammarGraph.from_grammar(grammar),
+    command = args.command
+    grammar = parse_grammar(command, args.grammar, files, stderr)
+    constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
+    cost_computer = parse_cost_computer_spec(
+        command, grammar, args.k, stderr, args.weight_vector
     )
 
     solver = ISLaSolver(
@@ -128,7 +107,46 @@ def solve(stdout, stderr, parser, args):
 
 
 def fuzz(stdout, stderr, parser, args):
-    print(args)
+    files = read_files(args)
+    ensure_grammar_constraint_present(stderr, parser, args, files)
+
+    command = args.command
+    grammar = parse_grammar(command, args.grammar, files, stderr)
+    constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
+    cost_computer = parse_cost_computer_spec(
+        command, grammar, args.k, stderr, args.weight_vector
+    )
+
+    solver = ISLaSolver(
+        grammar,
+        constraint,
+        max_number_free_instantiations=args.free_instantiations,
+        max_number_smt_instantiations=args.smt_instantiations,
+        enforce_unique_trees_in_queue=args.unique_trees,
+        cost_computer=cost_computer,
+        timeout_seconds=args.timeout if args.timeout > 0 else None,
+        activate_unsat_support=args.unsat_support,
+        grammar_unwinding_threshold=args.unwinding_depth,
+    )
+
+    num_solutions = args.num_solutions
+    i = 0
+    while True:
+        if 0 < num_solutions <= i:
+            break
+
+        result = solver.fuzz()
+        if isinstance(result, DerivationTree):
+            # TODO: Check presence of output
+            inp_file = open(os.path.join(args.output_dir, f"{i}.txt"), "wb")
+            inp_file.close()
+        else:
+            assert result == ISLaSolver.TIMEOUT or result == ISLaSolver.UNSAT
+            if result == ISLaSolver.UNSAT:
+                print("UNSAT", flush=True, file=stderr)
+            break
+
+        i += 1
 
 
 def check(stdout, stderr, parser, args):
@@ -175,7 +193,7 @@ def ensure_grammar_constraint_present(
             file=stderr,
         )
 
-        exit(2)
+        exit(USAGE_ERROR)
 
     if not args.constraint and all(not file.endswith(".isla") for file in files):
         parser.print_usage(file=stderr)
@@ -185,7 +203,107 @@ def ensure_grammar_constraint_present(
             file=stderr,
         )
 
-        exit(2)
+        exit(USAGE_ERROR)
+
+
+def parse_constraint(
+    subcommand: str,
+    constraint_arg: str,
+    files: Dict[str, str],
+    grammar: Grammar,
+    stderr,
+) -> language.Formula:
+    try:
+        if constraint_arg:
+            with redirect_stderr(stderr):
+                constraint = parse_isla(
+                    constraint_arg,
+                    structural_predicates=STANDARD_STRUCTURAL_PREDICATES,
+                    semantic_predicates=STANDARD_SEMANTIC_PREDICATES,
+                    grammar=grammar,
+                )
+        else:
+            constraint = true()
+            for constraint_file_name in filter(lambda f: f.endswith(".isla"), files):
+                with open(constraint_file_name, "r") as constraint_file:
+                    with redirect_stderr(stderr):
+                        constraint &= parse_isla(
+                            constraint_file.read(),
+                            structural_predicates=STANDARD_STRUCTURAL_PREDICATES,
+                            semantic_predicates=STANDARD_SEMANTIC_PREDICATES,
+                            grammar=grammar,
+                        )
+    except Exception as exc:
+        exc_string = str(exc)
+        if exc_string == "None":
+            exc_string = ""
+        print(
+            f"isla {subcommand}: error: A {type(exc).__name__} occurred "
+            + f"while parsing the constraint{f' ({exc_string})' if exc_string else ''}",
+            file=stderr,
+        )
+        sys.exit(DATA_FORMAT_ERROR)
+    return constraint
+
+
+def parse_grammar(
+    subcommand: str, grammar_arg: str, files: Dict[str, str], stderr
+) -> Grammar:
+    try:
+        if grammar_arg:
+            with redirect_stderr(stderr):
+                grammar = parse_bnf(grammar_arg)
+        else:
+            grammar = {}
+            for grammar_file_name in filter(lambda f: f.endswith(".bnf"), files):
+                with open(grammar_file_name, "r") as grammar_file:
+                    with redirect_stderr(stderr):
+                        grammar |= parse_bnf(grammar_file.read())
+    except Exception as exc:
+        exc_string = str(exc)
+        if exc_string == "None":
+            exc_string = ""
+        print(
+            f"isla {subcommand}: error: A {type(exc).__name__} occurred "
+            + f"while parsing the grammar{f' ({exc_string})' if exc_string else ''}",
+            file=stderr,
+        )
+        sys.exit(DATA_FORMAT_ERROR)
+    return grammar
+
+
+def parse_cost_computer_spec(
+    command: str, grammar: Grammar, k_arg: int, stderr, weight_vector_arg: str
+) -> CostComputer:
+    weight_vector = weight_vector_arg.split(",")
+    if len(weight_vector) != 5:
+        print(
+            f"isla {command}: error: Length of weight vector is "
+            f"{len(weight_vector)}, expected 5",
+            file=stderr,
+        )
+        sys.exit(DATA_FORMAT_ERROR)
+    if any(not w.isnumeric() for w in weight_vector):
+        print(
+            f"isla {command}: error: non-numeric weight vector element encountered",
+            file=stderr,
+        )
+        sys.exit(DATA_FORMAT_ERROR)
+    weight_vector = list(map(int, weight_vector))
+    cost_computer = GrammarBasedBlackboxCostComputer(
+        CostSettings(
+            CostWeightVector(
+                tree_closing_cost=weight_vector[0],
+                constraint_cost=weight_vector[1],
+                derivation_depth_penalty=weight_vector[2],
+                low_k_coverage_penalty=weight_vector[3],
+                low_global_k_path_coverage_penalty=weight_vector[4],
+            ),
+            k=k_arg,
+        ),
+        gg.GrammarGraph.from_grammar(grammar),
+    )
+    return cost_computer
 
 
 def create_solve_parser(subparsers, stdout, stderr):
@@ -241,6 +359,8 @@ A command to run the test target. The placeholder `{}` will be replaced by a pat
 the input file""",
     )
 
+    output_dir_arg(parser, required=True)
+
     parser.add_argument(
         "-e",
         "--ending",
@@ -253,7 +373,6 @@ test target expects a particular format""",
 
     grammar_arg(parser)
     constraint_arg(parser)
-    output_dir_arg(parser)
     num_solutions_arg(parser)
     timeout_arg(parser)
     free_insts_arg(parser)
@@ -429,10 +548,11 @@ solutions (you need ot set a `--timeout` or forcefully stop ISLa)""",
     )
 
 
-def output_dir_arg(parser):
+def output_dir_arg(parser, required: bool = False):
     parser.add_argument(
         "-d",
         "--output-dir",
+        required=required,
         help="a directory into which to place generated output files",
     )
 

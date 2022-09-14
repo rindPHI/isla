@@ -1,14 +1,20 @@
 import io
 import os
+import string
 import tempfile
 import unittest
 from tempfile import NamedTemporaryFile
 from typing import Tuple
 
+import pytest
+
 from isla import __version__ as isla_version
 from isla import cli
+from isla.cli import DATA_FORMAT_ERROR
 from isla.language import unparse_grammar
-from isla.solver import ISLaSolver
+from isla.solver import (
+    ISLaSolver,
+)
 from isla.type_defs import Grammar
 from test_data import LANG_GRAMMAR
 
@@ -113,6 +119,31 @@ exists <assgn> assgn:
         grammar_file_2.close()
         constraint_file.close()
 
+    def test_solve_assgn_lang_parameter_grammar(self):
+        constraint = """
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+
+        stdout, stderr, code = run_isla(
+            "solve",
+            "--grammar",
+            " ".join(unparse_grammar(LANG_GRAMMAR).split("\n")),
+            "--constraint",
+            " ".join(constraint.split("\n")),
+            "-n",
+            -1,
+            "-t",
+            4,
+        )
+
+        self.assertFalse(code)
+        self.assertFalse(stderr)
+        self.assertTrue(stdout)
+
+        solver = ISLaSolver(LANG_GRAMMAR, constraint)
+        for line in stdout.split("\n"):
+            self.assertTrue(solver.evaluate(line))
+
     def test_solve_assgn_lang_output_directory(self):
         grammar_1 = {nt: exp for nt, exp in LANG_GRAMMAR.items() if ord(nt[1]) <= 114}
         grammar_2 = {nt: exp for nt, exp in LANG_GRAMMAR.items() if ord(nt[1]) > 114}
@@ -157,6 +188,79 @@ exists <assgn> assgn:
         grammar_file_1.close()
         grammar_file_2.close()
         constraint_file.close()
+        out_dir.cleanup()
+
+    def test_solve_parser_errors_grammar(self):
+        stdout, stderr, code = run_isla(
+            "solve", "--grammar", "<start> ::=", "--constraint", "true"
+        )
+
+        self.assertEqual(DATA_FORMAT_ERROR, code)
+        self.assertFalse(stdout)
+        self.assertTrue("ParseCancellationException" in stderr)
+        self.assertTrue("parsing the grammar" in stderr)
+
+    def test_solve_parser_errors_constraint(self):
+        stdout, stderr, code = run_isla(
+            "solve",
+            "--grammar",
+            '<start> ::= <a> <a> ::= "A"',
+            "--constraint",
+            "salami",
+        )
+
+        self.assertEqual(DATA_FORMAT_ERROR, code)
+        self.assertFalse(stdout)
+        self.assertTrue("SyntaxError" in stderr)
+        self.assertTrue("parsing the constraint" in stderr)
+
+    def test_solve_unsat(self):
+        stdout, stderr, code = run_isla(
+            "solve",
+            "--grammar",
+            '<start> ::= <a> <a> ::= "A"',
+            "--constraint",
+            'exists <a>: <a> = "B"',
+        )
+
+        self.assertFalse(code)
+        self.assertFalse(stdout)
+        self.assertEqual("UNSAT", stderr)
+
+    @pytest.mark.skip('TODO')
+    def test_fuzz_bash(self):
+        grammar = f"""
+<start> ::= <lines>
+<lines> ::= <line> "\n" <lines> | <line>
+<line> ::= <echo> | <exit>
+<echo> ::= "echo " <string>
+<exit> ::= "exit " <code>
+<string> ::= "\\"" <chars> "\\""
+<chars> ::= <char><chars> | <char>
+<char> ::= {" | ".join(map(lambda c: '"' + c + '"', set(string.ascii_letters).union([' '])))}
+<code> ::= "0" | "1" | "2"
+"""
+
+        constraint = 'exists <code>: not <code> = "0"'
+
+        out_dir = tempfile.TemporaryDirectory()
+
+        stdout, stderr, code = run_isla(
+            "fuzz",
+            "bash {}",
+            "-e",
+            ".sh" "--grammar",
+            " ".join(grammar.split("\n")),
+            "--constraint",
+            " ".join(constraint.split("\n")),
+            "-d",
+            out_dir.name,
+            "-n",
+            -1,
+            "-t",
+            4,
+        )
+
         out_dir.cleanup()
 
 
