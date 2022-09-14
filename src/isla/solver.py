@@ -508,10 +508,13 @@ class ISLaSolver:
 
             if self.timeout_seconds is not None:
                 if int(time.time()) - self.start_time > self.timeout_seconds:
+                    self.logger.debug("TIMEOUT")
                     return ISLaSolver.TIMEOUT
 
             if self.solutions:
-                return self.solutions.pop(0)
+                solution = self.solutions.pop(0)
+                self.logger.debug('Found solution "%s"', solution)
+                return solution
 
             cost: int
             state: SolutionState
@@ -565,8 +568,11 @@ class ISLaSolver:
 
             monad.if_present(process_and_extend_solutions)
         if self.solutions:
-            return self.solutions.pop(0)
+            solution = self.solutions.pop(0)
+            self.logger.debug('Found solution "%s"', solution)
+            return solution
         else:
+            self.logger.debug("UNSAT")
             return ISLaSolver.UNSAT
 
     @staticmethod
@@ -2687,6 +2693,9 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
         }
 
         num_contributed_potential_k_paths = len(contributed_k_paths)
+
+        if not num_missing_k_paths:
+            return 0
 
         return 1 - weighted_geometric_mean(
             [
