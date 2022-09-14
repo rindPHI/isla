@@ -145,6 +145,9 @@ class DerivationTree:
         )
         all_paths = graph.k_paths(k, include_terminals=False)
 
+        if not all_paths:
+            return 0
+
         return len(tree_paths) / len(all_paths)
 
     def k_paths(

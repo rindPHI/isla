@@ -3708,7 +3708,13 @@ class BnfEmitter(bnfListener.bnfListener):
     def exitAlternative(self, ctx: bnfParser.AlternativeContext):
         elems = []
         for child in ctx.children:
-            elems.append(parse_tree_text(child).strip('"'))
+            child_text = parse_tree_text(child)
+            if child_text and child_text[0] == '"':
+                assert child_text[-1] == '"'
+                child_text = child_text[1:-1]
+            # TODO: Should we also replace other control characters?
+            #       What about double escaping?
+            elems.append(child_text.replace('\\"', '"'))
         self.partial_results[ctx] = "".join(elems)
 
 

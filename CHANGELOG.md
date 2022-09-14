@@ -11,6 +11,7 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 - Set up GitHub workflows checking black and the flake8 linter
 - Improved code quality, now satisfying flake8 checks
 - Fixes in `octal_to_dec` semantic predicate (relevant for TAR)
+- Bug fix in solver: Avoiding error if no k-paths are present due to too large k for (nonrecursive) grammar
 
 ## [0.10.10] - 2022-09-01
 
