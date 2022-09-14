@@ -1,5 +1,6 @@
 import argparse
 import logging
+import os
 import sys
 from contextlib import redirect_stdout, redirect_stderr
 from typing import Dict
@@ -52,27 +53,6 @@ def main(*args: str, stdout=sys.stdout, stderr=sys.stderr):
     logging.basicConfig(stream=stderr, level=level_mapping[args.log_level])
 
     args.func(args)
-
-
-def create_parsers(stdout, stderr):
-    parser = argparse.ArgumentParser(
-        prog="isla",
-        description="""
-The ISLa command line interface.""",
-    )
-
-    parser.add_argument(
-        "-v", "--version", help="Print the ISLa version number", action="store_true"
-    )
-
-    subparsers = parser.add_subparsers(title="Commands", dest="command", required=False)
-
-    create_solve_parser(subparsers, stdout, stderr)
-    create_fuzz_parser(subparsers, stdout, stderr)
-    create_check_parser(subparsers, stdout, stderr)
-    create_parse_parser(subparsers, stdout, stderr)
-
-    return parser
 
 
 def solve(stdout, stderr, parser, args):
@@ -133,8 +113,15 @@ def solve(stdout, stderr, parser, args):
 
         result = solver.fuzz()
         if isinstance(result, DerivationTree):
-            print(result, flush=True, file=stdout)
+            if not args.output_dir:
+                print(result, flush=True, file=stdout)
+            else:
+                with open(os.path.join(args.output_dir, f"{i}.txt"), "wb") as out_file:
+                    out_file.write(str(result).encode("utf-8"))
         else:
+            assert result == ISLaSolver.TIMEOUT or result == ISLaSolver.UNSAT
+            if result == ISLaSolver.UNSAT:
+                print("UNSAT", flush=True, file=stderr)
             break
 
         i += 1
@@ -150,6 +137,27 @@ def check(stdout, stderr, parser, args):
 
 def parse(stdout, stderr, parser, args):
     print(args)
+
+
+def create_parsers(stdout, stderr):
+    parser = argparse.ArgumentParser(
+        prog="isla",
+        description="""
+The ISLa command line interface.""",
+    )
+
+    parser.add_argument(
+        "-v", "--version", help="Print the ISLa version number", action="store_true"
+    )
+
+    subparsers = parser.add_subparsers(title="Commands", dest="command", required=False)
+
+    create_solve_parser(subparsers, stdout, stderr)
+    create_fuzz_parser(subparsers, stdout, stderr)
+    create_check_parser(subparsers, stdout, stderr)
+    create_parse_parser(subparsers, stdout, stderr)
+
+    return parser
 
 
 def read_files(args) -> Dict[str, str]:

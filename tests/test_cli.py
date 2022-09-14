@@ -1,4 +1,6 @@
 import io
+import os
+import tempfile
 import unittest
 from tempfile import NamedTemporaryFile
 from typing import Tuple
@@ -105,15 +107,57 @@ exists <assgn> assgn:
 
         solver = ISLaSolver(LANG_GRAMMAR, constraint)
         for line in stdout.split("\n"):
-            if line.isnumeric():
-                self.assertEqual(ISLaSolver.TIMEOUT, int(line))
-                break
-
             self.assertTrue(solver.evaluate(line))
 
         grammar_file_1.close()
         grammar_file_2.close()
         constraint_file.close()
+
+    def test_solve_assgn_lang_output_directory(self):
+        grammar_1 = {nt: exp for nt, exp in LANG_GRAMMAR.items() if ord(nt[1]) <= 114}
+        grammar_2 = {nt: exp for nt, exp in LANG_GRAMMAR.items() if ord(nt[1]) > 114}
+        self.assertEqual(len(grammar_1), len(grammar_2))
+        self.assertEqual(LANG_GRAMMAR, grammar_1 | grammar_2)
+
+        grammar_file_1 = write_grammar_file(grammar_1)
+        grammar_file_2 = write_grammar_file(grammar_2)
+
+        out_dir = tempfile.TemporaryDirectory()
+
+        constraint = """
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        stdout, stderr, code = run_isla(
+            "solve",
+            grammar_file_1.name,
+            constraint_file.name,
+            grammar_file_2.name,
+            "-n",
+            -1,
+            "-t",
+            4,
+            "-d",
+            out_dir.name,
+        )
+
+        self.assertFalse(code)
+        self.assertFalse(stderr)
+        self.assertFalse(stdout)
+
+        files = os.listdir(out_dir.name)
+        self.assertTrue(files)
+
+        solver = ISLaSolver(LANG_GRAMMAR, constraint)
+        for file_name in files:
+            with open(os.path.join(out_dir.name, file_name), "rb") as file:
+                self.assertTrue(solver.evaluate(file.read().decode("utf-8")))
+
+        grammar_file_1.close()
+        grammar_file_2.close()
+        constraint_file.close()
+        out_dir.cleanup()
 
 
 if __name__ == "__main__":
