@@ -44,10 +44,10 @@ def main(*args: str, stdout=sys.stdout, stderr=sys.stderr):
         sys.exit(0)
 
     level_mapping = {
-        0: logging.ERROR,
-        1: logging.WARNING,
-        2: logging.INFO,
-        3: logging.DEBUG,
+        "ERROR": logging.ERROR,
+        "WARNING": logging.WARNING,
+        "INFO": logging.INFO,
+        "DEBUG": logging.DEBUG,
     }
 
     logging.basicConfig(stream=stderr, level=level_mapping[args.log_level])
@@ -334,11 +334,9 @@ def log_level_arg(parser):
     parser.add_argument(
         "-l",
         "--log-level",
-        type=int,
-        default=1,
-        help="""
-Set the logging level; 0 only prints errors, 1 also warnings, 2 noncritical
-information, and 3 a debug trace""",
+        choices=["ERROR", "WARNING", "INFO", "DEBUG"],
+        default="WARNING",
+        help="set the logging level",
     )
 
 
