@@ -1,13 +1,12 @@
 import copy
-import functools
 import itertools
 import logging
 from functools import reduce
+from typing import Union, Optional, Set, Dict, cast, Tuple, List
 
 import z3
 from grammar_graph import gg
 from orderedset import OrderedSet
-from typing import Union, Optional, Set, Dict, cast, Tuple, List
 
 from isla.derivation_tree import DerivationTree
 from isla.helpers import is_nonterminal, MaybeMonadPlus, chain_functions
