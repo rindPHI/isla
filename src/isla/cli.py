@@ -1,12 +1,27 @@
 import argparse
 import sys
 from typing import Dict
+from isla import __version__ as isla_version
 
 
 def main():
     parser = create_parsers()
 
     args = parser.parse_args()
+
+    if not args.command and not args.version:
+        parser.print_usage(file=sys.stderr)
+        print(
+            "isla: error: You have to choose a global option or one of the commands "
+            + "`solve`, `fuzz`, `check`, or `parse`",
+            file=sys.stderr,
+        )
+        exit(2)
+
+    if args.version:
+        print(f"ISLa version {isla_version}")
+        sys.exit(0)
+
     args.func(args)
 
 
@@ -17,12 +32,12 @@ def create_parsers():
 The ISLa command line interface.""",
     )
 
-    # TODO
-    # parser.add_argument(
-    #     "-v", "--version", help="Print the ISLa version number", action="store_true"
-    # )
+    parser.add_argument(
+        "-v", "--version", help="Print the ISLa version number", action="store_true"
+    )
 
-    subparsers = parser.add_subparsers(title="Commands", required=True)
+    subparsers = parser.add_subparsers(title="Commands", dest="command", required=False)
+
     create_solve_parser(subparsers)
     create_fuzz_parser(subparsers)
     create_check_parser(subparsers)
