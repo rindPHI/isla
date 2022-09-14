@@ -111,6 +111,7 @@ def fuzz(stdout, stderr, parser, args):
     ensure_grammar_constraint_present(stderr, parser, args, files)
 
     command = args.command
+
     grammar = parse_grammar(command, args.grammar, files, stderr)
     constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
     cost_computer = parse_cost_computer_spec(
@@ -137,7 +138,8 @@ def fuzz(stdout, stderr, parser, args):
 
         result = solver.fuzz()
         if isinstance(result, DerivationTree):
-            # TODO: Check presence of output
+            # TODO: Write respective files (input, output, error code)
+            # TODO: Extend help text to explain generated files
             inp_file = open(os.path.join(args.output_dir, f"{i}.txt"), "wb")
             inp_file.close()
         else:
