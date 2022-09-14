@@ -1,7 +1,22 @@
 import argparse
 import sys
 from typing import Dict
+
+from grammar_graph import gg
+
 from isla import __version__ as isla_version
+from isla.isla_predicates import (
+    STANDARD_STRUCTURAL_PREDICATES,
+    STANDARD_SEMANTIC_PREDICATES,
+)
+from isla.isla_shortcuts import true
+from isla.language import parse_bnf, parse_isla
+from isla.solver import (
+    ISLaSolver,
+    GrammarBasedBlackboxCostComputer,
+    CostSettings,
+    CostWeightVector,
+)
 
 
 def main():
@@ -47,12 +62,77 @@ The ISLa command line interface.""",
 
 
 def solve(parser, args):
-    read_files_ensure_grammar_constraint_present(args, parser)
+    files = read_files(args)
+    ensure_grammar_constraint_present(parser, args, files)
+
+    grammar = {}
+    for grammar_file_name in filter(lambda f: f.endswith(".bnf"), files):
+        with open(grammar_file_name, "r") as grammar_file:
+            grammar |= parse_bnf(grammar_file.read())
+
+    constraint = true()
+    for constraint_file_name in filter(lambda f: f.endswith(".isla"), files):
+        with open(constraint_file_name, "r") as constraint_file:
+            constraint &= parse_isla(
+                constraint_file.read(),
+                structural_predicates=STANDARD_STRUCTURAL_PREDICATES,
+                semantic_predicates=STANDARD_SEMANTIC_PREDICATES,
+                grammar=grammar,
+            )
+
+    weight_vector = args.weight_vector.split(",")
+    assert len(weight_vector) == 5  # TODO: Exit w/ error message
+    assert all(w.isnumeric() for w in weight_vector)
+    weight_vector = list(map(int, weight_vector))
+
+    cost_computer = GrammarBasedBlackboxCostComputer(
+        CostSettings(
+            CostWeightVector(
+                tree_closing_cost=weight_vector[0],
+                constraint_cost=weight_vector[1],
+                derivation_depth_penalty=weight_vector[2],
+                low_k_coverage_penalty=weight_vector[3],
+                low_global_k_path_coverage_penalty=weight_vector[4],
+            ),
+            k=args.k,
+        ),
+        gg.GrammarGraph.from_grammar(grammar),
+    )
+
+    solver = ISLaSolver(
+        grammar,
+        constraint,
+        max_number_free_instantiations=args.free_instantiations,
+        max_number_smt_instantiations=args.smt_instantiations,
+        enforce_unique_trees_in_queue=args.unique_trees,
+        cost_computer=cost_computer,
+        timeout_seconds=args.timeout if args.timeout > 0 else None,
+        activate_unsat_support=args.unsat_support,
+        grammar_unwinding_threshold=args.unwinding_depth,
+    )
+
+    # TODO: Write to files if directory is given
+    for solution in solver.solve():
+        print(solution)
 
 
-def read_files_ensure_grammar_constraint_present(args, parser) -> Dict[str, str]:
-    files = {io_wrapper.name: io_wrapper.read() for io_wrapper in args.files}
+def fuzz(parser, args):
+    print(args)
 
+
+def check(parser, args):
+    print(args)
+
+
+def parse(parser, args):
+    print(args)
+
+
+def read_files(args) -> Dict[str, str]:
+    return {io_wrapper.name: io_wrapper.read() for io_wrapper in args.files}
+
+
+def ensure_grammar_constraint_present(parser, args, files: Dict[str, str]) -> None:
     if not args.grammar and all(not file.endswith(".bnf") for file in files):
         parser.print_usage(file=sys.stderr)
         print(
@@ -73,20 +153,6 @@ def read_files_ensure_grammar_constraint_present(args, parser) -> Dict[str, str]
 
         exit(2)
 
-    return files
-
-
-def fuzz(parser, args):
-    print(args)
-
-
-def check(parser, args):
-    print(args)
-
-
-def parse(parser, args):
-    print(args)
-
 
 def create_solve_parser(subparsers):
     parser = subparsers.add_parser(
@@ -105,8 +171,7 @@ Create solutions to an ISLa constraint and a reference grammar.""",
     timeout_arg(parser)
     parser.add_argument(
         "--unsat-support",
-        type=bool,
-        action=argparse.BooleanOptionalAction,
+        action="store_true",
         default=False,
         help="""
 Activate support for unsatisfiable constraints. This can be required to make the
@@ -118,6 +183,7 @@ generator for satisfiable formulas""",
     unique_trees_arg(parser)
     unwinding_depth_arg(parser)
     weight_vector_arg(parser)
+    k_arg(parser)
     log_level_arg(parser)
     files_arg(parser)
 
@@ -161,6 +227,7 @@ test target expects a particular format""",
     unique_trees_arg(parser)
     unwinding_depth_arg(parser)
     weight_vector_arg(parser)
+    k_arg(parser)
     log_level_arg(parser)
     files_arg(parser)
 
@@ -251,6 +318,16 @@ Set the ISLa weight vector. Expects a comma-separated list of floating point val
     )
 
 
+def k_arg(parser):
+    parser.add_argument(
+        "-k",
+        type=int,
+        help="""
+set the length of the k-paths to be considered for coverage computations""",
+        default=3,
+    )
+
+
 def unwinding_depth_arg(parser):
     parser.add_argument(
         "--unwinding-depth",
@@ -265,9 +342,7 @@ unwound to make them regular before the SMT solver is queried""",
 def unique_trees_arg(parser):
     parser.add_argument(
         "--unique-trees",
-        type=int,
-        default=False,
-        action=argparse.BooleanOptionalAction,
+        action="store_true",
         help="""
 Enforces the uniqueness of derivation trees in the solver queue. This setting can
 improve the generator performance, but can also lead to omitted interesting solutions
