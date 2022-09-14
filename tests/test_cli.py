@@ -227,7 +227,7 @@ exists <assgn> assgn:
         self.assertFalse(stdout)
         self.assertEqual("UNSAT", stderr)
 
-    @pytest.mark.skip('TODO')
+    @pytest.mark.skip("TODO")
     def test_fuzz_bash(self):
         grammar = f"""
 <start> ::= <lines>
@@ -249,7 +249,8 @@ exists <assgn> assgn:
             "fuzz",
             "bash {}",
             "-e",
-            ".sh" "--grammar",
+            ".sh",
+            "--grammar",
             " ".join(grammar.split("\n")),
             "--constraint",
             " ".join(constraint.split("\n")),
