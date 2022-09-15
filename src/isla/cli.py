@@ -243,11 +243,13 @@ def read_files(args) -> Dict[str, str]:
 def ensure_grammar_constraint_present(
     stderr, parser, args, files: Dict[str, str]
 ) -> None:
-    if not args.grammar and all(not file.endswith(".bnf") for file in files):
+    if not args.grammar and all(
+        not file.endswith(".bnf") and not file.endswith(".py") for file in files
+    ):
         parser.print_usage(file=stderr)
         print(
             "isla solve: error: You must specify a grammar by `--grammar` "
-            "or FILES arguments with `.bnf` ending.",
+            "or FILES arguments with `.bnf` or `.py` ending.",
             file=stderr,
         )
 
@@ -311,10 +313,19 @@ def parse_grammar(
                 grammar = parse_bnf(grammar_arg)
         else:
             grammar = {}
-            for grammar_file_name in filter(lambda f: f.endswith(".bnf"), files):
+            for grammar_file_name in filter(
+                lambda f: f.endswith(".bnf") or f.endswith(".py"), files
+            ):
                 with open(grammar_file_name, "r") as grammar_file:
                     with redirect_stderr(stderr):
-                        grammar |= parse_bnf(grammar_file.read())
+                        grammar_file_content = grammar_file.read()
+                        if grammar_file_name.endswith(".bnf"):
+                            grammar |= parse_bnf(grammar_file_content)
+                        else:
+                            locals_ = {}
+                            exec(grammar_file_content, {}, locals_)
+                            grammar |= locals_["grammar"]
+
     except Exception as exc:
         exc_string = str(exc)
         if exc_string == "None":
@@ -501,11 +512,13 @@ def files_arg(parser):
         metavar="FILES",
         type=argparse.FileType("r", encoding="UTF-8"),
         help="""
-Possibly multiple ISLa constraint (`*.isla`) and BNF grammar (`*.bnf`) files. Multiple
-grammar files will be simply merged; multiple ISLa constraints will be combined to a
-disjunction. Note that you can _either_ pass a grammar as a file _or_ via the
-`--grammar` option; similarly for constraints and the `--constraint` option. Either
-way, a grammar and a constraint must be specified""",
+Possibly multiple ISLa constraint (`*.isla`) and BNF grammar (`*.bnf`) or Python
+grammar (`*.py`) files. Multiple grammar files will be simply merged; multiple ISLa
+constraints will be combined to a disjunction. Python grammar files must declare a
+variable `grammar` of type `Dict[str, List[str]]`, including a rule for a nonterminal
+named "<start>" that expands to a single other nonterminal. Note that you can _either_
+pass a grammar as a file _or_ via the `--grammar` option; similarly for constraints and
+the `--constraint` option. Either way, a grammar and a constraint must be specified""",
     )
 
 
