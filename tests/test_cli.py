@@ -6,8 +6,6 @@ import unittest
 from tempfile import NamedTemporaryFile
 from typing import Tuple
 
-import pytest
-
 from isla import __version__ as isla_version
 from isla import cli
 from isla.cli import DATA_FORMAT_ERROR
@@ -17,6 +15,18 @@ from isla.solver import (
 )
 from isla.type_defs import Grammar
 from test_data import LANG_GRAMMAR
+
+echo_grammar = rf"""
+<start> ::= <lines>
+<lines> ::= <line> "\n" <lines> | <line>
+<line> ::= <echo> | <exit>
+<echo> ::= "echo " <string>
+<exit> ::= "exit " <code>
+<string> ::= "\"" <chars> "\""
+<chars> ::= <char><chars> | <char>
+<char> ::= {" | ".join(map(lambda c: '"' + c + '"', set(string.ascii_letters).union([' '])))}
+<code> ::= "0" | "1" | "2"
+"""
 
 
 def run_isla(*args) -> Tuple[str, str, int]:
@@ -51,7 +61,7 @@ class TestCli(unittest.TestCase):
         self.assertFalse(stderr)
         self.assertEqual(isla_version, stdout.split(" ")[-1].strip())
 
-    def test_solve_no_grammar_no_constraing(self):
+    def test_solve_no_grammar_no_constraint(self):
         stdout, stderr, code = run_isla("solve", "-n", -1, "-t", 10)
 
         self.assertEqual(2, code)
@@ -131,9 +141,7 @@ exists <assgn> assgn:
             "--constraint",
             " ".join(constraint.split("\n")),
             "-n",
-            -1,
-            "-t",
-            4,
+            100,
         )
 
         self.assertFalse(code)
@@ -227,40 +235,189 @@ exists <assgn> assgn:
         self.assertFalse(stdout)
         self.assertEqual("UNSAT", stderr)
 
-    @pytest.mark.skip("TODO")
-    def test_fuzz_bash(self):
-        grammar = f"""
-<start> ::= <lines>
-<lines> ::= <line> "\n" <lines> | <line>
-<line> ::= <echo> | <exit>
-<echo> ::= "echo " <string>
-<exit> ::= "exit " <code>
-<string> ::= "\\"" <chars> "\\""
-<chars> ::= <char><chars> | <char>
-<char> ::= {" | ".join(map(lambda c: '"' + c + '"', set(string.ascii_letters).union([' '])))}
-<code> ::= "0" | "1" | "2"
-"""
-
-        constraint = 'exists <code>: not <code> = "0"'
-
+    def test_fuzz_unsat(self):
         out_dir = tempfile.TemporaryDirectory()
-
         stdout, stderr, code = run_isla(
             "fuzz",
             "bash {}",
             "-e",
             ".sh",
             "--grammar",
-            " ".join(grammar.split("\n")),
+            " ".join(echo_grammar.split("\n")),
+            "--constraint",
+            'exists <code>: <code> = "3"',
+            "-d",
+            out_dir.name,
+            "-f",
+            1,
+            "-s",
+            2,
+            "-w",
+            "2,0,5,0,20",
+        )
+
+        self.assertFalse(code)
+        self.assertFalse(stdout)
+        self.assertEqual("UNSAT", stderr)
+
+        files = os.listdir(out_dir.name)
+        self.assertFalse(len(files))
+
+    def test_solve_weight_vector_wrong_length_too_small(self):
+        stdout, stderr, code = run_isla(
+            "solve",
+            "--grammar",
+            '<start> ::= <a> <a> ::= "A"',
+            "--constraint",
+            'exists <a>: <a> = "A"',
+            "-w",
+            "1,2,3,4",  # One element missing
+        )
+
+        self.assertEqual(DATA_FORMAT_ERROR, code)
+        self.assertFalse(stdout)
+        self.assertTrue("error: Length of weight vector is 4, expected 5" in stderr)
+
+    def test_solve_weight_vector_wrong_length_too_big(self):
+        stdout, stderr, code = run_isla(
+            "solve",
+            "--grammar",
+            '<start> ::= <a> <a> ::= "A"',
+            "--constraint",
+            'exists <a>: <a> = "A"',
+            "-w",
+            "1,2,3,4,5,6",  # One element too much
+        )
+
+        self.assertEqual(DATA_FORMAT_ERROR, code)
+        self.assertFalse(stdout)
+        self.assertTrue("error: Length of weight vector is 6, expected 5" in stderr)
+
+    def test_solve_weight_vector_not_numeric(self):
+        stdout, stderr, code = run_isla(
+            "solve",
+            "--grammar",
+            '<start> ::= <a> <a> ::= "A"',
+            "--constraint",
+            'exists <a>: <a> = "A"',
+            "-w",
+            "1,2,x,4,5",
+        )
+
+        self.assertEqual(DATA_FORMAT_ERROR, code)
+        self.assertFalse(stdout)
+        self.assertTrue("error: non-numeric weight vector element" in stderr)
+
+    def test_fuzz_without_placeholder_in_command(self):
+        constraint = 'forall <code>: not <code> = "0"'
+        out_dir = tempfile.TemporaryDirectory()
+        runs = 50
+
+        stdout, stderr, code = run_isla(
+            "fuzz",
+            "bash",  # No "{}"
+            "-e",
+            ".sh",
+            "--grammar",
+            " ".join(echo_grammar.split("\n")),
             "--constraint",
             " ".join(constraint.split("\n")),
             "-d",
             out_dir.name,
             "-n",
-            -1,
-            "-t",
-            4,
+            runs,
         )
+
+        self.assertEqual(0, code)
+        self.assertFalse(stdout)
+        self.assertTrue('warning: the placeholder "{}" was not found' in stderr)
+
+    def test_fuzz_bash_fixed_runs(self):
+        self.fuzz_bash_test(timeout=False)
+
+    def test_fuzz_bash_timeout(self):
+        self.fuzz_bash_test(timeout=False)
+
+    def fuzz_bash_test(self, timeout: bool):
+        constraint = 'forall <code>: not <code> = "0"'
+        out_dir = tempfile.TemporaryDirectory()
+        runs = 50
+
+        args = [
+            "fuzz",
+            "bash {}",
+            "-e",
+            ".sh",
+            "--grammar",
+            " ".join(echo_grammar.split("\n")),
+            "--constraint",
+            " ".join(constraint.split("\n")),
+            "-d",
+            out_dir.name,
+            "-f",
+            1,
+            "-s",
+            2,
+            "-w",
+            "2,0,5,0,20",
+        ]
+
+        if timeout:
+            args += ["-t", 5, "-n", -1]
+        else:
+            args += [
+                "-n",
+                runs,
+            ]
+
+        stdout, stderr, code = run_isla(*args)
+        self.assertFalse(stdout)
+        self.assertFalse(stderr)
+        self.assertFalse(code)
+
+        files = os.listdir(out_dir.name)
+        if timeout:
+            self.assertTrue(len(files) % 4 == 0)
+            runs = len(files) // 4
+        else:
+            self.assertEqual(runs * 4, len(files))
+
+        solver = ISLaSolver(echo_grammar, constraint)
+        for i in range(runs):
+            inp_file_name = f"{str(i).rjust(4, '0')}_input.txt"
+            stdout_file_name = f"{str(i).rjust(4, '0')}_stdout.txt"
+            stderr_file_name = f"{str(i).rjust(4, '0')}_stderr.txt"
+            status_file_name = f"{str(i).rjust(4, '0')}_status.txt"
+
+            with open(os.path.join(out_dir.name, inp_file_name), "rb") as file:
+                inp = file.read().decode("utf-8")
+                self.assertTrue(solver.evaluate(inp))
+
+            exit_position = inp.find("exit")
+            if exit_position >= 0:
+                inp = inp[: exit_position + len("exit 0")].strip()
+
+            if "exit" == inp[-6:-2]:
+                expected_status = inp[-1]
+            else:
+                expected_status = "0"
+
+            with open(os.path.join(out_dir.name, stdout_file_name), "rb") as file:
+                echos = [
+                    l[len("echo ") :].strip('"')
+                    for l in inp.split("\n")
+                    if l.startswith("echo")
+                ]
+                standard_output = file.read().decode("utf-8")
+                self.assertEqual(standard_output.strip(), "\n".join(echos))
+
+            with open(os.path.join(out_dir.name, stderr_file_name), "rb") as file:
+                error_output = file.read().decode("utf-8")
+                self.assertFalse(error_output)
+
+            with open(os.path.join(out_dir.name, status_file_name), "rb") as file:
+                actual_status = file.read().decode("utf-8")
+                self.assertEqual(expected_status, actual_status)
 
         out_dir.cleanup()
 

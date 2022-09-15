@@ -1,6 +1,8 @@
 import argparse
+import io
 import logging
 import os
+import subprocess
 import sys
 from contextlib import redirect_stdout, redirect_stderr
 from typing import Dict
@@ -107,6 +109,11 @@ def solve(stdout, stderr, parser, args):
 
 
 def fuzz(stdout, stderr, parser, args):
+    input_ending = "_input.txt"
+    stdout_ending = "_stdout.txt"
+    stderr_ending = "_stderr.txt"
+    status_ending = "_status.txt"
+
     files = read_files(args)
     ensure_grammar_constraint_present(stderr, parser, args, files)
 
@@ -126,9 +133,21 @@ def fuzz(stdout, stderr, parser, args):
         enforce_unique_trees_in_queue=args.unique_trees,
         cost_computer=cost_computer,
         timeout_seconds=args.timeout if args.timeout > 0 else None,
-        activate_unsat_support=args.unsat_support,
+        activate_unsat_support=False,
         grammar_unwinding_threshold=args.unwinding_depth,
     )
+
+    fuzz_command: str = args.test_target
+    if "{}" not in fuzz_command:
+        print(
+            f'isla {command}: warning: the placeholder "{{}}" was not found in '
+            f'the fuzz command "{fuzz_command}"; the generated inputs will not be '
+            f"accessible for the test target.",
+            file=stderr,
+        )
+
+    def inst_fuzz_command(inp_file: str) -> str:
+        return fuzz_command.replace("{}", inp_file)
 
     num_solutions = args.num_solutions
     i = 0
@@ -136,12 +155,51 @@ def fuzz(stdout, stderr, parser, args):
         if 0 < num_solutions <= i:
             break
 
+        istr = str(i).rjust(4, "0")
         result = solver.fuzz()
         if isinstance(result, DerivationTree):
-            # TODO: Write respective files (input, output, error code)
-            # TODO: Extend help text to explain generated files
-            inp_file = open(os.path.join(args.output_dir, f"{i}.txt"), "wb")
-            inp_file.close()
+            # Write input file
+            with open(
+                os.path.join(args.output_dir, f"{istr}{input_ending}"), "wb"
+            ) as inp_file:
+                inp_file.write(str(result).encode("utf-8"))
+                inp_file.seek(0)
+                inp_file_name = inp_file.name
+
+            stdout_, stderr_ = io.StringIO(), io.StringIO()
+            try:
+                # Execute fuzz target
+                result = subprocess.run(
+                    inst_fuzz_command(inp_file_name),
+                    shell=True,
+                    capture_output=True,
+                    check=True,
+                    text=True,
+                )
+
+                standard_output = result.stdout
+                error_output = result.stderr
+                return_code = result.returncode
+            except subprocess.CalledProcessError as cpe:
+                standard_output = cpe.stdout
+                error_output = cpe.stderr
+                return_code = cpe.returncode
+
+            # Write results
+            with open(
+                os.path.join(args.output_dir, f"{istr}{stdout_ending}"), "wb"
+            ) as stdout_file:
+                stdout_file.write(standard_output.encode("utf-8"))
+
+            with open(
+                os.path.join(args.output_dir, f"{istr}{stderr_ending}"), "wb"
+            ) as stderr_file:
+                stderr_file.write(error_output.encode("utf-8"))
+
+            with open(
+                os.path.join(args.output_dir, f"{istr}{status_ending}"), "wb"
+            ) as stat_file:
+                stat_file.write(str(return_code).encode("utf-8"))
         else:
             assert result == ISLaSolver.TIMEOUT or result == ISLaSolver.UNSAT
             if result == ISLaSolver.UNSAT:
@@ -237,8 +295,6 @@ def parse_constraint(
                         )
     except Exception as exc:
         exc_string = str(exc)
-        if exc_string == "None":
-            exc_string = ""
         print(
             f"isla {subcommand}: error: A {type(exc).__name__} occurred "
             + f"while parsing the constraint{f' ({exc_string})' if exc_string else ''}",
@@ -348,7 +404,11 @@ def create_fuzz_parser(subparsers, stdout, stderr):
         help="pass solutions to an ISLa constraint to a test subject",
         description="""
 Create solutions to an ISLa constraint and a reference grammar, and pass these to
-a test subject.""",
+a test subject. An output directory must be specified (`-d`). Into this directory, 
+ISLa writes three files per generated test input: (1) the input (`..._input.txt`),
+(2) the standard output of the fuzzed program (`..._stdout.txt`), (3) the standard
+error of the fuzzed program (`..._stderr.txt), and (4) the returned status code of
+the fuzzed program (`..._status.txt`).""",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.set_defaults(func=lambda *args: fuzz(stdout, stderr, parser, *args))

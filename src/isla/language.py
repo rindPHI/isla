@@ -3712,9 +3712,23 @@ class BnfEmitter(bnfListener.bnfListener):
             if child_text and child_text[0] == '"':
                 assert child_text[-1] == '"'
                 child_text = child_text[1:-1]
-            # TODO: Should we also replace other control characters?
-            #       What about double escaping?
-            elems.append(child_text.replace('\\"', '"'))
+
+            # Instantiate escaped characters
+            backslash_escape_placeholder = '$$BESC$$'
+            assert backslash_escape_placeholder not in child_text
+            child_text = child_text.replace("\\\\", backslash_escape_placeholder)
+            repl_map = {
+                "\\b": "\b",
+                "\\t": "\t",
+                "\\n": "\n",
+                "\\r": "\r",
+                '\\"': '"',
+            }
+            for escaped_char in repl_map:
+                child_text = child_text.replace(escaped_char, repl_map[escaped_char])
+            child_text = child_text.replace(backslash_escape_placeholder, "\\")
+
+            elems.append(child_text)
         self.partial_results[ctx] = "".join(elems)
 
 
