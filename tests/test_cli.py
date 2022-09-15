@@ -8,7 +8,7 @@ from typing import Tuple
 
 from isla import __version__ as isla_version
 from isla import cli
-from isla.cli import DATA_FORMAT_ERROR
+from isla.cli import DATA_FORMAT_ERROR, USAGE_ERROR
 from isla.language import unparse_grammar
 from isla.solver import (
     ISLaSolver,
@@ -315,7 +315,7 @@ exists <assgn> assgn:
             "-s",
             2,
             "-w",
-            "2,0,5,0,20",
+            "2,0,5.0,0,20",
         )
 
         self.assertFalse(code)
@@ -369,6 +369,25 @@ exists <assgn> assgn:
         self.assertEqual(DATA_FORMAT_ERROR, code)
         self.assertFalse(stdout)
         self.assertTrue("error: non-numeric weight vector element" in stderr)
+
+    def test_solve_nonexisting_output_dir(self):
+        stdout, stderr, code = run_isla(
+            "solve",
+            "--grammar",
+            '<start> ::= <a> <a> ::= "A"',
+            "--constraint",
+            'exists <a>: <a> = "A"',
+            "-d",
+            "this_does_not_exist_or_does_it",
+        )
+
+        self.assertEqual(USAGE_ERROR, code)
+        self.assertFalse(stdout)
+        self.assertTrue(
+            "error: path this_does_not_exist_or_does_it does not exist "
+            + "or is no directory"
+            in stderr
+        )
 
     def test_fuzz_without_placeholder_in_command(self):
         constraint = 'forall <code>: not <code> = "0"'
@@ -480,6 +499,54 @@ exists <assgn> assgn:
             with open(os.path.join(out_dir.name, status_file_name), "rb") as file:
                 actual_status = file.read().decode("utf-8")
                 self.assertEqual(expected_status, actual_status)
+
+        out_dir.cleanup()
+
+    def test_create(self):
+        out_dir = tempfile.TemporaryDirectory()
+
+        stdout, stderr, code = run_isla("create", "-b", "assgn_lang", out_dir.name)
+        self.assertFalse(stdout)
+        self.assertFalse(stderr)
+        self.assertFalse(code)
+
+        readme_file_name = os.path.join(out_dir.name, "README.md")
+        self.assertTrue(os.path.isfile(readme_file_name))
+
+        with open(readme_file_name, "r") as readme_file:
+            content = readme_file.read()
+
+        lines = [line.strip() for line in content.split("\n")]
+        bash_command_start = (
+            next(idx for idx, line in enumerate(lines) if line.startswith("```bash"))
+            + 1
+        )
+
+        bash_command_end = next(
+            idx
+            for idx, line in enumerate(lines[bash_command_start:])
+            if line.startswith("```")
+        )
+
+        bash_command = "".join(
+            lines[bash_command_start : bash_command_start + bash_command_end]
+        ).replace("\\", "")
+
+        stdout, stderr, code = run_isla(*bash_command.split(" ")[1:])
+        self.assertFalse(stderr)
+        self.assertFalse(code)
+
+        self.assertTrue(stdout)
+        assignments = stdout.split("\n")
+
+        constraint = '''
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)
+and exists <var>: <var> = "a"'''
+
+        solver = ISLaSolver(LANG_GRAMMAR, constraint)
+        for assignment in assignments:
+            self.assertTrue(solver.evaluate(assignment))
 
         out_dir.cleanup()
 

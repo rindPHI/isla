@@ -10,6 +10,7 @@ from grammar_graph import gg
 
 from isla import __version__ as isla_version, language
 from isla.derivation_tree import DerivationTree
+from isla.helpers import is_float
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
     STANDARD_SEMANTIC_PREDICATES,
@@ -57,7 +58,8 @@ def main(*args: str, stdout=sys.stdout, stderr=sys.stderr):
         "DEBUG": logging.DEBUG,
     }
 
-    logging.basicConfig(stream=stderr, level=level_mapping[args.log_level])
+    if hasattr(args, "log_level"):
+        logging.basicConfig(stream=stderr, level=level_mapping[args.log_level])
 
     args.func(args)
 
@@ -67,6 +69,11 @@ def solve(stdout, stderr, parser, args):
     ensure_grammar_constraint_present(stderr, parser, args, files)
 
     command = args.command
+
+    output_dir = args.output_dir
+    if output_dir:
+        assert_path_is_dir(stderr, command, output_dir)
+
     grammar = parse_grammar(command, args.grammar, files, stderr)
     constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
     cost_computer = parse_cost_computer_spec(
@@ -93,10 +100,10 @@ def solve(stdout, stderr, parser, args):
 
         result = solver.fuzz()
         if isinstance(result, DerivationTree):
-            if not args.output_dir:
+            if not output_dir:
                 print(result, flush=True, file=stdout)
             else:
-                with open(os.path.join(args.output_dir, f"{i}.txt"), "wb") as out_file:
+                with open(os.path.join(output_dir, f"{i}.txt"), "wb") as out_file:
                     out_file.write(str(result).encode("utf-8"))
         else:
             assert result == ISLaSolver.TIMEOUT or result == ISLaSolver.UNSAT
@@ -117,6 +124,9 @@ def fuzz(stdout, stderr, parser, args):
     ensure_grammar_constraint_present(stderr, parser, args, files)
 
     command = args.command
+
+    output_dir = args.output_dir
+    assert_path_is_dir(stderr, command, output_dir)
 
     grammar = parse_grammar(command, args.grammar, files, stderr)
     constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
@@ -159,7 +169,7 @@ def fuzz(stdout, stderr, parser, args):
         if isinstance(result, DerivationTree):
             # Write input file
             with open(
-                os.path.join(args.output_dir, f"{istr}{input_ending}"), "wb"
+                os.path.join(output_dir, f"{istr}{input_ending}"), "wb"
             ) as inp_file:
                 inp_file.write(str(result).encode("utf-8"))
                 inp_file.seek(0)
@@ -185,17 +195,17 @@ def fuzz(stdout, stderr, parser, args):
 
             # Write results
             with open(
-                os.path.join(args.output_dir, f"{istr}{stdout_ending}"), "wb"
+                os.path.join(output_dir, f"{istr}{stdout_ending}"), "wb"
             ) as stdout_file:
                 stdout_file.write(standard_output.encode("utf-8"))
 
             with open(
-                os.path.join(args.output_dir, f"{istr}{stderr_ending}"), "wb"
+                os.path.join(output_dir, f"{istr}{stderr_ending}"), "wb"
             ) as stderr_file:
                 stderr_file.write(error_output.encode("utf-8"))
 
             with open(
-                os.path.join(args.output_dir, f"{istr}{status_ending}"), "wb"
+                os.path.join(output_dir, f"{istr}{status_ending}"), "wb"
             ) as stat_file:
                 stat_file.write(str(return_code).encode("utf-8"))
         else:
@@ -215,6 +225,126 @@ def parse(stdout, stderr, parser, args):
     print(args)
 
 
+def create(stdout, stderr, parser, args):
+    command = args.command
+    out_dir = args.output_dir
+    base_name = args.base_name
+
+    assert_path_is_dir(stderr, command, out_dir)
+
+    grammar_1_file = open(os.path.join(out_dir, f"{base_name}_grammar_1.bnf"), "w")
+    grammar_2_file = open(os.path.join(out_dir, f"{base_name}_grammar_2.py"), "w")
+    constraint_1_file = open(
+        os.path.join(out_dir, f"{base_name}_constraint_1.isla"), "w"
+    )
+    constraint_2_file = open(
+        os.path.join(out_dir, f"{base_name}_constraint_2.isla"), "w"
+    )
+
+    grammar_1_text = rf"""
+# This partial grammar defines the nonterminals `<start>`, `<stmt>`, and `<assgn>`
+# using standard BNF syntax. The remaining nonterminals are defined in the Python
+# grammar in file {grammar_2_file.name}.
+
+<start> ::= <stmt>
+<stmt> ::= <assgn> " ; " <stmt> | <assgn>
+<assgn> ::= <var> " := " <rhs>""".strip()
+
+    grammar_2_text = r"""
+# This partial grammar defines the nonterminals `<rhs>`, `<var>`, and `<digit>`. While
+# in general, definitions in BNF might be slightly better readable and have a well-known
+# syntax, the Python variant allows creating expansion alternatives programmatically.
+# This comes handy, e.g., if you want to include all ASCII lower-case characters, as
+# in the example below, without typing them.
+#
+# Python grammars need to assign a variable `grammar` of type `Dict[str, List[str]]`.
+# Be aware that the ISLa CLI *executes* Python grammar files; consequently, make sure
+# that no harmful code is included.
+
+import string
+
+grammar = {
+    "<rhs>":
+        ["<var>", "<digit>"],
+    "<var>": list(string.ascii_lowercase),
+    "<digit>": list(string.digits)
+}
+""".strip()
+
+    constraint_1_text = r"""
+# This constraint specifies that all variables (in the assignment language declared
+# by the grammar files) occurring on the right-hand side of an assignment have to
+# appear in the left-hand side of an *earlier* assignment, as in `x := 1 ; y := x`.
+# You can pass multiple constraint files to the ISLa solver CLI. In this case, the
+# constraints are combined as a *conjunction*.
+
+forall <assgn> assgn_1:
+  exists <assgn> assgn_2: (
+    before(assgn_2, assgn_1) and 
+    assgn_1.<rhs>.<var> = assgn_2.<var>)""".strip()
+
+    constraint_2_text = rf"""
+# This constraint adds to the basic correctness constraint in file 
+# {constraint_2_file.name}, which imposes a definition-use requirement, the requirement
+# that at least one variable in the generated assignment program must be an `a`. The 
+# ISLa solver CLI creates a *conjunction* from this constraint and the other one.
+
+exists <var>: <var> = "a"
+""".strip()
+
+    readme_text = rf"""# Inputs to the ISLa Solver CLI
+
+The ISLa solver/checker CLI accepts multiple grammar and constraint files to generate
+or check inputs. In the presence of multiple grammar files, they are merged to a single
+grammar; multiple constraints are combined to a conjunction.
+
+This stub project defines grammar and constraint files for a simple assignment language,
+which comprises words like `x := 1 ; a := x`. We impose one constraint declaring that
+each right-hand side variable has been previously declared, and another one imposing
+that at least one `a` variable has to occur. Both the grammar and the two constraints
+are split across multiple files:
+
+- `{grammar_1_file.name}` specifies the first half of the assignment grammar using
+  a standard [BNF](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form) notation.
+- `{grammar_2_file.name}` specifies the remaining grammar nonterminals in a Python
+  program. This permits for more concise notations if you need to include many terminal
+  values in your grammar. You find more information on this format in the
+  [Fuzzing Book](https://www.fuzzingbook.org/html/Grammars.html).
+- `{constraint_1_file.name}` contains the definition-use requirement on
+  assignment programs.
+- `{constraint_2_file.name}` contains the specialized constraint imposing the existence
+  of an `a` variable in the generated strings.
+
+By running the command
+
+```bash
+isla solve \
+  -s 1 -f 1 -t 10 -n -1 \
+  {grammar_1_file.name} \
+  {grammar_2_file.name} \
+  {constraint_1_file.name} \
+  {constraint_2_file.name}
+```
+
+you obtain as many solutions to the specified constraints as the solver can come up with
+within 10 seconds (because of the `-t 10` argument, which imposes a 10 seconds timeout).
+"""
+
+    grammar_1_file.write(grammar_1_text)
+    grammar_2_file.write(grammar_2_text)
+
+    constraint_1_file.write(constraint_1_text)
+    constraint_2_file.write(constraint_2_text)
+
+    grammar_1_file.close()
+    grammar_2_file.close()
+    constraint_1_file.close()
+    constraint_2_file.close()
+
+    with open(os.path.join(out_dir, "README.md"), "w") as readme_file:
+        readme_file.write(readme_text)
+
+
 def create_parsers(stdout, stderr):
     parser = argparse.ArgumentParser(
         prog="isla",
@@ -232,6 +362,7 @@ The ISLa command line interface.""",
     create_fuzz_parser(subparsers, stdout, stderr)
     create_check_parser(subparsers, stdout, stderr)
     create_parse_parser(subparsers, stdout, stderr)
+    create_create_parser(subparsers, stdout, stderr)
 
     return parser
 
@@ -350,13 +481,13 @@ def parse_cost_computer_spec(
             file=stderr,
         )
         sys.exit(DATA_FORMAT_ERROR)
-    if any(not w.isnumeric() for w in weight_vector):
+    if any(not is_float(w) for w in weight_vector):
         print(
             f"isla {command}: error: non-numeric weight vector element encountered",
             file=stderr,
         )
         sys.exit(DATA_FORMAT_ERROR)
-    weight_vector = list(map(int, weight_vector))
+    weight_vector = list(map(float, weight_vector))
     cost_computer = GrammarBasedBlackboxCostComputer(
         CostSettings(
             CostWeightVector(
@@ -505,6 +636,30 @@ to stdout""",
     files_arg(parser)
 
 
+def create_create_parser(subparsers, stdout, stderr):
+    parser = subparsers.add_parser(
+        "create",
+        help="create grammar and constraint stubs",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description="""
+Create grammar and constraint stub files to help kickstart a new
+specification project.""",
+    )
+    parser.set_defaults(func=lambda *args: create(stdout, stderr, parser, *args))
+
+    parser.add_argument(
+        "-b",
+        "--base-name",
+        default="project",
+        help="the base name for the created stubs",
+    )
+    parser.add_argument(
+        "output_dir",
+        metavar="OUTPUT_DIR",
+        help="the directory into which to write the created stubs",
+    )
+
+
 def files_arg(parser):
     parser.add_argument(
         "files",
@@ -538,7 +693,7 @@ def weight_vector_arg(parser):
         "--weight-vector",
         help="""
 Set the ISLa weight vector. Expects a comma-separated list of floating point values""",
-        default="7,1,4,2,19",
+        default="1,0.3,2,1,18",
     )
 
 
@@ -660,6 +815,15 @@ def input_string_arg(parser):
         "--input-string",
         help="the input to check",
     )
+
+
+def assert_path_is_dir(stderr, command: str, out_dir: str) -> None:
+    if not os.path.isdir(out_dir):
+        print(
+            f"isla {command}: error: path {out_dir} does not exist or is no directory",
+            file=stderr,
+        )
+        sys.exit(USAGE_ERROR)
 
 
 if __name__ == "__main__":
