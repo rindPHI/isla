@@ -1,5 +1,4 @@
 import argparse
-import io
 import logging
 import os
 import subprocess
@@ -166,7 +165,6 @@ def fuzz(stdout, stderr, parser, args):
                 inp_file.seek(0)
                 inp_file_name = inp_file.name
 
-            stdout_, stderr_ = io.StringIO(), io.StringIO()
             try:
                 # Execute fuzz target
                 result = subprocess.run(
@@ -404,7 +402,7 @@ def create_fuzz_parser(subparsers, stdout, stderr):
         help="pass solutions to an ISLa constraint to a test subject",
         description="""
 Create solutions to an ISLa constraint and a reference grammar, and pass these to
-a test subject. An output directory must be specified (`-d`). Into this directory, 
+a test subject. An output directory must be specified (`-d`). Into this directory,
 ISLa writes three files per generated test input: (1) the input (`..._input.txt`),
 (2) the standard output of the fuzzed program (`..._stdout.txt`), (3) the standard
 error of the fuzzed program (`..._stderr.txt), and (4) the returned status code of
