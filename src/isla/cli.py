@@ -280,13 +280,13 @@ grammar = {
 
 forall <assgn> assgn_1:
   exists <assgn> assgn_2: (
-    before(assgn_2, assgn_1) and 
+    before(assgn_2, assgn_1) and
     assgn_1.<rhs>.<var> = assgn_2.<var>)""".strip()
 
     constraint_2_text = rf"""
-# This constraint adds to the basic correctness constraint in file 
+# This constraint adds to the basic correctness constraint in file
 # {constraint_2_file.name}, which imposes a definition-use requirement, the requirement
-# that at least one variable in the generated assignment program must be an `a`. The 
+# that at least one variable in the generated assignment program must be an `a`. The
 # ISLa solver CLI creates a *conjunction* from this constraint and the other one.
 
 exists <var>: <var> = "a"
