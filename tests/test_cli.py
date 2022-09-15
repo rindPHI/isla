@@ -54,6 +54,13 @@ def write_grammar_file(grammar: Grammar) -> NamedTemporaryFile:
     return grammar_file
 
 
+def write_python_grammar_file(python_code: str) -> NamedTemporaryFile:
+    grammar_file = NamedTemporaryFile(suffix=".py")
+    grammar_file.write(python_code.encode("utf-8"))
+    grammar_file.seek(0)
+    return grammar_file
+
+
 class TestCli(unittest.TestCase):
     def test_version(self):
         stdout, stderr, code = run_isla("-v")
@@ -116,6 +123,61 @@ exists <assgn> assgn:
             "-t",
             4,
         )
+
+        self.assertFalse(code)
+        self.assertFalse(stderr)
+        self.assertTrue(stdout)
+
+        solver = ISLaSolver(LANG_GRAMMAR, constraint)
+        for line in stdout.split("\n"):
+            self.assertTrue(solver.evaluate(line))
+
+        grammar_file_1.close()
+        grammar_file_2.close()
+        constraint_file.close()
+
+    def test_solve_assgn_lang_python_grammar(self):
+        grammar_1_text = r"""
+grammar = {
+    "<start>":
+        ["<stmt>"],
+    "<stmt>":
+        ["<assgn> ; <stmt>", "<assgn>"],
+    "<assgn>":
+        ["<var> := <rhs>"],
+}
+"""
+        grammar_2_text = r"""
+import string
+
+grammar = {
+    "<rhs>":
+        ["<var>", "<digit>"],
+    "<var>": list(string.ascii_lowercase),
+    "<digit>": list(string.digits)
+}
+"""
+
+        grammar_file_1 = write_python_grammar_file(grammar_1_text)
+        grammar_file_2 = write_python_grammar_file(grammar_2_text)
+
+        constraint = """
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        stdout, stderr, code = run_isla(
+            "solve",
+            grammar_file_1.name,
+            constraint_file.name,
+            grammar_file_2.name,
+            "-n",
+            -1,
+            "-t",
+            4,
+        )
+
+        print(stderr)
 
         self.assertFalse(code)
         self.assertFalse(stderr)
@@ -409,7 +471,7 @@ exists <assgn> assgn:
                     if l.startswith("echo")
                 ]
                 standard_output = file.read().decode("utf-8")
-                self.assertEqual(standard_output.strip(), "\n".join(echos))
+                self.assertEqual(standard_output.strip(), "\n".join(echos).strip())
 
             with open(os.path.join(out_dir.name, stderr_file_name), "rb") as file:
                 error_output = file.read().decode("utf-8")
