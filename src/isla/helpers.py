@@ -720,3 +720,11 @@ def chain_functions(
         functions,
         MaybeMonadPlus.nothing(),
     )
+
+
+def is_float(num: Any) -> bool:
+    try:
+        float(num)
+        return True
+    except ValueError:
+        return False
