@@ -2496,7 +2496,7 @@ class ISLaSolver:
             return DerivationTree.from_parse_tree(next(parser.parse(inp))[1][0])
         except SyntaxError as err:
             raise RuntimeError(
-                f'Error parsing "{inp}" as nonterminal "{nonterminal}"', err
+                f'Error parsing "{inp}" starting with "{nonterminal}"', err
             )
 
 
