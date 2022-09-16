@@ -404,26 +404,27 @@ def parse_constraint(
     grammar: Grammar,
     stderr,
 ) -> language.Formula:
+    constraint = true()
+
     try:
         if constraint_arg:
             with redirect_stderr(stderr):
-                constraint = parse_isla(
+                constraint &= parse_isla(
                     constraint_arg,
                     structural_predicates=STANDARD_STRUCTURAL_PREDICATES,
                     semantic_predicates=STANDARD_SEMANTIC_PREDICATES,
                     grammar=grammar,
                 )
-        else:
-            constraint = true()
-            for constraint_file_name in filter(lambda f: f.endswith(".isla"), files):
-                with open(constraint_file_name, "r") as constraint_file:
-                    with redirect_stderr(stderr):
-                        constraint &= parse_isla(
-                            constraint_file.read(),
-                            structural_predicates=STANDARD_STRUCTURAL_PREDICATES,
-                            semantic_predicates=STANDARD_SEMANTIC_PREDICATES,
-                            grammar=grammar,
-                        )
+
+        for constraint_file_name in filter(lambda f: f.endswith(".isla"), files):
+            with open(constraint_file_name, "r") as constraint_file:
+                with redirect_stderr(stderr):
+                    constraint &= parse_isla(
+                        constraint_file.read(),
+                        structural_predicates=STANDARD_STRUCTURAL_PREDICATES,
+                        semantic_predicates=STANDARD_SEMANTIC_PREDICATES,
+                        grammar=grammar,
+                    )
     except Exception as exc:
         exc_string = str(exc)
         print(
@@ -432,6 +433,7 @@ def parse_constraint(
             file=stderr,
         )
         sys.exit(DATA_FORMAT_ERROR)
+
     return constraint
 
 
