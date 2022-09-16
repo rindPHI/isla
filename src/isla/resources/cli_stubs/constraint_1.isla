@@ -1,0 +1,10 @@
+# This constraint specifies that all variables (in the assignment language declared
+# by the grammar files) occurring on the right-hand side of an assignment have to
+# appear in the left-hand side of an *earlier* assignment, as in `x := 1 ; y := x`.
+# You can pass multiple constraint files to the ISLa solver CLI. In this case, the
+# constraints are combined as a *conjunction*.
+
+forall <assgn> assgn_1:
+  exists <assgn> assgn_2: (
+    before(assgn_2, assgn_1) and
+    assgn_1.<rhs>.<var> = assgn_2.<var>)

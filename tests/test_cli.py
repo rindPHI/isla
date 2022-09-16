@@ -1,6 +1,5 @@
 import io
 import json
-import logging
 import os
 import string
 import tempfile
@@ -340,6 +339,18 @@ exists <assgn> assgn:
         self.assertFalse(stdout)
         self.assertEqual("UNSAT", stderr)
 
+    def test_solve_invalid_python_grammar(self):
+        grammar_file = tempfile.NamedTemporaryFile("w", suffix=".py")
+        grammar_file.write("_grammar = {}")
+
+        stdout, stderr, code = run_isla(
+            "solve", "--constraint", 'exists <a>: <a> = "B"', grammar_file.name
+        )
+
+        self.assertEqual(DATA_FORMAT_ERROR, code)
+        self.assertFalse(stdout)
+        self.assertTrue("does not declare a variable `grammar`" in stderr)
+
     def test_fuzz_unsat(self):
         out_dir = tempfile.TemporaryDirectory()
         stdout, stderr, code = run_isla(
@@ -545,10 +556,10 @@ exists <assgn> assgn:
 
         out_dir.cleanup()
 
-    def test_stub(self):
+    def test_create(self):
         out_dir = tempfile.TemporaryDirectory()
 
-        stdout, stderr, code = run_isla("stub", "-b", "assgn_lang", out_dir.name)
+        stdout, stderr, code = run_isla("create", "-b", "assgn_lang", out_dir.name)
         self.assertFalse(stdout)
         self.assertFalse(stderr)
         self.assertFalse(code)
@@ -583,7 +594,7 @@ exists <assgn> assgn:
         self.assertFalse(stderr)
         self.assertFalse(code)
 
-        if False:
+        if True:  # TODO: Make `if False:` before pushing to GitHub
             # Somehow, stdout is empty when running this test inside a GitHub workflow.
             # This is super strange, and cannot be reproduced locally, not even when
             # running the workflow using the "act" tool. Thus, we comment these checks
@@ -599,60 +610,6 @@ and exists <var>: <var> = "a"'''
             solver = ISLaSolver(LANG_GRAMMAR, constraint)
             for assignment in assignments:
                 self.assertTrue(solver.evaluate(assignment))
-
-        out_dir.cleanup()
-
-    def test_stub_no_split_grammar(self):
-        out_dir = tempfile.TemporaryDirectory()
-
-        stdout, stderr, code = run_isla(
-            "stub", "--no-split-grammar", "-b", "assgn_lang", out_dir.name
-        )
-        self.assertFalse(stdout)
-        self.assertFalse(stderr)
-        self.assertFalse(code)
-
-        readme_file_name = os.path.join(out_dir.name, "README.md")
-        self.assertTrue(os.path.isfile(readme_file_name))
-
-        files = os.listdir(out_dir.name)
-        self.assertEqual(1, len([file for file in files if "_grammar_" in file]))
-        self.assertEqual(2, len([file for file in files if "_constraint_" in file]))
-
-        with open(readme_file_name, "r") as readme_file:
-            content = readme_file.read()
-
-        lines = [line.strip() for line in content.split("\n")]
-        bash_command_start = (
-            next(idx for idx, line in enumerate(lines) if line.startswith("```bash"))
-            + 1
-        )
-
-        bash_command_end = next(
-            idx
-            for idx, line in enumerate(lines[bash_command_start:])
-            if line.startswith("```")
-        )
-
-        bash_command = "".join(
-            lines[bash_command_start : bash_command_start + bash_command_end]
-        ).replace("\\", "")
-
-        stdout, stderr, code = run_isla(*bash_command.split(" ")[1:])
-        self.assertFalse(stderr)
-        self.assertFalse(code)
-
-        self.assertTrue(stdout)
-        assignments = stdout.split("\n")
-
-        constraint = '''
-exists <assgn> assgn:
-  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)
-and exists <var>: <var> = "a"'''
-
-        solver = ISLaSolver(LANG_GRAMMAR, constraint)
-        for assignment in assignments:
-            self.assertTrue(solver.evaluate(assignment))
 
         out_dir.cleanup()
 
@@ -890,6 +847,7 @@ exists <assgn> assgn:
         self.assertFalse(stderr)
 
         self.assertTrue("does not satisfy" in stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

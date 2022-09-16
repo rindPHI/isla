@@ -1,5 +1,6 @@
 import copy
 import functools
+import importlib.resources
 import itertools
 import math
 import re
@@ -728,3 +729,10 @@ def is_float(num: Any) -> bool:
         return True
     except ValueError:
         return False
+
+
+def get_isla_resource_file_content(path_to_file: str) -> str:
+    traversable = importlib.resources.files("isla").joinpath(path_to_file)
+    with importlib.resources.as_file(traversable) as path:
+        with open(path, "r") as file:
+            return file.read()
