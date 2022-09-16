@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import string
 import tempfile
@@ -10,6 +11,7 @@ from isla import __version__ as isla_version
 from isla import cli
 from isla.cli import DATA_FORMAT_ERROR, USAGE_ERROR
 from isla.language import unparse_grammar
+from isla.parser import EarleyParser
 from isla.solver import (
     ISLaSolver,
 )
@@ -549,8 +551,8 @@ exists <assgn> assgn:
         self.assertTrue(os.path.isfile(readme_file_name))
 
         files = os.listdir(out_dir.name)
-        self.assertEqual(2, len([file for file in files if '_grammar_' in file]))
-        self.assertEqual(2, len([file for file in files if '_constraint_' in file]))
+        self.assertEqual(2, len([file for file in files if "_grammar_" in file]))
+        self.assertEqual(2, len([file for file in files if "_constraint_" in file]))
 
         with open(readme_file_name, "r") as readme_file:
             content = readme_file.read()
@@ -603,8 +605,8 @@ and exists <var>: <var> = "a"'''
         self.assertTrue(os.path.isfile(readme_file_name))
 
         files = os.listdir(out_dir.name)
-        self.assertEqual(1, len([file for file in files if '_grammar_' in file]))
-        self.assertEqual(2, len([file for file in files if '_constraint_' in file]))
+        self.assertEqual(1, len([file for file in files if "_grammar_" in file]))
+        self.assertEqual(2, len([file for file in files if "_constraint_" in file]))
 
         with open(readme_file_name, "r") as readme_file:
             content = readme_file.read()
@@ -782,6 +784,46 @@ exists <assgn> assgn:
         self.assertFalse(stderr)
 
         self.assertTrue("SyntaxError" in stdout)
+
+    def test_parse_assgn_lang_correct_input_outfile(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+        out_file = tempfile.NamedTemporaryFile("w", delete=False)
+
+        constraint = """
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        additional_constraint = 'exists <var>: <var> = "a"'
+
+        inp = "x := 1 ; a := x"
+
+        stdout, stderr, code = run_isla(
+            "parse",
+            "--no-pretty-print",
+            "--output-file",
+            out_file.name,
+            "--constraint",
+            additional_constraint,
+            "-i",
+            inp,
+            grammar_file.name,
+            constraint_file.name,
+        )
+
+        self.assertFalse(code)
+        self.assertFalse(stdout)
+        self.assertFalse(stderr)
+
+        with open(out_file.name, "r") as file:
+            json_inp = file.read()
+
+        self.assertEqual(
+            json.dumps(next(EarleyParser(LANG_GRAMMAR).parse(inp))), json_inp
+        )
+
+        out_file.close()
+        os.remove(out_file.name)
 
 
 if __name__ == "__main__":

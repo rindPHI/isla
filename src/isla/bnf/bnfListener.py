@@ -1,4 +1,4 @@
-# Generated from bnf.g4 by ANTLR 4.10.1
+# Generated from bnf.g4 by ANTLR 4.7.1
 from antlr4 import *
 if __name__ is not None and "." in __name__:
     from .bnfParser import bnfParser
@@ -35,5 +35,3 @@ class bnfListener(ParseTreeListener):
         pass
 
 
-
-del bnfParser
