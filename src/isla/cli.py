@@ -2,7 +2,6 @@ import argparse
 import json
 import logging
 import os
-import string
 import subprocess
 import sys
 from contextlib import redirect_stdout, redirect_stderr
@@ -12,7 +11,7 @@ from grammar_graph import gg
 
 from isla import __version__ as isla_version, language
 from isla.derivation_tree import DerivationTree
-from isla.helpers import is_float, MaybeMonadPlus
+from isla.helpers import is_float, MaybeMonadPlus, get_isla_resource_file_content
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
     STANDARD_SEMANTIC_PREDICATES,
@@ -274,7 +273,7 @@ def do_check(
         return 1, "input does not satisfy the ISLa constraint", MaybeMonadPlus(tree)
 
 
-def stub(stdout, stderr, parser, args):
+def create(stdout, stderr, parser, args):
     command = args.command
     out_dir = args.output_dir
     base_name = args.base_name
@@ -282,6 +281,7 @@ def stub(stdout, stderr, parser, args):
     assert_path_is_dir(stderr, command, out_dir)
 
     grammar_1_file = open(os.path.join(out_dir, f"{base_name}_grammar_1.bnf"), "w")
+    grammar_2_file = open(os.path.join(out_dir, f"{base_name}_grammar_2.py"), "w")
     constraint_1_file = open(
         os.path.join(out_dir, f"{base_name}_constraint_1.isla"), "w"
     )
@@ -289,134 +289,28 @@ def stub(stdout, stderr, parser, args):
         os.path.join(out_dir, f"{base_name}_constraint_2.isla"), "w"
     )
 
-    if args.split_grammar:
-        grammar_2_file = open(os.path.join(out_dir, f"{base_name}_grammar_2.py"), "w")
+    grammar_1_text = get_isla_resource_file_content("resources/cli_stubs/grammar_1.bnf")
+    grammar_2_text = get_isla_resource_file_content("resources/cli_stubs/grammar_2.py")
+    constraint_1_text = get_isla_resource_file_content(
+        "resources/cli_stubs/constraint_1.isla"
+    )
+    constraint_2_text = get_isla_resource_file_content(
+        "resources/cli_stubs/constraint_2.isla"
+    ).replace("{constraint_2_file.name}", constraint_2_file.name)
 
-        grammar_2_ref = rf""" The remaining nonterminals are defined in the Python
-# grammar in file {grammar_2_file.name}."""
-
-        grammar_2_text = r"""
-# This partial grammar defines the nonterminals `<rhs>`, `<var>`, and `<digit>`. While
-# in general, definitions in BNF might be slightly better readable and have a well-known
-# syntax, the Python variant allows creating expansion alternatives programmatically.
-# This comes handy, e.g., if you want to include all ASCII lower-case characters, as
-# in the example below, without typing them.
-#
-# Python grammars need to assign a variable `grammar` of type `Dict[str, List[str]]`.
-# Be aware that the ISLa CLI *executes* Python grammar files; consequently, make sure
-# that no harmful code is included.
-
-import string
-
-grammar = {
-    "<rhs>":
-        ["<var>", "<digit>"],
-    "<var>": list(string.ascii_lowercase),
-    "<digit>": list(string.digits)
-}
-""".strip()
-    else:
-        grammar_2_ref = ""
-
-    grammar_1_text = rf"""
-# This partial grammar defines the nonterminals `<start>`, `<stmt>`, and `<assgn>`
-# using standard BNF syntax.{grammar_2_ref}
-
-<start> ::= <stmt>
-<stmt> ::= <assgn> " ; " <stmt> | <assgn>
-<assgn> ::= <var> " := " <rhs>""".strip()
-
-    if not args.split_grammar:
-        grammar_1_text += rf"""
-<rhs> ::= <var> | <digit>
-<var> ::= {" | ".join(map(lambda c: f'"{c}"', string.ascii_lowercase))}
-<digit> ::= {" | ".join(map(lambda c: f'"{c}"', string.digits))}"""
-
-    constraint_1_text = r"""
-# This constraint specifies that all variables (in the assignment language declared
-# by the grammar files) occurring on the right-hand side of an assignment have to
-# appear in the left-hand side of an *earlier* assignment, as in `x := 1 ; y := x`.
-# You can pass multiple constraint files to the ISLa solver CLI. In this case, the
-# constraints are combined as a *conjunction*.
-
-forall <assgn> assgn_1:
-  exists <assgn> assgn_2: (
-    before(assgn_2, assgn_1) and
-    assgn_1.<rhs>.<var> = assgn_2.<var>)""".strip()
-
-    constraint_2_text = rf"""
-# This constraint adds to the basic correctness constraint in file
-# {constraint_2_file.name}, which imposes a definition-use requirement, the requirement
-# that at least one variable in the generated assignment program must be an `a`. The
-# ISLa solver CLI creates a *conjunction* from this constraint and the other one.
-
-exists <var>: <var> = "a"
-""".strip()
-
-    if args.split_grammar:
-        grammar_expl = rf"""
-- `{grammar_1_file.name}` specifies the first half of the assignment grammar using
-  a standard [BNF](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form) notation.
-- `{grammar_2_file.name}` specifies the remaining grammar nonterminals in a Python
-  program. This permits for more concise notations if you need to include many terminal
-  values in your grammar. You find more information on this format in the
-  [Fuzzing Book](https://www.fuzzingbook.org/html/Grammars.html).
-        """.strip()
-
-        bash_command = rf"""
-isla solve \
-  -s 1 -f 1 -t 10 -n -1 \
-  {grammar_1_file.name} \
-  {grammar_2_file.name} \
-  {constraint_1_file.name} \
-  {constraint_2_file.name}""".strip()
-    else:
-        grammar_expl = rf"""
-- `{grammar_1_file.name}` specifies the the assignment grammar using a standard
-  [BNF](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form) notation.
-            """.strip()
-
-        bash_command = rf"""
-isla solve \
-  -s 1 -f 1 -t 10 -n -1 \
-  {grammar_1_file.name} \
-  {constraint_1_file.name} \
-  {constraint_2_file.name}""".strip()
-
-    readme_text = rf"""# Inputs to the ISLa Solver CLI
-
-The ISLa solver/checker CLI accepts multiple grammar and constraint files to generate
-or check inputs. In the presence of multiple grammar files, they are merged to a single
-grammar; multiple constraints are combined to a conjunction.
-
-This stub project defines grammar and constraint files for a simple assignment language,
-which comprises words like `x := 1 ; a := x`. We impose one constraint declaring that
-each right-hand side variable has been previously declared, and another one imposing
-that at least one `a` variable has to occur. Both the grammar and the two constraints
-are split across multiple files:
-
-{grammar_expl}
-- `{constraint_1_file.name}` contains the definition-use requirement on
-  assignment programs.
-- `{constraint_2_file.name}` contains the specialized constraint imposing the existence
-  of an `a` variable in the generated strings.
-
-By running the command
-
-```bash
-{bash_command}
-```
-
-you obtain as many solutions to the specified constraints as the solver can come up with
-within 10 seconds (because of the `-t 10` argument, which imposes a 10 seconds timeout).
-"""
+    readme_text = (
+        get_isla_resource_file_content("resources/cli_stubs/README.md")
+        .replace("{grammar_1_file.name}", grammar_1_file.name)
+        .replace("{grammar_2_file.name}", grammar_2_file.name)
+        .replace("{constraint_1_file.name}", constraint_1_file.name)
+        .replace("{constraint_2_file.name}", constraint_2_file.name)
+    )
 
     grammar_1_file.write(grammar_1_text)
     grammar_1_file.close()
 
-    if args.split_grammar:
-        grammar_2_file.write(grammar_2_text)
-        grammar_2_file.close()
+    grammar_2_file.write(grammar_2_text)
+    grammar_2_file.close()
 
     constraint_1_file.write(constraint_1_text)
     constraint_1_file.close()
@@ -445,7 +339,7 @@ The ISLa command line interface.""",
     create_fuzz_parser(subparsers, stdout, stderr)
     create_check_parser(subparsers, stdout, stderr)
     create_parse_parser(subparsers, stdout, stderr)
-    create_stub_parser(subparsers, stdout, stderr)
+    create_create_parser(subparsers, stdout, stderr)
 
     return parser
 
@@ -540,6 +434,14 @@ def parse_grammar(
                         else:
                             locals_ = {}
                             exec(grammar_file_content, {}, locals_)
+                            if "grammar" not in locals_:
+                                print(
+                                    f"isla {subcommand}: error: a Python grammar does "
+                                    + "not declare a variable `grammar`",
+                                    file=stderr,
+                                )
+                                sys.exit(DATA_FORMAT_ERROR)
+
                             grammar |= locals_["grammar"]
 
     except Exception as exc:
@@ -661,7 +563,7 @@ Create solutions to an ISLa constraint and a reference grammar, and pass these t
 a test subject. An output directory must be specified (`-d`). Into this directory,
 ISLa writes three files per generated test input: (1) the input (`..._input.txt`),
 (2) the standard output of the fuzzed program (`..._stdout.txt`), (3) the standard
-error of the fuzzed program (`..._stderr.txt), and (4) the returned status code of
+error of the fuzzed program (`..._stderr.txt`), and (4) the returned status code of
 the fuzzed program (`..._status.txt`).""",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -759,32 +661,22 @@ indentation; otherwise the whole string is printed on a single line""",
     grammar_constraint_or_input_files_arg(parser)
 
 
-def create_stub_parser(subparsers, stdout, stderr):
+def create_create_parser(subparsers, stdout, stderr):
     parser = subparsers.add_parser(
-        "stub",
+        "create",
         help="create grammar and constraint stubs",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description="""
 Create grammar and constraint stub files to help kickstart a new
 specification project.""",
     )
-    parser.set_defaults(func=lambda *args: stub(stdout, stderr, parser, *args))
+    parser.set_defaults(func=lambda *args: create(stdout, stderr, parser, *args))
 
     parser.add_argument(
         "-b",
         "--base-name",
         default="project",
         help="the base name for the created stubs",
-    )
-
-    parser.add_argument(
-        "-s",
-        "--split-grammar",
-        type=bool,
-        default=True,
-        action=argparse.BooleanOptionalAction,
-        help="Split the grammar into a BNF and a Python part. If set to False, only "
-        + "one complete BNF grammar will be produced.",
     )
 
     parser.add_argument(
