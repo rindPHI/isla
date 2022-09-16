@@ -594,7 +594,7 @@ exists <assgn> assgn:
         self.assertFalse(stderr)
         self.assertFalse(code)
 
-        if True:  # TODO: Make `if False:` before pushing to GitHub
+        if False:  # NOTE: Make `if False:` before pushing to GitHub
             # Somehow, stdout is empty when running this test inside a GitHub workflow.
             # This is super strange, and cannot be reproduced locally, not even when
             # running the workflow using the "act" tool. Thus, we comment these checks
