@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import string
 import subprocess
 import sys
 from contextlib import redirect_stdout, redirect_stderr
@@ -218,14 +219,19 @@ def fuzz(stdout, stderr, parser, args):
 
 
 def check(stdout, stderr, parser, args):
-    print(args)
+    files = read_files(args)
+    ensure_grammar_constraint_present(stderr, parser, args, files)
+    command = args.command
+
+    grammar = parse_grammar(command, args.grammar, files, stderr)
+    constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
 
 
 def parse(stdout, stderr, parser, args):
     print(args)
 
 
-def create(stdout, stderr, parser, args):
+def stub(stdout, stderr, parser, args):
     command = args.command
     out_dir = args.output_dir
     base_name = args.base_name
@@ -233,7 +239,6 @@ def create(stdout, stderr, parser, args):
     assert_path_is_dir(stderr, command, out_dir)
 
     grammar_1_file = open(os.path.join(out_dir, f"{base_name}_grammar_1.bnf"), "w")
-    grammar_2_file = open(os.path.join(out_dir, f"{base_name}_grammar_2.py"), "w")
     constraint_1_file = open(
         os.path.join(out_dir, f"{base_name}_constraint_1.isla"), "w"
     )
@@ -241,16 +246,13 @@ def create(stdout, stderr, parser, args):
         os.path.join(out_dir, f"{base_name}_constraint_2.isla"), "w"
     )
 
-    grammar_1_text = rf"""
-# This partial grammar defines the nonterminals `<start>`, `<stmt>`, and `<assgn>`
-# using standard BNF syntax. The remaining nonterminals are defined in the Python
-# grammar in file {grammar_2_file.name}.
+    if args.split_grammar:
+        grammar_2_file = open(os.path.join(out_dir, f"{base_name}_grammar_2.py"), "w")
 
-<start> ::= <stmt>
-<stmt> ::= <assgn> " ; " <stmt> | <assgn>
-<assgn> ::= <var> " := " <rhs>""".strip()
+        grammar_2_ref = rf""" The remaining nonterminals are defined in the Python
+# grammar in file {grammar_2_file.name}."""
 
-    grammar_2_text = r"""
+        grammar_2_text = r"""
 # This partial grammar defines the nonterminals `<rhs>`, `<var>`, and `<digit>`. While
 # in general, definitions in BNF might be slightly better readable and have a well-known
 # syntax, the Python variant allows creating expansion alternatives programmatically.
@@ -270,6 +272,22 @@ grammar = {
     "<digit>": list(string.digits)
 }
 """.strip()
+    else:
+        grammar_2_ref = ""
+
+    grammar_1_text = rf"""
+# This partial grammar defines the nonterminals `<start>`, `<stmt>`, and `<assgn>`
+# using standard BNF syntax.{grammar_2_ref}
+
+<start> ::= <stmt>
+<stmt> ::= <assgn> " ; " <stmt> | <assgn>
+<assgn> ::= <var> " := " <rhs>""".strip()
+
+    if not args.split_grammar:
+        grammar_1_text += rf"""
+<rhs> ::= <var> | <digit>
+<var> ::= {" | ".join(map(lambda c: f'"{c}"', string.ascii_lowercase))}
+<digit> ::= {" | ".join(map(lambda c: f'"{c}"', string.digits))}"""
 
     constraint_1_text = r"""
 # This constraint specifies that all variables (in the assignment language declared
@@ -292,6 +310,36 @@ forall <assgn> assgn_1:
 exists <var>: <var> = "a"
 """.strip()
 
+    if args.split_grammar:
+        grammar_expl = rf"""
+- `{grammar_1_file.name}` specifies the first half of the assignment grammar using
+  a standard [BNF](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form) notation.
+- `{grammar_2_file.name}` specifies the remaining grammar nonterminals in a Python
+  program. This permits for more concise notations if you need to include many terminal
+  values in your grammar. You find more information on this format in the
+  [Fuzzing Book](https://www.fuzzingbook.org/html/Grammars.html).        
+        """.strip()
+
+        bash_command = rf"""
+isla solve \
+  -s 1 -f 1 -t 10 -n -1 \
+  {grammar_1_file.name} \
+  {grammar_2_file.name} \
+  {constraint_1_file.name} \
+  {constraint_2_file.name}""".strip()
+    else:
+        grammar_expl = rf"""
+- `{grammar_1_file.name}` specifies the the assignment grammar using a standard
+  [BNF](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form) notation.
+            """.strip()
+
+        bash_command = rf"""
+isla solve \
+  -s 1 -f 1 -t 10 -n -1 \
+  {grammar_1_file.name} \
+  {constraint_1_file.name} \
+  {constraint_2_file.name}""".strip()
+
     readme_text = rf"""# Inputs to the ISLa Solver CLI
 
 The ISLa solver/checker CLI accepts multiple grammar and constraint files to generate
@@ -304,12 +352,7 @@ each right-hand side variable has been previously declared, and another one impo
 that at least one `a` variable has to occur. Both the grammar and the two constraints
 are split across multiple files:
 
-- `{grammar_1_file.name}` specifies the first half of the assignment grammar using
-  a standard [BNF](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form) notation.
-- `{grammar_2_file.name}` specifies the remaining grammar nonterminals in a Python
-  program. This permits for more concise notations if you need to include many terminal
-  values in your grammar. You find more information on this format in the
-  [Fuzzing Book](https://www.fuzzingbook.org/html/Grammars.html).
+{grammar_expl}
 - `{constraint_1_file.name}` contains the definition-use requirement on
   assignment programs.
 - `{constraint_2_file.name}` contains the specialized constraint imposing the existence
@@ -318,12 +361,7 @@ are split across multiple files:
 By running the command
 
 ```bash
-isla solve \
-  -s 1 -f 1 -t 10 -n -1 \
-  {grammar_1_file.name} \
-  {grammar_2_file.name} \
-  {constraint_1_file.name} \
-  {constraint_2_file.name}
+{bash_command}
 ```
 
 you obtain as many solutions to the specified constraints as the solver can come up with
@@ -331,14 +369,16 @@ within 10 seconds (because of the `-t 10` argument, which imposes a 10 seconds t
 """
 
     grammar_1_file.write(grammar_1_text)
-    grammar_2_file.write(grammar_2_text)
+    grammar_1_file.close()
+
+    if args.split_grammar:
+        grammar_2_file.write(grammar_2_text)
+        grammar_2_file.close()
 
     constraint_1_file.write(constraint_1_text)
-    constraint_2_file.write(constraint_2_text)
-
-    grammar_1_file.close()
-    grammar_2_file.close()
     constraint_1_file.close()
+
+    constraint_2_file.write(constraint_2_text)
     constraint_2_file.close()
 
     with open(os.path.join(out_dir, "README.md"), "w") as readme_file:
@@ -647,7 +687,7 @@ def create_stub_parser(subparsers, stdout, stderr):
 Create grammar and constraint stub files to help kickstart a new
 specification project.""",
     )
-    parser.set_defaults(func=lambda *args: create(stdout, stderr, parser, *args))
+    parser.set_defaults(func=lambda *args: stub(stdout, stderr, parser, *args))
 
     parser.add_argument(
         "-b",
@@ -655,6 +695,17 @@ specification project.""",
         default="project",
         help="the base name for the created stubs",
     )
+
+    parser.add_argument(
+        "-s",
+        "--split-grammar",
+        type=bool,
+        default=True,
+        action=argparse.BooleanOptionalAction,
+        help="Split the grammar into a BNF and a Python part. If set to False, only "
+        + "one complete BNF grammar will be produced.",
+    )
+
     parser.add_argument(
         "output_dir",
         metavar="OUTPUT_DIR",
@@ -674,8 +725,9 @@ grammar (`*.py`) files. Multiple grammar files will be simply merged; multiple I
 constraints will be combined to a disjunction. Python grammar files must declare a
 variable `grammar` of type `Dict[str, List[str]]`, including a rule for a nonterminal
 named "<start>" that expands to a single other nonterminal. Note that you can _either_
-pass a grammar as a file _or_ via the `--grammar` option; similarly for constraints and
-the `--constraint` option. Either way, a grammar and a constraint must be specified""",
+pass a grammar as a file _or_ via the `--grammar` option. For constraints, it is 
+possible to use both the option and a file input. However, a grammar and a constraint
+must be specified somehow.""",
     )
 
 
@@ -789,7 +841,10 @@ def output_dir_arg(parser, required: bool = False):
 
 def constraint_arg(parser):
     parser.add_argument(
-        "-c", "--constraint", help="the ISLa constraint (if not passed as a file)"
+        "-c",
+        "--constraint",
+        help="An ISLa constraint. If constraints are passed as file(s), too, then all "
+        + "provided constraints are combined to one conjunction",
     )
 
 
