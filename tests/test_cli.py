@@ -573,7 +573,6 @@ exists <assgn> assgn:
             lines[bash_command_start : bash_command_start + bash_command_end]
         ).replace("\\", "")
 
-        print()
         print(bash_command)
 
         stdout, stderr, code = run_isla(*bash_command.split(" ")[1:])
