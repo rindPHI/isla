@@ -585,6 +585,31 @@ and exists <var>: <var> = "a"'''
 
         out_dir.cleanup()
 
+    def test_check_assgn_lang(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        constraint = """
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        additional_constraint = 'exists <var>: <var> = "a"'
+
+        stdout, stderr, code = run_isla(
+            "check",
+            "--constraint",
+            additional_constraint,
+            "-i",
+            "x := 1 ; a := x",
+            grammar_file.name,
+            constraint_file.name,
+        )
+
+        print(stderr)
+        self.assertFalse(code)
+        self.assertFalse(stderr)
+        self.assertTrue(stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -577,7 +577,7 @@ generator for satisfiable formulas""",
     weight_vector_arg(parser)
     k_arg(parser)
     log_level_arg(parser)
-    files_arg(parser)
+    grammar_constraint_files_arg(parser)
 
 
 def create_fuzz_parser(subparsers, stdout, stderr):
@@ -626,7 +626,7 @@ test target expects a particular format""",
     weight_vector_arg(parser)
     k_arg(parser)
     log_level_arg(parser)
-    files_arg(parser)
+    grammar_constraint_files_arg(parser)
 
 
 def create_check_parser(subparsers, stdout, stderr):
@@ -641,12 +641,11 @@ constraint.""",
     parser.set_defaults(func=lambda *args: check(stdout, stderr, parser, *args))
 
     input_string_arg(parser)
-    input_file_arg(parser)
 
     grammar_arg(parser)
     constraint_arg(parser)
     log_level_arg(parser)
-    files_arg(parser)
+    grammar_constraint_or_input_files_arg(parser)
 
 
 def create_parse_parser(subparsers, stdout, stderr):
@@ -675,7 +674,7 @@ to stdout""",
     grammar_arg(parser)
     constraint_arg(parser)
     log_level_arg(parser)
-    files_arg(parser)
+    grammar_constraint_files_arg(parser)
 
 
 def create_stub_parser(subparsers, stdout, stderr):
@@ -713,7 +712,7 @@ specification project.""",
     )
 
 
-def files_arg(parser):
+def grammar_constraint_files_arg(parser):
     parser.add_argument(
         "files",
         nargs="*",
@@ -728,6 +727,24 @@ named "<start>" that expands to a single other nonterminal. Note that you can _e
 pass a grammar as a file _or_ via the `--grammar` option. For constraints, it is 
 possible to use both the option and a file input. However, a grammar and a constraint
 must be specified somehow.""",
+    )
+
+
+def grammar_constraint_or_input_files_arg(parser):
+    parser.add_argument(
+        "files",
+        nargs="*",
+        metavar="FILES",
+        type=argparse.FileType("r", encoding="UTF-8"),
+        help="""
+Possibly multiple ISLa constraint (`*.isla`) and BNF grammar (`*.bnf`) or Python
+grammar (`*.py`) files, and/or an input file for checking/parsing. Multiple grammar 
+files will be simply merged; multiple ISLa constraints will be combined to a
+disjunction. Python grammar files must declare a variable `grammar` of type
+`Dict[str, List[str]]`, including a rule for a nonterminal named "<start>" that expands
+to a single other nonterminal. Note that you can _either_ pass a grammar as a file _or_
+via the `--grammar` option. For constraints, it is possible to use both the option and
+a file input. However, a grammar and a constraint must be specified somehow.""",
     )
 
 
