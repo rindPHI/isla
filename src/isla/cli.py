@@ -18,6 +18,7 @@ from isla.isla_predicates import (
 )
 from isla.isla_shortcuts import true
 from isla.language import parse_bnf, parse_isla
+from isla.parser import EarleyParser
 from isla.solver import (
     ISLaSolver,
     GrammarBasedBlackboxCostComputer,
@@ -226,6 +227,48 @@ def check(stdout, stderr, parser, args):
     grammar = parse_grammar(command, args.grammar, files, stderr)
     constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
 
+    if args.input_string:
+        inp = args.input_string
+    else:
+        possible_inputs = [
+            file
+            for file in files
+            if not file.endswith(".bnf")
+            and not file.endswith(".isla")
+            and not file.endswith(".py")
+        ]
+
+        if len(possible_inputs) != 1:
+            print(
+                f"isla {command}: error: you must specify exactly *one* input to check "
+                + f"via `--input-string` or a file; found {len(possible_inputs)} "
+                + "inputs",
+                file=stderr,
+            )
+            sys.exit(USAGE_ERROR)
+
+        inp = files[possible_inputs[0]]
+
+        # Somehow, spurious newlines appear when reading files...
+        if inp[-1] == "\n":
+            inp = inp[:-1]
+
+    parser = EarleyParser(grammar)
+    try:
+        tree = DerivationTree.from_parse_tree(next(parser.parse(inp)))
+    except Exception as exc:
+        print(f"input could not be parsed ({type(exc).__name__})", file=stdout)
+        sys.exit(1)
+
+    solver = ISLaSolver(grammar, constraint)
+
+    if solver.evaluate(tree):
+        print("input satisfies the ISLa constraint", file=stdout)
+        sys.exit(0)
+    else:
+        print("input does not satisfy the ISLa constraint", file=stdout)
+        sys.exit(1)
+
 
 def parse(stdout, stderr, parser, args):
     print(args)
@@ -317,7 +360,7 @@ exists <var>: <var> = "a"
 - `{grammar_2_file.name}` specifies the remaining grammar nonterminals in a Python
   program. This permits for more concise notations if you need to include many terminal
   values in your grammar. You find more information on this format in the
-  [Fuzzing Book](https://www.fuzzingbook.org/html/Grammars.html).        
+  [Fuzzing Book](https://www.fuzzingbook.org/html/Grammars.html).
         """.strip()
 
         bash_command = rf"""
@@ -724,7 +767,7 @@ grammar (`*.py`) files. Multiple grammar files will be simply merged; multiple I
 constraints will be combined to a disjunction. Python grammar files must declare a
 variable `grammar` of type `Dict[str, List[str]]`, including a rule for a nonterminal
 named "<start>" that expands to a single other nonterminal. Note that you can _either_
-pass a grammar as a file _or_ via the `--grammar` option. For constraints, it is 
+pass a grammar as a file _or_ via the `--grammar` option. For constraints, it is
 possible to use both the option and a file input. However, a grammar and a constraint
 must be specified somehow.""",
     )
@@ -738,7 +781,7 @@ def grammar_constraint_or_input_files_arg(parser):
         type=argparse.FileType("r", encoding="UTF-8"),
         help="""
 Possibly multiple ISLa constraint (`*.isla`) and BNF grammar (`*.bnf`) or Python
-grammar (`*.py`) files, and/or an input file for checking/parsing. Multiple grammar 
+grammar (`*.py`) files, and/or an input file for checking/parsing. Multiple grammar
 files will be simply merged; multiple ISLa constraints will be combined to a
 disjunction. Python grammar files must declare a variable `grammar` of type
 `Dict[str, List[str]]`, including a rule for a nonterminal named "<start>" that expands
