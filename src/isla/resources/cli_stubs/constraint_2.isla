@@ -1,6 +1,0 @@
-# This constraint adds to the basic correctness constraint in file
-# {constraint_2_file.name}, which imposes a definition-use requirement, the requirement
-# that at least one variable in the generated assignment program must be an `a`. The
-# ISLa solver CLI creates a *conjunction* from this constraint and the other one.
-
-exists <var>: <var> = "a"

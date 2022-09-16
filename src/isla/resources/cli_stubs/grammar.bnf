@@ -1,0 +1,13 @@
+# Below, we define the grammar of the assignment language (with words like `x := a ; z := 1 ; y := y`)
+# in [BNF](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form) notation. Each grammar must contain
+# a rule expanding the nonterminal `<start>` to one single other nonterminal. Nonterminals are designated
+# by angle brackets; terminals are enclosed in double quotation marks. Quotation marks in terminal symbols
+# must be escaped using a backslash, as in `"\""`. Different expansion alternatives are separated by a
+# vertical bar `|`.
+
+<start> ::= <stmt>
+<stmt> ::= <assgn> " ; " <stmt> | <assgn>
+<assgn> ::= <var> " := " <rhs>
+<rhs> ::= <var> | <digit>
+<var> ::= "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z"
+<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"

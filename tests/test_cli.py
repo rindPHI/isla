@@ -569,7 +569,7 @@ exists <assgn> assgn:
 
         files = os.listdir(out_dir.name)
         self.assertEqual(2, len([file for file in files if "_grammar_" in file]))
-        self.assertEqual(2, len([file for file in files if "_constraint_" in file]))
+        self.assertEqual(1, len([file for file in files if "_constraint" in file]))
 
         with open(readme_file_name, "r") as readme_file:
             content = readme_file.read()
@@ -604,8 +604,7 @@ exists <assgn> assgn:
 
             constraint = '''
 exists <assgn> assgn:
-  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)
-and exists <var>: <var> = "a"'''
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)'''
 
             solver = ISLaSolver(LANG_GRAMMAR, constraint)
             for assignment in assignments:

@@ -5,21 +5,18 @@ or check inputs. In the presence of multiple grammar files, they are merged to a
 grammar; multiple constraints are combined to a conjunction.
 
 This stub project defines grammar and constraint files for a simple assignment language,
-which comprises words like `x := 1 ; a := x`. We impose one constraint declaring that
-each right-hand side variable has been previously declared, and another one imposing
-that at least one `a` variable has to occur. Both the grammar and the two constraints
-are split across multiple files:
+which comprises words like `x := 1 ; y := x`. The project contains the following files:
 
-- `{grammar_1_file.name}` specifies the first half of the assignment grammar using
-  a standard [BNF](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form) notation.
-- `{grammar_2_file.name}` specifies the remaining grammar nonterminals in a Python
+- `{grammar_1_file.name}` contains the assignment grammar in
+  standard [BNF](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form) notation.
+- `{grammar_2_file.name}` specifies the assignment grammar as a Python
   program. This permits for more concise notations if you need to include many terminal
   values in your grammar. You find more information on this format in the
   [Fuzzing Book](https://www.fuzzingbook.org/html/Grammars.html).
-- `{constraint_1_file.name}` contains the definition-use requirement on
-  assignment programs.
-- `{constraint_2_file.name}` contains the specialized constraint imposing the existence
-  of an `a` variable in the generated strings.
+- `{constraint_file.name}` contains examples of different types ISLa constraints one 
+  can express over the assignment language. 
+
+All the above files contain comments with additional explanations.
 
 By running the command
 
@@ -27,10 +24,9 @@ By running the command
 isla solve \
   -s 1 -f 1 -t 10 -n -1 \
   {grammar_1_file.name} \
-  {grammar_2_file.name} \
-  {constraint_1_file.name} \
-  {constraint_2_file.name}
+  {constraint_file.name}
 ```
 
-you obtain as many solutions to the specified constraints as the solver can come up with
-within 10 seconds (because of the `-t 10` argument, which imposes a 10 seconds timeout).
+you obtain as many solutions to the currently specified (and uncommented) constraints
+as the solver can come up with within 10 seconds (because of the `-t 10` argument,
+which imposes a 10 seconds timeout).
