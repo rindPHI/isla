@@ -825,6 +825,60 @@ exists <assgn> assgn:
         out_file.close()
         os.remove(out_file.name)
 
+    def test_parse_assgn_lang_correct_input_to_console(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        constraint = """
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        additional_constraint = 'exists <var>: <var> = "a"'
+
+        inp = "x := 1 ; a := x"
+
+        stdout, stderr, code = run_isla(
+            "parse",
+            "--no-pretty-print",
+            "--constraint",
+            additional_constraint,
+            "-i",
+            inp,
+            grammar_file.name,
+            constraint_file.name,
+        )
+
+        self.assertFalse(code)
+        self.assertFalse(stderr)
+
+        self.assertEqual(
+            json.dumps(next(EarleyParser(LANG_GRAMMAR).parse(inp))), stdout
+        )
+
+    def test_parse_assgn_lang_wrong_input(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        constraint = """
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        additional_constraint = 'exists <var>: <var> = "a"'
+
+        stdout, stderr, code = run_isla(
+            "parse",
+            "--constraint",
+            additional_constraint,
+            "-i",
+            "x := 1 ; y := x",
+            grammar_file.name,
+            constraint_file.name,
+        )
+
+        self.assertEqual(1, code)
+        self.assertFalse(stderr)
+
+        self.assertTrue("does not satisfy" in stdout)
 
 if __name__ == "__main__":
     unittest.main()
