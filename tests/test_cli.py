@@ -136,6 +136,41 @@ exists <assgn> assgn:
         grammar_file_2.close()
         constraint_file.close()
 
+    def test_solve_assgn_lang_additional_constraint(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        constraint = """
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        additional_constraint = 'exists <var>: <var> = "a"'
+
+        stdout, stderr, code = run_isla(
+            "solve",
+            grammar_file.name,
+            constraint_file.name,
+            "--constraint",
+            additional_constraint,
+            "-n",
+            -1,
+            "-t",
+            4,
+        )
+
+        self.assertFalse(code)
+        self.assertFalse(stderr)
+        self.assertTrue(stdout)
+
+        solver_1 = ISLaSolver(LANG_GRAMMAR, constraint)
+        solver_2 = ISLaSolver(LANG_GRAMMAR, additional_constraint)
+        for line in stdout.split("\n"):
+            self.assertTrue(solver_1.evaluate(line))
+            self.assertTrue(solver_2.evaluate(line))
+
+        grammar_file.close()
+        constraint_file.close()
+
     def test_solve_assgn_lang_python_grammar(self):
         grammar_1_text = r"""
 grammar = {

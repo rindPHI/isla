@@ -2012,10 +2012,10 @@ class VariablesCollector(FormulaVisitor):
 
 class BoundVariablesCollector(FormulaVisitor):
     def __init__(self):
-        self.result: OrderedSet[Variable] = OrderedSet()
+        self.result: OrderedSet[BoundVariable] = OrderedSet()
 
     @staticmethod
-    def collect(formula: Formula) -> OrderedSet[Variable]:
+    def collect(formula: Formula) -> OrderedSet[BoundVariable]:
         c = BoundVariablesCollector()
         formula.accept(c)
         return c.result
@@ -2396,61 +2396,73 @@ def convert_to_dnf(formula: Formula) -> Formula:
         return formula
 
 
+def fresh_vars(
+    orig_vars: OrderedSet[BoundVariable], used_names: Set[str]
+) -> Dict[BoundVariable, BoundVariable]:
+    result: Dict[BoundVariable, BoundVariable] = {}
+
+    for variable in orig_vars:
+        proposal = variable.name
+        if proposal not in used_names:
+            used_names.add(proposal)
+            result[variable] = variable
+            continue
+
+        maybe_match = re.match(r"^(.*)_[0-9]+$", proposal)
+        if maybe_match:
+            proposal = maybe_match.group(1)
+
+        idx = 0
+        while f"{proposal}_{idx}" in used_names:
+            idx += 1
+
+        new_name = f"{proposal}_{idx}"
+        used_names.add(new_name)
+        result[variable] = BoundVariable(new_name, variable.n_type)
+
+    return result
+
+
 def ensure_unique_bound_variables(  # noqa: C901
     formula: Formula, used_names: Optional[Set[str]] = None
 ) -> Formula:
     used_names: Set[str] = set() if used_names is None else used_names
 
-    def fresh_vars(
-        orig_vars: OrderedSet[BoundVariable],
-    ) -> Dict[BoundVariable, BoundVariable]:
-        nonlocal used_names
-        result: Dict[BoundVariable, BoundVariable] = {}
+    if isinstance(formula, QuantifiedFormula):
+        orig_used_names = set(used_names)
 
-        for variable in orig_vars:
-            proposal = variable.name
-            if proposal not in used_names:
-                used_names.add(proposal)
-                result[variable] = variable
-                continue
+        used_names |= {
+            var.name
+            for var in BoundVariablesCollector()
+            .collect(formula)
+            .difference(formula.bound_variables())
+        }
 
-            maybe_match = re.match(r"^(.*)_[0-9]+$", proposal)
-            if maybe_match:
-                proposal = maybe_match.group(1)
-
-            idx = 0
-            while f"{proposal}_{idx}" in used_names:
-                idx += 1
-
-            new_name = f"{proposal}_{idx}"
-            used_names.add(new_name)
-            result[variable] = BoundVariable(new_name, variable.n_type)
-
-        return result
-
-    if isinstance(formula, ForallFormula):
-        formula = cast(
-            ForallFormula,
-            formula.substitute_variables(fresh_vars(formula.bound_variables())),
+        old_used_names = set(used_names)
+        formula = formula.substitute_variables(
+            fresh_vars(
+                formula.bound_variables(),
+                used_names,
+            )
         )
-        return ForallFormula(
-            formula.bound_variable,
-            formula.in_variable,
-            ensure_unique_bound_variables(formula.inner_formula, used_names),
-            formula.bind_expression,
-            formula.already_matched,
-        )
-    elif isinstance(formula, ExistsFormula):
-        formula = cast(
-            ExistsFormula,
-            formula.substitute_variables(fresh_vars(formula.bound_variables())),
-        )
-        return ExistsFormula(
-            formula.bound_variable,
-            formula.in_variable,
-            ensure_unique_bound_variables(formula.inner_formula, used_names),
-            formula.bind_expression,
-        )
+
+        used_names = orig_used_names | used_names.difference(old_used_names)
+
+        if isinstance(formula, ForallFormula):
+            return ForallFormula(
+                formula.bound_variable,
+                formula.in_variable,
+                ensure_unique_bound_variables(formula.inner_formula, used_names),
+                formula.bind_expression,
+                formula.already_matched,
+            )
+        else:
+            return ExistsFormula(
+                formula.bound_variable,
+                formula.in_variable,
+                ensure_unique_bound_variables(formula.inner_formula, used_names),
+                formula.bind_expression,
+            )
     elif isinstance(formula, NegatedFormula):
         return NegatedFormula(
             ensure_unique_bound_variables(formula.args[0], used_names)

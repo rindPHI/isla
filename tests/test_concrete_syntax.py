@@ -210,6 +210,8 @@ exists <xml-attribute> attr="<id>=\\"{<text> text}\\"" in start:
             XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
         )
 
+        # TODO: Write check
+
     def test_used_variables(self):
         concr_syntax_formula = """
 forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
@@ -598,10 +600,7 @@ forall <number> number_1:
         grammar_str = rf'''
 <start> ::= <A>
 <A> ::= "\r" | "\n" | "\"" | "\\t" | "\\\\\\"'''
-        expected = {
-            '<start>': ['<A>'],
-            '<A>': ['\r', '\n', '"', '\\t', '\\\\\\']
-        }
+        expected = {"<start>": ["<A>"], "<A>": ["\r", "\n", '"', "\\t", "\\\\\\"]}
 
         self.assertEqual(expected, parse_bnf(grammar_str))
 
