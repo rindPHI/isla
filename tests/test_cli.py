@@ -537,7 +537,7 @@ exists <assgn> assgn:
 
         out_dir.cleanup()
 
-    def test_create(self):
+    def test_stub(self):
         out_dir = tempfile.TemporaryDirectory()
 
         stdout, stderr, code = run_isla("stub", "-b", "assgn_lang", out_dir.name)
