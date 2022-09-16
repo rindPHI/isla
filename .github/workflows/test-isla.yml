@@ -28,7 +28,8 @@ jobs:
         pip install -e .[dev,test]
     - name: Test with pytest
       run: |
-        python3 -m pytest -n 16 --randomly-seed=0 --html=report.html --self-contained-html --cov-report xml:coverage.xml --cov-report term --cov-config=.coveragerc --cov=isla tests/
+#       python3 -m pytest -n 16 --randomly-seed=0 --html=report.html --self-contained-html --cov-report xml:coverage.xml --cov-report term --cov-config=.coveragerc --cov=isla tests/
+        python3 -m pytest -n 16 --randomly-seed=0 --html=report.html --self-contained-html --cov-report xml:coverage.xml --cov-report term --cov-config=.coveragerc --cov=isla tests/test_cli.py -k 'test_stub or test_solve_assgn_lang_additional_constraint'
         python3 -m coverage lcov
     - uses: actions/upload-artifact@v3
       with:
