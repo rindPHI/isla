@@ -151,14 +151,7 @@ def fuzz(stdout, stderr, parser, args):
         grammar_unwinding_threshold=args.unwinding_depth,
     )
 
-    fuzz_command: str = args.test_target
-    if "{}" not in fuzz_command:
-        print(
-            f'isla {command}: warning: the placeholder "{{}}" was not found in '
-            f'the fuzz command "{fuzz_command}"; the generated inputs will not be '
-            f"accessible for the test target.",
-            file=stderr,
-        )
+    fuzz_command = get_fuzz_command(args, command, stderr)
 
     def inst_fuzz_command(inp_file: str) -> str:
         return fuzz_command.replace("{}", inp_file)
@@ -223,6 +216,18 @@ def fuzz(stdout, stderr, parser, args):
             i += 1
     except KeyboardInterrupt:
         sys.exit(0)
+
+
+def get_fuzz_command(args, command, stderr):
+    fuzz_command: str = args.test_target
+    if "{}" not in fuzz_command:
+        print(
+            f'isla {command}: warning: the placeholder "{{}}" was not found in '
+            f'the fuzz command "{fuzz_command}"; the generated inputs will not be '
+            f"accessible for the test target.",
+            file=stderr,
+        )
+    return fuzz_command
 
 
 def check(stdout, stderr, parser, args):
