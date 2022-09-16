@@ -540,7 +540,7 @@ exists <assgn> assgn:
     def test_create(self):
         out_dir = tempfile.TemporaryDirectory()
 
-        stdout, stderr, code = run_isla("create", "-b", "assgn_lang", out_dir.name)
+        stdout, stderr, code = run_isla("stub", "-b", "assgn_lang", out_dir.name)
         self.assertFalse(stdout)
         self.assertFalse(stderr)
         self.assertFalse(code)

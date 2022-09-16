@@ -362,7 +362,7 @@ The ISLa command line interface.""",
     create_fuzz_parser(subparsers, stdout, stderr)
     create_check_parser(subparsers, stdout, stderr)
     create_parse_parser(subparsers, stdout, stderr)
-    create_create_parser(subparsers, stdout, stderr)
+    create_stub_parser(subparsers, stdout, stderr)
 
     return parser
 
@@ -638,9 +638,9 @@ to stdout""",
     files_arg(parser)
 
 
-def create_create_parser(subparsers, stdout, stderr):
+def create_stub_parser(subparsers, stdout, stderr):
     parser = subparsers.add_parser(
-        "create",
+        "stub",
         help="create grammar and constraint stubs",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description="""
