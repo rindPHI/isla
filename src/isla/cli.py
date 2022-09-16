@@ -1,17 +1,18 @@
 import argparse
+import json
 import logging
 import os
 import string
 import subprocess
 import sys
 from contextlib import redirect_stdout, redirect_stderr
-from typing import Dict
+from typing import Dict, Tuple
 
 from grammar_graph import gg
 
 from isla import __version__ as isla_version, language
 from isla.derivation_tree import DerivationTree
-from isla.helpers import is_float
+from isla.helpers import is_float, MaybeMonadPlus
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
     STANDARD_SEMANTIC_PREDICATES,
@@ -220,58 +221,57 @@ def fuzz(stdout, stderr, parser, args):
 
 
 def check(stdout, stderr, parser, args):
+    code, msg, _ = do_check(stdout, stderr, parser, args)
+    print(msg, file=stdout)
+    sys.exit(code)
+
+
+def parse(stdout, stderr, parser, args):
+    code, msg, maybe_tree = do_check(stdout, stderr, parser, args)
+    if code:
+        print(msg, file=stdout)
+        sys.exit(code)
+
+    def write_tree(tree: DerivationTree):
+        json_str = json.dumps(
+            tree.to_parse_tree(), indent=None if not args.pretty_print else 4
+        )
+        if args.output_file:
+            with open(args.output_file, "w") as file:
+                file.write(json_str)
+        else:
+            print(json_str, file=stdout)
+
+    maybe_tree.if_present(write_tree)
+
+
+def do_check(
+    stdout, stderr, parser, args
+) -> Tuple[int, str, MaybeMonadPlus[DerivationTree]]:
     files = read_files(args)
     ensure_grammar_constraint_present(stderr, parser, args, files)
     command = args.command
 
     grammar = parse_grammar(command, args.grammar, files, stderr)
     constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
-
-    if args.input_string:
-        inp = args.input_string
-    else:
-        possible_inputs = [
-            file
-            for file in files
-            if not file.endswith(".bnf")
-            and not file.endswith(".isla")
-            and not file.endswith(".py")
-        ]
-
-        if len(possible_inputs) != 1:
-            print(
-                f"isla {command}: error: you must specify exactly *one* input to check "
-                + f"via `--input-string` or a file; found {len(possible_inputs)} "
-                + "inputs",
-                file=stderr,
-            )
-            sys.exit(USAGE_ERROR)
-
-        inp = files[possible_inputs[0]]
-
-        # Somehow, spurious newlines appear when reading files...
-        if inp[-1] == "\n":
-            inp = inp[:-1]
+    inp = get_input_string(command, stderr, args, files)
 
     parser = EarleyParser(grammar)
     try:
         tree = DerivationTree.from_parse_tree(next(parser.parse(inp)))
     except Exception as exc:
-        print(f"input could not be parsed ({type(exc).__name__})", file=stdout)
-        sys.exit(1)
+        return (
+            1,
+            f"input could not be parsed ({type(exc).__name__})",
+            MaybeMonadPlus.nothing(),
+        )
 
     solver = ISLaSolver(grammar, constraint)
 
     if solver.evaluate(tree):
-        print("input satisfies the ISLa constraint", file=stdout)
-        sys.exit(0)
+        return 0, "input satisfies the ISLa constraint", MaybeMonadPlus(tree)
     else:
-        print("input does not satisfy the ISLa constraint", file=stdout)
-        sys.exit(1)
-
-
-def parse(stdout, stderr, parser, args):
-    print(args)
+        return 1, "input does not satisfy the ISLa constraint", MaybeMonadPlus(tree)
 
 
 def stub(stdout, stderr, parser, args):
@@ -589,6 +589,35 @@ def parse_cost_computer_spec(
     return cost_computer
 
 
+def get_input_string(command: str, stderr, args, files: Dict[str, str]) -> str:
+    if args.input_string:
+        inp = args.input_string
+    else:
+        possible_inputs = [
+            file
+            for file in files
+            if not file.endswith(".bnf")
+            and not file.endswith(".isla")
+            and not file.endswith(".py")
+        ]
+
+        if len(possible_inputs) != 1:
+            print(
+                f"isla {command}: error: you must specify exactly *one* input to check "
+                + f"via `--input-string` or a file; found {len(possible_inputs)} "
+                + "inputs",
+                file=stderr,
+            )
+            sys.exit(USAGE_ERROR)
+
+        inp = files[possible_inputs[0]]
+
+        # Somehow, spurious newlines appear when reading files...
+        if inp[-1] == "\n":
+            inp = inp[:-1]
+    return inp
+
+
 def create_solve_parser(subparsers, stdout, stderr):
     parser = subparsers.add_parser(
         "solve",
@@ -703,7 +732,6 @@ satisfies an ISLa constraint.""",
     parser.set_defaults(func=lambda *args: parse(stdout, stderr, parser, *args))
 
     input_string_arg(parser)
-    input_file_arg(parser)
 
     parser.add_argument(
         "-o",
@@ -714,10 +742,21 @@ could be successfully parsed and checked. If no file is given, the tree is print
 to stdout""",
     )
 
+    parser.add_argument(
+        "-p",
+        "--pretty-print",
+        type=bool,
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="""
+if this flag is set, the created JSON parse tree is printed on multiple lines with
+indentation; otherwise the whole string is printed on a single line""",
+    )
+
     grammar_arg(parser)
     constraint_arg(parser)
     log_level_arg(parser)
-    grammar_constraint_files_arg(parser)
+    grammar_constraint_or_input_files_arg(parser)
 
 
 def create_stub_parser(subparsers, stdout, stderr):
@@ -911,18 +950,6 @@ def constraint_arg(parser):
 def grammar_arg(parser):
     parser.add_argument(
         "-g", "--grammar", help="the grammar in BNF (if not passed as a file)"
-    )
-
-
-def input_file_arg(parser):
-    parser.add_argument(
-        "input_file",
-        metavar="INPUT_FILE",
-        help="""
-A file containing the input to check. Note that you can _either_ pass an input as a file
-_or_ via the `--input-string` option.""",
-        nargs="?",
-        type=argparse.FileType("r", encoding="UTF-8"),
     )
 
 

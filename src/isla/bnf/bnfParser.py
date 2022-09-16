@@ -1,25 +1,26 @@
-# Generated from bnf.g4 by ANTLR 4.10.1
+# Generated from bnf.g4 by ANTLR 4.7.1
 # encoding: utf-8
 from antlr4 import *
 from io import StringIO
+from typing.io import TextIO
 import sys
-if sys.version_info[1] > 5:
-	from typing import TextIO
-else:
-	from typing.io import TextIO
 
 def serializedATN():
-    return [
-        4,1,7,27,2,0,7,0,2,1,7,1,2,2,7,2,1,0,4,0,8,8,0,11,0,12,0,9,1,1,1,
-        1,1,1,1,1,1,1,5,1,17,8,1,10,1,12,1,20,9,1,1,2,4,2,23,8,2,11,2,12,
-        2,24,1,2,0,0,3,0,2,4,0,1,1,0,3,4,26,0,7,1,0,0,0,2,11,1,0,0,0,4,22,
-        1,0,0,0,6,8,3,2,1,0,7,6,1,0,0,0,8,9,1,0,0,0,9,7,1,0,0,0,9,10,1,0,
-        0,0,10,1,1,0,0,0,11,12,5,3,0,0,12,13,5,1,0,0,13,18,3,4,2,0,14,15,
-        5,2,0,0,15,17,3,4,2,0,16,14,1,0,0,0,17,20,1,0,0,0,18,16,1,0,0,0,
-        18,19,1,0,0,0,19,3,1,0,0,0,20,18,1,0,0,0,21,23,7,0,0,0,22,21,1,0,
-        0,0,23,24,1,0,0,0,24,22,1,0,0,0,24,25,1,0,0,0,25,5,1,0,0,0,3,9,18,
-        24
-    ]
+    with StringIO() as buf:
+        buf.write("\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3\n")
+        buf.write(" \4\2\t\2\4\3\t\3\4\4\t\4\3\2\6\2\n\n\2\r\2\16\2\13\3")
+        buf.write("\3\3\3\3\3\3\3\3\3\7\3\23\n\3\f\3\16\3\26\13\3\3\3\5\3")
+        buf.write("\31\n\3\3\4\6\4\34\n\4\r\4\16\4\35\3\4\2\2\5\2\4\6\2\3")
+        buf.write("\3\2\6\7\2 \2\t\3\2\2\2\4\r\3\2\2\2\6\33\3\2\2\2\b\n\5")
+        buf.write("\4\3\2\t\b\3\2\2\2\n\13\3\2\2\2\13\t\3\2\2\2\13\f\3\2")
+        buf.write("\2\2\f\3\3\2\2\2\r\16\7\6\2\2\16\17\7\3\2\2\17\24\5\6")
+        buf.write("\4\2\20\21\7\4\2\2\21\23\5\6\4\2\22\20\3\2\2\2\23\26\3")
+        buf.write("\2\2\2\24\22\3\2\2\2\24\25\3\2\2\2\25\30\3\2\2\2\26\24")
+        buf.write("\3\2\2\2\27\31\7\5\2\2\30\27\3\2\2\2\30\31\3\2\2\2\31")
+        buf.write("\5\3\2\2\2\32\34\t\2\2\2\33\32\3\2\2\2\34\35\3\2\2\2\35")
+        buf.write("\33\3\2\2\2\35\36\3\2\2\2\36\7\3\2\2\2\6\13\24\30\35")
+        return buf.getvalue()
+
 
 class bnfParser ( Parser ):
 
@@ -31,10 +32,10 @@ class bnfParser ( Parser ):
 
     sharedContextCache = PredictionContextCache()
 
-    literalNames = [ "<INVALID>", "'::='", "'|'" ]
+    literalNames = [ "<INVALID>", "'::='", "'|'", "';'" ]
 
-    symbolicNames = [ "<INVALID>", "<INVALID>", "<INVALID>", "NONTERMINAL", 
-                      "STRING", "ESC", "WS", "LINE_COMMENT" ]
+    symbolicNames = [ "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
+                      "NONTERMINAL", "STRING", "ESC", "WS", "LINE_COMMENT" ]
 
     RULE_bnf_grammar = 0
     RULE_derivation_rule = 1
@@ -45,23 +46,22 @@ class bnfParser ( Parser ):
     EOF = Token.EOF
     T__0=1
     T__1=2
-    NONTERMINAL=3
-    STRING=4
-    ESC=5
-    WS=6
-    LINE_COMMENT=7
+    T__2=3
+    NONTERMINAL=4
+    STRING=5
+    ESC=6
+    WS=7
+    LINE_COMMENT=8
 
     def __init__(self, input:TokenStream, output:TextIO = sys.stdout):
         super().__init__(input, output)
-        self.checkVersion("4.10.1")
+        self.checkVersion("4.7.1")
         self._interp = ParserATNSimulator(self, self.atn, self.decisionsToDFA, self.sharedContextCache)
         self._predicates = None
 
 
 
-
     class Bnf_grammarContext(ParserRuleContext):
-        __slots__ = 'parser'
 
         def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
             super().__init__(parent, invokingState)
@@ -115,9 +115,7 @@ class bnfParser ( Parser ):
             self.exitRule()
         return localctx
 
-
     class Derivation_ruleContext(ParserRuleContext):
-        __slots__ = 'parser'
 
         def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
             super().__init__(parent, invokingState)
@@ -172,6 +170,14 @@ class bnfParser ( Parser ):
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
 
+            self.state = 22
+            self._errHandler.sync(self)
+            _la = self._input.LA(1)
+            if _la==bnfParser.T__2:
+                self.state = 21
+                self.match(bnfParser.T__2)
+
+
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -180,9 +186,7 @@ class bnfParser ( Parser ):
             self.exitRule()
         return localctx
 
-
     class AlternativeContext(ParserRuleContext):
-        __slots__ = 'parser'
 
         def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
             super().__init__(parent, invokingState)
@@ -221,12 +225,12 @@ class bnfParser ( Parser ):
         self._la = 0 # Token type
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 22 
+            self.state = 25 
             self._errHandler.sync(self)
             _alt = 1
             while _alt!=2 and _alt!=ATN.INVALID_ALT_NUMBER:
                 if _alt == 1:
-                    self.state = 21
+                    self.state = 24
                     _la = self._input.LA(1)
                     if not(_la==bnfParser.NONTERMINAL or _la==bnfParser.STRING):
                         self._errHandler.recoverInline(self)
@@ -236,9 +240,9 @@ class bnfParser ( Parser ):
 
                 else:
                     raise NoViableAltException(self)
-                self.state = 24 
+                self.state = 27 
                 self._errHandler.sync(self)
-                _alt = self._interp.adaptivePredict(self._input,2,self._ctx)
+                _alt = self._interp.adaptivePredict(self._input,3,self._ctx)
 
         except RecognitionException as re:
             localctx.exception = re
