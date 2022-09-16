@@ -94,26 +94,29 @@ def solve(stdout, stderr, parser, args):
         grammar_unwinding_threshold=args.unwinding_depth,
     )
 
-    num_solutions = args.num_solutions
-    i = 0
-    while True:
-        if 0 < num_solutions <= i:
-            break
+    try:
+        num_solutions = args.num_solutions
+        i = 0
+        while True:
+            if 0 < num_solutions <= i:
+                break
 
-        result = solver.fuzz()
-        if isinstance(result, DerivationTree):
-            if not output_dir:
-                print(result, flush=True, file=stdout)
+            result = solver.fuzz()
+            if isinstance(result, DerivationTree):
+                if not output_dir:
+                    print(result, flush=True, file=stdout)
+                else:
+                    with open(os.path.join(output_dir, f"{i}.txt"), "wb") as out_file:
+                        out_file.write(str(result).encode("utf-8"))
             else:
-                with open(os.path.join(output_dir, f"{i}.txt"), "wb") as out_file:
-                    out_file.write(str(result).encode("utf-8"))
-        else:
-            assert result == ISLaSolver.TIMEOUT or result == ISLaSolver.UNSAT
-            if result == ISLaSolver.UNSAT:
-                print("UNSAT", flush=True, file=stderr)
-            break
+                assert result == ISLaSolver.TIMEOUT or result == ISLaSolver.UNSAT
+                if result == ISLaSolver.UNSAT:
+                    print("UNSAT", flush=True, file=stderr)
+                break
 
-        i += 1
+            i += 1
+    except KeyboardInterrupt:
+        sys.exit(0)
 
 
 def fuzz(stdout, stderr, parser, args):
@@ -160,63 +163,66 @@ def fuzz(stdout, stderr, parser, args):
     def inst_fuzz_command(inp_file: str) -> str:
         return fuzz_command.replace("{}", inp_file)
 
-    num_solutions = args.num_solutions
-    i = 0
-    while True:
-        if 0 < num_solutions <= i:
-            break
+    try:
+        num_solutions = args.num_solutions
+        i = 0
+        while True:
+            if 0 < num_solutions <= i:
+                break
 
-        istr = str(i).rjust(4, "0")
-        result = solver.fuzz()
-        if isinstance(result, DerivationTree):
-            # Write input file
-            with open(
-                os.path.join(output_dir, f"{istr}{input_ending}"), "wb"
-            ) as inp_file:
-                inp_file.write(str(result).encode("utf-8"))
-                inp_file.seek(0)
-                inp_file_name = inp_file.name
+            istr = str(i).rjust(4, "0")
+            result = solver.fuzz()
+            if isinstance(result, DerivationTree):
+                # Write input file
+                with open(
+                    os.path.join(output_dir, f"{istr}{input_ending}"), "wb"
+                ) as inp_file:
+                    inp_file.write(str(result).encode("utf-8"))
+                    inp_file.seek(0)
+                    inp_file_name = inp_file.name
 
-            try:
-                # Execute fuzz target
-                result = subprocess.run(
-                    inst_fuzz_command(inp_file_name),
-                    shell=True,
-                    capture_output=True,
-                    check=True,
-                    text=True,
-                )
+                try:
+                    # Execute fuzz target
+                    result = subprocess.run(
+                        inst_fuzz_command(inp_file_name),
+                        shell=True,
+                        capture_output=True,
+                        check=True,
+                        text=True,
+                    )
 
-                standard_output = result.stdout
-                error_output = result.stderr
-                return_code = result.returncode
-            except subprocess.CalledProcessError as cpe:
-                standard_output = cpe.stdout
-                error_output = cpe.stderr
-                return_code = cpe.returncode
+                    standard_output = result.stdout
+                    error_output = result.stderr
+                    return_code = result.returncode
+                except subprocess.CalledProcessError as cpe:
+                    standard_output = cpe.stdout
+                    error_output = cpe.stderr
+                    return_code = cpe.returncode
 
-            # Write results
-            with open(
-                os.path.join(output_dir, f"{istr}{stdout_ending}"), "wb"
-            ) as stdout_file:
-                stdout_file.write(standard_output.encode("utf-8"))
+                # Write results
+                with open(
+                    os.path.join(output_dir, f"{istr}{stdout_ending}"), "wb"
+                ) as stdout_file:
+                    stdout_file.write(standard_output.encode("utf-8"))
 
-            with open(
-                os.path.join(output_dir, f"{istr}{stderr_ending}"), "wb"
-            ) as stderr_file:
-                stderr_file.write(error_output.encode("utf-8"))
+                with open(
+                    os.path.join(output_dir, f"{istr}{stderr_ending}"), "wb"
+                ) as stderr_file:
+                    stderr_file.write(error_output.encode("utf-8"))
 
-            with open(
-                os.path.join(output_dir, f"{istr}{status_ending}"), "wb"
-            ) as stat_file:
-                stat_file.write(str(return_code).encode("utf-8"))
-        else:
-            assert result == ISLaSolver.TIMEOUT or result == ISLaSolver.UNSAT
-            if result == ISLaSolver.UNSAT:
-                print("UNSAT", flush=True, file=stderr)
-            break
+                with open(
+                    os.path.join(output_dir, f"{istr}{status_ending}"), "wb"
+                ) as stat_file:
+                    stat_file.write(str(return_code).encode("utf-8"))
+            else:
+                assert result == ISLaSolver.TIMEOUT or result == ISLaSolver.UNSAT
+                if result == ISLaSolver.UNSAT:
+                    print("UNSAT", flush=True, file=stderr)
+                break
 
-        i += 1
+            i += 1
+    except KeyboardInterrupt:
+        sys.exit(0)
 
 
 def check(stdout, stderr, parser, args):
@@ -282,28 +288,19 @@ def create(stdout, stderr, parser, args):
 
     grammar_1_file = open(os.path.join(out_dir, f"{base_name}_grammar_1.bnf"), "w")
     grammar_2_file = open(os.path.join(out_dir, f"{base_name}_grammar_2.py"), "w")
-    constraint_1_file = open(
-        os.path.join(out_dir, f"{base_name}_constraint_1.isla"), "w"
-    )
-    constraint_2_file = open(
-        os.path.join(out_dir, f"{base_name}_constraint_2.isla"), "w"
-    )
+    constraint_file = open(os.path.join(out_dir, f"{base_name}_constraint.isla"), "w")
 
-    grammar_1_text = get_isla_resource_file_content("resources/cli_stubs/grammar_1.bnf")
-    grammar_2_text = get_isla_resource_file_content("resources/cli_stubs/grammar_2.py")
-    constraint_1_text = get_isla_resource_file_content(
-        "resources/cli_stubs/constraint_1.isla"
+    grammar_1_text = get_isla_resource_file_content("resources/cli_stubs/grammar.bnf")
+    grammar_2_text = get_isla_resource_file_content("resources/cli_stubs/grammar.py")
+    constraint_text = get_isla_resource_file_content(
+        "resources/cli_stubs/constraint.isla"
     )
-    constraint_2_text = get_isla_resource_file_content(
-        "resources/cli_stubs/constraint_2.isla"
-    ).replace("{constraint_2_file.name}", constraint_2_file.name)
 
     readme_text = (
         get_isla_resource_file_content("resources/cli_stubs/README.md")
         .replace("{grammar_1_file.name}", grammar_1_file.name)
         .replace("{grammar_2_file.name}", grammar_2_file.name)
-        .replace("{constraint_1_file.name}", constraint_1_file.name)
-        .replace("{constraint_2_file.name}", constraint_2_file.name)
+        .replace("{constraint_file.name}", constraint_file.name)
     )
 
     grammar_1_file.write(grammar_1_text)
@@ -312,11 +309,8 @@ def create(stdout, stderr, parser, args):
     grammar_2_file.write(grammar_2_text)
     grammar_2_file.close()
 
-    constraint_1_file.write(constraint_1_text)
-    constraint_1_file.close()
-
-    constraint_2_file.write(constraint_2_text)
-    constraint_2_file.close()
+    constraint_file.write(constraint_text)
+    constraint_file.close()
 
     with open(os.path.join(out_dir, "README.md"), "w") as readme_file:
         readme_file.write(readme_text)

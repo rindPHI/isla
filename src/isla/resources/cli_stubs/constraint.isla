@@ -1,0 +1,95 @@
+# In this file, we showcase different constraints for the assignment language.
+# You can experiment with them or draw inspiration when specifying your own
+# language. To include a constraint, comment the currently included ones out
+# and remove the comments for the new constraint. You can also combine different
+# constraints with the propositional combinators `and`, `or`, `xor`, ``implies`,
+# or `iff`.
+
+# If you want to learn more about ISLa, you may want to have a look at
+#
+# - Our [ISLa tutorial](https://www.fuzzingbook.org/beta/html/FuzzingWithConstraints.html)
+# - The [ISLa Language Specification](https://rindphi.github.io/isla/islaspec/)
+
+# -----------
+
+# This constraint specifies that all variables occurring on the right-hand side
+# of an assignment have to appear in the left-hand side of an *earlier* assignment,
+# as in `x := 1 ; y := x`.
+
+forall <assgn> assgn_1:
+  exists <assgn> assgn_2: (
+    before(assgn_2, assgn_1) and
+    assgn_1.<rhs>.<var> = assgn_2.<var>)
+
+# -----------
+
+# To limit the variable identifiers to be either "a" or "b," use the following
+# constraint:
+
+# <var> = "a"
+
+# -----------
+
+# The following constraint enforces the existence of *at least one* assignment
+# involving a variable "a."
+
+# exists <var>: <var> = "a"
+
+# -----------
+
+# ISLa supports different propositional cominators. The constraint below enforces
+# that either all variables are "a", *or* all variables are "b" or "c". Note that
+# quantifiers bind stronger than any combinator; and `and` binds stronger than `or`.
+
+forall <var>:
+  <var> = "a"
+or
+forall <var>: (
+  <var> = "b" or
+  <var> = "c"
+)
+
+# -----------
+
+# We can also use regular expressions (or anything one can do with string variables
+# using the [SMT-LIB theory catalog](https://smtlib.cs.uiowa.edu/theories.shtml):
+
+str.in_re(<var>, re.union(str.to_re("a"), re.union(str.to_re("b"), str.to_re("c"))))
+
+# -----------
+
+# We can enforce the existence of exactly four assignments, using the "semantic
+# predicate" `count`:
+
+# count(<start>, "<assgn>", "5")
+
+# -----------
+
+# Numeric constraints are no problem, either. Let's say we want all numeric right-hand
+# sides to be a multiple of 2:
+
+# str.to.int(<digit>) mod 2 = 0
+
+# Note that in ISLa, all variables are strings, and there is no automatic conversion.
+# If you know that a variable (in this case the nonterminal `<digit>`) only attains
+# numeric values, you can convert it to a number using the `str.to.int` function. This
+# term then can participate in numeric operations.
+
+# -----------
+
+# Alternatively, we might desire the existence of two assignment of numeric values
+# that add up to 6:
+
+# exists <assgn> assgn_1:
+#   exists <assgn> assgn_2: (
+#     before(assgn_1, assgn_2) and
+#     str.to.int(assgn_1.<rhs>.<digit>) + str.to.int(assgn_2.<rhs>.<digit>) = 6)
+
+# -----------
+
+# Or shall all two numbers in assignments add up to 6?
+
+# forall <assgn> assgn_1:
+#   forall <assgn> assgn_2: (
+#     before(assgn_1, assgn_2) implies
+#     str.to.int(assgn_1.<rhs>.<digit>) + str.to.int(assgn_2.<rhs>.<digit>) = 6)

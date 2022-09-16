@@ -78,6 +78,8 @@ SMT_NONBINARY_OP:
     | 'str.replace_all'
     | 'str.replace_re'
     | 'str.replace_re_all'
+    | 're.union'
+    | 're.inter'
     | 're.comp'
     | 're.diff'
     | 're.opt'
