@@ -1,4 +1,4 @@
-antlr4-python3-runtime>=4.10
+antlr4-python3-runtime>=4.11
 black>=22.8.0
 build>=0.8.0
 datrie>=0.8.2
