@@ -5,10 +5,9 @@ from isla.solver import ISLaSolver
 with (open("/tmp/saved_debug_state", "rb")) as debug_state_file:
     try:
         solver: ISLaSolver = pickle.load(debug_state_file)
-        it = solver.solve()
         while True:
             try:
-                result = next(it)
+                result = solver.fuzz()
                 print(f"Found solution: {result}")
             except StopIteration:
                 pass

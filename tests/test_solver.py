@@ -695,7 +695,7 @@ str.to_code(<string>.<length>.<low-byte>) =
 str.len(<string>.<chars>) and 
 <string>.<length>.<high-byte> = str.from_code(0)''')
 
-        solution = next(solver.solve())
+        solution = solver.fuzz()
 
         high_byte = solution.filter(lambda n: n.value == "<high-byte>")[0][1]
         low_byte = solution.filter(lambda n: n.value == "<low-byte>")[0][1]
@@ -838,9 +838,9 @@ not(
                 (<= (+ (+ (^ (str.to.int seed.<x>) 2) (^ (str.to.int seed.<y>) 2)) (^ (str.to.int seed.<z>) 2)) 900)
             """,
             max_number_smt_instantiations=30,
-        ).solve()
+        )
 
-        solutions = [s for s in itertools.islice(solver, 30) if isinstance(s, DerivationTree)]
+        solutions = [solver.fuzz() for _ in range(30)]
         print('\n'.join(map(str, solutions)))
         self.assertEqual(30, len(solutions))
 

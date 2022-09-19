@@ -670,7 +670,9 @@ def generate_inputs(
     print(f"[{strtime()}] Collecting data for {timeout_seconds} seconds{jobname}")
 
     if isinstance(generator, ISLaSolver):
-        generator = generator.solve()
+        def generator():
+            while True:
+                yield generator.fuzz()
     elif isinstance(generator, dict):
         grammar = generator
 

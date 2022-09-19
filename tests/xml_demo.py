@@ -132,9 +132,8 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
         ), gg.GrammarGraph.from_grammar(XML_GRAMMAR)),
     )
 
-    generator = solver.solve()
     for _ in range(100):
-        inp = next(generator)
+        inp = solver.fuzz()
         print(inp)
         if not validate_xml(inp):
             print(f"Invalid input produced by ISLa solver: {inp}", file=sys.stderr)

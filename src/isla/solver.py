@@ -216,6 +216,16 @@ STD_COST_SETTINGS = CostSettings(
 )
 
 
+@dataclass(frozen=True)
+class SolverTimeout(Exception):
+    seconds_elapsed: int
+
+
+@dataclass(frozen=True)
+class UnknownResultError(Exception):
+    pass
+
+
 class ISLaSolver:
     """
     The solver class for ISLa formulas/constraints. Main methods: `solve()` and `evaluate()`.
@@ -460,24 +470,6 @@ class ISLaSolver:
             inp = self.parse(inp)
         assert isinstance(inp, DerivationTree)
         return evaluate(self.formula, inp, self.grammar)
-
-    def solve(self) -> Generator[DerivationTree | int, None, None]:
-        """
-        Produces solutions to the constraint passed to the solver instance, or `ISLaSolver.TIMEOUT` (if
-        a timeout occurred) or `ISLaSolver.UNSAT` if no more solutions or none at all could be found.
-        If no solution was found at all and `UNSAT` is returned, this means that the formula is unsatisfiable.
-
-        The timeout can be controlled by the `timeout_seconds` constructor parameter.
-
-        :return: A generator of solutions.
-        """
-
-        inp = self.fuzz()
-        while isinstance(inp, DerivationTree):
-            yield inp
-            inp = self.fuzz()
-
-        yield inp
 
     def fuzz(self) -> DerivationTree | int:
         """

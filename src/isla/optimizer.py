@@ -526,7 +526,7 @@ def evaluate_isla_generator(
     k=3,
 ) -> PerformanceEvaluationResult:
     print(f"Evaluating weight vector {v}")
-    isla_producer = ISLaSolver(
+    solver = ISLaSolver(
         grammar,
         formula,
         max_number_free_instantiations=1,
@@ -535,12 +535,12 @@ def evaluate_isla_generator(
         cost_computer=GrammarBasedBlackboxCostComputer(
             CostSettings(v, k), gg.GrammarGraph.from_grammar(grammar)
         ),
-    ).solve()
+    )
 
     return evaluate_producer(
         outfile_pdf=outfile_name,
         diagram_title="\n".join(wrap(str(v), 60)),
-        producer=isla_producer,
+        producer=solver,
         formula=formula,
         graph=gg.GrammarGraph.from_grammar(grammar),
         validator=validator,
