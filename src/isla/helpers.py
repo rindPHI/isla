@@ -22,7 +22,8 @@ from typing import (
     Iterable,
     Any,
     Optional,
-    Generic, Iterator,
+    Generic,
+    Iterator,
 )
 
 from isla.type_defs import (
