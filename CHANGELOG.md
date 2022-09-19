@@ -19,6 +19,8 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 - Fixes in `octal_to_dec` semantic predicate (relevant for TAR)
 - Bug fix in solver: Avoiding error if no k-paths are present due to too large k for (nonrecursive) grammar
 - Bug fix in `ensure_unique_bound_variables`: This function sometimes produced results that were not semantically equivalent
+- Can parse constraints such as `forall <var> var: var = "a" or forall <var> var: var = "b"`, where different quantifiers
+  bind the same variable. Raised a `SyntaxError` before.
 
 ## [0.10.10] - 2022-09-01
 
