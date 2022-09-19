@@ -60,7 +60,7 @@ from isla.helpers import (
     lazyjoin,
     lazystr,
     is_prefix,
-    MaybeMonadPlus,
+    Maybe,
     chain_functions,
 )
 from isla.isla_predicates import (
@@ -578,22 +578,22 @@ class ISLaSolver:
     @staticmethod
     def noop_on_false_constraint(
         state: SolutionState,
-    ) -> MaybeMonadPlus[List[SolutionState]]:
+    ) -> Maybe[List[SolutionState]]:
         if state.constraint == sc.false():
             # This state can be silently discarded.
-            return MaybeMonadPlus([state])
+            return Maybe([state])
 
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     def expand_to_match_quantifiers(
         self,
         state: SolutionState,
-    ) -> MaybeMonadPlus[List[SolutionState]]:
+    ) -> Maybe[List[SolutionState]]:
         if all(
             not isinstance(conjunct, language.ForallFormula)
             for conjunct in get_conjuncts(state.constraint)
         ):
-            return MaybeMonadPlus.nothing()
+            return Maybe.nothing()
 
         expansion_result = self.expand_tree(state)
 
@@ -602,27 +602,27 @@ class ISLaSolver:
             "Expanding state %s (%d successors)", state, len(expansion_result)
         )
 
-        return MaybeMonadPlus(expansion_result)
+        return Maybe(expansion_result)
 
     def eliminate_and_match_first_existential_formula_and_expand(
         self,
         state: SolutionState,
-    ) -> MaybeMonadPlus[List[SolutionState]]:
+    ) -> Maybe[List[SolutionState]]:
         elim_result = self.eliminate_and_match_first_existential_formula(state)
         if elim_result is None:
-            return MaybeMonadPlus.nothing()
+            return Maybe.nothing()
 
         # Also add some expansions of the original state, to create a larger
         # solution stream (otherwise, it might be possible that only a small
         # finite number of solutions are generated for existential formulas).
-        return MaybeMonadPlus(
+        return Maybe(
             elim_result + self.expand_tree(state, limit=2, only_universal=False)
         )
 
     def assert_remaining_formulas_are_lazy_binding_semantic(
         self,
         state: SolutionState,
-    ) -> MaybeMonadPlus[List[SolutionState]]:
+    ) -> Maybe[List[SolutionState]]:
         # SEMANTIC PREDICATE FORMULAS can remain if they bind lazily. In that case, we can choose a random
         # instantiation and let the predicate "fix" the resulting tree.
         assert state.constraint == sc.true() or all(
@@ -662,12 +662,12 @@ class ISLaSolver:
             )
         )
 
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     def finish_unconstrained_trees(
         self,
         state: SolutionState,
-    ) -> MaybeMonadPlus[List[SolutionState]]:
+    ) -> Maybe[List[SolutionState]]:
         fuzzer = (
             self.fuzzer if self.global_fuzzer else self.fuzzer_factory(self.grammar)
         )
@@ -676,7 +676,7 @@ class ISLaSolver:
             fuzzer.covered_expansions.update(self.seen_coverages)
 
         if state.constraint != sc.true():
-            return MaybeMonadPlus.nothing()
+            return Maybe.nothing()
 
         closed_results: List[SolutionState] = []
         for _ in range(self.max_number_free_instantiations):
@@ -687,12 +687,12 @@ class ISLaSolver:
 
             closed_results.append(SolutionState(state.constraint, result))
 
-        return MaybeMonadPlus(closed_results)
+        return Maybe(closed_results)
 
     def expand(
         self,
         state: SolutionState,
-    ) -> MaybeMonadPlus[List[SolutionState]]:
+    ) -> Maybe[List[SolutionState]]:
         fuzzer = (
             self.fuzzer if self.global_fuzzer else self.fuzzer_factory(self.grammar)
         )
@@ -715,7 +715,7 @@ class ISLaSolver:
                     )
                 )
 
-        return MaybeMonadPlus(result)
+        return Maybe(result)
 
     def instantiate_structural_predicates(self, state: SolutionState) -> SolutionState:
         predicate_formulas = [
@@ -749,7 +749,7 @@ class ISLaSolver:
 
     def eliminate_existential_integer_quantifiers(
         self, state: SolutionState
-    ) -> MaybeMonadPlus[List[SolutionState]]:
+    ) -> Maybe[List[SolutionState]]:
         existential_int_formulas = [
             conjunct
             for conjunct in get_conjuncts(state.constraint)
@@ -757,7 +757,7 @@ class ISLaSolver:
         ]
 
         if not existential_int_formulas:
-            return MaybeMonadPlus.nothing()
+            return Maybe.nothing()
 
         formula = state.constraint
         for existential_int_formula in existential_int_formulas:
@@ -780,7 +780,7 @@ class ISLaSolver:
                     existential_int_formula,
                 )
                 # This should simplify the process after quantifier re-insertion.
-                return MaybeMonadPlus(
+                return Maybe(
                     [
                         SolutionState(
                             language.replace_formula(
@@ -809,11 +809,11 @@ class ISLaSolver:
                 formula, existential_int_formula, instantiation
             )
 
-        return MaybeMonadPlus([SolutionState(formula, state.tree)])
+        return Maybe([SolutionState(formula, state.tree)])
 
     def instantiate_universal_integer_quantifiers(
         self, state: SolutionState
-    ) -> MaybeMonadPlus[List[SolutionState]]:
+    ) -> Maybe[List[SolutionState]]:
         universal_int_formulas = [
             conjunct
             for conjunct in get_conjuncts(state.constraint)
@@ -821,7 +821,7 @@ class ISLaSolver:
         ]
 
         if not universal_int_formulas:
-            return MaybeMonadPlus.nothing()
+            return Maybe.nothing()
 
         results: List[SolutionState] = [state]
         for universal_int_formula in universal_int_formulas:
@@ -836,7 +836,7 @@ class ISLaSolver:
                 for result in formula_list
             ]
 
-        return MaybeMonadPlus(results)
+        return Maybe(results)
 
     def instantiate_universal_integer_quantifier(
         self, state: SolutionState, universal_int_formula: language.ForallIntFormula
@@ -1147,7 +1147,7 @@ class ISLaSolver:
 
     def eliminate_all_semantic_formulas(
         self, state: SolutionState, max_instantiations: Optional[int] = None
-    ) -> MaybeMonadPlus[List[SolutionState]]:
+    ) -> Maybe[List[SolutionState]]:
         """
         Eliminates all SMT-LIB formulas that appear in `state`'s constraint as conjunctive elements.
         If, e.g., an SMT-LIB formula occurs as a disjunction, no solution is computed.
@@ -1166,7 +1166,7 @@ class ISLaSolver:
         ]
 
         if not semantic_formulas:
-            return MaybeMonadPlus.nothing()
+            return Maybe.nothing()
 
         self.logger.debug(
             "Eliminating semantic formulas [%s]", lazyjoin(", ", semantic_formulas)
@@ -1179,7 +1179,7 @@ class ISLaSolver:
             sc.true(),
         )
 
-        return MaybeMonadPlus(
+        return Maybe(
             self.eliminate_semantic_formula(
                 prefix_conjunction,
                 SolutionState(new_disjunct, state.tree),
@@ -1189,7 +1189,7 @@ class ISLaSolver:
 
     def eliminate_all_ready_semantic_predicate_formulas(
         self, state: SolutionState
-    ) -> MaybeMonadPlus[List[SolutionState]]:
+    ) -> Maybe[List[SolutionState]]:
         semantic_predicate_formulas: List[
             language.NegatedFormula | language.SemanticPredicateFormula
         ] = [
@@ -1224,7 +1224,7 @@ class ISLaSolver:
         )
 
         if not semantic_predicate_formulas:
-            return MaybeMonadPlus.nothing()
+            return Maybe.nothing()
 
         result = state
 
@@ -1283,7 +1283,7 @@ class ISLaSolver:
                 new_constraint, result.tree.substitute(evaluation_result.result)
             )
 
-        return MaybeMonadPlus([result] if changed else None)
+        return Maybe([result] if changed else None)
 
     def eliminate_and_match_first_existential_formula(
         self, state: SolutionState
@@ -1386,7 +1386,7 @@ class ISLaSolver:
 
     def match_all_universal_formulas(
         self, state: SolutionState
-    ) -> MaybeMonadPlus[List[SolutionState]]:
+    ) -> Maybe[List[SolutionState]]:
         universal_formulas = [
             conjunct
             for conjunct in split_conjunction(state.constraint)
@@ -1394,7 +1394,7 @@ class ISLaSolver:
         ]
 
         if not universal_formulas:
-            return MaybeMonadPlus.nothing()
+            return Maybe.nothing()
 
         result = self.match_universal_formulas(universal_formulas, state)
         if result:
@@ -1404,7 +1404,7 @@ class ISLaSolver:
         else:
             result = None
 
-        return MaybeMonadPlus(result)
+        return Maybe(result)
 
     def expand_tree(
         self,
@@ -2116,7 +2116,7 @@ class ISLaSolver:
                     and not self.eliminate_all_semantic_formulas(
                         new_state, max_instantiations=1
                     )
-                    .bind(lambda a: MaybeMonadPlus(a if a else None))
+                    .bind(lambda a: Maybe(a if a else None))
                     .is_present()
                 ):
                     new_states.remove(new_state)

@@ -13,7 +13,7 @@ from isla.helpers import (
     parent_or_child,
     is_nonterminal,
     canonical,
-    MaybeMonadPlus,
+    Maybe,
     chain_functions,
 )
 from isla.language import (
@@ -595,16 +595,16 @@ def octal_to_dec_concrete_octal(
     decimal: language.Variable | DerivationTree,
     _,
     decimal_parser,
-) -> MaybeMonadPlus[SemPredEvalResult]:
+) -> Maybe[SemPredEvalResult]:
     if (
         not isinstance(octal, DerivationTree)
         or not isinstance(decimal, language.Variable)
         and decimal.is_complete()
     ):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     if not octal.is_complete():
-        return MaybeMonadPlus(SemPredEvalResult(None))
+        return Maybe(SemPredEvalResult(None))
 
     # Conversion to decimal
     octal_str = str(octal)
@@ -613,7 +613,7 @@ def octal_to_dec_concrete_octal(
     for idx, digit in enumerate(reversed(octal_str)):
         decimal_number += (8**idx) * int(digit)
 
-    return MaybeMonadPlus(
+    return Maybe(
         SemPredEvalResult({decimal: decimal_parser(str(decimal_number))})
     )
 
@@ -623,22 +623,22 @@ def octal_to_dec_concrete_decimal(
     decimal: language.Variable | DerivationTree,
     octal_parser,
     _,
-) -> MaybeMonadPlus[SemPredEvalResult]:
+) -> Maybe[SemPredEvalResult]:
     if (
         not isinstance(decimal, DerivationTree)
         or not isinstance(octal, language.Variable)
         and octal.is_complete()
     ):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     if not decimal.is_complete():
-        return MaybeMonadPlus(SemPredEvalResult(None))
+        return Maybe(SemPredEvalResult(None))
 
     # Conversion to octal
     decimal_number = int(str(decimal))
     octal_str = oct(decimal_number)[2:]
 
-    return MaybeMonadPlus(SemPredEvalResult({octal: octal_parser(octal_str)}))
+    return Maybe(SemPredEvalResult({octal: octal_parser(octal_str)}))
 
 
 def octal_to_dec_both_trees(
@@ -646,17 +646,17 @@ def octal_to_dec_both_trees(
     decimal: language.Variable | DerivationTree,
     _1,
     _2,
-) -> MaybeMonadPlus[SemPredEvalResult]:
+) -> Maybe[SemPredEvalResult]:
     if not isinstance(decimal, DerivationTree) or not isinstance(octal, DerivationTree):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     if not decimal.is_complete() or not octal.is_complete():
-        return MaybeMonadPlus(SemPredEvalResult(None))
+        return Maybe(SemPredEvalResult(None))
 
     decimal_number = int(str(decimal))
     octal_number = int(str(octal))
 
-    return MaybeMonadPlus(
+    return Maybe(
         SemPredEvalResult(int(oct(octal_number)[2:]) == decimal_number)
     )
 

@@ -9,7 +9,7 @@ from grammar_graph import gg
 from orderedset import OrderedSet
 
 from isla.derivation_tree import DerivationTree
-from isla.helpers import is_nonterminal, MaybeMonadPlus, chain_functions
+from isla.helpers import is_nonterminal, Maybe, chain_functions
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
     STANDARD_SEMANTIC_PREDICATES,
@@ -300,7 +300,7 @@ def well_formed(
 
     def raise_not_implemented_error(
         formula: Formula,
-    ) -> MaybeMonadPlus[Tuple[bool, str]]:
+    ) -> Maybe[Tuple[bool, str]]:
         raise NotImplementedError(f"Unsupported formula type {type(formula).__name__}")
 
     def close(check_function: callable) -> callable:
@@ -336,12 +336,12 @@ def wellformed_exists_int_formula(
     bound_vars: OrderedSet[BoundVariable],
     in_expr_vars: OrderedSet[Variable],
     bound_by_smt: OrderedSet[Variable],
-) -> MaybeMonadPlus[Tuple[bool, str]]:
+) -> Maybe[Tuple[bool, str]]:
     if not isinstance(formula, ExistsIntFormula):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     if formula.bound_variables().intersection(bound_vars):
-        return MaybeMonadPlus(
+        return Maybe(
             (
                 False,
                 f"Variables {', '.join(map(str, formula.bound_variables().intersection(bound_vars)))} "
@@ -356,7 +356,7 @@ def wellformed_exists_int_formula(
         if free_var not in bound_vars
     ]
     if unbound_variables:
-        return MaybeMonadPlus(
+        return Maybe(
             (
                 False,
                 "Unbound variables "
@@ -365,7 +365,7 @@ def wellformed_exists_int_formula(
             )
         )
 
-    return MaybeMonadPlus(
+    return Maybe(
         well_formed(
             formula.inner_formula,
             grammar,
@@ -382,19 +382,19 @@ def wellformed_quantified_formula(
     bound_vars: OrderedSet[BoundVariable],
     in_expr_vars: OrderedSet[Variable],
     bound_by_smt: OrderedSet[Variable],
-) -> MaybeMonadPlus[Tuple[bool, str]]:
+) -> Maybe[Tuple[bool, str]]:
     if not isinstance(formula, QuantifiedFormula):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     if formula.in_variable in bound_by_smt:
-        return MaybeMonadPlus(
+        return Maybe(
             (
                 False,
                 f"Variable {formula.in_variable} in {formula} bound be outer SMT formula",
             )
         )
     if formula.bound_variables().intersection(bound_vars):
-        return MaybeMonadPlus(
+        return Maybe(
             (
                 False,
                 f"Variables {', '.join(map(str, formula.bound_variables().intersection(bound_vars)))} "
@@ -405,7 +405,7 @@ def wellformed_quantified_formula(
         type(formula.in_variable) is BoundVariable
         and formula.in_variable not in bound_vars
     ):
-        return MaybeMonadPlus(
+        return Maybe(
             (False, f"Unbound variable {formula.in_variable} in {formula}")
         )
     unbound_variables = [
@@ -415,7 +415,7 @@ def wellformed_quantified_formula(
         if free_var not in bound_vars
     ]
     if unbound_variables:
-        return MaybeMonadPlus(
+        return Maybe(
             (
                 False,
                 "Unbound variables "
@@ -430,7 +430,7 @@ def wellformed_quantified_formula(
         if is_nonterminal(var.n_type) and var.n_type not in grammar
     ]
     if unknown_typed_variables:
-        return MaybeMonadPlus(
+        return Maybe(
             (
                 False,
                 "Unkown types of variables "
@@ -446,7 +446,7 @@ def wellformed_quantified_formula(
             if is_nonterminal(var.n_type) and var.n_type not in grammar
         ]
         if unknown_typed_variables:
-            return MaybeMonadPlus(
+            return Maybe(
                 (
                     False,
                     "Unkown types of variables "
@@ -455,7 +455,7 @@ def wellformed_quantified_formula(
                 )
             )
 
-    return MaybeMonadPlus(
+    return Maybe(
         well_formed(
             formula.inner_formula,
             grammar,
@@ -472,12 +472,12 @@ def wellformed_smt_formula(
     bound_vars: OrderedSet[BoundVariable],
     in_expr_vars: OrderedSet[Variable],
     _2,
-) -> MaybeMonadPlus[Tuple[bool, str]]:
+) -> Maybe[Tuple[bool, str]]:
     if not isinstance(formula, SMTFormula):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     if any(free_var in in_expr_vars for free_var in formula.free_variables()):
-        return MaybeMonadPlus(
+        return Maybe(
             (
                 False,
                 f"Formula {formula} binding variables of 'in' expressions in an outer quantifier.",
@@ -489,9 +489,9 @@ def wellformed_smt_formula(
         for free_var in formula.free_variables()
         if type(free_var) is BoundVariable
     ):
-        return MaybeMonadPlus((False, "(TODO)"))
+        return Maybe((False, "(TODO)"))
 
-    return MaybeMonadPlus((True, ""))
+    return Maybe((True, ""))
 
 
 def wellformed_propositional_formula(
@@ -500,9 +500,9 @@ def wellformed_propositional_formula(
     bound_vars: OrderedSet[BoundVariable],
     in_expr_vars: OrderedSet[Variable],
     bound_by_smt: OrderedSet[Variable],
-) -> MaybeMonadPlus[Tuple[bool, str]]:
+) -> Maybe[Tuple[bool, str]]:
     if not isinstance(formula, PropositionalCombinator):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     if isinstance(formula, ConjunctiveFormula):
         smt_formulas = [f for f in formula.args if type(f) is SMTFormula]
@@ -513,7 +513,7 @@ def wellformed_propositional_formula(
                 smt_formula, grammar, bound_vars, in_expr_vars, bound_by_smt
             )
             if not res:
-                return MaybeMonadPlus((False, msg))
+                return Maybe((False, msg))
 
         for smt_formula in smt_formulas:
             bound_vars |= [
@@ -526,18 +526,18 @@ def wellformed_propositional_formula(
         for f in other_formulas:
             res, msg = well_formed(f, grammar, bound_vars, in_expr_vars, bound_by_smt)
             if not res:
-                return MaybeMonadPlus((False, msg))
+                return Maybe((False, msg))
 
-        return MaybeMonadPlus((True, ""))
+        return Maybe((True, ""))
     else:
         for subformula in formula.args:
             res, msg = well_formed(
                 subformula, grammar, bound_vars, in_expr_vars, bound_by_smt
             )
             if not res:
-                return MaybeMonadPlus((False, msg))
+                return Maybe((False, msg))
 
-        return MaybeMonadPlus((True, ""))
+        return Maybe((True, ""))
 
 
 def wellformed_structural_predicate_formula(
@@ -546,9 +546,9 @@ def wellformed_structural_predicate_formula(
     bound_vars: OrderedSet[BoundVariable],
     _2,
     _3,
-) -> MaybeMonadPlus[Tuple[bool, str]]:
+) -> Maybe[Tuple[bool, str]]:
     if not isinstance(formula, StructuralPredicateFormula):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     unbound_variables = [
         free_var
@@ -557,7 +557,7 @@ def wellformed_structural_predicate_formula(
         if free_var not in bound_vars
     ]
     if unbound_variables:
-        return MaybeMonadPlus(
+        return Maybe(
             (
                 False,
                 "Unbound variables "
@@ -566,7 +566,7 @@ def wellformed_structural_predicate_formula(
             )
         )
 
-    return MaybeMonadPlus((True, ""))
+    return Maybe((True, ""))
 
 
 def evaluate_legacy(
@@ -602,7 +602,7 @@ def evaluate_legacy(
 
     def raise_not_implemented_error(
         formula: Formula,
-    ) -> MaybeMonadPlus[ThreeValuedTruth]:
+    ) -> Maybe[ThreeValuedTruth]:
         raise NotImplementedError(
             f"Don't know how to evaluate the formula {unparse_isla(formula)}"
         )
@@ -641,9 +641,9 @@ def evaluate_legacy(
 
 def evaluate_exists_int_formula(
     formula: Formula, _1, _2, _3, _4, _5, _6
-) -> MaybeMonadPlus[ThreeValuedTruth]:
+) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, ExistsIntFormula):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     raise NotImplementedError(
         "This method cannot evaluate IntroduceNumericConstantFormula formulas."
@@ -658,9 +658,9 @@ def evaluate_smt_formula(
     _3,
     _4,
     _5,
-) -> MaybeMonadPlus[ThreeValuedTruth]:
+) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, SMTFormula):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     try:
         translation = evaluate_z3_expression(formula.formula)
@@ -672,7 +672,7 @@ def evaluate_smt_formula(
                 [str(assignments[var_map[arg]][1]) for arg in translation[0]]
             )
 
-            return MaybeMonadPlus(
+            return Maybe(
                 ThreeValuedTruth.from_bool(
                     translation[1](args_instantiation)
                     if args_instantiation
@@ -680,9 +680,9 @@ def evaluate_smt_formula(
                 )
             )
         except DomainError:
-            return MaybeMonadPlus(ThreeValuedTruth.false())
+            return Maybe(ThreeValuedTruth.false())
     except NotImplementedError:
-        return MaybeMonadPlus(
+        return Maybe(
             is_valid(
                 z3.substitute(
                     formula.formula,
@@ -707,9 +707,9 @@ def evaluate_quantified_formula(
     grammar: Grammar,
     vacuously_satisfied: Set[Formula],
     trie: SubtreesTrie,
-) -> MaybeMonadPlus[ThreeValuedTruth]:
+) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, QuantifiedFormula):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     if isinstance(formula.in_variable, DerivationTree):
         in_path, in_inst = next(
@@ -757,7 +757,7 @@ def evaluate_quantified_formula(
         if not new_assignments:
             vacuously_satisfied.add(formula)
 
-        return MaybeMonadPlus(
+        return Maybe(
             ThreeValuedTruth.all(
                 evaluate_legacy(
                     formula.inner_formula,
@@ -772,7 +772,7 @@ def evaluate_quantified_formula(
             )
         )
     elif isinstance(formula, ExistsFormula):
-        return MaybeMonadPlus(
+        return Maybe(
             ThreeValuedTruth.any(
                 evaluate_legacy(
                     formula.inner_formula,
@@ -796,9 +796,9 @@ def evaluate_structural_predicate_formula(
     _2,
     _3,
     _4,
-) -> MaybeMonadPlus[ThreeValuedTruth]:
+) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, StructuralPredicateFormula):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     arg_insts = [
         arg
@@ -810,7 +810,7 @@ def evaluate_structural_predicate_formula(
         else assignments[arg][0]
         for arg in formula.args
     ]
-    return MaybeMonadPlus(
+    return Maybe(
         ThreeValuedTruth.from_bool(
             formula.predicate.evaluate(reference_tree, *arg_insts)
         )
@@ -825,9 +825,9 @@ def evaluate_semantic_predicate_formula(
     _2,
     _3,
     _4,
-) -> MaybeMonadPlus[ThreeValuedTruth]:
+) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, SemanticPredicateFormula):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     arg_insts = [
         arg
@@ -838,9 +838,9 @@ def evaluate_semantic_predicate_formula(
     eval_res = formula.predicate.evaluate(graph, *arg_insts)
 
     if eval_res.true():
-        return MaybeMonadPlus(ThreeValuedTruth.true())
+        return Maybe(ThreeValuedTruth.true())
     elif eval_res.false():
-        return MaybeMonadPlus(ThreeValuedTruth.false())
+        return Maybe(ThreeValuedTruth.false())
 
     if not eval_res.ready() or not all(
         isinstance(key, Constant) for key in eval_res.result
@@ -848,13 +848,13 @@ def evaluate_semantic_predicate_formula(
         # Evaluation resulted in a tree update; that is, the formula is satisfiable, but only
         # after an update of its arguments. This result happens when evaluating formulas during
         # solution search after instantiating variables with concrete trees.
-        return MaybeMonadPlus(ThreeValuedTruth.unknown())
+        return Maybe(ThreeValuedTruth.unknown())
 
     assignments.update(
         {const: (tuple(), assgn) for const, assgn in eval_res.result.items()}
     )
 
-    return MaybeMonadPlus(ThreeValuedTruth.true())
+    return Maybe(ThreeValuedTruth.true())
 
 
 def evaluate_negated_formula_formula(
@@ -865,11 +865,11 @@ def evaluate_negated_formula_formula(
     grammar: Grammar,
     vacuously_satisfied: Set[Formula],
     trie: SubtreesTrie,
-) -> MaybeMonadPlus[ThreeValuedTruth]:
+) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, NegatedFormula):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
-    return MaybeMonadPlus(
+    return Maybe(
         ThreeValuedTruth.not_(
             evaluate_legacy(
                 formula.args[0],
@@ -892,11 +892,11 @@ def evaluate_conjunctive_formula_formula(
     grammar: Grammar,
     vacuously_satisfied: Set[Formula],
     trie: SubtreesTrie,
-) -> MaybeMonadPlus[ThreeValuedTruth]:
+) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, ConjunctiveFormula):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
-    return MaybeMonadPlus(
+    return Maybe(
         ThreeValuedTruth.all(
             evaluate_legacy(
                 sub_formula,
@@ -920,11 +920,11 @@ def evaluate_disjunctive_formula(
     grammar: Grammar,
     vacuously_satisfied: Set[Formula],
     trie: SubtreesTrie,
-) -> MaybeMonadPlus[ThreeValuedTruth]:
+) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, DisjunctiveFormula):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
-    return MaybeMonadPlus(
+    return Maybe(
         ThreeValuedTruth.any(
             evaluate_legacy(
                 sub_formula,
