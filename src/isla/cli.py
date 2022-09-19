@@ -101,7 +101,7 @@ def solve(stdout, stderr, parser, args):
             if 0 < num_solutions <= i:
                 break
 
-            result = solver.fuzz()
+            result = solver.solve()
             if isinstance(result, DerivationTree):
                 if not output_dir:
                     print(result, flush=True, file=stdout)
@@ -164,7 +164,7 @@ def fuzz(stdout, stderr, parser, args):
                 break
 
             istr = str(i).rjust(4, "0")
-            result = solver.fuzz()
+            result = solver.solve()
             if isinstance(result, DerivationTree):
                 # Write input file
                 with open(

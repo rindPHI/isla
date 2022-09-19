@@ -133,7 +133,7 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
     )
 
     for _ in range(100):
-        inp = solver.fuzz()
+        inp = solver.solve()
         print(inp)
         if not validate_xml(inp):
             print(f"Invalid input produced by ISLa solver: {inp}", file=sys.stderr)

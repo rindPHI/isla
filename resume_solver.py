@@ -7,7 +7,7 @@ with (open("/tmp/saved_debug_state", "rb")) as debug_state_file:
         solver: ISLaSolver = pickle.load(debug_state_file)
         while True:
             try:
-                result = solver.fuzz()
+                result = solver.solve()
                 print(f"Found solution: {result}")
             except StopIteration:
                 pass

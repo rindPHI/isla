@@ -672,7 +672,7 @@ def generate_inputs(
     if isinstance(generator, ISLaSolver):
         def generator():
             while True:
-                yield generator.fuzz()
+                yield generator.solve()
     elif isinstance(generator, dict):
         grammar = generator
 

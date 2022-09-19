@@ -695,7 +695,7 @@ str.to_code(<string>.<length>.<low-byte>) =
 str.len(<string>.<chars>) and 
 <string>.<length>.<high-byte> = str.from_code(0)''')
 
-        solution = solver.fuzz()
+        solution = solver.solve()
 
         high_byte = solution.filter(lambda n: n.value == "<high-byte>")[0][1]
         low_byte = solution.filter(lambda n: n.value == "<low-byte>")[0][1]
@@ -706,11 +706,11 @@ str.len(<string>.<chars>) and
 
     def test_unsatisfiable_smt_atom(self):
         solver = ISLaSolver(LANG_GRAMMAR, '<var> = "aa"', activate_unsat_support=True)
-        self.assertEqual(ISLaSolver.UNSAT, solver.fuzz())
+        self.assertEqual(ISLaSolver.UNSAT, solver.solve())
 
     def test_unsatisfiable_smt_conjunction(self):
         solver = ISLaSolver(LANG_GRAMMAR, '<var> = "a" and <var> = "b"', activate_unsat_support=True)
-        self.assertEqual(ISLaSolver.UNSAT, solver.fuzz())
+        self.assertEqual(ISLaSolver.UNSAT, solver.solve())
 
     def test_unsatisfiable_smt_quantified_conjunction(self):
         solver = ISLaSolver(
@@ -720,7 +720,7 @@ forall <assgn> assgn_1="{<var> var_1} := <rhs>" in <start>:
 forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
   var_2 = "b"''',
             activate_unsat_support=True)
-        self.assertEqual(ISLaSolver.UNSAT, solver.fuzz())
+        self.assertEqual(ISLaSolver.UNSAT, solver.solve())
 
     def test_unsatisfiable_smt_formulas(self):
         solver = ISLaSolver(
@@ -762,7 +762,7 @@ forall <assgn> assgn_1:
     before(assgn_2, assgn_1)''',
             activate_unsat_support=True,
         )
-        self.assertEqual(ISLaSolver.UNSAT, solver.fuzz())
+        self.assertEqual(ISLaSolver.UNSAT, solver.solve())
 
     def test_unsatisfiable_existential_formula(self):
         tree = DerivationTree(
@@ -794,7 +794,7 @@ forall <assgn> assgn_1:
 
         solver.queue = []
         heapq.heappush(solver.queue, (0, SolutionState(formula, tree)))
-        self.assertEqual(ISLaSolver.UNSAT, solver.fuzz())
+        self.assertEqual(ISLaSolver.UNSAT, solver.solve())
 
     def test_implication(self):
         formula = '''
@@ -805,7 +805,7 @@ not(
       var_2 = "x")'''
 
         solver = ISLaSolver(LANG_GRAMMAR, formula, activate_unsat_support=True)
-        self.assertEqual(ISLaSolver.UNSAT, solver.fuzz())
+        self.assertEqual(ISLaSolver.UNSAT, solver.solve())
 
     def test_equivalent(self):
         f1 = parse_isla('forall <var> var_1 in start: var_1 = "a"')
@@ -840,7 +840,7 @@ not(
             max_number_smt_instantiations=30,
         )
 
-        solutions = [solver.fuzz() for _ in range(30)]
+        solutions = [solver.solve() for _ in range(30)]
         print('\n'.join(map(str, solutions)))
         self.assertEqual(30, len(solutions))
 
@@ -913,7 +913,7 @@ not(
 
         solutions_found = 0
         for idx in range(num_solutions):
-            assignment = solver.fuzz()
+            assignment = solver.solve()
 
             if not isinstance(assignment, DerivationTree):
                 if assignment == ISLaSolver.UNSAT:

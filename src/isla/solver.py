@@ -471,7 +471,7 @@ class ISLaSolver:
         assert isinstance(inp, DerivationTree)
         return evaluate(self.formula, inp, self.grammar)
 
-    def fuzz(self) -> DerivationTree | int:
+    def solve(self) -> DerivationTree | int:
         """
         Attempts to compute a solution to the given ISLa formula. Returns that solution, if any.
         This function can be called repeatedly to obtain more solutions until `ISLaSolver.TIMEOUT`
@@ -2135,7 +2135,7 @@ class ISLaSolver:
                     self.start_time = int(time.time())
                     self.timeout_seconds = 2
 
-                    result = self.fuzz()
+                    result = self.solve()
 
                     self.start_time = old_start_time
                     self.timeout_seconds = old_timeout_seconds
@@ -2952,7 +2952,7 @@ def implies(
     solver = ISLaSolver(
         grammar, f1 & -f2, activate_unsat_support=True, timeout_seconds=timeout_seconds
     )
-    return solver.fuzz() == ISLaSolver.UNSAT
+    return solver.solve() == ISLaSolver.UNSAT
 
 
 def equivalent(
@@ -2964,4 +2964,4 @@ def equivalent(
         activate_unsat_support=True,
         timeout_seconds=timeout_seconds,
     )
-    return solver.fuzz() == ISLaSolver.UNSAT
+    return solver.solve() == ISLaSolver.UNSAT

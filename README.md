@@ -117,9 +117,9 @@ solver = ISLaSolver(
     max_number_free_instantiations=10,
     max_number_smt_instantiations=10)
 
-solution = solver.fuzz()
+solution = solver.solve()
 for _ in range(100):
-    print(solver.fuzz())
+    print(solver.solve())
 ```
 
 When calling the solver with an ISLa formula in concrete syntax (a string), one has to supply a "signature" of the
@@ -136,9 +136,9 @@ solver = ISLaSolver(
     max_number_free_instantiations=10,
     max_number_smt_instantiations=10)
 
-solution = solver.fuzz()
+solution = solver.solve()
 for _ in range(100):
-    print(solver.fuzz())
+    print(solver.solve())
 ```
 
 To create more diverse inputs, ISLa can be configured to perform a *bounded expansion* of grammar nonterminals that are

@@ -478,7 +478,7 @@ forall <rhs> in <assgn>:
     <rhs>.<var> = declaration.<var>) and
 count(start, "<assgn>", "5")""",
         )
-        solution = solver.fuzz()
+        solution = solver.solve()
         self.assertEqual(5, len(solution.filter(lambda n: n.value == "<assgn>")))
 
 
