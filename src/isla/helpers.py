@@ -22,7 +22,7 @@ from typing import (
     Iterable,
     Any,
     Optional,
-    Generic,
+    Generic, Iterator,
 )
 
 from isla.type_defs import (
@@ -674,6 +674,13 @@ class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
     @staticmethod
     def nothing() -> "MaybeMonadPlus[T]":
         return MaybeMonadPlus(None)
+
+    @staticmethod
+    def from_iterator(iterator: Iterator[T]) -> "MaybeMonadPlus[T]":
+        try:
+            return MaybeMonadPlus(next(iterator))
+        except StopIteration:
+            return MaybeMonadPlus.nothing()
 
     def mplus(self, other: "MaybeMonadPlus[T]") -> "MaybeMonadPlus[T]":
         return other if self.a is None else self

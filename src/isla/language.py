@@ -2555,25 +2555,29 @@ class VariableManager:
         isla_variables = [self._var(str(z3_symbol), None) for z3_symbol in z3_symbols]
         return SMTFormula(formula, *isla_variables)
 
-    def create(self, formula: Formula) -> Formula:
-        undeclared_variables = [
-            ph_name
-            for ph_name in self.placeholders
-            if all(var_name != ph_name for var_name in self.variables)
-        ]
+    def create(self, formula: Formula, safe=True) -> Formula:
+        if safe:
+            undeclared_variables = [
+                ph_name
+                for ph_name in self.placeholders
+                if all(var_name != ph_name for var_name in self.variables)
+            ]
 
-        if undeclared_variables:
-            raise RuntimeError(
-                "Undeclared variables: " + ", ".join(undeclared_variables)
-            )
+            if undeclared_variables:
+                raise RuntimeError(
+                    "Undeclared variables: " + ", ".join(undeclared_variables)
+                )
 
         return formula.substitute_variables(
             {
-                ph_var: next(
-                    var
-                    for var_name, var in self.variables.items()
-                    if var_name == ph_name
-                )
+                ph_var: (
+                    MaybeMonadPlus.from_iterator(
+                        var
+                        for var_name, var in self.variables.items()
+                        if var_name == ph_name
+                    )
+                    + MaybeMonadPlus(ph_var)
+                ).get()
                 for ph_name, ph_var in self.placeholders.items()
             }
         )
@@ -3410,14 +3414,15 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         if ctx.varId:
             var_id = parse_tree_text(ctx.varId)
 
-            if self.mgr.var_declared(var_id):
-                raise SyntaxError(
-                    f"Variable {var_id} already declared "
-                    f"(line {ctx.varId.line}, column {ctx.varId.column})"
-                )
+            # if self.mgr.var_declared(var_id):
+            #     raise SyntaxError(
+            #         f"Variable {var_id} already declared "
+            #         f"(line {ctx.varId.line}, column {ctx.varId.column})"
+            #     )
         else:
             var = self.register_var_for_free_nonterminal(var_type)
-            # This "free" nonterminal is bound now; remove it from the free nonterminals map.
+            # This "free" nonterminal is bound now; remove it from
+            # the free nonterminals map.
             del self.vars_for_free_nonterminals[var_type]
             # ... and the XPath expressions map.
             for segments, final_var in list(self.vars_for_xpath_expressions.items()):
@@ -3438,11 +3443,14 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         else:
             in_var = start_constant()
 
-        self.formulas[ctx] = (ForallFormula if is_forall else ExistsFormula)(
-            self.get_var(var_id, var_type),
-            in_var,
-            self.formulas[ctx.formula()],
-            bind_expression=mexpr,
+        self.formulas[ctx] = self.mgr.create(
+            (ForallFormula if is_forall else ExistsFormula)(
+                self.get_var(var_id, var_type),
+                in_var,
+                self.formulas[ctx.formula()],
+                bind_expression=mexpr,
+            ),
+            safe=False,
         )
 
     def exitForall(self, ctx: IslaLanguageParser.ForallContext):
