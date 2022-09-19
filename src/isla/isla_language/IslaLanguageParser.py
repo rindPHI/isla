@@ -1,4 +1,4 @@
-# Generated from IslaLanguage.g4 by ANTLR 4.10.1
+# Generated from IslaLanguage.g4 by ANTLR 4.11.1
 # encoding: utf-8
 from antlr4 import *
 from io import StringIO
@@ -171,7 +171,7 @@ class IslaLanguageParser ( Parser ):
 
     def __init__(self, input:TokenStream, output:TextIO = sys.stdout):
         super().__init__(input, output)
-        self.checkVersion("4.10.1")
+        self.checkVersion("4.11.1")
         self._interp = ParserATNSimulator(self, self.atn, self.decisionsToDFA, self.sharedContextCache)
         self._predicates = None
 
@@ -217,7 +217,7 @@ class IslaLanguageParser ( Parser ):
             self.state = 13
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if _la==IslaLanguageParser.T__0:
+            if _la==1:
                 self.state = 12
                 self.constDecl()
 
@@ -707,7 +707,7 @@ class IslaLanguageParser ( Parser ):
                 self.state = 27
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if _la==IslaLanguageParser.ID:
+                if _la==29:
                     self.state = 26
                     localctx.varId = self.match(IslaLanguageParser.ID)
 
@@ -715,17 +715,17 @@ class IslaLanguageParser ( Parser ):
                 self.state = 34
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if _la==IslaLanguageParser.T__4:
+                if _la==5:
                     self.state = 29
                     self.match(IslaLanguageParser.T__4)
                     self.state = 32
                     self._errHandler.sync(self)
                     token = self._input.LA(1)
-                    if token in [IslaLanguageParser.ID]:
+                    if token in [29]:
                         self.state = 30
                         localctx.inId = self.match(IslaLanguageParser.ID)
                         pass
-                    elif token in [IslaLanguageParser.VAR_TYPE]:
+                    elif token in [24]:
                         self.state = 31
                         localctx.inVarType = self.match(IslaLanguageParser.VAR_TYPE)
                         pass
@@ -752,7 +752,7 @@ class IslaLanguageParser ( Parser ):
                 self.state = 41
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if _la==IslaLanguageParser.ID:
+                if _la==29:
                     self.state = 40
                     localctx.varId = self.match(IslaLanguageParser.ID)
 
@@ -760,17 +760,17 @@ class IslaLanguageParser ( Parser ):
                 self.state = 48
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if _la==IslaLanguageParser.T__4:
+                if _la==5:
                     self.state = 43
                     self.match(IslaLanguageParser.T__4)
                     self.state = 46
                     self._errHandler.sync(self)
                     token = self._input.LA(1)
-                    if token in [IslaLanguageParser.ID]:
+                    if token in [29]:
                         self.state = 44
                         localctx.inId = self.match(IslaLanguageParser.ID)
                         pass
-                    elif token in [IslaLanguageParser.VAR_TYPE]:
+                    elif token in [24]:
                         self.state = 45
                         localctx.inVarType = self.match(IslaLanguageParser.VAR_TYPE)
                         pass
@@ -797,7 +797,7 @@ class IslaLanguageParser ( Parser ):
                 self.state = 55
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if _la==IslaLanguageParser.ID:
+                if _la==29:
                     self.state = 54
                     localctx.varId = self.match(IslaLanguageParser.ID)
 
@@ -809,17 +809,17 @@ class IslaLanguageParser ( Parser ):
                 self.state = 64
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if _la==IslaLanguageParser.T__4:
+                if _la==5:
                     self.state = 59
                     self.match(IslaLanguageParser.T__4)
                     self.state = 62
                     self._errHandler.sync(self)
                     token = self._input.LA(1)
-                    if token in [IslaLanguageParser.ID]:
+                    if token in [29]:
                         self.state = 60
                         localctx.inId = self.match(IslaLanguageParser.ID)
                         pass
-                    elif token in [IslaLanguageParser.VAR_TYPE]:
+                    elif token in [24]:
                         self.state = 61
                         localctx.inVarType = self.match(IslaLanguageParser.VAR_TYPE)
                         pass
@@ -846,7 +846,7 @@ class IslaLanguageParser ( Parser ):
                 self.state = 71
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if _la==IslaLanguageParser.ID:
+                if _la==29:
                     self.state = 70
                     localctx.varId = self.match(IslaLanguageParser.ID)
 
@@ -858,17 +858,17 @@ class IslaLanguageParser ( Parser ):
                 self.state = 80
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if _la==IslaLanguageParser.T__4:
+                if _la==5:
                     self.state = 75
                     self.match(IslaLanguageParser.T__4)
                     self.state = 78
                     self._errHandler.sync(self)
                     token = self._input.LA(1)
-                    if token in [IslaLanguageParser.ID]:
+                    if token in [29]:
                         self.state = 76
                         localctx.inId = self.match(IslaLanguageParser.ID)
                         pass
-                    elif token in [IslaLanguageParser.VAR_TYPE]:
+                    elif token in [24]:
                         self.state = 77
                         localctx.inVarType = self.match(IslaLanguageParser.VAR_TYPE)
                         pass
@@ -938,7 +938,7 @@ class IslaLanguageParser ( Parser ):
                 self.state = 103
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                while _la==IslaLanguageParser.T__10:
+                while _la==11:
                     self.state = 99
                     self.match(IslaLanguageParser.T__10)
                     self.state = 100
@@ -1460,11 +1460,11 @@ class IslaLanguageParser ( Parser ):
                 self.state = 145
                 self._errHandler.sync(self)
                 token = self._input.LA(1)
-                if token in [IslaLanguageParser.SMT_NONBINARY_OP]:
+                if token in [22]:
                     self.state = 143
                     self.match(IslaLanguageParser.SMT_NONBINARY_OP)
                     pass
-                elif token in [IslaLanguageParser.T__6, IslaLanguageParser.AND, IslaLanguageParser.OR, IslaLanguageParser.XOR, IslaLanguageParser.IMPLIES_SMT, IslaLanguageParser.SMT_INFIX_RE_STR, IslaLanguageParser.DIV, IslaLanguageParser.MOD, IslaLanguageParser.MUL, IslaLanguageParser.PLUS, IslaLanguageParser.MINUS, IslaLanguageParser.GEQ, IslaLanguageParser.LEQ, IslaLanguageParser.GT, IslaLanguageParser.LT]:
+                elif token in [7, 15, 16, 18, 19, 21, 25, 26, 36, 37, 38, 39, 40, 41, 42]:
                     self.state = 144
                     self.smt_binary_op()
                     pass
@@ -1484,13 +1484,13 @@ class IslaLanguageParser ( Parser ):
                 self.state = 157
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if (((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.T__6) | (1 << IslaLanguageParser.T__9) | (1 << IslaLanguageParser.T__12) | (1 << IslaLanguageParser.T__13) | (1 << IslaLanguageParser.AND) | (1 << IslaLanguageParser.OR) | (1 << IslaLanguageParser.XOR) | (1 << IslaLanguageParser.IMPLIES_SMT) | (1 << IslaLanguageParser.SMT_INFIX_RE_STR) | (1 << IslaLanguageParser.SMT_NONBINARY_OP) | (1 << IslaLanguageParser.XPATHEXPR) | (1 << IslaLanguageParser.VAR_TYPE) | (1 << IslaLanguageParser.DIV) | (1 << IslaLanguageParser.MOD) | (1 << IslaLanguageParser.STRING) | (1 << IslaLanguageParser.ID) | (1 << IslaLanguageParser.INT) | (1 << IslaLanguageParser.MUL) | (1 << IslaLanguageParser.PLUS) | (1 << IslaLanguageParser.MINUS) | (1 << IslaLanguageParser.GEQ) | (1 << IslaLanguageParser.LEQ) | (1 << IslaLanguageParser.GT) | (1 << IslaLanguageParser.LT))) != 0):
+                if ((_la) & ~0x3f) == 0 and ((1 << _la) & 8729385624704) != 0:
                     self.state = 149
                     self.sexpr(0)
                     self.state = 154
                     self._errHandler.sync(self)
                     _la = self._input.LA(1)
-                    while _la==IslaLanguageParser.T__10:
+                    while _la==11:
                         self.state = 150
                         self.match(IslaLanguageParser.T__10)
                         self.state = 151
@@ -1522,7 +1522,7 @@ class IslaLanguageParser ( Parser ):
                     self.state = 165 
                     self._errHandler.sync(self)
                     _la = self._input.LA(1)
-                    if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.T__6) | (1 << IslaLanguageParser.T__9) | (1 << IslaLanguageParser.T__12) | (1 << IslaLanguageParser.T__13) | (1 << IslaLanguageParser.AND) | (1 << IslaLanguageParser.OR) | (1 << IslaLanguageParser.XOR) | (1 << IslaLanguageParser.IMPLIES_SMT) | (1 << IslaLanguageParser.SMT_INFIX_RE_STR) | (1 << IslaLanguageParser.SMT_NONBINARY_OP) | (1 << IslaLanguageParser.XPATHEXPR) | (1 << IslaLanguageParser.VAR_TYPE) | (1 << IslaLanguageParser.DIV) | (1 << IslaLanguageParser.MOD) | (1 << IslaLanguageParser.STRING) | (1 << IslaLanguageParser.ID) | (1 << IslaLanguageParser.INT) | (1 << IslaLanguageParser.MUL) | (1 << IslaLanguageParser.PLUS) | (1 << IslaLanguageParser.MINUS) | (1 << IslaLanguageParser.GEQ) | (1 << IslaLanguageParser.LEQ) | (1 << IslaLanguageParser.GT) | (1 << IslaLanguageParser.LT))) != 0)):
+                    if not (((_la) & ~0x3f) == 0 and ((1 << _la) & 8729385624704) != 0):
                         break
 
                 self.state = 167
@@ -1565,7 +1565,7 @@ class IslaLanguageParser ( Parser ):
                         self.state = 175
                         localctx.op = self._input.LT(1)
                         _la = self._input.LA(1)
-                        if not(_la==IslaLanguageParser.PLUS or _la==IslaLanguageParser.MINUS):
+                        if not(_la==37 or _la==38):
                             localctx.op = self._errHandler.recoverInline(self)
                         else:
                             self._errHandler.reportMatch(self)
@@ -1584,7 +1584,7 @@ class IslaLanguageParser ( Parser ):
                         self.state = 178
                         localctx.op = self._input.LT(1)
                         _la = self._input.LA(1)
-                        if not((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.DIV) | (1 << IslaLanguageParser.MOD) | (1 << IslaLanguageParser.MUL))) != 0)):
+                        if not(((_la) & ~0x3f) == 0 and ((1 << _la) & 68820140032) != 0):
                             localctx.op = self._errHandler.recoverInline(self)
                         else:
                             self._errHandler.reportMatch(self)
@@ -1603,7 +1603,7 @@ class IslaLanguageParser ( Parser ):
                         self.state = 181
                         localctx.op = self._input.LT(1)
                         _la = self._input.LA(1)
-                        if not((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.T__6) | (1 << IslaLanguageParser.GEQ) | (1 << IslaLanguageParser.LEQ) | (1 << IslaLanguageParser.GT) | (1 << IslaLanguageParser.LT))) != 0)):
+                        if not(((_la) & ~0x3f) == 0 and ((1 << _la) & 8246337208448) != 0):
                             localctx.op = self._errHandler.recoverInline(self)
                         else:
                             self._errHandler.reportMatch(self)
@@ -1671,7 +1671,7 @@ class IslaLanguageParser ( Parser ):
             self.enterOuterAlt(localctx, 1)
             self.state = 188
             _la = self._input.LA(1)
-            if not((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.XPATHEXPR) | (1 << IslaLanguageParser.VAR_TYPE) | (1 << IslaLanguageParser.STRING) | (1 << IslaLanguageParser.ID) | (1 << IslaLanguageParser.INT))) != 0)):
+            if not(((_la) & ~0x3f) == 0 and ((1 << _la) & 1904214016) != 0):
                 self._errHandler.recoverInline(self)
             else:
                 self._errHandler.reportMatch(self)
@@ -1757,7 +1757,7 @@ class IslaLanguageParser ( Parser ):
             self.enterOuterAlt(localctx, 1)
             self.state = 190
             _la = self._input.LA(1)
-            if not((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << IslaLanguageParser.T__6) | (1 << IslaLanguageParser.AND) | (1 << IslaLanguageParser.OR) | (1 << IslaLanguageParser.XOR) | (1 << IslaLanguageParser.IMPLIES_SMT) | (1 << IslaLanguageParser.SMT_INFIX_RE_STR) | (1 << IslaLanguageParser.DIV) | (1 << IslaLanguageParser.MOD) | (1 << IslaLanguageParser.MUL) | (1 << IslaLanguageParser.PLUS) | (1 << IslaLanguageParser.MINUS) | (1 << IslaLanguageParser.GEQ) | (1 << IslaLanguageParser.LEQ) | (1 << IslaLanguageParser.GT) | (1 << IslaLanguageParser.LT))) != 0)):
+            if not(((_la) & ~0x3f) == 0 and ((1 << _la) & 8727477190784) != 0):
                 self._errHandler.recoverInline(self)
             else:
                 self._errHandler.reportMatch(self)

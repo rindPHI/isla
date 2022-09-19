@@ -1,4 +1,6 @@
 import copy
+import functools
+import importlib.resources
 import itertools
 import math
 import re
@@ -709,3 +711,28 @@ class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
         assert isinstance(other, tuple)
         assert callable(other[0])
         return self.lazy_mplus(*other)
+
+
+def chain_functions(
+    functions: Iterable[Callable[[S, ...], MaybeMonadPlus[T]]], *args: S
+) -> MaybeMonadPlus[T]:
+    return functools.reduce(
+        lambda monad, f: (monad + (f, *args)),
+        functions,
+        MaybeMonadPlus.nothing(),
+    )
+
+
+def is_float(num: Any) -> bool:
+    try:
+        float(num)
+        return True
+    except ValueError:
+        return False
+
+
+def get_isla_resource_file_content(path_to_file: str) -> str:
+    traversable = importlib.resources.files("isla").joinpath(path_to_file)
+    with importlib.resources.as_file(traversable) as path:
+        with open(path, "r") as file:
+            return file.read()

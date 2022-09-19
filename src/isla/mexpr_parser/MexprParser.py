@@ -1,4 +1,4 @@
-# Generated from MexprParser.g4 by ANTLR 4.10.1
+# Generated from MexprParser.g4 by ANTLR 4.11.1
 # encoding: utf-8
 from antlr4 import *
 from io import StringIO
@@ -57,7 +57,7 @@ class MexprParser ( Parser ):
 
     def __init__(self, input:TokenStream, output:TextIO = sys.stdout):
         super().__init__(input, output)
-        self.checkVersion("4.10.1")
+        self.checkVersion("4.11.1")
         self._interp = ParserATNSimulator(self, self.atn, self.decisionsToDFA, self.sharedContextCache)
         self._predicates = None
 
@@ -108,7 +108,7 @@ class MexprParser ( Parser ):
                 self.state = 9 
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << MexprParser.BRAOP) | (1 << MexprParser.OPTOP) | (1 << MexprParser.TEXT))) != 0)):
+                if not (((_la) & ~0x3f) == 0 and ((1 << _la) & 14) != 0):
                     break
 
         except RecognitionException as re:
@@ -211,7 +211,7 @@ class MexprParser ( Parser ):
             self.state = 20
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [MexprParser.BRAOP]:
+            if token in [1]:
                 localctx = MexprParser.MatchExprVarContext(self, localctx)
                 self.enterOuterAlt(localctx, 1)
                 self.state = 11
@@ -223,7 +223,7 @@ class MexprParser ( Parser ):
                 self.state = 14
                 self.match(MexprParser.BRACL)
                 pass
-            elif token in [MexprParser.OPTOP]:
+            elif token in [2]:
                 localctx = MexprParser.MatchExprOptionalContext(self, localctx)
                 self.enterOuterAlt(localctx, 2)
                 self.state = 16
@@ -233,7 +233,7 @@ class MexprParser ( Parser ):
                 self.state = 18
                 self.match(MexprParser.OPTCL)
                 pass
-            elif token in [MexprParser.TEXT]:
+            elif token in [3]:
                 localctx = MexprParser.MatchExprCharsContext(self, localctx)
                 self.enterOuterAlt(localctx, 3)
                 self.state = 19

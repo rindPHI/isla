@@ -61,6 +61,7 @@ from isla.helpers import (
     lazystr,
     is_prefix,
     MaybeMonadPlus,
+    chain_functions,
 )
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
@@ -507,10 +508,13 @@ class ISLaSolver:
 
             if self.timeout_seconds is not None:
                 if int(time.time()) - self.start_time > self.timeout_seconds:
+                    self.logger.debug("TIMEOUT")
                     return ISLaSolver.TIMEOUT
 
             if self.solutions:
-                return self.solutions.pop(0)
+                solution = self.solutions.pop(0)
+                self.logger.debug('Found solution "%s"', solution)
+                return solution
 
             cost: int
             state: SolutionState
@@ -539,10 +543,7 @@ class ISLaSolver:
 
             # Apply the first elimination function that is applicable.
             # The later ones are ignored.
-            monad = functools.reduce(
-                lambda monad, elimination_function: (
-                    monad + (elimination_function, state)
-                ),
+            monad = chain_functions(
                 [
                     self.noop_on_false_constraint,
                     self.eliminate_existential_integer_quantifiers,
@@ -556,7 +557,7 @@ class ISLaSolver:
                     self.finish_unconstrained_trees,
                     self.expand,
                 ],
-                MaybeMonadPlus.nothing(),
+                state,
             )
 
             def process_and_extend_solutions(
@@ -567,8 +568,11 @@ class ISLaSolver:
 
             monad.if_present(process_and_extend_solutions)
         if self.solutions:
-            return self.solutions.pop(0)
+            solution = self.solutions.pop(0)
+            self.logger.debug('Found solution "%s"', solution)
+            return solution
         else:
+            self.logger.debug("UNSAT")
             return ISLaSolver.UNSAT
 
     @staticmethod
@@ -2492,7 +2496,7 @@ class ISLaSolver:
             return DerivationTree.from_parse_tree(next(parser.parse(inp))[1][0])
         except SyntaxError as err:
             raise RuntimeError(
-                f'Error parsing "{inp}" as nonterminal "{nonterminal}"', err
+                f'Error parsing "{inp}" starting with "{nonterminal}"', err
             )
 
 
@@ -2689,6 +2693,9 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
         }
 
         num_contributed_potential_k_paths = len(contributed_k_paths)
+
+        if not num_missing_k_paths:
+            return 0
 
         return 1 - weighted_geometric_mean(
             [

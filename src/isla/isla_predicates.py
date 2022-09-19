@@ -1,11 +1,11 @@
 import copy
-import functools
 import random
 from typing import Union, List, Optional, Dict, Tuple, Callable
 
 from grammar_graph.gg import GrammarGraph
 
 from isla import language
+from isla.derivation_tree import DerivationTree
 from isla.existential_helpers import insert_tree, DIRECT_EMBEDDING, SELF_EMBEDDING
 from isla.helpers import (
     delete_unreachable,
@@ -14,6 +14,7 @@ from isla.helpers import (
     is_nonterminal,
     canonical,
     MaybeMonadPlus,
+    chain_functions,
 )
 from isla.language import (
     SemPredEvalResult,
@@ -21,7 +22,6 @@ from isla.language import (
     SemanticPredicate,
     Variable,
 )
-from isla.derivation_tree import DerivationTree
 from isla.parser import EarleyParser
 from isla.type_defs import Grammar, Path, ParseTree
 
@@ -571,19 +571,22 @@ def octal_to_dec(
     def octal_parser(inp):
         return DerivationTree.from_parse_tree(_octal_parser(inp)[0][1][0])
 
-    monad = functools.reduce(
-        lambda monad, elimination_function: (
-            monad + (elimination_function, octal, decimal, octal_parser, decimal_parser)
-        ),
+    monad = chain_functions(
         [
             octal_to_dec_concrete_octal,
             octal_to_dec_concrete_decimal,
             octal_to_dec_both_trees,
         ],
-        MaybeMonadPlus.nothing(),
+        octal,
+        decimal,
+        octal_parser,
+        decimal_parser,
     )
 
-    assert monad.is_present()
+    if not monad.is_present():
+        raise NotImplementedError(
+            f'Could not convert between octal "{octal}" and decimal "{decimal}"'
+        )
     return monad.get()
 
 

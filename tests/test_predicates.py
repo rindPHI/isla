@@ -3,7 +3,6 @@ import random
 import unittest
 
 import pytest
-import z3
 from grammar_graph import gg
 
 from isla import language
@@ -15,7 +14,6 @@ from isla.isla_predicates import (
     embed_tree,
     mk_parser,
     level_check,
-    OCTAL_TO_DEC_PREDICATE,
     is_nth,
     NTH_PREDICATE,
     DIRECT_CHILD_PREDICATE,
@@ -27,7 +25,7 @@ from isla.solver import ISLaSolver
 from isla.type_defs import Path
 from isla_formalizations import tar, rest, scriptsizec
 from isla_formalizations.csv import CSV_GRAMMAR
-from isla_formalizations.tar import TAR_GRAMMAR, octal_conv_grammar
+from isla_formalizations.tar import octal_conv_grammar
 from isla_formalizations.xml_lang import XML_GRAMMAR
 from test_data import LANG_GRAMMAR
 
