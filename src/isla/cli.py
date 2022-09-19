@@ -11,7 +11,7 @@ from grammar_graph import gg
 
 from isla import __version__ as isla_version, language
 from isla.derivation_tree import DerivationTree
-from isla.helpers import is_float, MaybeMonadPlus, get_isla_resource_file_content
+from isla.helpers import is_float, Maybe, get_isla_resource_file_content
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
     STANDARD_SEMANTIC_PREDICATES,
@@ -257,7 +257,7 @@ def parse(stdout, stderr, parser, args):
 
 def do_check(
     stdout, stderr, parser, args
-) -> Tuple[int, str, MaybeMonadPlus[DerivationTree]]:
+) -> Tuple[int, str, Maybe[DerivationTree]]:
     files = read_files(args)
     ensure_grammar_constraint_present(stderr, parser, args, files)
     command = args.command
@@ -273,15 +273,15 @@ def do_check(
         return (
             1,
             f"input could not be parsed ({type(exc).__name__})",
-            MaybeMonadPlus.nothing(),
+            Maybe.nothing(),
         )
 
     solver = ISLaSolver(grammar, constraint)
 
     if solver.evaluate(tree):
-        return 0, "input satisfies the ISLa constraint", MaybeMonadPlus(tree)
+        return 0, "input satisfies the ISLa constraint", Maybe(tree)
     else:
-        return 1, "input does not satisfy the ISLa constraint", MaybeMonadPlus(tree)
+        return 1, "input does not satisfy the ISLa constraint", Maybe(tree)
 
 
 def create(stdout, stderr, parser, args):
