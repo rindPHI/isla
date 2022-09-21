@@ -68,7 +68,7 @@ def main(*args: str, stdout=sys.stdout, stderr=sys.stderr):
 
 def solve(stdout, stderr, parser, args):
     files = read_files(args)
-    ensure_grammar_constraint_present(stderr, parser, args, files)
+    ensure_grammar_present(stderr, parser, args, files)
 
     command = args.command
 
@@ -124,7 +124,7 @@ def fuzz(_, stderr, parser, args):
     status_ending = "_status.txt"
 
     files = read_files(args)
-    ensure_grammar_constraint_present(stderr, parser, args, files)
+    ensure_grammar_present(stderr, parser, args, files)
 
     command = args.command
 
@@ -254,7 +254,8 @@ def parse(stdout, stderr, parser, args):
 
 def do_check(stdout, stderr, parser, args) -> Tuple[int, str, Maybe[DerivationTree]]:
     files = read_files(args)
-    ensure_grammar_constraint_present(stderr, parser, args, files)
+    ensure_grammar_present(stderr, parser, args, files)
+    ensure_constraint_present(stderr, parser, args, files)
     command = args.command
 
     grammar = parse_grammar(command, args.grammar, files, stderr)
@@ -342,9 +343,7 @@ def read_files(args) -> Dict[str, str]:
     return {io_wrapper.name: io_wrapper.read() for io_wrapper in args.files}
 
 
-def ensure_grammar_constraint_present(
-    stderr, parser, args, files: Dict[str, str]
-) -> None:
+def ensure_grammar_present(stderr, parser, args, files: Dict[str, str]) -> None:
     if not args.grammar and all(
         not file.endswith(".bnf") and not file.endswith(".py") for file in files
     ):
@@ -357,6 +356,8 @@ def ensure_grammar_constraint_present(
 
         exit(USAGE_ERROR)
 
+
+def ensure_constraint_present(stderr, parser, args, files: Dict[str, str]) -> None:
     if not args.constraint and all(not file.endswith(".isla") for file in files):
         parser.print_usage(file=stderr)
         print(

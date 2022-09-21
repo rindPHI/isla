@@ -23,7 +23,7 @@ from isla import language
 from isla.derivation_tree import DerivationTree
 from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_ADDITION
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
-from isla.helpers import crange, Exceptional
+from isla.helpers import crange, Exceptional, Maybe
 from isla.isla_predicates import (
     BEFORE_PREDICATE,
     COUNT_PREDICATE,
@@ -444,6 +444,21 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
             ),
             num_solutions=50,
         )
+
+    def test_solve_assgn_lang_without_constraint(self):
+        self.execute_generation_test(
+            max_number_free_instantiations=10,
+            num_solutions=10,
+        )
+
+    def test_solve_assgn_lang_without_constraint_low_free_instantiations(self):
+        try:
+            self.execute_generation_test(
+                max_number_free_instantiations=5,
+                num_solutions=10,
+            )
+        except AssertionError as aerr:
+            self.assertIn("Only found 5 solutions", str(aerr))
 
     def test_declared_before_used_concrete_simplified_syntax(self):
         formula = """
@@ -1057,9 +1072,10 @@ not(
 
         self.assertTrue(
             Exceptional.of(solver.solve)
-            .map(lambda _: False)
-            .recover(lambda e: isinstance(e, StopIteration))
+                .map(lambda _: False)
+                .recover(lambda e: isinstance(e, StopIteration))
         )
+
 
     @pytest.mark.flaky(reruns=3, reruns_delay=2)
     def test_equivalent(self):
@@ -1102,7 +1118,7 @@ not(
 
     def execute_generation_test(
         self,
-        formula: Union[language.Formula, str],
+        formula: language.Formula | str = "true",
         structural_predicates: Set[
             language.StructuralPredicate
         ] = STANDARD_STRUCTURAL_PREDICATES,
@@ -1166,11 +1182,13 @@ not(
                 formula, grammar, structural_predicates, semantic_predicates
             )
 
-        constant = next(
-            c
-            for c in VariablesCollector.collect(formula)
-            if isinstance(c, language.Constant) and not c.is_numeric()
-        )
+        constant = Maybe.from_iterator(
+            (
+                c
+                for c in VariablesCollector.collect(formula)
+                if isinstance(c, language.Constant) and not c.is_numeric()
+            )
+        ).orelse(lambda: start_constant())
 
         def print_tree():
             if debug:

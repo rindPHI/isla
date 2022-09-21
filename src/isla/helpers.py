@@ -673,6 +673,13 @@ class Maybe(Generic[T], MonadPlus[Optional[T]]):
     def bind(self, f: Callable[[T], "Maybe[S]"]) -> "Maybe[S]":
         return self if self.a is None else f(self.a)
 
+    def map(self, f: Callable[[T], S]) -> "Maybe[S]":
+        return self if self.a is None else Maybe(f(self.a))
+
+    def orelse(self, f: Callable[[], S]) -> "Maybe[S]":
+        assert callable(f)
+        return self if self.a is not None else Maybe(f())
+
     @staticmethod
     def nothing() -> "Maybe[T]":
         return Maybe(None)
