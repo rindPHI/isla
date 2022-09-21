@@ -2,4 +2,9 @@
 ---
 
 @import "{{ site.theme }}";
-sup { font-size: smaller; vertical-align: super; } ul { margin-bottom: 0px; }
+
+.wrapper { width: 1090px; }
+header { width: 300px; }
+section { width: 700px; }
+sup { font-size: smaller; vertical-align: super; }
+ul ul { margin-bottom: 0px; }

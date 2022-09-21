@@ -1,4 +1,7 @@
-theme: jekyll-theme-slate
+# theme: jekyll-theme-slate
+remote_theme: pages-themes/minimal@v0.2.0
+plugins:
+- jekyll-remote-theme
 title: The Input Specification Language ISLa
 description: ISLa is a language and solver for checking and generation based on context-sensitive constraints of structured inputs.
 repository: rindphi/isla

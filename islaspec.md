@@ -1,6 +1,53 @@
 ---
 title: "The ISLa Language Specification"
 permalink: /islaspec/
+toc: 
+  <ul>
+    <li><a href="#introduction">Introduction</a></li>
+    <li><a href="#syntax">Syntax</a>
+      <ul>
+        <li><a href="#grammars">Grammars</a></li>
+        <li><a href="#lexer-rules">Lexer Rules</a></li>
+        <li><a href="#parser-rules">Parser Rules</a></li>
+        <li><a href="#match-expression-lexer-rules">Match Expression Lexer Rules</a></li>
+        <li><a href="#match-expression-parser-rules">Match Expression Parser Rules</a></li>
+      </ul>
+    </li>
+    <li><a href="#simplified-syntax">Simplified Syntax</a>
+      <ul>
+        <li><a href="#simplified-syntax-by-example">Simplified Syntax by Example</a></li>
+        <li><a href="#generalized-smt-lib-syntax">Generalized SMT-LIB syntax</a></li>
+        <li><a href="#omission-of-in-start">Omission of <code class="language-plaintext highlighter-rouge">in start</code></a></li>
+        <li><a href="#omission-of-bound-variable-names">Omission of Bound Variable Names</a></li>
+        <li><a href="#free-nonterminals">Free Nonterminals</a></li>
+        <li><a href="#x-path-expressions">X-Path Expressions</a></li>
+      </ul>
+    </li>
+    <li><a href="#semantics">Semantics</a>
+      <ul>
+        <li><a href="#atoms">Atoms</a>
+          <ul>
+            <li><a href="#smt-lib-expressions">SMT-LIB Expressions</a></li>
+            <li><a href="#structural-predicates">Structural Predicates</a></li>
+            <li><a href="#semantic-predicates">Semantic Predicates</a></li>
+          </ul>
+        </li>
+        <li><a href="#propositional-combinators">Propositional Combinators</a></li>
+        <li><a href="#quantifiers">Quantifiers</a>
+          <ul>
+            <li><a href="#tree-quantifiers">Tree Quantifiers</a>
+              <ul>
+                <li><a href="#tree-quantifiers-without-match-expressions">Tree Quantifiers without Match Expressions</a></li>
+                <li><a href="#tree-quantifiers-with-match-expressions">Tree Quantifiers with Match Expressions</a></li>
+              </ul>
+            </li>
+            <li><a href="#numeric-quantifiers">Numeric Quantifiers</a></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+    <li><a href="#footnotes">Footnotes</a></li>
+  </ul>
 ---
 
 # The ISLa Language Specification
@@ -14,40 +61,6 @@ The ISLa version considered in this document is ISLa
 [0.8.16](https://github.com/rindPHI/isla/tree/v0.8.16). Please consult the [ISLa
 CHANGELOG](https://github.com/rindPHI/isla/blob/main/CHANGELOG.md) to find out
 if there were recent additions.
-
-## [Table of Contents](#toc)
-
-
-<!-- vim-markdown-toc GFM -->
-
-- [Introduction](#introduction)
-- [Syntax](#syntax)
-  - [Grammars](#grammars)
-  - [Lexer Rules](#lexer-rules)
-  - [Parser Rules](#parser-rules)
-  - [Match Expression Lexer Rules](#match-expression-lexer-rules)
-  - [Match Expression Parser Rules](#match-expression-parser-rules)
-- [Simplified Syntax](#simplified-syntax)
-  - [Simplified Syntax by Example](#simplified-syntax-by-example)
-  - [Generalized SMT-LIB syntax](#generalized-smt-lib-syntax)
-  - [Omission of `in start`](#omission-of-in-start)
-  - [Omission of Bound Variable Names](#omission-of-bound-variable-names)
-  - [Free Nonterminals](#free-nonterminals)
-  - [X-Path Expressions](#x-path-expressions)
-- [Semantics](#semantics)
-  - [Atoms](#atoms)
-    - [SMT-LIB Expressions](#smt-lib-expressions)
-    - [Structural Predicates](#structural-predicates)
-    - [Semantic Predicates](#semantic-predicates)
-  - [Propositional Combinators](#propositional-combinators)
-  - [Quantifiers](#quantifiers)
-    - [Tree Quantifiers](#tree-quantifiers)
-      - [Tree Quantifiers without Match Expressions](#tree-quantifiers-without-match-expressions)
-      - [Tree Quantifiers with Match Expressions](#tree-quantifiers-with-match-expressions)
-    - [Numeric Quantifiers](#numeric-quantifiers)
-- [Footnotes](#footnotes)
-
-<!-- vim-markdown-toc -->
 
 ## [Introduction](#introduction)
 

@@ -1,7 +1,13 @@
-ISLa: Input Specification Language
-==================================
+---
+toc:
+  <ul>
+    <li><a href="#example">Example</a></li>
+    <li><a href="#further-resources">Further Resources</a></li>
+  </ul>
+---
 
-**_Inputs on Demand!_**
+ISLa: *Inputs on Demand!*
+=========================
 
 ISLa is a *grammar-aware string constraint solver* with its own specification language.
 With ISLa, it is possible to specify *input constraints* like "a variable has to be
@@ -17,39 +23,6 @@ The ISLa *solver* queries Z3 to solve SMT-LIB formulas, and implements a constru
 insertion mechanism for eliminating existential quantifiers. Universal quantifiers and
 structural predicates are solved by a deterministic, heuristic-based search (with a
 configurable cost function).
-
-## Table of Contents
-
-* [ISLa: Input Specification Language](#isla-input-specification-language)
-   * [Further Resources](#further-resources)
-   * [Example](#example)
-   * [Build, Run, Install](#build-run-install)
-      * [Install](#install)
-      * [Docker](#docker)
-      * [Build](#build)
-      * [Testing &amp; Development](#testing--development)
-
-## Further Resources
-
-* Our [**interactive ISLa tutorial**](https://www.fuzzingbook.org/beta/html/FuzzingWithConstraints.html),
-  published as a part of the Fuzzing Book, provides an easily accessible introduction
-  to the specification and generation of custom system inputs using ISLa.
-
-* We published a [**paper on ISLa**](https://publications.cispa.saarland/3596/7/Input%20Invariants.pdf)
-  at ESEC/FSE 2022. The paper describes the ISLa language and solver more formally.
-
-* The [**ISLa Language Specification**](https://rindphi.github.io/isla/islaspec/)
-  precisely specifies the syntax and semantics of ISLa constraints. The specification
-  also contains a list of
-  [supported default predicates](https://rindphi.github.io/isla/islaspec/#structural-predicates).
-
-* In the directory `src/isla_formalizations/`, you find our specifications for the
-  subject languages of our experimental evaluation.
-  
-* The files `run_eval_....fish` are the scripts we used to collect and analyze our
-  evaluation data. To analyze ISLa's current performance yourself, you can run the
-  scripts with the `-h` argument to obtain some guidance on their parameters (the fish
-  shell is required to use these scripts).
 
 ## Example
 
@@ -214,6 +187,29 @@ solver = ISLaSolver(
 for _ in range(100):
     print(solver.solve())
 ```
+
+## Further Resources
+
+* Our [**interactive ISLa tutorial**](https://www.fuzzingbook.org/beta/html/FuzzingWithConstraints.html),
+  published as a part of the Fuzzing Book, provides an easily accessible introduction
+  to the specification and generation of custom system inputs using ISLa.
+
+* We published a [**paper on ISLa**](https://publications.cispa.saarland/3596/7/Input%20Invariants.pdf)
+  at ESEC/FSE 2022. The paper describes the ISLa language and solver more formally.
+
+* The [**ISLa Language Specification**](https://rindphi.github.io/isla/islaspec/)
+  precisely specifies the syntax and semantics of ISLa constraints. The specification
+  also contains a list of
+  [supported default predicates](https://rindphi.github.io/isla/islaspec/#structural-predicates).
+
+* In the directory `src/isla_formalizations/`, you find our specifications for the
+  subject languages of our experimental evaluation.
+  
+* The files `run_eval_....fish` are the scripts we used to collect and analyze our
+  evaluation data. To analyze ISLa's current performance yourself, you can run the
+  scripts with the `-h` argument to obtain some guidance on their parameters (the fish
+  shell is required to use these scripts).
+
 
 ## Build, Run, Install
 
