@@ -41,7 +41,8 @@ from isla.solver import (
     GrammarBasedBlackboxCostComputer,
     quantified_formula_might_match,
     implies,
-    equivalent, SolverTimeout,
+    equivalent,
+    SolverTimeout,
 )
 from isla.type_defs import Grammar
 from isla.z3_helpers import z3_eq
@@ -1072,10 +1073,9 @@ not(
 
         self.assertTrue(
             Exceptional.of(solver.solve)
-                .map(lambda _: False)
-                .recover(lambda e: isinstance(e, StopIteration))
+            .map(lambda _: False)
+            .recover(lambda e: isinstance(e, StopIteration))
         )
-
 
     @pytest.mark.flaky(reruns=3, reruns_delay=2)
     def test_equivalent(self):
@@ -1206,10 +1206,10 @@ not(
             try:
                 assignment = solver.solve()
             except SolverTimeout:
-                print("TIMEOUT")
+                logger.info("TIMEOUT")
                 break
             except StopIteration:
-                print("UNSAT / no more solutions found")
+                logger.info("UNSAT / no more solutions found")
                 break
 
             solutions_found += 1
