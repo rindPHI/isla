@@ -102,8 +102,10 @@ class TestCli(unittest.TestCase):
         grammar_file.close()
 
     def test_solve_assgn_lang(self):
-        grammar_1 = {nt: exp for nt, exp in LANG_GRAMMAR.items() if ord(nt[1]) <= 114}
-        grammar_2 = {nt: exp for nt, exp in LANG_GRAMMAR.items() if ord(nt[1]) > 114}
+        grammar_1 = {nt: exp for nt, exp in LANG_GRAMMAR.items() if
+                     ord(nt[1]) <= 114}
+        grammar_2 = {nt: exp for nt, exp in LANG_GRAMMAR.items() if
+                     ord(nt[1]) > 114}
         self.assertEqual(len(grammar_1), len(grammar_2))
         self.assertEqual(LANG_GRAMMAR, grammar_1 | grammar_2)
 
@@ -137,6 +139,29 @@ exists <assgn> assgn:
         grammar_file_1.close()
         grammar_file_2.close()
         constraint_file.close()
+
+    def test_assgn_lang_no_constraint(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        stdout, stderr, code = run_isla(
+            "solve",
+            grammar_file.name,
+            "-f",
+            50,
+            "-n",
+            -1,
+        )
+
+        self.assertFalse(code)
+        self.assertEqual("UNSAT", stderr)
+        self.assertTrue(stdout)
+
+        grammar_file.close()
+
+        # Assert that we can parse
+        parser = EarleyParser(LANG_GRAMMAR)
+        for solution in stdout.split('\n'):
+            parser.parse(solution)
 
     def test_solve_assgn_lang_additional_constraint(self):
         grammar_file = write_grammar_file(LANG_GRAMMAR)
