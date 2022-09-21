@@ -1687,7 +1687,9 @@ class ISLaSolver:
 
                 new_formula = (
                     instantiated_formula
-                    & self.formula.substitute_expressions({self.top_constant: new_tree})
+                    & self.formula.substitute_expressions(
+                        {self.top_constant.a: new_tree}
+                    )
                     & instantiated_original_constraint
                 )
 
