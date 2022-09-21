@@ -405,9 +405,7 @@ def wellformed_quantified_formula(
         type(formula.in_variable) is BoundVariable
         and formula.in_variable not in bound_vars
     ):
-        return Maybe(
-            (False, f"Unbound variable {formula.in_variable} in {formula}")
-        )
+        return Maybe((False, f"Unbound variable {formula.in_variable} in {formula}"))
     unbound_variables = [
         free_var
         for free_var in formula.free_variables()

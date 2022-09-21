@@ -423,9 +423,13 @@ class ISLaSolver:
         initial_tree = DerivationTree(
             self.top_constant.map(lambda c: c.n_type).orelse(lambda: "<start>").a, None
         )
-        initial_formula = self.top_constant.map(
-            lambda c: self.formula.substitute_expressions({c: initial_tree})
-        ).orelse(lambda: true()).a
+        initial_formula = (
+            self.top_constant.map(
+                lambda c: self.formula.substitute_expressions({c: initial_tree})
+            )
+            .orelse(lambda: true())
+            .a
+        )
         initial_state = SolutionState(initial_formula, initial_tree)
         initial_states = self.establish_invariant(initial_state)
 

@@ -28,9 +28,7 @@ def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
         map(evaluate_z3_expression, expr.children())
     )
 
-    def raise_not_implemented_error(
-        expr: z3.ExprRef, _
-    ) -> Maybe[Z3EvalResult]:
+    def raise_not_implemented_error(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
         logger = logging.getLogger("Z3 evaluation")
         logger.debug("Evaluation of expression %s not implemented.", expr)
         raise NotImplementedError(f"Evaluation of expression {expr} not implemented.")
@@ -112,9 +110,7 @@ def evaluate_z3_rat_value(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
         return Maybe.nothing()
 
     expr: z3.RatVal
-    return Maybe(
-        ((), expr.numerator().as_long() / expr.denominator().as_long())
-    )
+    return Maybe(((), expr.numerator().as_long() / expr.denominator().as_long()))
 
 
 def evaluate_z3_str_to_int(
@@ -208,9 +204,7 @@ def evaluate_z3_re_concat(
     if expr.decl().kind() != z3.Z3_OP_RE_CONCAT:
         return Maybe.nothing()
 
-    return Maybe(
-        construct_result(lambda args: "".join(args), children_results)
-    )
+    return Maybe(construct_result(lambda args: "".join(args), children_results))
 
 
 def evaluate_z3_seq_in_re(
@@ -233,9 +227,7 @@ def evaluate_z3_re_star(
     if expr.decl().kind() != z3.Z3_OP_RE_STAR:
         return Maybe.nothing()
 
-    return Maybe(
-        construct_result(lambda args: f"({args[0]})*", children_results)
-    )
+    return Maybe(construct_result(lambda args: f"({args[0]})*", children_results))
 
 
 def evaluate_z3_re_plus(
@@ -244,9 +236,7 @@ def evaluate_z3_re_plus(
     if expr.decl().kind() != z3.Z3_OP_RE_PLUS:
         return Maybe.nothing()
 
-    return Maybe(
-        construct_result(lambda args: f"({args[0]})+", children_results)
-    )
+    return Maybe(construct_result(lambda args: f"({args[0]})+", children_results))
 
 
 def evaluate_z3_re_option(
@@ -255,9 +245,7 @@ def evaluate_z3_re_option(
     if expr.decl().kind() != z3.Z3_OP_RE_OPTION:
         return Maybe.nothing()
 
-    return Maybe(
-        construct_result(lambda args: f"({args[0]})?", children_results)
-    )
+    return Maybe(construct_result(lambda args: f"({args[0]})?", children_results))
 
 
 def evaluate_z3_re_union(
@@ -341,9 +329,7 @@ def evaluate_z3_eq(
     if not z3.is_eq(expr):
         return Maybe.nothing()
 
-    return Maybe(
-        construct_result(lambda args: args[0] == args[1], children_results)
-    )
+    return Maybe(construct_result(lambda args: args[0] == args[1], children_results))
 
 
 def evaluate_z3_lt(
@@ -352,9 +338,7 @@ def evaluate_z3_lt(
     if not z3.is_lt(expr):
         return Maybe.nothing()
 
-    return Maybe(
-        construct_result(lambda args: args[0] < args[1], children_results)
-    )
+    return Maybe(construct_result(lambda args: args[0] < args[1], children_results))
 
 
 def evaluate_z3_le(
@@ -363,9 +347,7 @@ def evaluate_z3_le(
     if not z3.is_le(expr):
         return Maybe.nothing()
 
-    return Maybe(
-        construct_result(lambda args: args[0] <= args[1], children_results)
-    )
+    return Maybe(construct_result(lambda args: args[0] <= args[1], children_results))
 
 
 def evaluate_z3_gt(
@@ -374,9 +356,7 @@ def evaluate_z3_gt(
     if not z3.is_gt(expr):
         return Maybe.nothing()
 
-    return Maybe(
-        construct_result(lambda args: args[0] > args[1], children_results)
-    )
+    return Maybe(construct_result(lambda args: args[0] > args[1], children_results))
 
 
 def evaluate_z3_ge(
@@ -385,9 +365,7 @@ def evaluate_z3_ge(
     if not z3.is_ge(expr):
         return Maybe.nothing()
 
-    return Maybe(
-        construct_result(lambda args: args[0] >= args[1], children_results)
-    )
+    return Maybe(construct_result(lambda args: args[0] >= args[1], children_results))
 
 
 # Arithmetic Operations
@@ -397,9 +375,7 @@ def evaluate_z3_add(
     if not z3.is_add(expr):
         return Maybe.nothing()
 
-    return Maybe(
-        construct_result(lambda args: args[0] + args[1], children_results)
-    )
+    return Maybe(construct_result(lambda args: args[0] + args[1], children_results))
 
 
 def evaluate_z3_sub(
@@ -408,9 +384,7 @@ def evaluate_z3_sub(
     if not z3.is_sub(expr):
         return Maybe.nothing()
 
-    return Maybe(
-        construct_result(lambda args: args[0] - args[1], children_results)
-    )
+    return Maybe(construct_result(lambda args: args[0] - args[1], children_results))
 
 
 def evaluate_z3_mul(
@@ -419,9 +393,7 @@ def evaluate_z3_mul(
     if not z3.is_mul(expr):
         return Maybe.nothing()
 
-    return Maybe(
-        construct_result(lambda args: args[0] * args[1], children_results)
-    )
+    return Maybe(construct_result(lambda args: args[0] * args[1], children_results))
 
 
 def evaluate_z3_div(
@@ -443,9 +415,7 @@ def evaluate_z3_mod(
     if not z3.is_mod(expr):
         return Maybe.nothing()
 
-    return Maybe(
-        construct_result(lambda args: args[0] % args[1], children_results)
-    )
+    return Maybe(construct_result(lambda args: args[0] % args[1], children_results))
 
 
 def evaluate_z3_pow(
@@ -454,9 +424,7 @@ def evaluate_z3_pow(
     if expr.decl().kind() != z3.Z3_OP_POWER:
         return Maybe.nothing()
 
-    return Maybe(
-        construct_result(lambda args: args[0] ** args[1], children_results)
-    )
+    return Maybe(construct_result(lambda args: args[0] ** args[1], children_results))
 
 
 # String Operations
