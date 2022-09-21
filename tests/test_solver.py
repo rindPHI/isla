@@ -1077,17 +1077,15 @@ not(
             .recover(lambda e: isinstance(e, StopIteration))
         )
 
-    @pytest.mark.flaky(reruns=3, reruns_delay=2)
     def test_equivalent(self):
         f1 = parse_isla('forall <var> var_1 in start: var_1 = "a"')
         f2 = parse_isla('forall <var> var_2 in start: var_2 = "a"')
-        self.assertTrue(equivalent(f1, f2, LANG_GRAMMAR, timeout_seconds=30))
+        self.assertTrue(equivalent(f1, f2, LANG_GRAMMAR, timeout_seconds=60))
 
-    @pytest.mark.flaky(reruns=3, reruns_delay=2)
     def test_implies(self):
         f1 = parse_isla('forall <var> var_1 in start: var_1 = "a"')
         f2 = parse_isla('exists <var> var_2 in start: var_2 = "a"')
-        self.assertTrue(implies(f1, f2, LANG_GRAMMAR, timeout_seconds=30))
+        self.assertTrue(implies(f1, f2, LANG_GRAMMAR, timeout_seconds=60))
 
     def test_negation_previous_smt_solutions(self):
         # See issue https://github.com/rindPHI/isla/issues/4 --- there should
