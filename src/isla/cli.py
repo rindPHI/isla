@@ -103,7 +103,7 @@ def solve(stdout, stderr, parser, args):
 
             try:
                 result = solver.solve()
-                
+
                 if not output_dir:
                     print(result, flush=True, file=stdout)
                 else:
