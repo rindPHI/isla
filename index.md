@@ -18,6 +18,17 @@ insertion mechanism for eliminating existential quantifiers. Universal quantifie
 structural predicates are solved by a deterministic, heuristic-based search (with a
 configurable cost function).
 
+## Table of Contents
+
+* [ISLa: Input Specification Language](#isla-input-specification-language)
+   * [Further Resources](#further-resources)
+   * [Example](#example)
+   * [Build, Run, Install](#build-run-install)
+      * [Install](#install)
+      * [Docker](#docker)
+      * [Build](#build)
+      * [Testing &amp; Development](#testing--development)
+
 ## Further Resources
 
 * Our [**interactive ISLa tutorial**](https://www.fuzzingbook.org/beta/html/FuzzingWithConstraints.html),
