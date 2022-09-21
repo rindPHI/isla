@@ -160,7 +160,10 @@ def fuzz(_, stderr, parser, args):
     try:
         num_solutions = args.num_solutions
         i = 0
-        while 0 < num_solutions <= i:
+        while True:
+            if 0 < num_solutions <= i:
+                break
+                
             istr = str(i).rjust(4, "0")
 
             try:
