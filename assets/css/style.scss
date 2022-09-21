@@ -8,3 +8,17 @@ header { width: 300px; }
 section { width: 700px; }
 sup { font-size: smaller; vertical-align: super; }
 ul ul { margin-bottom: 0px; }
+
+@media print, screen and (max-width: 960px) {
+  header ul {
+    position: unset;
+    right: unset;
+    top: unset;
+  }
+}
+
+@media print, screen and (max-width: 720px) {
+  header ul, header p.view {
+    position: unset;
+  }
+}
