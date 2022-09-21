@@ -97,10 +97,7 @@ def solve(stdout, stderr, parser, args):
     try:
         num_solutions = args.num_solutions
         i = 0
-        while True:
-            if 0 < num_solutions <= i:
-                break
-
+        while not (0 < num_solutions <= i):
             try:
                 result = solver.solve()
 
@@ -160,10 +157,7 @@ def fuzz(_, stderr, parser, args):
     try:
         num_solutions = args.num_solutions
         i = 0
-        while True:
-            if 0 < num_solutions <= i:
-                break
-                
+        while not (0 < num_solutions <= i):
             istr = str(i).rjust(4, "0")
 
             try:
