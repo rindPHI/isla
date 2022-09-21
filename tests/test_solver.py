@@ -41,7 +41,7 @@ from isla.solver import (
     GrammarBasedBlackboxCostComputer,
     quantified_formula_might_match,
     implies,
-    equivalent,
+    equivalent, SolverTimeout,
 )
 from isla.type_defs import Grammar
 from isla.z3_helpers import z3_eq
@@ -1203,14 +1203,13 @@ not(
 
         solutions_found = 0
         for idx in range(num_solutions):
-            assignment = solver.solve()
-
-            if not isinstance(assignment, DerivationTree):
-                if assignment == ISLaSolver.UNSAT:
-                    print("UNSAT / no more solutions found")
-                else:
-                    assert assignment == ISLaSolver.TIMEOUT
-                    print("TIMEOUT")
+            try:
+                assignment = solver.solve()
+            except SolverTimeout:
+                print("TIMEOUT")
+                break
+            except StopIteration:
+                print("UNSAT / no more solutions found")
                 break
 
             solutions_found += 1
