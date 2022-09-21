@@ -12,7 +12,6 @@ from abc import ABC
 from dataclasses import dataclass
 from functools import reduce, lru_cache
 from typing import (
-    Generator,
     Dict,
     List,
     Set,
@@ -62,6 +61,7 @@ from isla.helpers import (
     is_prefix,
     Maybe,
     chain_functions,
+    Exceptional,
 )
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
@@ -230,9 +230,6 @@ class ISLaSolver:
     """
     The solver class for ISLa formulas/constraints. Main methods: `solve()` and `evaluate()`.
     """
-
-    UNSAT = 0
-    TIMEOUT = 1
 
     def __init__(
         self,
@@ -471,17 +468,17 @@ class ISLaSolver:
         assert isinstance(inp, DerivationTree)
         return evaluate(self.formula, inp, self.grammar)
 
-    def solve(self) -> DerivationTree | int:
+    def solve(self) -> DerivationTree:
         """
-        Attempts to compute a solution to the given ISLa formula. Returns that solution, if any.
-        This function can be called repeatedly to obtain more solutions until `ISLaSolver.TIMEOUT`
-        or `ISLaSolver.UNSAT` is returned. After that, only `TIMEOUT` or `UNSAT` will be returned
-        at each call.
+        Attempts to compute a solution to the given ISLa formula. Returns that solution,
+        if any. This function can be called repeatedly to obtain more solutions until
+        one of two exception types is raised: A `StopIteration` indicates that no more
+        solution can be found; a `SolverTimeout` is raised if a timeout occurred.
+        After that, an exception will be raised every time.
 
         The timeout can be controlled by the `timeout_seconds` constructor parameter.
 
-        :return: A solution for the ISLa formula passed to the `ISLaSolver`, or `ISLaSolver.TIMEOUT` (if
-        a timeout occurred) or `ISLaSolver.UNSAT` if no more solutions or none at all could be found.
+        :return: A solution for the ISLa formula passed to the `ISLaSolver`.
         """
         if self.timeout_seconds is not None and self.start_time is None:
             self.start_time = int(time.time())
@@ -501,7 +498,7 @@ class ISLaSolver:
             if self.timeout_seconds is not None:
                 if int(time.time()) - self.start_time > self.timeout_seconds:
                     self.logger.debug("TIMEOUT")
-                    return ISLaSolver.TIMEOUT
+                    raise TimeoutError(self.timeout_seconds)
 
             if self.solutions:
                 solution = self.solutions.pop(0)
@@ -565,7 +562,7 @@ class ISLaSolver:
             return solution
         else:
             self.logger.debug("UNSAT")
-            return ISLaSolver.UNSAT
+            raise StopIteration()
 
     @staticmethod
     def noop_on_false_constraint(
@@ -2135,14 +2132,9 @@ class ISLaSolver:
                     self.start_time = int(time.time())
                     self.timeout_seconds = 2
 
-                    result = self.solve()
-
-                    self.start_time = old_start_time
-                    self.timeout_seconds = old_timeout_seconds
-                    self.queue = old_queue
-                    self.solutions = old_solutions
-
-                    if result == ISLaSolver.UNSAT:
+                    try:
+                        self.solve()
+                    except StopIteration:
                         new_states.remove(new_state)
                         self.logger.debug(
                             "Dropping state %s, unsatisfiable existential formula %s",
@@ -2150,6 +2142,11 @@ class ISLaSolver:
                             existential_formula,
                         )
                         break
+                    finally:
+                        self.start_time = old_start_time
+                        self.timeout_seconds = old_timeout_seconds
+                        self.queue = old_queue
+                        self.solutions = old_solutions
 
             self.currently_unsat_checking = False
 
@@ -2952,7 +2949,12 @@ def implies(
     solver = ISLaSolver(
         grammar, f1 & -f2, activate_unsat_support=True, timeout_seconds=timeout_seconds
     )
-    return solver.solve() == ISLaSolver.UNSAT
+
+    return (
+        Exceptional.of(solver.solve)
+        .map(lambda _: False)
+        .recover(lambda e: isinstance(e, StopIteration))
+    ).a
 
 
 def equivalent(
@@ -2964,4 +2966,9 @@ def equivalent(
         activate_unsat_support=True,
         timeout_seconds=timeout_seconds,
     )
-    return solver.solve() == ISLaSolver.UNSAT
+
+    return (
+        Exceptional.of(solver.solve)
+        .map(lambda _: False)
+        .recover(lambda e: isinstance(e, StopIteration))
+    ).a

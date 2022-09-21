@@ -101,17 +101,18 @@ def solve(stdout, stderr, parser, args):
             if 0 < num_solutions <= i:
                 break
 
-            result = solver.solve()
-            if isinstance(result, DerivationTree):
+            try:
+                result = solver.solve()
+
                 if not output_dir:
                     print(result, flush=True, file=stdout)
                 else:
                     with open(os.path.join(output_dir, f"{i}.txt"), "wb") as out_file:
                         out_file.write(str(result).encode("utf-8"))
-            else:
-                assert result == ISLaSolver.TIMEOUT or result == ISLaSolver.UNSAT
-                if result == ISLaSolver.UNSAT:
-                    print("UNSAT", flush=True, file=stderr)
+            except StopIteration:
+                print("UNSAT", flush=True, file=stderr)
+                break
+            except TimeoutError:
                 break
 
             i += 1
@@ -164,54 +165,56 @@ def fuzz(stdout, stderr, parser, args):
                 break
 
             istr = str(i).rjust(4, "0")
-            result = solver.solve()
-            if isinstance(result, DerivationTree):
-                # Write input file
-                with open(
-                    os.path.join(output_dir, f"{istr}{input_ending}"), "wb"
-                ) as inp_file:
-                    inp_file.write(str(result).encode("utf-8"))
-                    inp_file.seek(0)
-                    inp_file_name = inp_file.name
 
-                try:
-                    # Execute fuzz target
-                    result = subprocess.run(
-                        inst_fuzz_command(inp_file_name),
-                        shell=True,
-                        capture_output=True,
-                        check=True,
-                        text=True,
-                    )
-
-                    standard_output = result.stdout
-                    error_output = result.stderr
-                    return_code = result.returncode
-                except subprocess.CalledProcessError as cpe:
-                    standard_output = cpe.stdout
-                    error_output = cpe.stderr
-                    return_code = cpe.returncode
-
-                # Write results
-                with open(
-                    os.path.join(output_dir, f"{istr}{stdout_ending}"), "wb"
-                ) as stdout_file:
-                    stdout_file.write(standard_output.encode("utf-8"))
-
-                with open(
-                    os.path.join(output_dir, f"{istr}{stderr_ending}"), "wb"
-                ) as stderr_file:
-                    stderr_file.write(error_output.encode("utf-8"))
-
-                with open(
-                    os.path.join(output_dir, f"{istr}{status_ending}"), "wb"
-                ) as stat_file:
-                    stat_file.write(str(return_code).encode("utf-8"))
-            else:
-                assert result == ISLaSolver.TIMEOUT or result == ISLaSolver.UNSAT
-                if result == ISLaSolver.UNSAT:
-                    print("UNSAT", flush=True, file=stderr)
+            try:
+                result = solver.solve()
+            except StopIteration:
+                print("UNSAT", flush=True, file=stderr)
                 break
+            except TimeoutError:
+                break
+
+            # Write input file
+            with open(
+                os.path.join(output_dir, f"{istr}{input_ending}"), "wb"
+            ) as inp_file:
+                inp_file.write(str(result).encode("utf-8"))
+                inp_file.seek(0)
+                inp_file_name = inp_file.name
+
+            try:
+                # Execute fuzz target
+                result = subprocess.run(
+                    inst_fuzz_command(inp_file_name),
+                    shell=True,
+                    capture_output=True,
+                    check=True,
+                    text=True,
+                )
+
+                standard_output = result.stdout
+                error_output = result.stderr
+                return_code = result.returncode
+            except subprocess.CalledProcessError as cpe:
+                standard_output = cpe.stdout
+                error_output = cpe.stderr
+                return_code = cpe.returncode
+
+            # Write results
+            with open(
+                os.path.join(output_dir, f"{istr}{stdout_ending}"), "wb"
+            ) as stdout_file:
+                stdout_file.write(standard_output.encode("utf-8"))
+
+            with open(
+                os.path.join(output_dir, f"{istr}{stderr_ending}"), "wb"
+            ) as stderr_file:
+                stderr_file.write(error_output.encode("utf-8"))
+
+            with open(
+                os.path.join(output_dir, f"{istr}{status_ending}"), "wb"
+            ) as stat_file:
+                stat_file.write(str(return_code).encode("utf-8"))
 
             i += 1
     except KeyboardInterrupt:

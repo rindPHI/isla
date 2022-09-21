@@ -7,6 +7,7 @@ import re
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import IntEnum
 from functools import lru_cache
 from typing import (
     Set,
@@ -24,6 +25,7 @@ from typing import (
     Optional,
     Generic,
     Iterator,
+    Type,
 )
 
 from isla.type_defs import (
@@ -686,9 +688,7 @@ class Maybe(Generic[T], MonadPlus[Optional[T]]):
     def mplus(self, other: "Maybe[T]") -> "Maybe[T]":
         return other if self.a is None else self
 
-    def lazy_mplus(
-        self, f: Callable[[S, ...], "Maybe[T]"], *args: S
-    ) -> "Maybe[T]":
+    def lazy_mplus(self, f: Callable[[S, ...], "Maybe[T]"], *args: S) -> "Maybe[T]":
         return f(*args) if self.a is None else self
 
     def if_present(self, f: Callable[[T], None]) -> None:
@@ -719,6 +719,62 @@ class Maybe(Generic[T], MonadPlus[Optional[T]]):
         assert isinstance(other, tuple)
         assert callable(other[0])
         return self.lazy_mplus(*other)
+
+
+E = TypeVar("E", bound=Exception)
+
+
+@dataclass(frozen=True)
+class Exceptional(Generic[E, T], Monad[T]):
+    @staticmethod
+    def of(f: Callable[[], T]) -> "Exceptional[E, T]":
+        try:
+            return Success(f())
+        except Exception as exc:
+            return Failure(exc)
+
+    @abstractmethod
+    def map(self, f: Callable[[T], S]) -> "Exceptional[S]":
+        pass
+
+    @abstractmethod
+    def recover(
+        self, f: Callable[[E], T], t: Type[E] = BaseException
+    ) -> "Exceptional[E, T]":
+        pass
+
+
+@dataclass(frozen=True)
+class Success(Generic[T], Exceptional[Exception, T]):
+    a: T
+
+    def bind(self, f: Callable[[T], "Exceptional[S]"]) -> "Exceptional[S]":
+        return f(self.a)
+
+    def map(self, f: Callable[[T], S]) -> "Exceptional[S]":
+        return Exceptional.of(lambda: f(self.a))
+
+    def recover(self, _, __=BaseException) -> "Success[T]":
+        return self
+
+
+@dataclass(frozen=True)
+class Failure(Generic[E], Exceptional[E, Any]):
+    a: E
+
+    def bind(self, _) -> "Exceptional[T]":
+        return self
+
+    def map(self, _) -> "Exceptional[S]":
+        return self
+
+    def recover(
+        self, f: Callable[[E], T], t: Type[E] = BaseException
+    ) -> "Exceptional[E, T]":
+        if isinstance(self.a, t):
+            return Exceptional.of(lambda: f(self.a))
+        else:
+            return self
 
 
 def chain_functions(
