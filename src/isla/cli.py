@@ -120,7 +120,7 @@ def solve(stdout, stderr, parser, args):
         sys.exit(0)
 
 
-def fuzz(stdout, stderr, parser, args):
+def fuzz(_, stderr, parser, args):
     input_ending = "_input.txt"
     stdout_ending = "_stdout.txt"
     stderr_ending = "_stderr.txt"
@@ -160,10 +160,7 @@ def fuzz(stdout, stderr, parser, args):
     try:
         num_solutions = args.num_solutions
         i = 0
-        while True:
-            if 0 < num_solutions <= i:
-                break
-
+        while 0 < num_solutions <= i:
             istr = str(i).rjust(4, "0")
 
             try:
@@ -184,7 +181,7 @@ def fuzz(stdout, stderr, parser, args):
 
             try:
                 # Execute fuzz target
-                result = subprocess.run(
+                target_result = subprocess.run(
                     inst_fuzz_command(inp_file_name),
                     shell=True,
                     capture_output=True,
@@ -192,9 +189,9 @@ def fuzz(stdout, stderr, parser, args):
                     text=True,
                 )
 
-                standard_output = result.stdout
-                error_output = result.stderr
-                return_code = result.returncode
+                standard_output = target_result.stdout
+                error_output = target_result.stderr
+                return_code = target_result.returncode
             except subprocess.CalledProcessError as cpe:
                 standard_output = cpe.stdout
                 error_output = cpe.stderr
@@ -258,9 +255,7 @@ def parse(stdout, stderr, parser, args):
     maybe_tree.if_present(write_tree)
 
 
-def do_check(
-    stdout, stderr, parser, args
-) -> Tuple[int, str, Maybe[DerivationTree]]:
+def do_check(stdout, stderr, parser, args) -> Tuple[int, str, Maybe[DerivationTree]]:
     files = read_files(args)
     ensure_grammar_constraint_present(stderr, parser, args, files)
     command = args.command

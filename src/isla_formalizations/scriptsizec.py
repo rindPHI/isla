@@ -4,19 +4,17 @@ import tempfile
 from subprocess import PIPE
 from typing import Union
 
-
 import isla.derivation_tree
-from isla import language
 
 # Based on:
 # Kartik Talwar. Tiny-C Compiler. https://gist.github.com/KartikTalwar/3095780.
 from isla.helpers import srange
-from isla.language import parse_isla
 from isla.isla_predicates import (
     BEFORE_PREDICATE,
     SAME_POSITION_PREDICATE,
     LEVEL_PREDICATE,
 )
+from isla.language import parse_isla
 
 SCRIPTSIZE_C_GRAMMAR = {
     "<start>": ["<statement>"],

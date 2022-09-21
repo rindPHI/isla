@@ -7,7 +7,6 @@ import re
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import IntEnum
 from functools import lru_cache
 from typing import (
     Set,

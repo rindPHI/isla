@@ -109,17 +109,28 @@ class SolutionState:
         if not self.tree.is_complete():
             return False
 
-        # We assume that any universal quantifier has already been instantiated, if it matches,
-        # and is thus satisfied, or another unsatisfied constraint resulted from the instantiation.
-        # Existential, predicate, and SMT formulas have to be eliminated first.
+        # We assume that any universal quantifier has already been instantiated, if it
+        # matches, and is thus satisfied, or another unsatisfied constraint resulted
+        # from the instantiation. Existential, predicate, and SMT formulas have to be
+        # eliminated first.
 
-        # return any(all(not isinstance(conjunct, language.StructuralPredicateFormula)
-        #                and (not isinstance(conjunct, language.SMTFormula) or conjunct == sc.true())
-        #                and not isinstance(conjunct, language.SemanticPredicateFormula)
-        #                and not isinstance(conjunct, language.ExistsFormula)
-        #                and (not isinstance(conjunct, language.ForallFormula) or len(conjunct.already_matched) > 0)
-        #                for conjunct in split_conjunction(disjunct))
-        #            for disjunct in split_disjunction(self.constraint))
+        # return any(
+        #     all(
+        #         not isinstance(conjunct, language.StructuralPredicateFormula)
+        #         and (
+        #             not isinstance(conjunct, language.SMTFormula)
+        #             or conjunct == sc.true()
+        #         )
+        #         and not isinstance(conjunct, language.SemanticPredicateFormula)
+        #         and not isinstance(conjunct, language.ExistsFormula)
+        #         and (
+        #             not isinstance(conjunct, language.ForallFormula)
+        #             or len(conjunct.already_matched) > 0
+        #         )
+        #         for conjunct in split_conjunction(disjunct)
+        #     )
+        #     for disjunct in split_disjunction(self.constraint)
+        # )
 
         return self.constraint == sc.true()
 

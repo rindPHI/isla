@@ -613,9 +613,7 @@ def octal_to_dec_concrete_octal(
     for idx, digit in enumerate(reversed(octal_str)):
         decimal_number += (8**idx) * int(digit)
 
-    return Maybe(
-        SemPredEvalResult({decimal: decimal_parser(str(decimal_number))})
-    )
+    return Maybe(SemPredEvalResult({decimal: decimal_parser(str(decimal_number))}))
 
 
 def octal_to_dec_concrete_decimal(
@@ -656,9 +654,7 @@ def octal_to_dec_both_trees(
     decimal_number = int(str(decimal))
     octal_number = int(str(octal))
 
-    return Maybe(
-        SemPredEvalResult(int(oct(octal_number)[2:]) == decimal_number)
-    )
+    return Maybe(SemPredEvalResult(int(oct(octal_number)[2:]) == decimal_number))
 
 
 def OCTAL_TO_DEC_PREDICATE(graph, octal_start, decimal_start):

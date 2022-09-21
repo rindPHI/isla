@@ -2208,9 +2208,7 @@ def convert_to_nnf(formula: Formula, negate=False) -> Formula:
     )
 
 
-def convert_negated_formula_to_nnf(
-    formula: Formula, negate: bool
-) -> Maybe[Formula]:
+def convert_negated_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
     if not isinstance(formula, NegatedFormula):
         return Maybe.nothing()
 
@@ -2254,9 +2252,7 @@ def convert_structural_predicate_formula_to_nnf(
     return Maybe(-formula if negate else formula)
 
 
-def convert_smt_formula_to_nnf(
-    formula: Formula, negate: bool
-) -> Maybe[Formula]:
+def convert_smt_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
     if not isinstance(formula, SMTFormula):
         return Maybe.nothing()
 
@@ -2290,9 +2286,7 @@ def convert_smt_formula_to_nnf(
     )
 
 
-def convert_exists_int_formula_to_nnf(
-    formula: Formula, negate: bool
-) -> Maybe[Formula]:
+def convert_exists_int_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
     if not isinstance(formula, ExistsIntFormula) and not isinstance(
         formula, ForallIntFormula
     ):
@@ -2312,9 +2306,7 @@ def convert_exists_int_formula_to_nnf(
         return Maybe(ForallIntFormula(formula.bound_variable, inner_formula))
 
 
-def convert_quantified_formula_to_nnf(
-    formula: Formula, negate: bool
-) -> Maybe[Formula]:
+def convert_quantified_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
     if not isinstance(formula, QuantifiedFormula):
         return Maybe.nothing()
 
@@ -2571,12 +2563,12 @@ class VariableManager:
         return formula.substitute_variables(
             {
                 ph_var: (
-                        Maybe.from_iterator(
+                    Maybe.from_iterator(
                         var
                         for var_name, var in self.variables.items()
                         if var_name == ph_name
                     )
-                        + Maybe(ph_var)
+                    + Maybe(ph_var)
                 ).get()
                 for ph_name, ph_var in self.placeholders.items()
             }
@@ -4170,9 +4162,7 @@ def parse_peg(
     )
     try:
         result = DerivationTree.from_parse_tree(peg_parser.parse(inp)[0])
-        return Maybe(
-            result if in_nonterminal == "<start>" else result.children[0]
-        )
+        return Maybe(result if in_nonterminal == "<start>" else result.children[0])
     except Exception:
         return Maybe.nothing()
 
@@ -4187,9 +4177,7 @@ def parse_earley(
 
     try:
         result = DerivationTree.from_parse_tree(next(earley_parser.parse(inp)))
-        return Maybe(
-            result if in_nonterminal == "<start>" else result.children[0]
-        )
+        return Maybe(result if in_nonterminal == "<start>" else result.children[0])
     except SyntaxError:
         return Maybe.nothing()
 
