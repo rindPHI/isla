@@ -49,7 +49,7 @@ from isla.helpers import (
     grammar_to_mutable,
     list_set,
     is_prefix,
-    MaybeMonadPlus,
+    Maybe,
     chain_functions,
 )
 from isla.helpers import (
@@ -269,7 +269,7 @@ class BindExpression:
         bound_elements: Tuple[BoundVariable, ...],
         in_nonterminal: str,
         immutable_grammar: ImmutableGrammar,
-    ) -> MaybeMonadPlus[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
+    ) -> Maybe[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
         flattened_bind_expr_str = "".join(
             map(
                 lambda elem: f"{{{elem.n_type} {elem.name}}}"
@@ -286,7 +286,7 @@ class BindExpression:
                 "test case where this behavior is intended, it should probably be investigated.",
                 flattened_bind_expr_str,
             )
-            return MaybeMonadPlus.nothing()
+            return Maybe.nothing()
 
         tree = maybe_tree.get()
 
@@ -373,7 +373,7 @@ class BindExpression:
             for leaf_path, _ in tree.leaves()
         )
 
-        return MaybeMonadPlus((match_expr_tree, consolidated_matches))
+        return Maybe((match_expr_tree, consolidated_matches))
 
     def match(
         self, tree: DerivationTree, grammar: Grammar
@@ -2208,57 +2208,53 @@ def convert_to_nnf(formula: Formula, negate=False) -> Formula:
     )
 
 
-def convert_negated_formula_to_nnf(
-    formula: Formula, negate: bool
-) -> MaybeMonadPlus[Formula]:
+def convert_negated_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
     if not isinstance(formula, NegatedFormula):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
-    return MaybeMonadPlus(convert_to_nnf(formula.args[0], not negate))
+    return Maybe(convert_to_nnf(formula.args[0], not negate))
 
 
 def convert_conjunctive_formula_to_nnf(
     formula: Formula, negate: bool
-) -> MaybeMonadPlus[Formula]:
+) -> Maybe[Formula]:
     if not isinstance(formula, ConjunctiveFormula):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     args = [convert_to_nnf(arg, negate) for arg in formula.args]
     if negate:
-        return MaybeMonadPlus(reduce(lambda a, b: a | b, args))
+        return Maybe(reduce(lambda a, b: a | b, args))
     else:
-        return MaybeMonadPlus(reduce(lambda a, b: a & b, args))
+        return Maybe(reduce(lambda a, b: a & b, args))
 
 
 def convert_disjunctive_formula_to_nnf(
     formula: Formula, negate: bool
-) -> MaybeMonadPlus[Formula]:
+) -> Maybe[Formula]:
     if not isinstance(formula, DisjunctiveFormula):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     args = [convert_to_nnf(arg, negate) for arg in formula.args]
     if negate:
-        return MaybeMonadPlus(reduce(lambda a, b: a & b, args))
+        return Maybe(reduce(lambda a, b: a & b, args))
     else:
-        return MaybeMonadPlus(reduce(lambda a, b: a | b, args))
+        return Maybe(reduce(lambda a, b: a | b, args))
 
 
 def convert_structural_predicate_formula_to_nnf(
     formula: Formula, negate: bool
-) -> MaybeMonadPlus[Formula]:
+) -> Maybe[Formula]:
     if not isinstance(formula, StructuralPredicateFormula) and not isinstance(
         formula, SemanticPredicateFormula
     ):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
-    return MaybeMonadPlus(-formula if negate else formula)
+    return Maybe(-formula if negate else formula)
 
 
-def convert_smt_formula_to_nnf(
-    formula: Formula, negate: bool
-) -> MaybeMonadPlus[Formula]:
+def convert_smt_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
     if not isinstance(formula, SMTFormula):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     negated_smt_formula = z3_push_in_negations(formula.formula, negate)
     # Automatic simplification can remove free variables from the formula!
@@ -2279,7 +2275,7 @@ def convert_smt_formula_to_nnf(
         if var.to_smt() in actual_symbols
     }
 
-    return MaybeMonadPlus(
+    return Maybe(
         SMTFormula(
             negated_smt_formula,
             *free_variables,
@@ -2290,13 +2286,11 @@ def convert_smt_formula_to_nnf(
     )
 
 
-def convert_exists_int_formula_to_nnf(
-    formula: Formula, negate: bool
-) -> MaybeMonadPlus[Formula]:
+def convert_exists_int_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
     if not isinstance(formula, ExistsIntFormula) and not isinstance(
         formula, ForallIntFormula
     ):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     inner_formula = (
         convert_to_nnf(formula.inner_formula, negate)
@@ -2307,16 +2301,14 @@ def convert_exists_int_formula_to_nnf(
     if (isinstance(formula, ForallIntFormula) and negate) or (
         isinstance(formula, ExistsIntFormula) and not negate
     ):
-        return MaybeMonadPlus(ExistsIntFormula(formula.bound_variable, inner_formula))
+        return Maybe(ExistsIntFormula(formula.bound_variable, inner_formula))
     else:
-        return MaybeMonadPlus(ForallIntFormula(formula.bound_variable, inner_formula))
+        return Maybe(ForallIntFormula(formula.bound_variable, inner_formula))
 
 
-def convert_quantified_formula_to_nnf(
-    formula: Formula, negate: bool
-) -> MaybeMonadPlus[Formula]:
+def convert_quantified_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
     if not isinstance(formula, QuantifiedFormula):
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
     inner_formula = (
         convert_to_nnf(formula.inner_formula, negate)
@@ -2330,7 +2322,7 @@ def convert_quantified_formula_to_nnf(
     if (isinstance(formula, ForallFormula) and negate) or (
         isinstance(formula, ExistsFormula) and not negate
     ):
-        return MaybeMonadPlus(
+        return Maybe(
             ExistsFormula(
                 formula.bound_variable,
                 formula.in_variable,
@@ -2339,7 +2331,7 @@ def convert_quantified_formula_to_nnf(
             )
         )
     else:
-        return MaybeMonadPlus(
+        return Maybe(
             ForallFormula(
                 formula.bound_variable,
                 formula.in_variable,
@@ -2555,25 +2547,29 @@ class VariableManager:
         isla_variables = [self._var(str(z3_symbol), None) for z3_symbol in z3_symbols]
         return SMTFormula(formula, *isla_variables)
 
-    def create(self, formula: Formula) -> Formula:
-        undeclared_variables = [
-            ph_name
-            for ph_name in self.placeholders
-            if all(var_name != ph_name for var_name in self.variables)
-        ]
+    def create(self, formula: Formula, safe=True) -> Formula:
+        if safe:
+            undeclared_variables = [
+                ph_name
+                for ph_name in self.placeholders
+                if all(var_name != ph_name for var_name in self.variables)
+            ]
 
-        if undeclared_variables:
-            raise RuntimeError(
-                "Undeclared variables: " + ", ".join(undeclared_variables)
-            )
+            if undeclared_variables:
+                raise RuntimeError(
+                    "Undeclared variables: " + ", ".join(undeclared_variables)
+                )
 
         return formula.substitute_variables(
             {
-                ph_var: next(
-                    var
-                    for var_name, var in self.variables.items()
-                    if var_name == ph_name
-                )
+                ph_var: (
+                    Maybe.from_iterator(
+                        var
+                        for var_name, var in self.variables.items()
+                        if var_name == ph_name
+                    )
+                    + Maybe(ph_var)
+                ).get()
                 for ph_name, ph_var in self.placeholders.items()
             }
         )
@@ -2890,7 +2886,7 @@ class AddMexprTransformer(NoopFormulaTransformer):
         new_tree: DerivationTree,
         new_var: BoundVariable,
         new_path: Path,
-    ) -> MaybeMonadPlus[Tuple[DerivationTree]]:
+    ) -> Maybe[Tuple[DerivationTree]]:
         # Take the more specific path. They should not conflict,
         # i.e., have a common sub-path pointing to the same nonterminal.
 
@@ -2901,13 +2897,13 @@ class AddMexprTransformer(NoopFormulaTransformer):
                 != new_tree.get_subtree(new_path[:idx]).value
                 for idx in range(len(new_path))
             ):
-                return MaybeMonadPlus.nothing()
+                return Maybe.nothing()
 
             if not isinstance(new_var, DummyVariable):
                 if merged_tree.get_subtree(new_path).children:
-                    return MaybeMonadPlus.nothing()
+                    return Maybe.nothing()
 
-            return MaybeMonadPlus(merged_tree)
+            return Maybe(merged_tree)
         else:
             # `new_tree` has a longer (or as long) path.
             # First, find the valid prefix in `resulting_tree`.
@@ -2921,9 +2917,9 @@ class AddMexprTransformer(NoopFormulaTransformer):
                 != new_tree.get_subtree(valid_path[:idx]).value
                 for idx in range(len(valid_path))
             ):
-                return MaybeMonadPlus.nothing()
+                return Maybe.nothing()
 
-            return MaybeMonadPlus(
+            return Maybe(
                 merged_tree.replace_path(valid_path, new_tree.get_subtree(valid_path))
             )
 
@@ -3410,14 +3406,15 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         if ctx.varId:
             var_id = parse_tree_text(ctx.varId)
 
-            if self.mgr.var_declared(var_id):
-                raise SyntaxError(
-                    f"Variable {var_id} already declared "
-                    f"(line {ctx.varId.line}, column {ctx.varId.column})"
-                )
+            # if self.mgr.var_declared(var_id):
+            #     raise SyntaxError(
+            #         f"Variable {var_id} already declared "
+            #         f"(line {ctx.varId.line}, column {ctx.varId.column})"
+            #     )
         else:
             var = self.register_var_for_free_nonterminal(var_type)
-            # This "free" nonterminal is bound now; remove it from the free nonterminals map.
+            # This "free" nonterminal is bound now; remove it from
+            # the free nonterminals map.
             del self.vars_for_free_nonterminals[var_type]
             # ... and the XPath expressions map.
             for segments, final_var in list(self.vars_for_xpath_expressions.items()):
@@ -3438,11 +3435,14 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         else:
             in_var = start_constant()
 
-        self.formulas[ctx] = (ForallFormula if is_forall else ExistsFormula)(
-            self.get_var(var_id, var_type),
-            in_var,
-            self.formulas[ctx.formula()],
-            bind_expression=mexpr,
+        self.formulas[ctx] = self.mgr.create(
+            (ForallFormula if is_forall else ExistsFormula)(
+                self.get_var(var_id, var_type),
+                in_var,
+                self.formulas[ctx.formula()],
+                bind_expression=mexpr,
+            ),
+            safe=False,
         )
 
     def exitForall(self, ctx: IslaLanguageParser.ForallContext):
@@ -4156,22 +4156,20 @@ def match(
 
 def parse_peg(
     inp: str, in_nonterminal: str, immutable_grammar: ImmutableGrammar
-) -> MaybeMonadPlus[DerivationTree]:
+) -> Maybe[DerivationTree]:
     peg_parser = PEGParser(
         grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar)
     )
     try:
         result = DerivationTree.from_parse_tree(peg_parser.parse(inp)[0])
-        return MaybeMonadPlus(
-            result if in_nonterminal == "<start>" else result.children[0]
-        )
+        return Maybe(result if in_nonterminal == "<start>" else result.children[0])
     except Exception:
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
 
 def parse_earley(
     inp: str, in_nonterminal: str, immutable_grammar: ImmutableGrammar
-) -> MaybeMonadPlus[DerivationTree]:
+) -> Maybe[DerivationTree]:
     # Should we address ambiguities and return multiple parse trees?
     earley_parser = EarleyParser(
         grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar)
@@ -4179,16 +4177,14 @@ def parse_earley(
 
     try:
         result = DerivationTree.from_parse_tree(next(earley_parser.parse(inp)))
-        return MaybeMonadPlus(
-            result if in_nonterminal == "<start>" else result.children[0]
-        )
+        return Maybe(result if in_nonterminal == "<start>" else result.children[0])
     except SyntaxError:
-        return MaybeMonadPlus.nothing()
+        return Maybe.nothing()
 
 
 def parse(
     inp: str, in_nonterminal: str, immutable_grammar: ImmutableGrammar
-) -> MaybeMonadPlus[DerivationTree]:
+) -> Maybe[DerivationTree]:
     monad = parse_peg(inp, in_nonterminal, immutable_grammar)
 
     if not monad.is_present():

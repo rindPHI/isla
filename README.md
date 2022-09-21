@@ -9,163 +9,214 @@ ISLa: Input Specification Language
 [![DOI](https://zenodo.org/badge/428626626.svg)](https://zenodo.org/badge/latestdoi/428626626)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-ISLa is a grammar-aware String constraint solver with its own specification
-language. The language is a superset of SMT-LIB for String constraints, and adds
-the power of structural quantifiers over derivation trees on top. ISLa supports
-universal and existential quantifiers as well as structural (e.g., "occurs
-before") and semantic (e.g., "is a checksum") predicates. Its generation
-mechanism uses feedback from Z3 to solve SMT-LIB formulas, and constructive
-insertion for eliminating existential quantifiers. Universal quantifiers and
-structural predicates are solved by a deterministic, heuristic-based search
-(with a configurable cost function).
+**_Inputs on Demand!_**
 
-For more information on the ISLa language, take a look at the [**ISLa Language
-Specification**](https://rindphi.github.io/isla/islaspec/). The specification
-contains a list of [supported default
-predicates](https://rindphi.github.io/isla/islaspec/#structural-predicates),
-which might be useful in many cases.
+ISLa is a *grammar-aware string constraint solver* with its own specification language.
+With ISLa, it is possible to specify *input constraints* like "a variable has to be
+defined before it is used," "the `file name' block must be 100 bytes long," or "the
+number of columns in all CSV rows must be identical."
 
-We also offer an [**interactive ISLa
-tutorial**](https://www.fuzzingbook.org/beta/html/FuzzingWithConstraints.html)
-as part of the Fuzzing Book.
+The ISLa *language* is builds on SMT-LIB string constraints, and adds the power of
+structural quantifiers over derivation trees on top. ISLa supports universal and
+existential quantifiers as well as structural (e.g., "occurs before") and semantic
+(e.g., "is a checksum") predicates.
+
+The ISLa *solver* queries Z3 to solve SMT-LIB formulas, and implements a constructive
+insertion mechanism for eliminating existential quantifiers. Universal quantifiers and
+structural predicates are solved by a deterministic, heuristic-based search (with a
+configurable cost function).
+
+## Further Resources
+
+* Our [**interactive ISLa tutorial**](https://www.fuzzingbook.org/beta/html/FuzzingWithConstraints.html),
+  published as a part of the Fuzzing Book, provides an easily accessible introduction
+  to the specification and generation of custom system inputs using ISLa.
+
+* We published a [**paper on ISLa**](https://publications.cispa.saarland/3596/7/Input%20Invariants.pdf)
+  at ESEC/FSE 2022. The paper describes the ISLa language and solver more formally.
+
+* The [**ISLa Language Specification**](https://rindphi.github.io/isla/islaspec/)
+  precisely specifies the syntax and semantics of ISLa constraints. The specification
+  also contains a list of
+  [supported default predicates](https://rindphi.github.io/isla/islaspec/#structural-predicates).
+
+* In the directory `src/isla_formalizations/`, you find our specifications for the
+  subject languages of our experimental evaluation.
+  
+* The files `run_eval_....fish` are the scripts we used to collect and analyze our
+  evaluation data. To analyze ISLa's current performance yourself, you can run the
+  scripts with the `-h` argument to obtain some guidance on their parameters (the fish
+  shell is required to use these scripts).
 
 ## Example
 
-Consider a grammar of a simple assignment programming language (e.g., "x := 1 ; y := x"):
+Our running example is a simple "assignment language" consisting of strings such as
+`x := 1 ; y := x`. As a first step towards using ISLa, we formalize this language as
+a context-free grammar in [BNF](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form):
 
-```python
-import string
-
-LANG_GRAMMAR = {
-    "<start>":
-        ["<stmt>"],
-    "<stmt>":
-        ["<assgn>", "<assgn> ; <stmt>"],
-    "<assgn>":
-        ["<var> := <rhs>"],
-    "<rhs>":
-        ["<var>", "<digit>"],
-    "<var>": list(string.ascii_lowercase),
-    "<digit>": list(string.digits)
-}
+```bnf
+<start> ::= <stmt> 
+<stmt>  ::= <assgn> | <assgn> " ; " <stmt> 
+<assgn> ::= <var> " := " <rhs> 
+<rhs>   ::= <var> | <digit> 
+<var>   ::= "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | 
+            "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" |
+            "u" | "v" | "w" | "x" | "y" | "z" 
+<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
 ```
 
-An interesting, context-sensitive property for this language is that all right-hand side variables have been declared
-somewhere before. In ISLa's concrete syntax, this can be expressed as a constraint
+After saving this grammar to a file, say, `assgn.bnf`, we can already generate inputs
+from the assignment grammar using the ISLa command line interface:
 
-```
-forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
-  exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
-    (before(assgn_2, assgn_1) and (= rhs lhs))
+```bash
+> isla solve assgn.bnf
+s := t
 ```
 
-ISLa also allows writing binary SMT-LIB S-expressions in infix syntax: `(= rhs lhs)` gets `rhs = lhs`.
-Furthermore, the `in start` is optional, and the "match expressions" `"{<var> lhs} := <rhs>"` etc. can (at least
-in such simple cases) be expressed using a syntax inspired by the 
-[XPath abbreviated syntax](https://www.w3.org/TR/1999/REC-xpath-19991116/#path-abbrev):
+The following command creates 10 assignments:
+
+```bash
+> isla solve -n -1 -f 10 assgn.bnf
+a := 6 ; j := x
+q := u
+e := h ; o := l ; g := w
+s := i
+k := v ; d := m ; f := 1
+n := y ; t := 5
+z := 3 ; p := 7 ; b := 0
+c := 2 ; r := 4
+q := 8 ; l := 9
+u := 0
+UNSAT
+```
+
+The setting `-n -1` specifies that we want to generate an infinite number of inputs.
+Since we did not choose an ISLa constraint, we additionally have to choose a value
+for the `-f` flag. This setting determines the number of times an input element that
+is not subject to any constraint (which is the case here) should be expanded.
+
+With ISLa, we can restrict the assignment language on-demand. For example, the ISLa
+constraint `<var> = "a"` results in assignment sequences only containing "a" variables:
+
+```bash
+> isla solve /tmp/assgn.bnf -n 10 -f 1 --constraint '<var> = "a"' 
+a := 5 ; a := a ; a := 7
+a := 6
+a := a
+a := 0 ; a := a ; a := a
+a := a ; a := 1 ; a := 4
+a := a ; a := 3 ; a := a
+a := 8 ; a := 2
+a := 9 ; a := a
+a := a ; a := 9
+a := a ; a := a
+```
+
+Or do we prefer assignments where all digits can be divided by 2 without remainder? No
+problem with ISLa:
+
+```bash
+> isla solve /tmp/assgn.bnf -n 10 -f 1 -s 2 --constraint "str.to.int(<digit>) mod 2 = 0"
+i := a ; x := 0 ; u := s
+p := l ; m := 8 ; b := y
+k := c ; t := d ; r := q
+j := z
+h := 0
+e := 4
+g := n ; v := f ; w := 4
+o := o ; j := a ; c := 0
+t := r ; k := 0 ; e := 0
+k := t ; f := 8 ; e := 8
+```
+
+The `-s` flag specifies how many results for a single query should be obtained from the
+SMT solver Z3. We limited this number to 2 (the default is 10&mdash;the same default
+value is used for the `-f` flag) to obtain a wider diversity of inputs within the first
+10 results.
+
+The constraints above talk over *all* `<var>` and `<digit>` grammar nonterminals in
+any derivation tree derived from the assignment language grammar. In addition to such
+simple constraints, ISLa allows to explicitly *quantify* over grammar elements using
+the `forall` and `exists` keywords.
+
+Assume that an interpreter for our assignment language rejects inputs where a variable
+is accessed that has not been previously assigned a value. This "definition-use"
+property, which is a *semantic input property* of the language, is expressed as follows:
 
 ```
 forall <assgn> assgn_1:
-  exists <assgn> assgn_2:
-    (before(assgn_2, assgn_1) and assgn_1.<rhs>.<var> = assgn_2.<var>)
+  exists <assgn> assgn_2: (
+    before(assgn_2, assgn_1) and 
+    assgn_1.<rhs>.<var> = assgn_2.<var>)
 ```
 
-Additionally, top-level universal quantifiers without match expressions (like `forall <assgn> assgn_1`) can be
-omitted; instead of the bound name (e.g., `assgn_1`) one then simply uses the type (`<assgn>`) in the inner
-formula. This only works for one such quantifier over any type, since otherwise, the names are needed for
-disambiguation. The final, simpler formula is:
+Since this is a more lengthy constraint, let us save it in a file `defuse.isla`. The
+following command line invocation uses this constraint:
 
-```
-exists <assgn> assgn:
-  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)
-```
-
-Using the Python API, the same constraint is written as follows:
-
-```python
-from isla import language
-import isla.isla_shortcuts as sc 
-
-mgr = language.VariableManager()
-
-formula: language.Formula = mgr.create(sc.forall_bind(
-    mgr.bv("$lhs_1", "<var>") + " := " + mgr.bv("$rhs_1", "<rhs>"),
-    mgr.bv("$assgn_1", "<assgn>"),
-    mgr.const("$start", "<start>"),
-    sc.forall(
-        mgr.bv("$var", "<var>"),
-        mgr.bv("$rhs_1"),
-        sc.exists_bind(
-            mgr.bv("$lhs_2", "<var>") + " := " + mgr.bv("$rhs_2", "<rhs>"),
-            mgr.bv("$assgn_2", "<assgn>"),
-            mgr.const("$start"),
-            sc.before(mgr.bv("$assgn_2"), mgr.bv("$assgn_1")) &
-            mgr.smt(cast(z3.BoolRef, mgr.bv("$lhs_2").to_smt() == mgr.bv("$var").to_smt()))
-        )
-    )
-))
+```bash
+> isla solve -n 10 -f 1 -s 1 /tmp/assgn.bnf /tmp/defuse.isla
+q := 2 ; m := 1 ; c := 4
+p := 8 ; o := 3 ; l := p
+z := 7 ; p := 6 ; e := p
+d := 5 ; a := d ; h := 9
+s := 0 ; x := 0
+k := 8
+p := 4 ; r := p
+p := 6 ; u := p
+p := 5 ; v := p
+p := 3 ; p := 5 ; w := p
 ```
 
-The ISLa solver can find satisfying assignments for this formula:
+As we can see, all right-hand side variables occur at the left-hand side of a prior
+assignment.
+
+For more information on the command line interface, run `isla -h`. Each sub command
+comes with its own help text; for example, `isla solve -h` provides details on how to
+use the `solve` command.
+
+You can also use the ISLa solver via its Python API:
 
 ```python
 from isla.solver import ISLaSolver
 
+grammar = '''
+<start> ::= <stmt> 
+<stmt>  ::= <assgn> | <assgn> " ; " <stmt> 
+<assgn> ::= <var> " := " <rhs> 
+<rhs>   ::= <var> | <digit> 
+<var>   ::= "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | 
+            "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" |
+            "u" | "v" | "w" | "x" | "y" | "z" 
+<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+'''
+
+constraint = """
+forall <assgn> assgn_1:
+  exists <assgn> assgn_2: (
+    before(assgn_2, assgn_1) and 
+    assgn_1.<rhs>.<var> = assgn_2.<var>)
+"""
+
 solver = ISLaSolver(
-    grammar=LANG_GRAMMAR,
-    formula=formula,
-    max_number_free_instantiations=10,
-    max_number_smt_instantiations=10)
+    grammar=grammar,
+    formula=constraint,
+    max_number_free_instantiations=10,  # -f
+    max_number_smt_instantiations=10,  # -s
+)
 
-solution = solver.fuzz()
 for _ in range(100):
-    print(solver.fuzz())
+    print(solver.solve())
 ```
-
-When calling the solver with an ISLa formula in concrete syntax (a string), one has to supply a "signature" of the
-structural and semantic predicate symbols used:
-
-```python
-from isla.solver import ISLaSolver
-from isla.isla_predicates import BEFORE_PREDICATE
-
-solver = ISLaSolver(
-    grammar=LANG_GRAMMAR,
-    formula=concrete_syntax_formula,
-    structural_predicates={BEFORE_PREDICATE},
-    max_number_free_instantiations=10,
-    max_number_smt_instantiations=10)
-
-solution = solver.fuzz()
-for _ in range(100):
-    print(solver.fuzz())
-```
-
-To create more diverse inputs, ISLa can be configured to perform a *bounded expansion* of grammar nonterminals that are
-irrelevant for any constraint (parameter `max_number_free_instantiations`). Similarly, the number of solutions for
-semantic SMT formulas can be configured (`max_number_smt_instantiations`).
-
-In certain cases, ISLa will only produce a finite amount of solutions. This holds in particular for simple existential
-constraints. The existential quantifier will be eliminated and the solution output; the search terminates then. Usually,
-though, the stream of solutions will be infinite (given that the grammar contains recursions).
-
-## Resources / Important Files
-
-* The file `tests/xml_demo.py` demonstrates most ISLa features along the example of an XML constraint.
-* In the directory `src/isla_formalizations/`, you find our specifications for the subject languages
-  of our experimental evaluation.
-* The files `evaluations/evaluate_...` are the scripts we used to collect and analyze our 
-  evaluation data. By running these scripts without arguments, a digest of the most recent results is returned.
-* The most important files of our implementation are `src/isla/language.py`, `src/isla/evaluator.py` 
-  and `input_constraints/solver.py`, containing ISLa language features, the constraint checker, 
-  and the ISLa solver. 
 
 ## Build, Run, Install
 
-ISLa depends on Python 3.10 and the Python header files. To compile all of ISLa's dependencies, you need
-gcc, g++ make, and cmake. To check out the current ISLa version, git will be needed. Furthermore, 
-python3.10-venv is required to run ISLearn in a virtual environment. Additionally, for testing
-ISLa, clang and the `csvlint` executable are required (for the Scriptsize-C and CSV case studies).
+ISLa depends on **Python 3.10** and the Python header files. To compile all of ISLa's
+dependencies, you need gcc, g++ make, and cmake. To check out the current ISLa version,
+git will be needed. Furthermore, python3.10-venv is required to run ISLearn in a virtual
+environment.
+
+Additionally, *for testing ISLa*, clang and the `csvlint` executable are required (for
+the Scriptsize-C and CSV case studies).
 
 On *Alpine Linux*, all dependencies (but `csvlint`) can be installed using
 
@@ -174,15 +225,31 @@ apk add python3.10 python3.10-dev python3.10-venv gcc g++ make cmake git clang
 ```
 
 The `csvlint` executable can be obtained from
-https://github.com/Clever/csvlint/releases/download/v0.3.0/csvlint-v0.3.0-linux-amd64.tar.gz. You obtain and
-unpack `csvlint` by running (in a Unix shell)
+https://github.com/Clever/csvlint/releases/download/v0.3.0/csvlint-v0.3.0-linux-amd64.tar.gz.
+You obtain and unpack `csvlint` by running (in a Unix shell)
 
 ```shell
 wget https://github.com/Clever/csvlint/releases/download/v0.3.0/csvlint-v0.3.0-linux-amd64.tar.gz -O /tmp/csvlint.tar.gz
 tar xzf /tmp/csvlint.tar.gz -C /tmp
 ```
 
-Then, move the file `/tmp/csvlint-v0.3.0-linux-amd64/csvlint` to some location in your PATH (e.g., `/usr/bin`).
+Then, move the file `/tmp/csvlint-v0.3.0-linux-amd64/csvlint` to some location in your
+PATH (e.g., `/usr/bin`).
+
+### Install
+
+If all external dependencies are available, a simple `pip install isla-solver` suffices.
+We recommend installing ISLa inside a virtual environment (virtualenv):
+
+```shell
+python3.10 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install isla-solver
+```
+
+Now, the `isla` command should be available on the command line within the virtual
+environment.
 
 ### Docker
 
@@ -196,7 +263,8 @@ docker pull dsteinhoefel/isla:latest
 docker run -it --name isla dsteinhoefel/isla
 ```
 
-You should now have entered the container. Next, check out the ISLa repository, and update the requirements:
+You should now have entered the container. Next, check out the ISLa repository, and
+update the requirements:
 
 ```shell
 git clone https://github.com/rindPHI/isla.git
@@ -208,18 +276,6 @@ Now, you can perform an editable installation of ISLa and run the ISLa tests:
 ```shell
 pip install -e .[dev,test]
 python3.10 -m pytest -n 16 tests
-```
-
-### Install
-
-If all external dependencies are available, a simple `pip install isla-solver` suffices. We recommend installing 
-ISLa inside a virtual environment (virtualenv):
-
-```shell
-python3.10 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-pip install isla-solver
 ```
 
 ### Build 

@@ -11,7 +11,7 @@ from grammar_graph import gg
 
 from isla import __version__ as isla_version, language
 from isla.derivation_tree import DerivationTree
-from isla.helpers import is_float, MaybeMonadPlus, get_isla_resource_file_content
+from isla.helpers import is_float, Maybe, get_isla_resource_file_content
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
     STANDARD_SEMANTIC_PREDICATES,
@@ -68,7 +68,7 @@ def main(*args: str, stdout=sys.stdout, stderr=sys.stderr):
 
 def solve(stdout, stderr, parser, args):
     files = read_files(args)
-    ensure_grammar_constraint_present(stderr, parser, args, files)
+    ensure_grammar_present(stderr, parser, args, files)
 
     command = args.command
 
@@ -126,7 +126,7 @@ def fuzz(stdout, stderr, parser, args):
     status_ending = "_status.txt"
 
     files = read_files(args)
-    ensure_grammar_constraint_present(stderr, parser, args, files)
+    ensure_grammar_present(stderr, parser, args, files)
 
     command = args.command
 
@@ -255,11 +255,10 @@ def parse(stdout, stderr, parser, args):
     maybe_tree.if_present(write_tree)
 
 
-def do_check(
-    stdout, stderr, parser, args
-) -> Tuple[int, str, MaybeMonadPlus[DerivationTree]]:
+def do_check(stdout, stderr, parser, args) -> Tuple[int, str, Maybe[DerivationTree]]:
     files = read_files(args)
-    ensure_grammar_constraint_present(stderr, parser, args, files)
+    ensure_grammar_present(stderr, parser, args, files)
+    ensure_constraint_present(stderr, parser, args, files)
     command = args.command
 
     grammar = parse_grammar(command, args.grammar, files, stderr)
@@ -273,15 +272,15 @@ def do_check(
         return (
             1,
             f"input could not be parsed ({type(exc).__name__})",
-            MaybeMonadPlus.nothing(),
+            Maybe.nothing(),
         )
 
     solver = ISLaSolver(grammar, constraint)
 
     if solver.evaluate(tree):
-        return 0, "input satisfies the ISLa constraint", MaybeMonadPlus(tree)
+        return 0, "input satisfies the ISLa constraint", Maybe(tree)
     else:
-        return 1, "input does not satisfy the ISLa constraint", MaybeMonadPlus(tree)
+        return 1, "input does not satisfy the ISLa constraint", Maybe(tree)
 
 
 def create(stdout, stderr, parser, args):
@@ -347,9 +346,7 @@ def read_files(args) -> Dict[str, str]:
     return {io_wrapper.name: io_wrapper.read() for io_wrapper in args.files}
 
 
-def ensure_grammar_constraint_present(
-    stderr, parser, args, files: Dict[str, str]
-) -> None:
+def ensure_grammar_present(stderr, parser, args, files: Dict[str, str]) -> None:
     if not args.grammar and all(
         not file.endswith(".bnf") and not file.endswith(".py") for file in files
     ):
@@ -362,6 +359,8 @@ def ensure_grammar_constraint_present(
 
         exit(USAGE_ERROR)
 
+
+def ensure_constraint_present(stderr, parser, args, files: Dict[str, str]) -> None:
     if not args.constraint and all(not file.endswith(".isla") for file in files):
         parser.print_usage(file=stderr)
         print(

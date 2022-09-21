@@ -90,17 +90,6 @@ class TestCli(unittest.TestCase):
 
         constraint_file.close()
 
-    def test_solve_no_constraint(self):
-        grammar_file = NamedTemporaryFile(suffix=".bnf")
-
-        stdout, stderr, code = run_isla("solve", grammar_file.name, "-n", -1, "-t", 10)
-
-        self.assertEqual(2, code)
-        self.assertFalse(stdout)
-        self.assertTrue("must specify a constraint" in stderr)
-
-        grammar_file.close()
-
     def test_solve_assgn_lang(self):
         grammar_1 = {nt: exp for nt, exp in LANG_GRAMMAR.items() if ord(nt[1]) <= 114}
         grammar_2 = {nt: exp for nt, exp in LANG_GRAMMAR.items() if ord(nt[1]) > 114}
@@ -137,6 +126,29 @@ exists <assgn> assgn:
         grammar_file_1.close()
         grammar_file_2.close()
         constraint_file.close()
+
+    def test_assgn_lang_no_constraint(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        stdout, stderr, code = run_isla(
+            "solve",
+            grammar_file.name,
+            "-f",
+            50,
+            "-n",
+            -1,
+        )
+
+        self.assertFalse(code)
+        self.assertEqual("UNSAT", stderr)
+        self.assertTrue(stdout)
+
+        grammar_file.close()
+
+        # Assert that we can parse
+        parser = EarleyParser(LANG_GRAMMAR)
+        for solution in stdout.split("\n"):
+            parser.parse(solution)
 
     def test_solve_assgn_lang_additional_constraint(self):
         grammar_file = write_grammar_file(LANG_GRAMMAR)
@@ -602,9 +614,9 @@ exists <assgn> assgn:
             self.assertTrue(stdout)
             assignments = stdout.split("\n")
 
-            constraint = '''
+            constraint = """
 exists <assgn> assgn:
-  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)'''
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
 
             solver = ISLaSolver(LANG_GRAMMAR, constraint)
             for assignment in assignments:

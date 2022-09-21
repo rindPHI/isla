@@ -23,6 +23,7 @@ from typing import (
     Any,
     Optional,
     Generic,
+    Iterator,
 )
 
 from isla.type_defs import (
@@ -665,22 +666,34 @@ class MonadPlus(Generic[T], Monad[T]):
 
 
 @dataclass(frozen=True)
-class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
+class Maybe(Generic[T], MonadPlus[Optional[T]]):
     a: Optional[T]
 
-    def bind(self, f: Callable[[T], "MaybeMonadPlus[S]"]) -> "MaybeMonadPlus[S]":
+    def bind(self, f: Callable[[T], "Maybe[S]"]) -> "Maybe[S]":
         return self if self.a is None else f(self.a)
 
-    @staticmethod
-    def nothing() -> "MaybeMonadPlus[T]":
-        return MaybeMonadPlus(None)
+    def map(self, f: Callable[[T], S]) -> "Maybe[S]":
+        return self if self.a is None else Maybe(f(self.a))
 
-    def mplus(self, other: "MaybeMonadPlus[T]") -> "MaybeMonadPlus[T]":
+    def orelse(self, f: Callable[[], S]) -> "Maybe[S]":
+        assert callable(f)
+        return self if self.a is not None else Maybe(f())
+
+    @staticmethod
+    def nothing() -> "Maybe[T]":
+        return Maybe(None)
+
+    @staticmethod
+    def from_iterator(iterator: Iterator[T]) -> "Maybe[T]":
+        try:
+            return Maybe(next(iterator))
+        except StopIteration:
+            return Maybe.nothing()
+
+    def mplus(self, other: "Maybe[T]") -> "Maybe[T]":
         return other if self.a is None else self
 
-    def lazy_mplus(
-        self, f: Callable[[S, ...], "MaybeMonadPlus[T]"], *args: S
-    ) -> "MaybeMonadPlus[T]":
+    def lazy_mplus(self, f: Callable[[S, ...], "Maybe[T]"], *args: S) -> "Maybe[T]":
         return f(*args) if self.a is None else self
 
     def if_present(self, f: Callable[[T], None]) -> None:
@@ -690,7 +703,7 @@ class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
     def is_present(self) -> bool:
         return self.a is not None
 
-    def raise_if_not_present(self, exc: Callable[[], Exception]) -> "MaybeMonadPlus[T]":
+    def raise_if_not_present(self, exc: Callable[[], Exception]) -> "Maybe[T]":
         if self.a is None:
             raise exc()
 
@@ -703,9 +716,9 @@ class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
 
     def __add__(
         self,
-        other: "MaybeMonadPlus[T]" | Tuple[Callable[[S, ...], "MaybeMonadPlus[T]"], S],
-    ) -> "MaybeMonadPlus[T]":
-        if isinstance(other, MaybeMonadPlus):
+        other: "Maybe[T]" | Tuple[Callable[[S, ...], "Maybe[T]"], S],
+    ) -> "Maybe[T]":
+        if isinstance(other, Maybe):
             return self.mplus(other)
 
         assert isinstance(other, tuple)
@@ -714,12 +727,12 @@ class MaybeMonadPlus(Generic[T], MonadPlus[Optional[T]]):
 
 
 def chain_functions(
-    functions: Iterable[Callable[[S, ...], MaybeMonadPlus[T]]], *args: S
-) -> MaybeMonadPlus[T]:
+    functions: Iterable[Callable[[S, ...], Maybe[T]]], *args: S
+) -> Maybe[T]:
     return functools.reduce(
         lambda monad, f: (monad + (f, *args)),
         functions,
-        MaybeMonadPlus.nothing(),
+        Maybe.nothing(),
     )
 
 

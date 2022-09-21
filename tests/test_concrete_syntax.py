@@ -745,6 +745,29 @@ forall <assgn> assgn="<var> := {<rhs> rhs}" in start:
 
         self.assertEqual(unparse_isla(expected), unparse_isla(result))
 
+    def test_same_var_bound_by_different_qfrs(self):
+        formula = 'forall <var> var: var = "a" or forall <var> var: var = "b"'
+
+        # (∀ var ∈ start: (var == "a") ∨ ∀ var_0 ∈ start: (var_0 == "b"))
+        var = language.BoundVariable("var", "<var>")
+        var_0 = language.BoundVariable("var_0", "<var>")
+        start = language.Constant("start", "<start>")
+        expected = sc.forall(
+            var, start, sc.smt_for(z3_eq(var.to_smt(), z3.StringVal("a")), var)
+        ) | sc.forall(
+            var_0, start, sc.smt_for(z3_eq(var_0.to_smt(), z3.StringVal("b")), var_0)
+        )
+
+        self.assertEqual(expected, parse_isla(formula))
+
+    def test_unbound_variable(self):
+        formula = 'forall <var> var: var = "a" or var = "b"'
+        try:
+            parse_isla(formula)
+            self.fail("Expected SyntaxError")
+        except SyntaxError as serr:
+            self.assertIn("Unbound variables: var in formula", str(serr))
+
 
 if __name__ == "__main__":
     unittest.main()
