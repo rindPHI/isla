@@ -96,7 +96,11 @@ UNSAT
 The setting `-n -1` specifies that we want to generate an infinite number of inputs.
 Since we did not choose an ISLa constraint, we additionally have to choose a value
 for the `-f` flag. This setting determines the number of times an input element that
-is not subject to any constraint (which is the case here) should be expanded.
+is not subject to any constraint (which is the case here) should be expanded. The final
+line "UNSAT" means that after these 10 solutions, no further solution could be found.
+If "UNSAT" is the *first* line output by the solver, it is likely that the given
+constraint is *unsatisfiable*, i.e., there exists no solution of this constraint with
+respect to the current grammar.
 
 With ISLa, we can restrict the assignment language on-demand. For example, the ISLa
 constraint `<var> = "a"` results in assignment sequences only containing "a" variables:
