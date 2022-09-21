@@ -68,6 +68,7 @@ from isla.isla_predicates import (
     STANDARD_SEMANTIC_PREDICATES,
     COUNT_PREDICATE,
 )
+from isla.isla_shortcuts import true
 from isla.language import (
     VariablesCollector,
     split_conjunction,
@@ -227,7 +228,7 @@ class ISLaSolver:
     def __init__(
         self,
         grammar: Grammar | str,
-        formula: Union[language.Formula, str],
+        formula: language.Formula | str = "true",
         structural_predicates: Set[
             language.StructuralPredicate
         ] = STANDARD_STRUCTURAL_PREDICATES,
@@ -364,6 +365,7 @@ class ISLaSolver:
             )
 
         self.formula = ensure_unique_bound_variables(formula)
+
         top_constants: Set[language.Constant] = set(
             [
                 c
@@ -371,8 +373,13 @@ class ISLaSolver:
                 if isinstance(c, language.Constant) and not c.is_numeric()
             ]
         )
-        assert len(top_constants) == 1
-        self.top_constant = next(iter(top_constants))
+
+        assert len(top_constants) <= 1, (
+            "ISLa only accepts up to one constant (free variable), "
+            + f'found {len(top_constants)}: {", ".join(map(str, top_constants))}'
+        )
+
+        self.top_constant = Maybe.from_iterator(iter(top_constants))
 
         quantifier_chains: List[Tuple[language.ForallFormula, ...]] = [
             tuple([f for f in c if isinstance(f, language.ForallFormula)])
@@ -413,10 +420,12 @@ class ISLaSolver:
             )
 
         # Initialize Queue
-        initial_tree = DerivationTree(self.top_constant.n_type, None)
-        initial_formula = self.formula.substitute_expressions(
-            {self.top_constant: initial_tree}
+        initial_tree = DerivationTree(
+            self.top_constant.map(lambda c: c.n_type).orelse(lambda: "<start>").a, None
         )
+        initial_formula = self.top_constant.map(
+            lambda c: self.formula.substitute_expressions({c: initial_tree})
+        ).orelse(lambda: true()).a
         initial_state = SolutionState(initial_formula, initial_tree)
         initial_states = self.establish_invariant(initial_state)
 
