@@ -3,22 +3,19 @@
 
 @import "{{ site.theme }}";
 
-.wrapper { width: 1090px; }
-header { width: 300px; }
-section { width: 700px; }
 sup { font-size: smaller; vertical-align: super; }
 ul ul { margin-bottom: 0px; }
 
-@media print, screen and (max-width: 960px) {
+@media print, screen and (min-width: 1191px) {
+  .wrapper { width: 1090px; }
+  header { width: 300px; }
+  section { width: 700px; }
+}
+
+@media print, screen and (max-width: 1190px) {
   header ul {
     position: unset;
     right: unset;
     top: unset;
-  }
-}
-
-@media print, screen and (max-width: 720px) {
-  header ul, header p.view {
-    position: unset;
   }
 }
