@@ -18,7 +18,6 @@ from isla.isla_predicates import (
 )
 from isla.isla_shortcuts import true
 from isla.language import parse_bnf, parse_isla
-from isla.parser import EarleyParser
 from isla.solver import (
     ISLaSolver,
     GrammarBasedBlackboxCostComputer,
@@ -270,7 +269,7 @@ def do_check(stdout, stderr, parser, args) -> Tuple[int, str, Maybe[DerivationTr
     except SyntaxError:
         return (
             1,
-            f"input could not be parsed",
+            "input could not be parsed",
             Maybe.nothing(),
         )
     except SemanticError:

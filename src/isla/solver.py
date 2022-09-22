@@ -83,7 +83,6 @@ from isla.language import (
     ForallIntFormula,
 )
 from isla.parser import EarleyParser
-from isla.three_valued_truth import ThreeValuedTruth
 from isla.type_defs import Grammar, Path, ImmutableList
 from isla.z3_helpers import z3_solve, z3_subst, z3_eq, z3_and
 
