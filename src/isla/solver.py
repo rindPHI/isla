@@ -38,7 +38,7 @@ import isla.isla_shortcuts as sc
 import isla.three_valued_truth
 from isla import language
 from isla.derivation_tree import DerivationTree
-from isla.evaluator import evaluate
+from isla.evaluator import evaluate, quantified_formula_might_match
 from isla.existential_helpers import (
     insert_tree,
     DIRECT_EMBEDDING,
@@ -58,7 +58,6 @@ from isla.helpers import (
     canonical,
     lazyjoin,
     lazystr,
-    is_prefix,
     Maybe,
     chain_functions,
     Exceptional,
@@ -78,7 +77,6 @@ from isla.language import (
     ensure_unique_bound_variables,
     parse_isla,
     get_conjuncts,
-    QuantifiedFormula,
     parse_bnf,
     ForallIntFormula,
 )
@@ -2793,128 +2791,6 @@ def get_quantifier_chains(
         for f in univ_toplevel_formulas
         for c in (get_quantifier_chains(f.inner_formula) or [()])
     ]
-
-
-def quantified_formula_might_match(
-    qfd_formula: QuantifiedFormula,
-    path_to_nonterminal: Path,
-    tree: DerivationTree,
-    grammar: Grammar,
-    reachable: Callable[[str, str], bool],
-) -> bool:
-    """
-    This function returns `True` if in order to match the `qfd_formula`, the given path
-    has to be expanded. It will return `False` if expanding that path makes no difference,
-    either because there is a match already or because the expansion will not contribute
-    to a future match. The purpose is to check, e.g., if a nonterminal shall be expanded
-     or "freely" instantiated; or to check if a quantifier can be removed, because it won't
-      match any expansion (in addition of not already matchine!).
-
-    :param qfd_formula: The quantified formula for which to check if the given tree path might become a match.
-    :param path_to_nonterminal: The path in the tree to check.
-    :param tree: The context tree.
-    :param grammar: The reference grammar.
-    :param reachable: A reachability function in the grammar.
-    :return: `True` iff some expansion of this path matches the formula, and the formula does not already match.
-    """
-    node = tree.get_subtree(path_to_nonterminal)
-    assert not node.children, "quantified_formula_might_match only works for leaf nodes"
-
-    if qfd_formula.in_variable.find_node(node) is None:
-        return False
-
-    if qfd_formula.is_already_matched(node):
-        # This formula won't match node IFF there is no subtree in node that matches.
-        return any(
-            quantified_formula_might_match(qfd_formula, path, node, grammar, reachable)
-            for path, _ in node.paths()
-            if path
-        )
-
-    qfd_nonterminal = qfd_formula.bound_variable.n_type
-
-    if qfd_nonterminal == node.value:
-        return qfd_formula.bind_expression is not None
-
-    if qfd_nonterminal != node.value and reachable(node.value, qfd_nonterminal):
-        return True
-
-    if qfd_formula.bind_expression is None:
-        return False  # The formula matches a (parent) element or not, but it's no future match.
-
-    # This leaf won't reach the "root node" of the match tree for `qfd_formula`.
-    assert qfd_nonterminal != node.value and not reachable(node.value, qfd_nonterminal)
-
-    return can_extend_leaf_to_make_quantifier_match_parent(
-        qfd_formula, path_to_nonterminal, tree, grammar, reachable
-    )
-
-
-def can_extend_leaf_to_make_quantifier_match_parent(
-    qfd_formula: QuantifiedFormula,
-    path_to_nonterminal: Path,
-    tree: DerivationTree,
-    grammar: Grammar,
-    reachable: Callable[[str, str], bool],
-) -> bool:
-    """
-    This function returns `True` if expanding at the given path makes `qfd_formula` match some parent.
-
-    :param qfd_formula: The quantified formula for which to check if the given tree path might become a match.
-    :param path_to_nonterminal: The path in the tree to check.
-    :param tree: The context tree.
-    :param grammar: The reference grammar.
-    :param reachable: A reachability function in the grammar.
-    :return: `True` iff expanding the given path makes `qfd_formula` match higher up in the tree.
-    """
-    # Return true if extending this leaf makes the quantifier match some parent.
-    node = tree.get_subtree(path_to_nonterminal)
-
-    maybe_prefix_tree: DerivationTree
-    for maybe_prefix_tree, var_map in qfd_formula.bind_expression.to_tree_prefix(
-        qfd_formula.bound_variable.n_type, grammar
-    ):
-        reverse_var_map = {path: var for var, path in var_map.items()}
-
-        for idx in reversed(range(len(path_to_nonterminal))):
-            subtree = tree.get_subtree(path_to_nonterminal[:idx])
-            if not maybe_prefix_tree.is_potential_prefix(
-                subtree
-            ) or qfd_formula.is_already_matched(subtree):
-                continue
-
-            # If the current nonterminal does not need to be further expanded to match
-            # the prefix tree, we need to return false; otherwise, we would needlessly
-            # expand nonterminals that could actually be freely instantiated.
-
-            path_to_node_in_prefix_tree = path_to_nonterminal[idx:]
-
-            while not maybe_prefix_tree.is_valid_path(path_to_node_in_prefix_tree):
-                path_to_node_in_prefix_tree = path_to_node_in_prefix_tree[:-1]
-
-            # If this path in the prefix tree is sub-path of a path associated with a dummy
-            # variable, we do not resport a possible match; such an element can be freely instantiated.
-            mapping_paths = [
-                path
-                for path in reverse_var_map
-                if is_prefix(path_to_node_in_prefix_tree, path)
-            ]
-            assert mapping_paths
-
-            if all(
-                isinstance(reverse_var_map[mapping_path], language.DummyVariable)
-                for mapping_path in mapping_paths
-            ):
-                continue
-
-            node_in_prefix_tree = maybe_prefix_tree.get_subtree(
-                path_to_node_in_prefix_tree
-            )
-
-            if reachable(node.value, node_in_prefix_tree.value):
-                return True
-
-    return False
 
 
 @lru_cache()
