@@ -775,8 +775,7 @@ exists <assgn> assgn:
 
         self.assertEqual(1, code)
         self.assertFalse(stderr)
-
-        self.assertTrue("SyntaxError" in stdout)
+        self.assertTrue("input could not be parsed" in stdout)
 
     def test_parse_assgn_lang_correct_input_outfile(self):
         grammar_file = write_grammar_file(LANG_GRAMMAR)
