@@ -860,10 +860,8 @@ forall int colno:
         constraint = "<pagesize> = <bufsize>"
         solver = ISLaSolver(CONFIG_GRAMMAR, constraint)
 
-        self.assertTrue(
-            solver.parse("pagesize=12\nbufsize=12").structurally_equal(
-                solver.parse("pagesize=12\nbufsize=12", "<config>")
-            )
+        self.assertEqual(
+            "pagesize=12\nbufsize=12", str(solver.parse("pagesize=12\nbufsize=12"))
         )
 
         self.assertTrue(
