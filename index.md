@@ -2,7 +2,7 @@
 toc:
   <ul>
     <li><a href="#example">Example</a></li>
-    <li><a href="#further-resources">Further Resources</a></li>
+    <li><a href="#try-it-out">Try It Out</a></li>
   </ul>
 ---
 
@@ -14,15 +14,12 @@ With ISLa, it is possible to specify *input constraints* like "a variable has to
 defined before it is used," "the `file name' block must be 100 bytes long," or "the
 number of columns in all CSV rows must be identical."
 
-The ISLa *language* is builds on SMT-LIB string constraints, and adds the power of
-structural quantifiers over derivation trees on top. ISLa supports universal and
-existential quantifiers as well as structural (e.g., "occurs before") and semantic
-(e.g., "is a checksum") predicates.
-
-The ISLa *solver* queries Z3 to solve SMT-LIB formulas, and implements a constructive
-insertion mechanism for eliminating existential quantifiers. Universal quantifiers and
-structural predicates are solved by a deterministic, heuristic-based search (with a
-configurable cost function).
+Building on modern constraint solvers, ISLa provides you with a unique
+flexibility to specify&mdash;and generate&mdash;the system inputs you need. ISLa can be
+used for *precise fuzzing:* Keep adding input specifications until you are satisfied
+with the number of inputs passing the tested system's parser. Furthermore, you can write
+ISLa specifications to carve out specific inputs for testing a *particular program
+functionality*.
 
 ## Example
 
@@ -52,7 +49,7 @@ s := t
 The following command creates 10 assignments:
 
 ```bash
-> isla solve -n -1 -f 10 assgn.bnf
+> isla solve -n 10 assgn.bnf
 a := 6 ; j := x
 q := u
 e := h ; o := l ; g := w
@@ -63,23 +60,13 @@ z := 3 ; p := 7 ; b := 0
 c := 2 ; r := 4
 q := 8 ; l := 9
 u := 0
-UNSAT
 ```
-
-The setting `-n -1` specifies that we want to generate an infinite number of inputs.
-Since we did not choose an ISLa constraint, we additionally have to choose a value
-for the `-f` flag. This setting determines the number of times an input element that
-is not subject to any constraint (which is the case here) should be expanded. The final
-line "UNSAT" means that after these 10 solutions, no further solution could be found.
-If "UNSAT" is the *first* line output by the solver, it is likely that the given
-constraint is *unsatisfiable*, i.e., there exists no solution of this constraint with
-respect to the current grammar.
 
 With ISLa, we can restrict the assignment language on-demand. For example, the ISLa
 constraint `<var> = "a"` results in assignment sequences only containing "a" variables:
 
 ```bash
-> isla solve /tmp/assgn.bnf -n 10 -f 1 --constraint '<var> = "a"' 
+> isla solve assgn.bnf -n 10 -f 1 --constraint '<var> = "a"' 
 a := 5 ; a := a ; a := 7
 a := 6
 a := a
@@ -92,11 +79,16 @@ a := a ; a := 9
 a := a ; a := a
 ```
 
+> :bulb: The setting `-f 1` restricts the number of times that ILSa randomly
+> instantiates unconstrained input elements to one time. Here, this affects the
+> `<digit>` nonterminals: Without `-f 1`, we would see 10 different variants of the
+> first input with variying numbers in the first and third assignment.
+
 Or do we prefer assignments where all digits can be divided by 2 without remainder? No
 problem with ISLa:
 
 ```bash
-> isla solve /tmp/assgn.bnf -n 10 -f 1 -s 2 --constraint "str.to.int(<digit>) mod 2 = 0"
+> isla solve assgn.bnf -n 10 -f 1 -s 2 --constraint "str.to.int(<digit>) mod 2 = 0"
 i := a ; x := 0 ; u := s
 p := l ; m := 8 ; b := y
 k := c ; t := d ; r := q
@@ -109,10 +101,10 @@ t := r ; k := 0 ; e := 0
 k := t ; f := 8 ; e := 8
 ```
 
-The `-s` flag specifies how many results for a single query should be obtained from the
-SMT solver Z3. We limited this number to 2 (the default is 10&mdash;the same default
-value is used for the `-f` flag) to obtain a wider diversity of inputs within the first
-10 results.
+> :bulb: The `-s` flag specifies how many results for a single query should be obtained
+> from the SMT solver Z3. We limited this number to 2 (the default is 10&mdash;the same
+> default value is used for the `-f` flag) to obtain a wider diversity of inputs within
+> the first 10 results.
 
 The constraints above talk over *all* `<var>` and `<digit>` grammar nonterminals in
 any derivation tree derived from the assignment language grammar. In addition to such
@@ -134,7 +126,7 @@ Since this is a more lengthy constraint, let us save it in a file `defuse.isla`.
 following command line invocation uses this constraint:
 
 ```bash
-> isla solve -n 10 -f 1 -s 1 /tmp/assgn.bnf /tmp/defuse.isla
+> isla solve -n 10 -f 1 -s 1 assgn.bnf defuse.isla
 q := 2 ; m := 1 ; c := 4
 p := 8 ; o := 3 ; l := p
 z := 7 ; p := 6 ; e := p
@@ -180,144 +172,61 @@ forall <assgn> assgn_1:
 solver = ISLaSolver(
     grammar=grammar,
     formula=constraint,
-    max_number_free_instantiations=10,  # -f
-    max_number_smt_instantiations=10,  # -s
+    max_number_free_instantiations=1,  # -f
+    max_number_smt_instantiations=1,  # -s
 )
 
-for _ in range(100):
+for _ in range(10):
     print(solver.solve())
 ```
 
-## Further Resources
+An example output of the above program snippet is:
 
-* Our [**interactive ISLa tutorial**](https://www.fuzzingbook.org/beta/html/FuzzingWithConstraints.html),
-  published as a part of the Fuzzing Book, provides an easily accessible introduction
-  to the specification and generation of custom system inputs using ISLa.
+```
+q := 7 ; m := 1 ; c := 8
+p := 2 ; o := 2 ; l := p
+z := 9 ; p := 4 ; e := p
+d := 8 ; a := d ; h := 5
+s := 0 ; x := 0
+k := 7
+p := 8 ; r := p
+p := 9 ; u := p
+p := 4 ; v := p
+p := 2 ; p := 1 ; w := p
+```
 
-* We published a [**paper on ISLa**](https://publications.cispa.saarland/3596/7/Input%20Invariants.pdf)
-  at ESEC/FSE 2022. The paper describes the ISLa language and solver more formally.
+## Try It Out
+
+You want to try ISLa out for your own examples, or need more inspiration? Then, we
+recommend our [**interactive ISLa
+tutorial**](https://www.fuzzingbook.org/beta/html/FuzzingWithConstraints.html) providing
+an easily accessible introduction to the specification and generation of custom system
+inputs using ISLa.
+
+You might also like our `isla create` command: `isla create path` creates a set of
+grammar and constraint files along with a README file at the path `path`. All files are
+contain explaining comments to help you getting started; we show different constraints
+for the assignment language that you can experiment with.
+
+Further recommended resources for diving deeper into ISLa are:
+
+* ISLa's project page contains [**installation instructions**](https://github.com/rindPHI/isla#build-run-install)
+  for different scenarios.
+
+* Our [**scientific paper on ISLa**](https://publications.cispa.saarland/3596/7/Input%20Invariants.pdf),
+  published at ESEC/FSE 2022. The paper describes the ISLa language and solver more
+  formally.
 
 * The [**ISLa Language Specification**](https://rindphi.github.io/isla/islaspec/)
   precisely specifies the syntax and semantics of ISLa constraints. The specification
   also contains a list of
   [supported default predicates](https://rindphi.github.io/isla/islaspec/#structural-predicates).
 
-* In the directory `src/isla_formalizations/`, you find our specifications for the
-  subject languages of our experimental evaluation.
+* In the directory
+  [`src/isla_formalizations/`](https://github.com/rindPHI/isla/tree/main/src/isla_formalizations),
+  you find our specifications for the subject languages of our experimental evaluation.
   
-* The files `run_eval_....fish` are the scripts we used to collect and analyze our
-  evaluation data. To analyze ISLa's current performance yourself, you can run the
-  scripts with the `-h` argument to obtain some guidance on their parameters (the fish
-  shell is required to use these scripts).
-
-
-## Build, Run, Install
-
-ISLa depends on **Python 3.10** and the Python header files. To compile all of ISLa's
-dependencies, you need gcc, g++ make, and cmake. To check out the current ISLa version,
-git will be needed. Furthermore, python3.10-venv is required to run ISLearn in a virtual
-environment.
-
-Additionally, *for testing ISLa*, clang and the `csvlint` executable are required (for
-the Scriptsize-C and CSV case studies).
-
-On *Alpine Linux*, all dependencies (but `csvlint`) can be installed using
-
-```shell
-apk add python3.10 python3.10-dev python3.10-venv gcc g++ make cmake git clang
-```
-
-The `csvlint` executable can be obtained from
-https://github.com/Clever/csvlint/releases/download/v0.3.0/csvlint-v0.3.0-linux-amd64.tar.gz.
-You obtain and unpack `csvlint` by running (in a Unix shell)
-
-```shell
-wget https://github.com/Clever/csvlint/releases/download/v0.3.0/csvlint-v0.3.0-linux-amd64.tar.gz -O /tmp/csvlint.tar.gz
-tar xzf /tmp/csvlint.tar.gz -C /tmp
-```
-
-Then, move the file `/tmp/csvlint-v0.3.0-linux-amd64/csvlint` to some location in your
-PATH (e.g., `/usr/bin`).
-
-### Install
-
-If all external dependencies are available, a simple `pip install isla-solver` suffices.
-We recommend installing ISLa inside a virtual environment (virtualenv):
-
-```shell
-python3.10 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-pip install isla-solver
-```
-
-Now, the `isla` command should be available on the command line within the virtual
-environment.
-
-### Docker
-
-For testing ISLa without having to care about external dependencies like Python, we provide a Docker container,
-which already contains all dependencies.
-
-First, pull and run the Docker container:
-
-```shell
-docker pull dsteinhoefel/isla:latest
-docker run -it --name isla dsteinhoefel/isla
-```
-
-You should now have entered the container. Next, check out the ISLa repository, and
-update the requirements:
-
-```shell
-git clone https://github.com/rindPHI/isla.git
-cd isla/
-```
-
-Now, you can perform an editable installation of ISLa and run the ISLa tests:
-
-```shell
-pip install -e .[dev,test]
-python3.10 -m pytest -n 16 tests
-```
-
-### Build 
-
-ISLearn is built locally as follows:
-
-```shell
-git clone https://github.com/rindPHI/isla.git
-cd isla/
-
-python3.10 -m venv venv
-source venv/bin/activate
-
-pip install --upgrade pip
-pip install --upgrade build
-python3 -m build
-```
-
-Then, you will find the built wheel (`*.whl`) in the `dist/` directory.
-
-### Testing & Development
-
-For development, we recommend using ISLa inside a virtual environment (virtualenv). By thing the following steps in a
-standard shell (bash), one can run the ISLa tests:
-
-```shell
-git clone https://github.com/rindPHI/isla.git
-cd isla/
-
-python3.10 -m venv venv
-source venv/bin/activate
-
-pip install --upgrade pip
-pip install -r requirements_test.txt
-
-# Run tests
-pip install -e .[dev,test]
-python3 -m pytest -n 16 tests
-```
-
-Then you can, for instance, run `python3 tests/xml_demo.py` inside the virtual environment.
-
+* The files `run_eval_csv.fish`, `run_eval_tar.fish`, and so on, are the scripts we used
+  to collect and analyze our evaluation data. To analyze ISLa's current performance
+  yourself, you can run the scripts with the `-h` argument to obtain some guidance on
+  their parameters (the fish shell is required to use these scripts).
