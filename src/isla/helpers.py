@@ -77,25 +77,6 @@ def delete_unreachable(grammar: Grammar) -> None:
         del grammar[unreachable]
 
 
-def replace_tree_path(
-    in_tree: ParseTree, path: Path, replacement_tree: ParseTree
-) -> ParseTree:
-    """Returns tree where replacement_tree has been inserted at `path` instead of the original subtree"""
-    node, children = in_tree
-
-    if not path:
-        return replacement_tree
-
-    head = path[0]
-    new_children = (
-        children[:head]
-        + [replace_tree_path(children[head], path[1:], replacement_tree)]
-        + children[head + 1 :]
-    )
-
-    return node, new_children
-
-
 def is_prefix(path_1: Path, path_2: Path) -> bool:
     if not path_1:
         return True
@@ -169,20 +150,6 @@ def tree_to_string(tree: ParseTree) -> str:
             stack.insert(0, child)
 
     return "".join(result)
-
-
-def tree_depth(tree: ParseTree) -> int:
-    if not tree[1]:
-        return 1
-
-    return 1 + max(tree_depth(child) for child in tree[1])
-
-
-def tree_size(tree: ParseTree) -> int:
-    if not tree[1]:
-        return 1
-
-    return 1 + sum(tree_depth(child) for child in tree[1])
 
 
 def canonical(grammar: Grammar) -> CanonicalGrammar:
@@ -470,23 +437,6 @@ def strip_ws(inp: str) -> str:
     return inp
 
 
-def transitive_closure(relation: Iterable[Tuple[S, T]]) -> Set[Tuple[S, T]]:
-    closure = set(relation)
-    while True:
-        new_relations: Set[Tuple[S, T]] = {
-            (x, w) for x, y in closure for q, w in closure if q == y
-        }
-
-        closure_until_now = closure | new_relations
-
-        if closure_until_now == closure:
-            break
-
-        closure = closure_until_now
-
-    return closure
-
-
 def start_symbol():
     return "<start>"
 
@@ -612,15 +562,6 @@ class lazystr:
 
     def __str__(self):
         return str(self.c())
-
-
-def replace_in_list(a_list: List[T], repl: S | List[S], idx: int) -> List[T | S]:
-    assert -len(a_list) <= idx < len(a_list)
-    if idx < 0:
-        idx = len(a_list) + idx
-    return (
-        a_list[0:idx] + (repl if isinstance(repl, list) else [repl]) + a_list[idx + 1 :]
-    )
 
 
 def nth_occ(haystack: Sequence[T], needle: T, n: int) -> Optional[int]:

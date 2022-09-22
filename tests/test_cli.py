@@ -649,6 +649,20 @@ exists <assgn> assgn:
 
         self.assertTrue("satisfies the ISLa constraint" in stdout)
 
+    def test_check_no_constraint_present(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        stdout, stderr, code = run_isla(
+            "check",
+            "-i",
+            "x := 1 ; a := x",
+            grammar_file.name,
+        )
+
+        self.assertIn("must specify a constraint", stderr)
+        self.assertEqual(USAGE_ERROR, code)
+        self.assertFalse(stdout)
+
     def test_check_assgn_lang_correct_input_in_file(self):
         grammar_file = write_grammar_file(LANG_GRAMMAR)
 
