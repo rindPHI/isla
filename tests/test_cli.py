@@ -121,7 +121,7 @@ exists <assgn> assgn:
 
         solver = ISLaSolver(LANG_GRAMMAR, constraint)
         for line in stdout.split("\n"):
-            self.assertTrue(solver.evaluate(line))
+            self.assertTrue(solver.check(line))
 
         grammar_file_1.close()
         grammar_file_2.close()
@@ -184,8 +184,8 @@ exists <assgn> assgn:
             solver_1 = ISLaSolver(LANG_GRAMMAR, constraint)
             solver_2 = ISLaSolver(LANG_GRAMMAR, additional_constraint)
             for line in stdout.split("\n"):
-                self.assertTrue(solver_1.evaluate(line))
-                self.assertTrue(solver_2.evaluate(line))
+                self.assertTrue(solver_1.check(line))
+                self.assertTrue(solver_2.check(line))
 
         grammar_file.close()
         constraint_file.close()
@@ -239,7 +239,7 @@ exists <assgn> assgn:
 
         solver = ISLaSolver(LANG_GRAMMAR, constraint)
         for line in stdout.split("\n"):
-            self.assertTrue(solver.evaluate(line))
+            self.assertTrue(solver.check(line))
 
         grammar_file_1.close()
         grammar_file_2.close()
@@ -266,7 +266,7 @@ exists <assgn> assgn:
 
         solver = ISLaSolver(LANG_GRAMMAR, constraint)
         for line in stdout.split("\n"):
-            self.assertTrue(solver.evaluate(line))
+            self.assertTrue(solver.check(line))
 
     def test_solve_assgn_lang_output_directory(self):
         grammar_1 = {nt: exp for nt, exp in LANG_GRAMMAR.items() if ord(nt[1]) <= 114}
@@ -307,7 +307,7 @@ exists <assgn> assgn:
         solver = ISLaSolver(LANG_GRAMMAR, constraint)
         for file_name in files:
             with open(os.path.join(out_dir.name, file_name), "rb") as file:
-                self.assertTrue(solver.evaluate(file.read().decode("utf-8")))
+                self.assertTrue(solver.check(file.read().decode("utf-8")))
 
         grammar_file_1.close()
         grammar_file_2.close()
@@ -538,7 +538,7 @@ exists <assgn> assgn:
 
             with open(os.path.join(out_dir.name, inp_file_name), "rb") as file:
                 inp = file.read().decode("utf-8")
-                self.assertTrue(solver.evaluate(inp))
+                self.assertTrue(solver.check(inp))
 
             exit_position = inp.find("exit")
             if exit_position >= 0:
@@ -620,7 +620,7 @@ exists <assgn> assgn:
 
             solver = ISLaSolver(LANG_GRAMMAR, constraint)
             for assignment in assignments:
-                self.assertTrue(solver.evaluate(assignment))
+                self.assertTrue(solver.check(assignment))
 
         out_dir.cleanup()
 
@@ -648,6 +648,20 @@ exists <assgn> assgn:
         self.assertFalse(stderr)
 
         self.assertTrue("satisfies the ISLa constraint" in stdout)
+
+    def test_check_no_constraint_present(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        stdout, stderr, code = run_isla(
+            "check",
+            "-i",
+            "x := 1 ; a := x",
+            grammar_file.name,
+        )
+
+        self.assertIn("must specify a constraint", stderr)
+        self.assertEqual(USAGE_ERROR, code)
+        self.assertFalse(stdout)
 
     def test_check_assgn_lang_correct_input_in_file(self):
         grammar_file = write_grammar_file(LANG_GRAMMAR)
@@ -761,8 +775,7 @@ exists <assgn> assgn:
 
         self.assertEqual(1, code)
         self.assertFalse(stderr)
-
-        self.assertTrue("SyntaxError" in stdout)
+        self.assertTrue("input could not be parsed" in stdout)
 
     def test_parse_assgn_lang_correct_input_outfile(self):
         grammar_file = write_grammar_file(LANG_GRAMMAR)

@@ -12,7 +12,6 @@ from abc import ABC
 from dataclasses import dataclass
 from functools import reduce, lru_cache
 from typing import (
-    Generator,
     Dict,
     List,
     Set,
@@ -62,6 +61,7 @@ from isla.helpers import (
     is_prefix,
     Maybe,
     chain_functions,
+    Exceptional,
 )
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
@@ -83,7 +83,6 @@ from isla.language import (
     ForallIntFormula,
 )
 from isla.parser import EarleyParser
-from isla.three_valued_truth import ThreeValuedTruth
 from isla.type_defs import Grammar, Path, ImmutableList
 from isla.z3_helpers import z3_solve, z3_subst, z3_eq, z3_and
 
@@ -110,17 +109,28 @@ class SolutionState:
         if not self.tree.is_complete():
             return False
 
-        # We assume that any universal quantifier has already been instantiated, if it matches,
-        # and is thus satisfied, or another unsatisfied constraint resulted from the instantiation.
-        # Existential, predicate, and SMT formulas have to be eliminated first.
+        # We assume that any universal quantifier has already been instantiated, if it
+        # matches, and is thus satisfied, or another unsatisfied constraint resulted
+        # from the instantiation. Existential, predicate, and SMT formulas have to be
+        # eliminated first.
 
-        # return any(all(not isinstance(conjunct, language.StructuralPredicateFormula)
-        #                and (not isinstance(conjunct, language.SMTFormula) or conjunct == sc.true())
-        #                and not isinstance(conjunct, language.SemanticPredicateFormula)
-        #                and not isinstance(conjunct, language.ExistsFormula)
-        #                and (not isinstance(conjunct, language.ForallFormula) or len(conjunct.already_matched) > 0)
-        #                for conjunct in split_conjunction(disjunct))
-        #            for disjunct in split_disjunction(self.constraint))
+        # return any(
+        #     all(
+        #         not isinstance(conjunct, language.StructuralPredicateFormula)
+        #         and (
+        #             not isinstance(conjunct, language.SMTFormula)
+        #             or conjunct == sc.true()
+        #         )
+        #         and not isinstance(conjunct, language.SemanticPredicateFormula)
+        #         and not isinstance(conjunct, language.ExistsFormula)
+        #         and (
+        #             not isinstance(conjunct, language.ForallFormula)
+        #             or len(conjunct.already_matched) > 0
+        #         )
+        #         for conjunct in split_conjunction(disjunct)
+        #     )
+        #     for disjunct in split_disjunction(self.constraint)
+        # )
 
         return self.constraint == sc.true()
 
@@ -217,13 +227,25 @@ STD_COST_SETTINGS = CostSettings(
 )
 
 
+@dataclass(frozen=True)
+class SolverTimeout(Exception):
+    seconds_elapsed: int
+
+
+@dataclass(frozen=True)
+class UnknownResultError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class SemanticError(Exception):
+    pass
+
+
 class ISLaSolver:
     """
     The solver class for ISLa formulas/constraints. Main methods: `solve()` and `evaluate()`.
     """
-
-    UNSAT = 0
-    TIMEOUT = 1
 
     def __init__(
         self,
@@ -462,47 +484,76 @@ class ISLaSolver:
             for state in initial_states:
                 self.costs[state] = self.compute_cost(state)
 
-    def evaluate(self, inp: DerivationTree | str) -> ThreeValuedTruth:
+    def check(self, inp: DerivationTree | str) -> bool:
         """
-        Evaluates whether the given derivation tree satisfies the constraint passed to the solver.
+        Evaluates whether the given derivation tree satisfies the constraint passed to
+        the solver. Raises an `UnknownResultError` if this could not be evaluated
+        (e.g., because of a solver timeout or a semantic predicate that cannot be
+        evaluated).
 
         :param inp: The input to evaluate, either readily parsed or as a string.
-        :return: A three-valued truth value.
+        :return: A truth value.
         """
         if isinstance(inp, str):
-            inp = self.parse(inp)
+            try:
+                self.parse(inp)
+                return True
+            except (SyntaxError, SemanticError):
+                return False
+
         assert isinstance(inp, DerivationTree)
-        return evaluate(self.formula, inp, self.grammar)
 
-    def solve(self) -> Generator[DerivationTree | int, None, None]:
+        result = evaluate(self.formula, inp, self.grammar)
+
+        if result.is_unknown():
+            raise UnknownResultError()
+        else:
+            return bool(result)
+
+    def parse(self, inp: str, nonterminal: str = "<start>") -> DerivationTree:
         """
-        Produces solutions to the constraint passed to the solver instance, or `ISLaSolver.TIMEOUT` (if
-        a timeout occurred) or `ISLaSolver.UNSAT` if no more solutions or none at all could be found.
-        If no solution was found at all and `UNSAT` is returned, this means that the formula is unsatisfiable.
+        Parses the given input `inp`. Raises a `SyntaxError` if the input does not
+        satisfy the grammar, a `SemanticError` if it does not satisfy the constraint
+        (this is only checked if `nonterminal` is "<start>"), and returns the parsed
+        `DerivationTree` otherwise.
+
+        :param inp: The input to parse.
+        :param nonterminal: The nonterminal to start parsing with, if a string
+        corresponding to a sub-grammar shall be parsed. We don't check semantic
+        correctness in that case.
+        :return: A parsed `DerivationTree`.
+        """
+        grammar = copy.deepcopy(self.grammar)
+        if nonterminal != "<start>":
+            grammar["<start>"] = [nonterminal]
+            delete_unreachable(grammar)
+
+        parser = EarleyParser(grammar)
+        try:
+            parse_tree = next(parser.parse(inp))
+            if nonterminal != "<start>":
+                parse_tree = parse_tree[1][0]
+            tree = DerivationTree.from_parse_tree(parse_tree)
+        except SyntaxError as err:
+            self.logger.error(f'Error parsing "{inp}" starting with "{nonterminal}"')
+            raise err
+
+        if nonterminal == "<start>" and not self.check(tree):
+            raise SemanticError()
+
+        return tree
+
+    def solve(self) -> DerivationTree:
+        """
+        Attempts to compute a solution to the given ISLa formula. Returns that solution,
+        if any. This function can be called repeatedly to obtain more solutions until
+        one of two exception types is raised: A `StopIteration` indicates that no more
+        solution can be found; a `SolverTimeout` is raised if a timeout occurred.
+        After that, an exception will be raised every time.
 
         The timeout can be controlled by the `timeout_seconds` constructor parameter.
 
-        :return: A generator of solutions.
-        """
-
-        inp = self.fuzz()
-        while isinstance(inp, DerivationTree):
-            yield inp
-            inp = self.fuzz()
-
-        yield inp
-
-    def fuzz(self) -> DerivationTree | int:
-        """
-        Attempts to compute a solution to the given ISLa formula. Returns that solution, if any.
-        This function can be called repeatedly to obtain more solutions until `ISLaSolver.TIMEOUT`
-        or `ISLaSolver.UNSAT` is returned. After that, only `TIMEOUT` or `UNSAT` will be returned
-        at each call.
-
-        The timeout can be controlled by the `timeout_seconds` constructor parameter.
-
-        :return: A solution for the ISLa formula passed to the `ISLaSolver`, or `ISLaSolver.TIMEOUT` (if
-        a timeout occurred) or `ISLaSolver.UNSAT` if no more solutions or none at all could be found.
+        :return: A solution for the ISLa formula passed to the `ISLaSolver`.
         """
         if self.timeout_seconds is not None and self.start_time is None:
             self.start_time = int(time.time())
@@ -522,7 +573,7 @@ class ISLaSolver:
             if self.timeout_seconds is not None:
                 if int(time.time()) - self.start_time > self.timeout_seconds:
                     self.logger.debug("TIMEOUT")
-                    return ISLaSolver.TIMEOUT
+                    raise TimeoutError(self.timeout_seconds)
 
             if self.solutions:
                 solution = self.solutions.pop(0)
@@ -586,7 +637,7 @@ class ISLaSolver:
             return solution
         else:
             self.logger.debug("UNSAT")
-            return ISLaSolver.UNSAT
+            raise StopIteration()
 
     @staticmethod
     def noop_on_false_constraint(
@@ -2158,14 +2209,9 @@ class ISLaSolver:
                     self.start_time = int(time.time())
                     self.timeout_seconds = 2
 
-                    result = self.fuzz()
-
-                    self.start_time = old_start_time
-                    self.timeout_seconds = old_timeout_seconds
-                    self.queue = old_queue
-                    self.solutions = old_solutions
-
-                    if result == ISLaSolver.UNSAT:
+                    try:
+                        self.solve()
+                    except StopIteration:
                         new_states.remove(new_state)
                         self.logger.debug(
                             "Dropping state %s, unsatisfiable existential formula %s",
@@ -2173,6 +2219,11 @@ class ISLaSolver:
                             existential_formula,
                         )
                         break
+                    finally:
+                        self.start_time = old_start_time
+                        self.timeout_seconds = old_timeout_seconds
+                        self.queue = old_queue
+                        self.solutions = old_solutions
 
             self.currently_unsat_checking = False
 
@@ -2499,20 +2550,6 @@ class ISLaSolver:
                 prev.add(new_inp)
 
         return z3_regex
-
-    def parse(self, inp: str, nonterminal: str = "<start>") -> DerivationTree:
-        grammar = copy.deepcopy(self.grammar)
-        if nonterminal != "<start>":
-            grammar["<start>"] = [nonterminal]
-            delete_unreachable(grammar)
-
-        parser = EarleyParser(grammar)
-        try:
-            return DerivationTree.from_parse_tree(next(parser.parse(inp))[1][0])
-        except SyntaxError as err:
-            raise RuntimeError(
-                f'Error parsing "{inp}" starting with "{nonterminal}"', err
-            )
 
 
 class CostComputer(ABC):
@@ -2975,7 +3012,12 @@ def implies(
     solver = ISLaSolver(
         grammar, f1 & -f2, activate_unsat_support=True, timeout_seconds=timeout_seconds
     )
-    return solver.fuzz() == ISLaSolver.UNSAT
+
+    return (
+        Exceptional.of(solver.solve)
+        .map(lambda _: False)
+        .recover(lambda e: isinstance(e, StopIteration))
+    ).a
 
 
 def equivalent(
@@ -2987,4 +3029,9 @@ def equivalent(
         activate_unsat_support=True,
         timeout_seconds=timeout_seconds,
     )
-    return solver.fuzz() == ISLaSolver.UNSAT
+
+    return (
+        Exceptional.of(solver.solve)
+        .map(lambda _: False)
+        .recover(lambda e: isinstance(e, StopIteration))
+    ).a

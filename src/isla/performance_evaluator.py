@@ -669,9 +669,48 @@ def generate_inputs(
     jobname = "" if not jobname else f" ({jobname})"
     print(f"[{strtime()}] Collecting data for {timeout_seconds} seconds{jobname}")
 
+    generator = make_input_generator(generator)
+
+    while int(time.time()) - int(start_time) <= timeout_seconds:
+        try:
+            inp = next(generator)
+        except StopIteration:
+            break
+        except Exception as exp:
+            print(
+                f"{type(exp).__name__} occurred while executing solver; "
+                + "I'll stop here:\n"
+                + str(exp),
+                file=sys.stderr,
+            )
+            print(traceback.format_exc())
+            return result
+
+        logger.debug("Input: %s", str(inp))
+        curr_relative_time = time.time() - start_time
+        assert curr_relative_time not in result
+        result[curr_relative_time] = inp
+
+    print(
+        f"[{strtime()}] Collected {len(result)} inputs in {timeout_seconds} seconds{jobname}"
+    )
+
+    return result
+
+
+def make_input_generator(
+    generator: Generator[isla.derivation_tree.DerivationTree, None, None]
+    | ISLaSolver
+    | Grammar
+) -> Generator[isla.derivation_tree.DerivationTree, None, None]:
     if isinstance(generator, ISLaSolver):
-        generator = generator.solve()
+
+        def generator():
+            while True:
+                yield generator.solve()
+
     elif isinstance(generator, dict):
+        # grammar
         grammar = generator
 
         def gen():
@@ -683,35 +722,7 @@ def generate_inputs(
 
         generator = gen()
 
-    while int(time.time()) - int(start_time) <= timeout_seconds:
-        try:
-            inp = next(generator)
-        except StopIteration:
-            break
-        except Exception as exp:
-            print(
-                f"{type(exp).__name__} occurred while executing solver; I'll stop here:\n"
-                + str(exp),
-                file=sys.stderr,
-            )
-            print(traceback.format_exc())
-            return result
-
-        if not isinstance(inp, isla.derivation_tree.DerivationTree):
-            assert (
-                inp == ISLaSolver.TIMEOUT
-            ), f"Unexpected return value {inp} from solver"
-            break
-
-        logger.debug("Input: %s", str(inp))
-        curr_relative_time = time.time() - start_time
-        assert curr_relative_time not in result
-        result[curr_relative_time] = inp
-
-    print(
-        f"[{strtime()}] Collected {len(result)} inputs in {timeout_seconds} seconds{jobname}"
-    )
-    return result
+    return generator
 
 
 def create_db_tables(db_file: str = std_db_file()) -> None:

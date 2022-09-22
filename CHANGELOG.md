@@ -5,6 +5,33 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.0.0] - 2022-09-22
+
+This first major ISLa release comes with a command line interface and a new solver API.
+Please note that the new API is incompatible with the `0.*` versions, such that things
+can break if you upgrade to `1.0.0` from a previous version. Read the change list
+below to learn how you can adapt your code to work with `1.0.0`.
+
+### Changed
+
+- The previous solver function `ISLaSolver.solve()` was removed
+- The function `ISLaSolver.fuzz()` was renamed to `ISLaSolver.solve()`
+- The signatures of the old `ISLaSolver.fuzz()` and the new `ISLaSolver.solve()` 
+  functions are different: The new function
+  + only ever returns `DerivationTree` objects
+  + *raises* a `StopIteration` if no (more) solutions could be found
+  + *raises* a `SolverTimeout` exception if the solver timed out
+- The previous solver function `ISLaSolver.evaluate()` was renamed to 
+  `ISLaSolver.check()`
+- The new `ISLaSolver.check()` function returns a "normal" Boolean value (instead of
+  a `ThreeValuedTruth`) and returns an `UnknownResultError` if truth cannot be
+  determined (which should only occur in rare edge cases).
+- The function `ISLaSolver.parse()` now also checks for semantic validity. It
+  + raises a `SyntaxError` if the input cannot be parsed with the grammar,
+  + raises a `SemanticError` if the input can be parsed, but does not satisfy the
+    constraint, and
+  + returns a `DerivationTree` object otherwise.
+
 ## [0.11.0] - 2022-09-22
 
 ### Added

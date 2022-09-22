@@ -24,6 +24,7 @@ from typing import (
     Optional,
     Generic,
     Iterator,
+    Type,
 )
 
 from isla.type_defs import (
@@ -74,25 +75,6 @@ def path_iterator(
 def delete_unreachable(grammar: Grammar) -> None:
     for unreachable in unreachable_nonterminals(grammar):
         del grammar[unreachable]
-
-
-def replace_tree_path(
-    in_tree: ParseTree, path: Path, replacement_tree: ParseTree
-) -> ParseTree:
-    """Returns tree where replacement_tree has been inserted at `path` instead of the original subtree"""
-    node, children = in_tree
-
-    if not path:
-        return replacement_tree
-
-    head = path[0]
-    new_children = (
-        children[:head]
-        + [replace_tree_path(children[head], path[1:], replacement_tree)]
-        + children[head + 1 :]
-    )
-
-    return node, new_children
 
 
 def is_prefix(path_1: Path, path_2: Path) -> bool:
@@ -168,20 +150,6 @@ def tree_to_string(tree: ParseTree) -> str:
             stack.insert(0, child)
 
     return "".join(result)
-
-
-def tree_depth(tree: ParseTree) -> int:
-    if not tree[1]:
-        return 1
-
-    return 1 + max(tree_depth(child) for child in tree[1])
-
-
-def tree_size(tree: ParseTree) -> int:
-    if not tree[1]:
-        return 1
-
-    return 1 + sum(tree_depth(child) for child in tree[1])
 
 
 def canonical(grammar: Grammar) -> CanonicalGrammar:
@@ -469,23 +437,6 @@ def strip_ws(inp: str) -> str:
     return inp
 
 
-def transitive_closure(relation: Iterable[Tuple[S, T]]) -> Set[Tuple[S, T]]:
-    closure = set(relation)
-    while True:
-        new_relations: Set[Tuple[S, T]] = {
-            (x, w) for x, y in closure for q, w in closure if q == y
-        }
-
-        closure_until_now = closure | new_relations
-
-        if closure_until_now == closure:
-            break
-
-        closure = closure_until_now
-
-    return closure
-
-
 def start_symbol():
     return "<start>"
 
@@ -613,15 +564,6 @@ class lazystr:
         return str(self.c())
 
 
-def replace_in_list(a_list: List[T], repl: S | List[S], idx: int) -> List[T | S]:
-    assert -len(a_list) <= idx < len(a_list)
-    if idx < 0:
-        idx = len(a_list) + idx
-    return (
-        a_list[0:idx] + (repl if isinstance(repl, list) else [repl]) + a_list[idx + 1 :]
-    )
-
-
 def nth_occ(haystack: Sequence[T], needle: T, n: int) -> Optional[int]:
     assert n >= 0
     num_occs = 0
@@ -724,6 +666,62 @@ class Maybe(Generic[T], MonadPlus[Optional[T]]):
         assert isinstance(other, tuple)
         assert callable(other[0])
         return self.lazy_mplus(*other)
+
+
+E = TypeVar("E", bound=Exception)
+
+
+@dataclass(frozen=True)
+class Exceptional(Generic[E, T], Monad[T]):
+    @staticmethod
+    def of(f: Callable[[], T]) -> "Exceptional[E, T]":
+        try:
+            return Success(f())
+        except Exception as exc:
+            return Failure(exc)
+
+    @abstractmethod
+    def map(self, f: Callable[[T], S]) -> "Exceptional[S]":
+        pass
+
+    @abstractmethod
+    def recover(
+        self, f: Callable[[E], T], t: Type[E] = BaseException
+    ) -> "Exceptional[E, T]":
+        pass
+
+
+@dataclass(frozen=True)
+class Success(Generic[T], Exceptional[Exception, T]):
+    a: T
+
+    def bind(self, f: Callable[[T], "Exceptional[S]"]) -> "Exceptional[S]":
+        return f(self.a)
+
+    def map(self, f: Callable[[T], S]) -> "Exceptional[S]":
+        return Exceptional.of(lambda: f(self.a))
+
+    def recover(self, _, __=BaseException) -> "Success[T]":
+        return self
+
+
+@dataclass(frozen=True)
+class Failure(Generic[E], Exceptional[E, Any]):
+    a: E
+
+    def bind(self, _) -> "Exceptional[T]":
+        return self
+
+    def map(self, _) -> "Exceptional[S]":
+        return self
+
+    def recover(
+        self, f: Callable[[E], T], t: Type[E] = BaseException
+    ) -> "Exceptional[E, T]":
+        if isinstance(self.a, t):
+            return Exceptional.of(lambda: f(self.a))
+        else:
+            return self
 
 
 def chain_functions(

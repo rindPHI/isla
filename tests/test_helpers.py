@@ -6,8 +6,16 @@ import z3
 from grammar_graph.gg import GrammarGraph
 
 from isla.existential_helpers import path_to_tree, paths_between
-from isla.helpers import is_prefix, path_iterator, delete_unreachable, \
-    dict_of_lists_to_list_of_dicts, weighted_geometric_mean, canonical
+from isla.helpers import (
+    is_prefix,
+    path_iterator,
+    delete_unreachable,
+    dict_of_lists_to_list_of_dicts,
+    weighted_geometric_mean,
+    canonical,
+    Exceptional,
+    Success,
+)
 from isla.isla_predicates import is_before
 from isla.parser import EarleyParser
 from isla.type_defs import Grammar, ParseTree
@@ -22,11 +30,29 @@ class TestHelpers(unittest.TestCase):
         tree = next(parser.parse(prog))
 
         paths = [path for path, subtree in list(path_iterator(tree))]
-        self.assertEqual([
-            (), (0,), (0, 0), (0, 0, 0), (0, 0, 0, 0), (0, 0, 1), (0, 0, 2), (0, 0, 2, 0), (0, 0, 2, 0, 0),
-            (0, 1), (0, 2), (0, 2, 0), (0, 2, 0, 0), (0, 2, 0, 0, 0), (0, 2, 0, 1), (0, 2, 0, 2),
-            (0, 2, 0, 2, 0), (0, 2, 0, 2, 0, 0)],
-            paths)
+        self.assertEqual(
+            [
+                (),
+                (0,),
+                (0, 0),
+                (0, 0, 0),
+                (0, 0, 0, 0),
+                (0, 0, 1),
+                (0, 0, 2),
+                (0, 0, 2, 0),
+                (0, 0, 2, 0, 0),
+                (0, 1),
+                (0, 2),
+                (0, 2, 0),
+                (0, 2, 0, 0),
+                (0, 2, 0, 0, 0),
+                (0, 2, 0, 1),
+                (0, 2, 0, 2),
+                (0, 2, 0, 2, 0),
+                (0, 2, 0, 2, 0, 0),
+            ],
+            paths,
+        )
 
     def test_is_before(self):
         self.assertFalse(is_before(None, tuple(), tuple()))
@@ -45,31 +71,74 @@ class TestHelpers(unittest.TestCase):
         self.assertFalse(is_prefix((1,), (2,)))
 
     def test_path_to_tree(self):
-        self.assertEqual([
-            ('<stmt>', [('<assgn>', None), (' ; ', []), ('<stmt>', None)]),
-            ('<stmt>', [('<assgn>', None)])],
-            [tree.to_parse_tree()
-             for tree in path_to_tree(canonical(LANG_GRAMMAR), ["<stmt>", "<assgn>"])])
+        self.assertEqual(
+            [
+                ("<stmt>", [("<assgn>", None), (" ; ", []), ("<stmt>", None)]),
+                ("<stmt>", [("<assgn>", None)]),
+            ],
+            [
+                tree.to_parse_tree()
+                for tree in path_to_tree(canonical(LANG_GRAMMAR), ["<stmt>", "<assgn>"])
+            ],
+        )
 
-        self.assertEqual([('<stmt>', [('<assgn>', None), (' ; ', []), ('<stmt>', None)])],
-                         [tree.to_parse_tree()
-                          for tree in path_to_tree(canonical(LANG_GRAMMAR), ["<stmt>", "<stmt>"])])
+        self.assertEqual(
+            [("<stmt>", [("<assgn>", None), (" ; ", []), ("<stmt>", None)])],
+            [
+                tree.to_parse_tree()
+                for tree in path_to_tree(canonical(LANG_GRAMMAR), ["<stmt>", "<stmt>"])
+            ],
+        )
 
-        self.assertEqual([
-            ('<stmt>', [('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', [('<digit>', None)])]),
-                        (' ; ', []), ('<stmt>', None)]),
-            ('<stmt>', [('<assgn>', [('<var>', None), (' := ', []), ('<rhs>', [('<digit>', None)])])])],
-            [tree.to_parse_tree()
-             for tree in path_to_tree(
-                canonical(LANG_GRAMMAR), ["<stmt>", "<assgn>", "<rhs>", "<digit>"])])
+        self.assertEqual(
+            [
+                (
+                    "<stmt>",
+                    [
+                        (
+                            "<assgn>",
+                            [
+                                ("<var>", None),
+                                (" := ", []),
+                                ("<rhs>", [("<digit>", None)]),
+                            ],
+                        ),
+                        (" ; ", []),
+                        ("<stmt>", None),
+                    ],
+                ),
+                (
+                    "<stmt>",
+                    [
+                        (
+                            "<assgn>",
+                            [
+                                ("<var>", None),
+                                (" := ", []),
+                                ("<rhs>", [("<digit>", None)]),
+                            ],
+                        )
+                    ],
+                ),
+            ],
+            [
+                tree.to_parse_tree()
+                for tree in path_to_tree(
+                    canonical(LANG_GRAMMAR), ["<stmt>", "<assgn>", "<rhs>", "<digit>"]
+                )
+            ],
+        )
 
     def test_find_all_paths(self):
         graph = GrammarGraph.from_grammar(LANG_GRAMMAR)
-        self.assertEqual([('<stmt>', '<assgn>', '<var>'),
-                          ('<stmt>', '<assgn>', '<rhs>', '<var>')],
-                         list(paths_between(graph, "<stmt>", "<var>")))
+        self.assertEqual(
+            [("<stmt>", "<assgn>", "<var>"), ("<stmt>", "<assgn>", "<rhs>", "<var>")],
+            list(paths_between(graph, "<stmt>", "<var>")),
+        )
 
-        self.assertEqual([('<stmt>', '<stmt>')], list(paths_between(graph, "<stmt>", "<stmt>")))
+        self.assertEqual(
+            [("<stmt>", "<stmt>")], list(paths_between(graph, "<stmt>", "<stmt>"))
+        )
 
         self.assertFalse(list(paths_between(graph, "<assgn>", "<stmt>")))
 
@@ -78,33 +147,36 @@ class TestHelpers(unittest.TestCase):
     def test_dict_of_lists_to_list_of_dicts(self):
         self.assertEqual(
             [{1: 3, 2: 5}, {1: 3, 2: 6}],
-            dict_of_lists_to_list_of_dicts({1: [3], 2: [5, 6]})
+            dict_of_lists_to_list_of_dicts({1: [3], 2: [5, 6]}),
         )
 
         self.assertEqual(
             [{1: 3, 2: 5}, {1: 4, 2: 5}],
-            dict_of_lists_to_list_of_dicts({1: [3, 4], 2: [5]})
+            dict_of_lists_to_list_of_dicts({1: [3, 4], 2: [5]}),
         )
 
         self.assertEqual(
             [{1: 3, 2: 5}, {1: 3, 2: 6}, {1: 4, 2: 5}, {1: 4, 2: 6}],
-            dict_of_lists_to_list_of_dicts({1: [3, 4], 2: [5, 6]})
+            dict_of_lists_to_list_of_dicts({1: [3, 4], 2: [5, 6]}),
         )
 
         self.assertEqual(
-            [{1: 3, 2: 5, 7: 8},
-             {1: 3, 2: 5, 7: 9},
-             {1: 3, 2: 5, 7: 10},
-             {1: 3, 2: 6, 7: 8},
-             {1: 3, 2: 6, 7: 9},
-             {1: 3, 2: 6, 7: 10},
-             {1: 4, 2: 5, 7: 8},
-             {1: 4, 2: 5, 7: 9},
-             {1: 4, 2: 5, 7: 10},
-             {1: 4, 2: 6, 7: 8},
-             {1: 4, 2: 6, 7: 9},
-             {1: 4, 2: 6, 7: 10}],
-            dict_of_lists_to_list_of_dicts({1: [3, 4], 2: [5, 6], 7: [8, 9, 10]}))
+            [
+                {1: 3, 2: 5, 7: 8},
+                {1: 3, 2: 5, 7: 9},
+                {1: 3, 2: 5, 7: 10},
+                {1: 3, 2: 6, 7: 8},
+                {1: 3, 2: 6, 7: 9},
+                {1: 3, 2: 6, 7: 10},
+                {1: 4, 2: 5, 7: 8},
+                {1: 4, 2: 5, 7: 9},
+                {1: 4, 2: 5, 7: 10},
+                {1: 4, 2: 6, 7: 8},
+                {1: 4, 2: 6, 7: 9},
+                {1: 4, 2: 6, 7: 10},
+            ],
+            dict_of_lists_to_list_of_dicts({1: [3, 4], 2: [5, 6], 7: [8, 9, 10]}),
+        )
 
     def test_weighted_geometric_mean(self):
         for i in range(1, 30):
@@ -132,7 +204,9 @@ class TestHelpers(unittest.TestCase):
       (str.to_re "-")) 
     ((_ re.loop 2 2) (re.range "0" "9"))))"""
 
-        parsed_formula = z3.parse_smt2_string(f"(assert {formula.replace('<DATE>', '2022-02-24')})")[0]
+        parsed_formula = z3.parse_smt2_string(
+            f"(assert {formula.replace('<DATE>', '2022-02-24')})"
+        )[0]
         self.assertFalse(evaluate_z3_expression(parsed_formula)[0])
         self.assertTrue(evaluate_z3_expression(parsed_formula)[1])
 
@@ -151,7 +225,9 @@ class TestHelpers(unittest.TestCase):
     ((_ re.loop 2 2) (re.range "0" "9"))))"""
 
         var = z3.String("var")
-        parsed_formula = z3.parse_smt2_string(f"(assert {formula})", decls={"var": var})[0]
+        parsed_formula = z3.parse_smt2_string(
+            f"(assert {formula})", decls={"var": var}
+        )[0]
         eval_result = evaluate_z3_expression(parsed_formula)
 
         self.assertEqual(("var",), eval_result[0])
@@ -163,7 +239,9 @@ class TestHelpers(unittest.TestCase):
         formula = "(or (= a b) (= a c))"
 
         a, b, c = z3.Strings("a b c")
-        parsed_formula = z3.parse_smt2_string(f"(assert {formula})", decls={str(var): var for var in [a, b, c]})[0]
+        parsed_formula = z3.parse_smt2_string(
+            f"(assert {formula})", decls={str(var): var for var in [a, b, c]}
+        )[0]
 
         eval_result = evaluate_z3_expression(parsed_formula)
 
@@ -181,8 +259,46 @@ class TestHelpers(unittest.TestCase):
         assgn = {"a": "a", "b": "b", "c": "c"}
         self.assertFalse(eval_result[1](tuple([assgn[var] for var in vars])))
 
+    def test_exception_monad(self):
+        self.assertEqual(
+            -1,
+            Exceptional.of(lambda: 1 // 0).recover(lambda _: -1, ZeroDivisionError).a,
+        )
 
-if __name__ == '__main__':
+        self.assertEqual(
+            6,
+            Exceptional.of(lambda: 4 // 2)
+            .bind(lambda v: Exceptional.of(lambda: 3 * v))
+            .recover(lambda _: -1, ZeroDivisionError)
+            .a,
+        )
+
+        self.assertEqual(
+            6,
+            Exceptional.of(lambda: 4 // 2)
+            .map(lambda v: 3 * v)
+            .recover(lambda _: -1, ZeroDivisionError)
+            .a,
+        )
+
+        self.assertEqual(
+            -1,
+            Exceptional.of(lambda: 4 // 2)
+            .map(lambda v: v // 0)
+            .recover(lambda _: -1, ZeroDivisionError)
+            .a,
+        )
+
+        self.assertEqual(
+            -1,
+            Exceptional.of(lambda: 4 // 0)
+            .bind(lambda v: Success(lambda: 3 * v))
+            .recover(lambda _: -1, ZeroDivisionError)
+            .a,
+        )
+
+
+if __name__ == "__main__":
     unittest.main()
 
 

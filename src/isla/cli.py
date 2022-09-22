@@ -18,13 +18,13 @@ from isla.isla_predicates import (
 )
 from isla.isla_shortcuts import true
 from isla.language import parse_bnf, parse_isla
-from isla.parser import EarleyParser
 from isla.solver import (
     ISLaSolver,
     GrammarBasedBlackboxCostComputer,
     CostSettings,
     CostWeightVector,
     CostComputer,
+    SemanticError,
 )
 from isla.type_defs import Grammar
 
@@ -97,21 +97,19 @@ def solve(stdout, stderr, parser, args):
     try:
         num_solutions = args.num_solutions
         i = 0
-        while True:
-            if 0 < num_solutions <= i:
-                break
+        while not (0 < num_solutions <= i):
+            try:
+                result = solver.solve()
 
-            result = solver.fuzz()
-            if isinstance(result, DerivationTree):
                 if not output_dir:
                     print(result, flush=True, file=stdout)
                 else:
                     with open(os.path.join(output_dir, f"{i}.txt"), "wb") as out_file:
                         out_file.write(str(result).encode("utf-8"))
-            else:
-                assert result == ISLaSolver.TIMEOUT or result == ISLaSolver.UNSAT
-                if result == ISLaSolver.UNSAT:
-                    print("UNSAT", flush=True, file=stderr)
+            except StopIteration:
+                print("UNSAT", flush=True, file=stderr)
+                break
+            except TimeoutError:
                 break
 
             i += 1
@@ -119,7 +117,7 @@ def solve(stdout, stderr, parser, args):
         sys.exit(0)
 
 
-def fuzz(stdout, stderr, parser, args):
+def fuzz(_, stderr, parser, args):
     input_ending = "_input.txt"
     stdout_ending = "_stdout.txt"
     stderr_ending = "_stderr.txt"
@@ -159,59 +157,58 @@ def fuzz(stdout, stderr, parser, args):
     try:
         num_solutions = args.num_solutions
         i = 0
-        while True:
-            if 0 < num_solutions <= i:
-                break
-
+        while not (0 < num_solutions <= i):
             istr = str(i).rjust(4, "0")
-            result = solver.fuzz()
-            if isinstance(result, DerivationTree):
-                # Write input file
-                with open(
-                    os.path.join(output_dir, f"{istr}{input_ending}"), "wb"
-                ) as inp_file:
-                    inp_file.write(str(result).encode("utf-8"))
-                    inp_file.seek(0)
-                    inp_file_name = inp_file.name
 
-                try:
-                    # Execute fuzz target
-                    result = subprocess.run(
-                        inst_fuzz_command(inp_file_name),
-                        shell=True,
-                        capture_output=True,
-                        check=True,
-                        text=True,
-                    )
-
-                    standard_output = result.stdout
-                    error_output = result.stderr
-                    return_code = result.returncode
-                except subprocess.CalledProcessError as cpe:
-                    standard_output = cpe.stdout
-                    error_output = cpe.stderr
-                    return_code = cpe.returncode
-
-                # Write results
-                with open(
-                    os.path.join(output_dir, f"{istr}{stdout_ending}"), "wb"
-                ) as stdout_file:
-                    stdout_file.write(standard_output.encode("utf-8"))
-
-                with open(
-                    os.path.join(output_dir, f"{istr}{stderr_ending}"), "wb"
-                ) as stderr_file:
-                    stderr_file.write(error_output.encode("utf-8"))
-
-                with open(
-                    os.path.join(output_dir, f"{istr}{status_ending}"), "wb"
-                ) as stat_file:
-                    stat_file.write(str(return_code).encode("utf-8"))
-            else:
-                assert result == ISLaSolver.TIMEOUT or result == ISLaSolver.UNSAT
-                if result == ISLaSolver.UNSAT:
-                    print("UNSAT", flush=True, file=stderr)
+            try:
+                result = solver.solve()
+            except StopIteration:
+                print("UNSAT", flush=True, file=stderr)
                 break
+            except TimeoutError:
+                break
+
+            # Write input file
+            with open(
+                os.path.join(output_dir, f"{istr}{input_ending}"), "wb"
+            ) as inp_file:
+                inp_file.write(str(result).encode("utf-8"))
+                inp_file.seek(0)
+                inp_file_name = inp_file.name
+
+            try:
+                # Execute fuzz target
+                target_result = subprocess.run(
+                    inst_fuzz_command(inp_file_name),
+                    shell=True,
+                    capture_output=True,
+                    check=True,
+                    text=True,
+                )
+
+                standard_output = target_result.stdout
+                error_output = target_result.stderr
+                return_code = target_result.returncode
+            except subprocess.CalledProcessError as cpe:
+                standard_output = cpe.stdout
+                error_output = cpe.stderr
+                return_code = cpe.returncode
+
+            # Write results
+            with open(
+                os.path.join(output_dir, f"{istr}{stdout_ending}"), "wb"
+            ) as stdout_file:
+                stdout_file.write(standard_output.encode("utf-8"))
+
+            with open(
+                os.path.join(output_dir, f"{istr}{stderr_ending}"), "wb"
+            ) as stderr_file:
+                stderr_file.write(error_output.encode("utf-8"))
+
+            with open(
+                os.path.join(output_dir, f"{istr}{status_ending}"), "wb"
+            ) as stat_file:
+                stat_file.write(str(return_code).encode("utf-8"))
 
             i += 1
     except KeyboardInterrupt:
@@ -265,22 +262,20 @@ def do_check(stdout, stderr, parser, args) -> Tuple[int, str, Maybe[DerivationTr
     constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
     inp = get_input_string(command, stderr, args, files)
 
-    parser = EarleyParser(grammar)
-    try:
-        tree = DerivationTree.from_parse_tree(next(parser.parse(inp)))
-    except Exception as exc:
-        return (
-            1,
-            f"input could not be parsed ({type(exc).__name__})",
-            Maybe.nothing(),
-        )
-
     solver = ISLaSolver(grammar, constraint)
 
-    if solver.evaluate(tree):
-        return 0, "input satisfies the ISLa constraint", Maybe(tree)
-    else:
-        return 1, "input does not satisfy the ISLa constraint", Maybe(tree)
+    try:
+        tree = solver.parse(inp)
+    except SyntaxError:
+        return (
+            1,
+            "input could not be parsed",
+            Maybe.nothing(),
+        )
+    except SemanticError:
+        return 1, "input does not satisfy the ISLa constraint", Maybe.nothing()
+
+    return 0, "input satisfies the ISLa constraint", Maybe(tree)
 
 
 def create(stdout, stderr, parser, args):

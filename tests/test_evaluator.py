@@ -757,7 +757,7 @@ forall <expr> expr in start:
         valid = "097522980X"
 
         solver = ISLaSolver(GRAMMAR, "(= (+ 254 (* 2 str.to.int(<isbn10>.<digit>[9])) 10) 264)")
-        self.assertTrue(solver.evaluate(valid))
+        self.assertTrue(solver.check(valid))
 
 
 if __name__ == '__main__':
