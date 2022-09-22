@@ -530,7 +530,10 @@ class ISLaSolver:
 
         parser = EarleyParser(grammar)
         try:
-            tree = DerivationTree.from_parse_tree(next(parser.parse(inp))[1][0])
+            parse_tree = next(parser.parse(inp))
+            if nonterminal != "<start>":
+                parse_tree = parse_tree[1][0]
+            tree = DerivationTree.from_parse_tree(parse_tree)
         except SyntaxError as err:
             self.logger.error(f'Error parsing "{inp}" starting with "{nonterminal}"')
             raise err
