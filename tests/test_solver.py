@@ -50,6 +50,7 @@ from isla.solver import (
     equivalent,
     SolverTimeout,
     UnknownResultError,
+    SemanticError,
 )
 from isla.type_defs import Grammar
 from isla.z3_helpers import z3_eq
@@ -860,9 +861,21 @@ forall int colno:
         solver = ISLaSolver(CONFIG_GRAMMAR, constraint)
 
         self.assertTrue(
-            solver.parse("pagesize=12\nbufsize=34").structurally_equal(
-                solver.parse("pagesize=12\nbufsize=34", "<config>")
+            solver.parse("pagesize=12\nbufsize=12").structurally_equal(
+                solver.parse("pagesize=12\nbufsize=12", "<config>")
             )
+        )
+
+        self.assertTrue(
+            Exceptional.of(lambda: solver.parse("Xpagesize=12\nbufsize=12"))
+            .map(lambda _: False)
+            .recover(lambda e: isinstance(e, SyntaxError))
+        )
+
+        self.assertTrue(
+            Exceptional.of(lambda: solver.parse("pagesize=12\nbufsize=21"))
+            .map(lambda _: False)
+            .recover(lambda e: isinstance(e, SemanticError))
         )
 
     def test_check(self):

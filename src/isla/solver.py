@@ -238,6 +238,11 @@ class UnknownResultError(Exception):
     pass
 
 
+@dataclass(frozen=True)
+class SemanticError(Exception):
+    pass
+
+
 class ISLaSolver:
     """
     The solver class for ISLa formulas/constraints. Main methods: `solve()` and `evaluate()`.
@@ -482,13 +487,18 @@ class ISLaSolver:
 
     def check(self, inp: DerivationTree | str) -> bool:
         """
-        Evaluates whether the given derivation tree satisfies the constraint passed to the solver.
+        Evaluates whether the given derivation tree satisfies the constraint passed to
+        the solver. Raises an `UnknownResultError` if this could not be evaluated
+        (e.g., because of a solver timeout or a semantic predicate that cannot be
+        evaluated).
 
         :param inp: The input to evaluate, either readily parsed or as a string.
-        :return: A three-valued truth value.
+        :return: A truth value.
         """
         if isinstance(inp, str):
-            inp = self.parse(inp)
+            self.parse(inp)
+            return True
+
         assert isinstance(inp, DerivationTree)
 
         result = evaluate(self.formula, inp, self.grammar)
@@ -497,6 +507,36 @@ class ISLaSolver:
             raise UnknownResultError()
         else:
             return bool(result)
+
+    def parse(self, inp: str, nonterminal: str = "<start>") -> DerivationTree:
+        """
+        Parses the given input `inp`. Raises a `SyntaxError` if the input does not
+        satisfy the grammar, a `SemanticError` if it does not satisfy the constraint
+        (this is only checked if `nonterminal` is "<start>"), and returns the parsed
+        `DerivationTree` otherwise.
+
+        :param inp: The input to parse.
+        :param nonterminal: The nonterminal to start parsing with, if a string
+        corresponding to a sub-grammar shall be parsed. We don't check semantic
+        correctness in that case.
+        :return: A parsed `DerivationTree`.
+        """
+        grammar = copy.deepcopy(self.grammar)
+        if nonterminal != "<start>":
+            grammar["<start>"] = [nonterminal]
+            delete_unreachable(grammar)
+
+        parser = EarleyParser(grammar)
+        try:
+            tree = DerivationTree.from_parse_tree(next(parser.parse(inp))[1][0])
+        except SyntaxError as err:
+            self.logger.error(f'Error parsing "{inp}" starting with "{nonterminal}"')
+            raise err
+
+        if nonterminal == "<start>" and not self.check(tree):
+            raise SemanticError()
+
+        return tree
 
     def solve(self) -> DerivationTree:
         """
@@ -2505,20 +2545,6 @@ class ISLaSolver:
                 prev.add(new_inp)
 
         return z3_regex
-
-    def parse(self, inp: str, nonterminal: str = "<start>") -> DerivationTree:
-        grammar = copy.deepcopy(self.grammar)
-        if nonterminal != "<start>":
-            grammar["<start>"] = [nonterminal]
-            delete_unreachable(grammar)
-
-        parser = EarleyParser(grammar)
-        try:
-            return DerivationTree.from_parse_tree(next(parser.parse(inp))[1][0])
-        except SyntaxError as err:
-            raise RuntimeError(
-                f'Error parsing "{inp}" starting with "{nonterminal}"', err
-            )
 
 
 class CostComputer(ABC):
