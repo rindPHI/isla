@@ -30,7 +30,13 @@ from isla.isla_predicates import (
     STANDARD_SEMANTIC_PREDICATES,
     STANDARD_STRUCTURAL_PREDICATES,
 )
-from isla.language import VariablesCollector, parse_isla, start_constant
+from isla.language import (
+    VariablesCollector,
+    parse_isla,
+    start_constant,
+    SemanticPredicate,
+    SemPredEvalResult,
+)
 from isla.solver import (
     ISLaSolver,
     SolutionState,
@@ -43,6 +49,7 @@ from isla.solver import (
     implies,
     equivalent,
     SolverTimeout,
+    UnknownResultError,
 )
 from isla.type_defs import Grammar
 from isla.z3_helpers import z3_eq
@@ -858,7 +865,7 @@ forall int colno:
             )
         )
 
-    def test_evaluate(self):
+    def test_check(self):
         CONFIG_GRAMMAR: Grammar = {
             "<start>": ["<config>"],
             "<config>": ["pagesize=<pagesize>\n" "bufsize=<bufsize>"],
@@ -873,8 +880,24 @@ forall int colno:
         constraint = "<pagesize> = <bufsize>"
         solver = ISLaSolver(CONFIG_GRAMMAR, constraint)
 
-        self.assertTrue(solver.evaluate("pagesize=12\nbufsize=12"))
-        self.assertFalse(solver.evaluate("pagesize=12\nbufsize=1200"))
+        self.assertTrue(solver.check("pagesize=12\nbufsize=12"))
+        self.assertFalse(solver.check("pagesize=12\nbufsize=1200"))
+
+    def test_check_unknown(self):
+        never_ready = SemanticPredicate(
+            "neverReady", 1, lambda _, __: SemPredEvalResult(None), binds_tree=True
+        )
+
+        solver = ISLaSolver(
+            LANG_GRAMMAR, "neverReady(<var>)", semantic_predicates={never_ready}
+        )
+
+        self.assertTrue(
+            Exceptional.of(lambda: solver.check("x := 1"))
+            .map(lambda _: False)
+            .recover(lambda e: isinstance(e, UnknownResultError))
+            .a
+        )
 
     def test_start_nonterminal(self):
         result = parse_isla('forall <var> in <start>: <var> = "a"')

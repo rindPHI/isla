@@ -274,7 +274,7 @@ def do_check(stdout, stderr, parser, args) -> Tuple[int, str, Maybe[DerivationTr
 
     solver = ISLaSolver(grammar, constraint)
 
-    if solver.evaluate(tree):
+    if solver.check(tree):
         return 0, "input satisfies the ISLa constraint", Maybe(tree)
     else:
         return 1, "input does not satisfy the ISLa constraint", Maybe(tree)

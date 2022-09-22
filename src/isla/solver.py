@@ -480,7 +480,7 @@ class ISLaSolver:
             for state in initial_states:
                 self.costs[state] = self.compute_cost(state)
 
-    def evaluate(self, inp: DerivationTree | str) -> ThreeValuedTruth:
+    def check(self, inp: DerivationTree | str) -> bool:
         """
         Evaluates whether the given derivation tree satisfies the constraint passed to the solver.
 
@@ -490,7 +490,13 @@ class ISLaSolver:
         if isinstance(inp, str):
             inp = self.parse(inp)
         assert isinstance(inp, DerivationTree)
-        return evaluate(self.formula, inp, self.grammar)
+
+        result = evaluate(self.formula, inp, self.grammar)
+
+        if result.is_unknown():
+            raise UnknownResultError()
+        else:
+            return bool(result)
 
     def solve(self) -> DerivationTree:
         """
