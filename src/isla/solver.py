@@ -496,8 +496,11 @@ class ISLaSolver:
         :return: A truth value.
         """
         if isinstance(inp, str):
-            self.parse(inp)
-            return True
+            try:
+                self.parse(inp)
+                return True
+            except (SyntaxError, SemanticError):
+                return False
 
         assert isinstance(inp, DerivationTree)
 

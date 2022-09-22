@@ -25,6 +25,7 @@ from isla.solver import (
     CostSettings,
     CostWeightVector,
     CostComputer,
+    SemanticError,
 )
 from isla.type_defs import Grammar
 
@@ -262,22 +263,20 @@ def do_check(stdout, stderr, parser, args) -> Tuple[int, str, Maybe[DerivationTr
     constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
     inp = get_input_string(command, stderr, args, files)
 
-    parser = EarleyParser(grammar)
-    try:
-        tree = DerivationTree.from_parse_tree(next(parser.parse(inp)))
-    except Exception as exc:
-        return (
-            1,
-            f"input could not be parsed ({type(exc).__name__})",
-            Maybe.nothing(),
-        )
-
     solver = ISLaSolver(grammar, constraint)
 
-    if solver.check(tree):
-        return 0, "input satisfies the ISLa constraint", Maybe(tree)
-    else:
-        return 1, "input does not satisfy the ISLa constraint", Maybe(tree)
+    try:
+        tree = solver.parse(inp)
+    except SyntaxError:
+        return (
+            1,
+            f"input could not be parsed",
+            Maybe.nothing(),
+        )
+    except SemanticError:
+        return 1, "input does not satisfy the ISLa constraint", Maybe.nothing()
+
+    return 0, "input satisfies the ISLa constraint", Maybe(tree)
 
 
 def create(stdout, stderr, parser, args):
