@@ -16,37 +16,12 @@ With ISLa, it is possible to specify *input constraints* like "a variable has to
 defined before it is used," "the `file name' block must be 100 bytes long," or "the
 number of columns in all CSV rows must be identical."
 
-The ISLa *language* is builds on SMT-LIB string constraints, and adds the power of
-structural quantifiers over derivation trees on top. ISLa supports universal and
-existential quantifiers as well as structural (e.g., "occurs before") and semantic
-(e.g., "is a checksum") predicates.
-
-The ISLa *solver* queries Z3 to solve SMT-LIB formulas, and implements a constructive
-insertion mechanism for eliminating existential quantifiers. Universal quantifiers and
-structural predicates are solved by a deterministic, heuristic-based search (with a
-configurable cost function).
-
-## Further Resources
-
-* Our [**interactive ISLa tutorial**](https://www.fuzzingbook.org/beta/html/FuzzingWithConstraints.html),
-  published as a part of the Fuzzing Book, provides an easily accessible introduction
-  to the specification and generation of custom system inputs using ISLa.
-
-* We published a [**paper on ISLa**](https://publications.cispa.saarland/3596/7/Input%20Invariants.pdf)
-  at ESEC/FSE 2022. The paper describes the ISLa language and solver more formally.
-
-* The [**ISLa Language Specification**](https://rindphi.github.io/isla/islaspec/)
-  precisely specifies the syntax and semantics of ISLa constraints. The specification
-  also contains a list of
-  [supported default predicates](https://rindphi.github.io/isla/islaspec/#structural-predicates).
-
-* In the directory `src/isla_formalizations/`, you find our specifications for the
-  subject languages of our experimental evaluation.
-  
-* The files `run_eval_....fish` are the scripts we used to collect and analyze our
-  evaluation data. To analyze ISLa's current performance yourself, you can run the
-  scripts with the `-h` argument to obtain some guidance on their parameters (the fish
-  shell is required to use these scripts).
+Building on modern constraint solvers, ISLa provides you with a unique
+flexibility to specify&mdash;and generate&mdash;the system inputs you need. ISLa can be
+used for *precise fuzzing:* Keep adding input specifications until you are satisfied
+with the number of inputs passing the tested system's parser. Furthermore, you can write
+ISLa specifications to carve out specific inputs for testing a *particular program
+functionality*.
 
 ## Example
 
@@ -76,7 +51,7 @@ s := t
 The following command creates 10 assignments:
 
 ```bash
-> isla solve -n -1 -f 10 assgn.bnf
+> isla solve -n 10 assgn.bnf
 a := 6 ; j := x
 q := u
 e := h ; o := l ; g := w
@@ -87,7 +62,6 @@ z := 3 ; p := 7 ; b := 0
 c := 2 ; r := 4
 q := 8 ; l := 9
 u := 0
-UNSAT
 ```
 
 The setting `-n -1` specifies that we want to generate an infinite number of inputs.
@@ -116,11 +90,16 @@ a := a ; a := 9
 a := a ; a := a
 ```
 
+> :bulb: The setting `-f 1` restricts the number of times that ILSa randomly
+> instantiates unconstrained input elements to one time. Here, this affects the
+> `<digit>` nonterminals: Without `-f 1`, we would see 10 different variants of the
+> first input with variying numbers in the first and third assignment.
+
 Or do we prefer assignments where all digits can be divided by 2 without remainder? No
 problem with ISLa:
 
 ```bash
-> isla solve /tmp/assgn.bnf -n 10 -f 1 -s 2 --constraint "str.to.int(<digit>) mod 2 = 0"
+> isla solve assgn.bnf -n 10 -f 1 -s 2 --constraint "str.to.int(<digit>) mod 2 = 0"
 i := a ; x := 0 ; u := s
 p := l ; m := 8 ; b := y
 k := c ; t := d ; r := q
@@ -133,10 +112,10 @@ t := r ; k := 0 ; e := 0
 k := t ; f := 8 ; e := 8
 ```
 
-The `-s` flag specifies how many results for a single query should be obtained from the
-SMT solver Z3. We limited this number to 2 (the default is 10&mdash;the same default
-value is used for the `-f` flag) to obtain a wider diversity of inputs within the first
-10 results.
+> :bulb: The `-s` flag specifies how many results for a single query should be obtained
+> from the SMT solver Z3. We limited this number to 2 (the default is 10&mdash;the same
+> default value is used for the `-f` flag) to obtain a wider diversity of inputs within
+> the first 10 results.
 
 The constraints above talk over *all* `<var>` and `<digit>` grammar nonterminals in
 any derivation tree derived from the assignment language grammar. In addition to such
@@ -158,7 +137,7 @@ Since this is a more lengthy constraint, let us save it in a file `defuse.isla`.
 following command line invocation uses this constraint:
 
 ```bash
-> isla solve -n 10 -f 1 -s 1 /tmp/assgn.bnf /tmp/defuse.isla
+> isla solve -n 10 -f 1 -s 1 assgn.bnf defuse.isla
 q := 2 ; m := 1 ; c := 4
 p := 8 ; o := 3 ; l := p
 z := 7 ; p := 6 ; e := p
@@ -204,13 +183,50 @@ forall <assgn> assgn_1:
 solver = ISLaSolver(
     grammar=grammar,
     formula=constraint,
-    max_number_free_instantiations=10,  # -f
-    max_number_smt_instantiations=10,  # -s
+    max_number_free_instantiations=1,  # -f
+    max_number_smt_instantiations=1,  # -s
 )
 
-for _ in range(100):
+for _ in range(10):
     print(solver.solve())
 ```
+
+An example output of the above program snippet is:
+
+```
+q := 7 ; m := 1 ; c := 8
+p := 2 ; o := 2 ; l := p
+z := 9 ; p := 4 ; e := p
+d := 8 ; a := d ; h := 5
+s := 0 ; x := 0
+k := 7
+p := 8 ; r := p
+p := 9 ; u := p
+p := 4 ; v := p
+p := 2 ; p := 1 ; w := p
+```
+
+## Further Resources
+
+* Our [**interactive ISLa tutorial**](https://www.fuzzingbook.org/beta/html/FuzzingWithConstraints.html),
+  published as a part of the Fuzzing Book, provides an easily accessible introduction
+  to the specification and generation of custom system inputs using ISLa.
+
+* We published a [**paper on ISLa**](https://publications.cispa.saarland/3596/7/Input%20Invariants.pdf)
+  at ESEC/FSE 2022. The paper describes the ISLa language and solver more formally.
+
+* The [**ISLa Language Specification**](https://rindphi.github.io/isla/islaspec/)
+  precisely specifies the syntax and semantics of ISLa constraints. The specification
+  also contains a list of
+  [supported default predicates](https://rindphi.github.io/isla/islaspec/#structural-predicates).
+
+* In the directory `src/isla_formalizations/`, you find our specifications for the
+  subject languages of our experimental evaluation.
+  
+* The files `run_eval_....fish` are the scripts we used to collect and analyze our
+  evaluation data. To analyze ISLa's current performance yourself, you can run the
+  scripts with the `-h` argument to obtain some guidance on their parameters (the fish
+  shell is required to use these scripts).
 
 ## Build, Run, Install
 
