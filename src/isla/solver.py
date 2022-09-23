@@ -244,7 +244,8 @@ class SemanticError(Exception):
 
 class ISLaSolver:
     """
-    The solver class for ISLa formulas/constraints. Main methods: `solve()` and `evaluate()`.
+    The solver class for ISLa formulas/constraints. Main methods:
+    `solve()`, and `check(DerivationTree | str)`, and `parse(str)`.
     """
 
     def __init__(
