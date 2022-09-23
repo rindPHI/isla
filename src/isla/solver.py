@@ -264,7 +264,6 @@ class ISLaSolver:
         max_number_smt_instantiations: int = 10,
         max_number_tree_insertion_results: int = 5,
         enforce_unique_trees_in_queue: bool = True,
-        precompute_reachability: bool = False,
         debug: bool = False,
         cost_computer: Optional["CostComputer"] = None,
         timeout_seconds: Optional[int] = None,
@@ -293,9 +292,6 @@ class ISLaSolver:
         by tree insertion.
         :param enforce_unique_trees_in_queue: If true, states with the same tree as an already existing tree in the
         queue are discarded, irrespectively of the constraint.
-        :param precompute_reachability: If true, the distances between all grammar nodes are pre-computed using
-        Floyd-Warshall's algorithm. This makes sense if there are many expensive distance queries, e.g., in a big
-        grammar and a constraint with relatively many universal quantifiers.
         :param debug: If true, debug information about the evolution of states is collected, notably in the
         field state_tree. The root of the tree is in the field state_tree_root. The field costs stores the computed
         cost values for all new nodes.
@@ -419,30 +415,6 @@ class ISLaSolver:
         self.max_number_smt_instantiations: int = max_number_smt_instantiations
         self.max_number_tree_insertion_results = max_number_tree_insertion_results
         self.enforce_unique_trees_in_queue = enforce_unique_trees_in_queue
-
-        self.precompute_reachability = precompute_reachability
-        if precompute_reachability:
-            # Pre-compute grammar graph distances for more performant reachability queries
-            self.logger.info(
-                "Pre-Computing shortest distances between all grammar nodes "
-                "for quicker reachability queries..."
-            )
-            node_distances: [
-                Dict[gg.Node, Dict[gg.Node, int]]
-            ] = self.graph.shortest_distances(infinity=sys.maxsize)
-            u: gg.Node
-            self.node_distances: [Dict[str, Dict[str, int]]] = {
-                u.symbol: {
-                    v.symbol: dist
-                    for v, dist in node_distances[u].items()
-                    if not isinstance(v, gg.ChoiceNode)
-                }
-                for u in self.graph.all_nodes
-                if type(u) is gg.NonterminalNode
-            }
-            self.logger.info(
-                "DONE Pre-Computing shortest distances between all grammar nodes."
-            )
 
         # Initialize Queue
         initial_tree = DerivationTree(
@@ -2469,19 +2441,6 @@ class ISLaSolver:
             self.grammar,
             self.graph.reachable,
         )
-
-    @lru_cache(maxsize=None)
-    def node_distance(self, nonterminal: str, to_nonterminal: str) -> int:
-        if self.precompute_reachability:
-            return self.node_distances[nonterminal][to_nonterminal]
-        else:
-            from_node = self.graph.get_node(nonterminal)
-            to_node = self.graph.get_node(to_nonterminal)
-
-            assert from_node is not None, f"Node {nonterminal} not found in graph"
-            assert to_node is not None, f"Node {to_nonterminal} not found in graph"
-
-            return self.graph.dijkstra(from_node, to_node)[0][to_node]
 
     @lru_cache(maxsize=None)
     def extract_regular_expression(self, nonterminal: str) -> z3.ReRef:

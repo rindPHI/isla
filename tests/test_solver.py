@@ -605,7 +605,6 @@ forall int colno:
             enforce_unique_trees_in_queue=False,
             # debug=True,
             num_solutions=60,
-            precompute_reachability=False,
             custom_test_func=extract_tar,
             cost_computer=GrammarBasedBlackboxCostComputer(
                 CostSettings(
@@ -632,7 +631,6 @@ forall int colno:
             enforce_unique_trees_in_queue=False,
             debug=True,
             num_solutions=10,
-            precompute_reachability=False,
         )
 
     @staticmethod
@@ -1022,7 +1020,6 @@ not(
         max_number_free_instantiations=1,
         max_number_smt_instantiations=1,
         enforce_unique_trees_in_queue=True,
-        precompute_reachability=False,
         debug=False,
         state_tree_out="/tmp/state_tree.xml",
         log_out="/tmp/isla_log.txt",
@@ -1053,7 +1050,6 @@ not(
             max_number_free_instantiations=max_number_free_instantiations,
             max_number_smt_instantiations=max_number_smt_instantiations,
             enforce_unique_trees_in_queue=enforce_unique_trees_in_queue,
-            precompute_reachability=precompute_reachability,
             debug=debug,
             cost_computer=cost_computer,
             timeout_seconds=timeout_seconds,
