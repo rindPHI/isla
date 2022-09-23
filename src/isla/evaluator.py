@@ -664,17 +664,20 @@ def evaluate_smt_formula(
     try:
         translation = evaluate_z3_expression(formula.formula)
 
+        var_map: Dict[str, Variable] = {var.name: var for var in assignments}
+
+        args_instantiation = [assignments[var_map[arg]][1] for arg in translation[0]]
+
+        if any(inst.is_open() for inst in args_instantiation):
+            return Maybe(ThreeValuedTruth.unknown())
+
+        string_instantiations = tuple(map(str, args_instantiation))
+
         try:
-            var_map: Dict[str, Variable] = {var.name: var for var in assignments}
-
-            args_instantiation = tuple(
-                [str(assignments[var_map[arg]][1]) for arg in translation[0]]
-            )
-
             return Maybe(
                 ThreeValuedTruth.from_bool(
-                    translation[1](args_instantiation)
-                    if args_instantiation
+                    translation[1](string_instantiations)
+                    if string_instantiations
                     else translation[1]
                 )
             )
@@ -1429,8 +1432,9 @@ def can_extend_leaf_to_make_quantifier_match_parent(
             while not maybe_prefix_tree.is_valid_path(path_to_node_in_prefix_tree):
                 path_to_node_in_prefix_tree = path_to_node_in_prefix_tree[:-1]
 
-            # If this path in the prefix tree is sub-path of a path associated with a dummy
-            # variable, we do not resport a possible match; such an element can be freely instantiated.
+            # If this path in the prefix tree is sub-path of a path associated with a
+            # dummy variable, we do not resport a possible match; such an element can
+            # be freely instantiated.
             mapping_paths = [
                 path
                 for path in reverse_var_map
@@ -1448,9 +1452,9 @@ def can_extend_leaf_to_make_quantifier_match_parent(
                 path_to_node_in_prefix_tree
             )
 
-            if node.value == node_in_prefix_tree.value or reachable(
-                node.value, node_in_prefix_tree.value
-            ):
+            if (
+                node.value == node_in_prefix_tree.value and node_in_prefix_tree.children
+            ) or reachable(node.value, node_in_prefix_tree.value):
                 return True
 
     return False

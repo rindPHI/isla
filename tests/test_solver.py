@@ -1,6 +1,5 @@
 import functools
 import heapq
-import itertools
 import logging
 import os
 import random
@@ -51,7 +50,6 @@ from isla.solver import (
     UnknownResultError,
     SemanticError,
 )
-from isla.evaluator import quantified_formula_might_match
 from isla.type_defs import Grammar
 from isla.z3_helpers import z3_eq
 from isla_formalizations import rest, tar, simple_tar, scriptsizec

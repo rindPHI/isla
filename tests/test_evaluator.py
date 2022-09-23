@@ -15,6 +15,7 @@ from isla.evaluator import (
     evaluate,
     matches_for_quantified_formula,
     quantified_formula_might_match,
+    can_extend_leaf_to_make_quantifier_match_parent,
 )
 from isla.fuzzer import GrammarCoverageFuzzer
 from isla.helpers import srange
@@ -25,7 +26,13 @@ from isla.isla_predicates import (
     SAME_POSITION_PREDICATE,
 )
 from isla.isla_predicates import COUNT_PREDICATE
-from isla.language import BoundVariable
+from isla.isla_shortcuts import exists_bind, smt_for
+from isla.language import (
+    BoundVariable,
+    StructuralPredicateFormula,
+    start_constant,
+    DummyVariable,
+)
 from isla.language import (
     Constant,
     Formula,
@@ -85,18 +92,18 @@ class TestEvaluator(unittest.TestCase):
 
         parser = EarleyParser(LANG_GRAMMAR)
 
-        # tree = DerivationTree.from_parse_tree(next(parser.parse(valid_prog_1)))
-        # self.assertTrue(evaluate(formula(tree), tree, LANG_GRAMMAR))
+        tree = DerivationTree.from_parse_tree(next(parser.parse(valid_prog_1)))
+        self.assertTrue(evaluate(formula(tree), tree, LANG_GRAMMAR))
 
-        # for valid_prog in [valid_prog_1, valid_prog_2]:
-        #     tree = DerivationTree.from_parse_tree(next(parser.parse(valid_prog)))
-        #     self.assertTrue(evaluate(formula(tree), tree, LANG_GRAMMAR).to_bool())
+        for valid_prog in [valid_prog_1, valid_prog_2]:
+            tree = DerivationTree.from_parse_tree(next(parser.parse(valid_prog)))
+            self.assertTrue(evaluate(formula(tree), tree, LANG_GRAMMAR).to_bool())
 
         for invalid_prog in [
             invalid_prog_1,
-            # invalid_prog_2,
-            # invalid_prog_3,
-            # invalid_prog_4
+            invalid_prog_2,
+            invalid_prog_3,
+            invalid_prog_4,
         ]:
             tree = DerivationTree.from_parse_tree(next(parser.parse(invalid_prog)))
             self.assertFalse(evaluate(formula(tree), tree, LANG_GRAMMAR).to_bool())
@@ -165,6 +172,19 @@ class TestEvaluator(unittest.TestCase):
         bind_expr = assgn_1 + " ; " + stmt + " ; " + assgn_2
         match = bind_expr.match(tree, LANG_GRAMMAR)
         self.assertFalse(match)
+
+    def test_match_expression_match_open_tree(self):
+        mexpr = BindExpression(
+            BoundVariable("lhs", "<var>"), DummyVariable(" := "), DummyVariable("<rhs>")
+        )
+
+        tree = DerivationTree.from_parse_tree(
+            next(EarleyParser(LANG_GRAMMAR).parse("c := 6"))
+        ).replace_path((0, 0, 2, 0), DerivationTree("<digit>"))
+
+        self.assertEqual("c := <digit>", str(tree))
+
+        self.assertTrue(mexpr.match(tree, LANG_GRAMMAR))
 
     def test_use_constraint_as_filter(self):
         lhs_1 = BoundVariable("$lhs_1", "<var>")
@@ -467,6 +487,37 @@ class TestEvaluator(unittest.TestCase):
                 for path, tree in assignment.values()
             )
         )
+
+    def test_match_open_tree(self):
+        tree = DerivationTree.from_parse_tree(
+            next(EarleyParser(LANG_GRAMMAR).parse("c := 6 ; x := c"))
+        )
+
+        open_tree = tree.replace_path(
+            (0, 0, 2, 0), DerivationTree("<digit>")
+        ).replace_path((0, 2, 0, 0), DerivationTree("<var>"))
+
+        self.assertEqual("c := <digit> ; <var> := c", str(open_tree))
+
+        lhs = BoundVariable("lhs", "<var>")
+        var = BoundVariable("rhs", "<var>")
+        assgn_2 = BoundVariable("assgn_2", "<assgn>")
+
+        var_inst = open_tree.get_subtree((0, 0, 0))
+        assgn_1_inst = open_tree.get_subtree((0, 2, 0))
+
+        formula = exists_bind(
+            BindExpression(lhs, " := ", "<rhs>"),
+            assgn_2,
+            open_tree,
+            StructuralPredicateFormula(BEFORE_PREDICATE, assgn_2, assgn_1_inst)
+            & smt_for(
+                z3_eq(lhs.to_smt(), var.to_smt()), lhs, var
+            ).substitute_expressions({var: var_inst}),
+        )
+
+        matches = matches_for_quantified_formula(formula, LANG_GRAMMAR, open_tree, {})
+        self.assertEqual(2, len(matches))
 
     def test_xml_property(self):
         mgr = VariableManager(XML_GRAMMAR)
@@ -800,197 +851,7 @@ exists int colno_1:
         )
 
     def test_negated_csv_property(self):
-        tree = (
-            "<start>",
-            [
-                (
-                    "<csv-file>",
-                    [
-                        (
-                            "<csv-header>",
-                            [
-                                (
-                                    "<csv-record>",
-                                    [
-                                        (
-                                            "<csv-string-list>",
-                                            [
-                                                (
-                                                    "<raw-field>",
-                                                    [
-                                                        (
-                                                            "<quoted-field>",
-                                                            [
-                                                                ('"', []),
-                                                                (
-                                                                    "<escaped-field>",
-                                                                    [
-                                                                        (
-                                                                            "<escaped-character-1>",
-                                                                            [
-                                                                                (
-                                                                                    "<escaped-character>",
-                                                                                    [
-                                                                                        (
-                                                                                            "i",
-                                                                                            [],
-                                                                                        )
-                                                                                    ],
-                                                                                ),
-                                                                                (
-                                                                                    "<escaped-character-1>",
-                                                                                    [
-                                                                                        (
-                                                                                            "",
-                                                                                            [],
-                                                                                        )
-                                                                                    ],
-                                                                                ),
-                                                                            ],
-                                                                        )
-                                                                    ],
-                                                                ),
-                                                                ('"', []),
-                                                            ],
-                                                        )
-                                                    ],
-                                                )
-                                            ],
-                                        ),
-                                        ("\n", []),
-                                    ],
-                                )
-                            ],
-                        ),
-                        (
-                            "<csv-body>",
-                            [
-                                (
-                                    "<csv-record-1>",
-                                    [
-                                        (
-                                            "<csv-record>",
-                                            [
-                                                (
-                                                    "<csv-string-list>",
-                                                    [
-                                                        (
-                                                            "<raw-field>",
-                                                            [
-                                                                (
-                                                                    "<simple-field>",
-                                                                    [
-                                                                        (
-                                                                            "<spaces-1>",
-                                                                            [
-                                                                                (
-                                                                                    "<spaces>",
-                                                                                    [
-                                                                                        (
-                                                                                            " ",
-                                                                                            [],
-                                                                                        ),
-                                                                                        (
-                                                                                            "<spaces>",
-                                                                                            [
-                                                                                                (
-                                                                                                    " ",
-                                                                                                    [],
-                                                                                                )
-                                                                                            ],
-                                                                                        ),
-                                                                                    ],
-                                                                                )
-                                                                            ],
-                                                                        ),
-                                                                        (
-                                                                            "<simple-character-1>",
-                                                                            [("", [])],
-                                                                        ),
-                                                                        (
-                                                                            "<spaces-2>",
-                                                                            [("", [])],
-                                                                        ),
-                                                                    ],
-                                                                )
-                                                            ],
-                                                        ),
-                                                        (";", []),
-                                                        (
-                                                            "<csv-string-list>",
-                                                            [
-                                                                (
-                                                                    "<raw-field>",
-                                                                    [
-                                                                        (
-                                                                            "<simple-field>",
-                                                                            [
-                                                                                (
-                                                                                    "<spaces-1>",
-                                                                                    [
-                                                                                        (
-                                                                                            "",
-                                                                                            [],
-                                                                                        )
-                                                                                    ],
-                                                                                ),
-                                                                                (
-                                                                                    "<simple-character-1>",
-                                                                                    [
-                                                                                        (
-                                                                                            "<simple-character>",
-                                                                                            [
-                                                                                                (
-                                                                                                    "P",
-                                                                                                    [],
-                                                                                                )
-                                                                                            ],
-                                                                                        ),
-                                                                                        (
-                                                                                            "<simple-character-1>",
-                                                                                            [
-                                                                                                (
-                                                                                                    "",
-                                                                                                    [],
-                                                                                                )
-                                                                                            ],
-                                                                                        ),
-                                                                                    ],
-                                                                                ),
-                                                                                (
-                                                                                    "<spaces-2>",
-                                                                                    [
-                                                                                        (
-                                                                                            "<spaces>",
-                                                                                            [
-                                                                                                (
-                                                                                                    " ",
-                                                                                                    [],
-                                                                                                )
-                                                                                            ],
-                                                                                        )
-                                                                                    ],
-                                                                                ),
-                                                                            ],
-                                                                        )
-                                                                    ],
-                                                                )
-                                                            ],
-                                                        ),
-                                                    ],
-                                                ),
-                                                ("\n", []),
-                                            ],
-                                        ),
-                                        ("<csv-record-1>", [("", [])]),
-                                    ],
-                                )
-                            ],
-                        ),
-                    ],
-                )
-            ],
-        )
+        tree = next(EarleyParser(CSV_HEADERBODY_GRAMMAR).parse('"i"\n 1 ;P\n'))
 
         property = """
 forall <csv-header> header in start:
@@ -1118,10 +979,9 @@ forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
         )
 
         formula = """
-        forall <assgn> assgn_1="<var> := {<rhs> rhs_1}" in start:
-          forall <var> var in rhs_1:
-            exists <assgn> assgn_2="{<var> lhs_2} := <rhs>" in start:
-              (before(assgn_2, assgn_1) and (= lhs_2 var))
+        forall <assgn> assgn_1="<var> := {<var> var}" in start:
+          exists <assgn> assgn_2="{<var> lhs_2} := <rhs>" in start:
+            (before(assgn_2, assgn_1) and (= lhs_2 var))
         """
 
         open_tree = tree.replace_path((0, 0, 0), DerivationTree("<var>"))
@@ -1143,14 +1003,13 @@ forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
         )
 
         formula = """
-        forall <assgn> assgn_1="<var> := {<rhs> rhs_1}" in start:
-          forall <var> var in rhs_1:
-            exists <assgn> assgn_2="{<var> lhs_2} := <rhs>" in start:
-              (before(assgn_2, assgn_1) and (= lhs_2 var))
+        forall <assgn> assgn_1="<var> := {<var> var}" in start:
+          exists <assgn> assgn_2="{<var> lhs_2} := <rhs>" in start:
+            (before(assgn_2, assgn_1) and (= lhs_2 var))
         """
 
         open_tree = tree.replace_path(
-            (0, 0, 2), DerivationTree("<digit>")
+            (0, 0, 2, 0), DerivationTree("<digit>")
         ).replace_path((0, 2, 0, 0), DerivationTree("<var>"))
         self.assertEqual("c := <digit> ; <var> := c", str(open_tree))
 
@@ -1429,62 +1288,41 @@ forall <expr> expr in start:
         self.assertTrue(solver.check(valid))
 
     def test_qfd_formula_might_match_1(self):
-        mgr = language.VariableManager(LANG_GRAMMAR)
+        tree = (
+            DerivationTree.from_parse_tree(
+                next(EarleyParser(LANG_GRAMMAR).parse("x := y ; x := y"))
+            )
+            .replace_path((0, 0, 0), DerivationTree("<var>"))
+            .replace_path((0, 0, 2, 0), DerivationTree("<var>"))
+            .replace_path((0, 2, 0, 0), DerivationTree("<var>"))
+            .replace_path((0, 2, 0, 2), DerivationTree("<rhs>"))
+        )
 
-        tree = isla.derivation_tree.DerivationTree.from_parse_tree(
-            (
-                "<start>",
-                [
-                    (
-                        "<stmt>",
-                        [
-                            (
-                                "<assgn>",
-                                [
-                                    ("<var>", None),  # Path (0, 0, 0)
-                                    (" := ", []),
-                                    ("<rhs>", [("<var>", None)]),
-                                ],
-                            ),
-                            (" ; ", []),
-                            (
-                                "<stmt>",
-                                [
-                                    (
-                                        "<assgn>",
-                                        [
-                                            ("<var>", None),
-                                            (" := ", []),
-                                            ("<rhs>", None),
-                                        ],
-                                    )
-                                ],
-                            ),
-                        ],
-                    )
-                ],
+        self.assertEqual("<var> := <var> ; <var> := <rhs>", str(tree))
+
+        # forall <rhs> rhs="{<var> var}" in "<var> := <var> ; <var> := <rhs>":
+        #   var = "x"
+        mgr = language.VariableManager(LANG_GRAMMAR)
+        formula = sc.forall_bind(
+            language.BindExpression(mgr.bv("var", "<var>")),
+            mgr.bv("rhs", "<rhs>"),
+            tree,
+            mgr.smt(z3_eq(mgr.bv("var").to_smt(), z3.StringVal("x"))),
+        )
+
+        self.assertFalse(
+            quantified_formula_might_match(
+                cast(language.ForallFormula, mgr.create(formula)),
+                (0, 0, 2, 0),
+                tree,
+                LANG_GRAMMAR,
             )
         )
 
-        formula = cast(
-            language.QuantifiedFormula,
-            mgr.create(
-                sc.forall_bind(
-                    language.BindExpression(mgr.bv("$var1", "<var>")),
-                    mgr.bv("$rhs1", "<rhs>"),
-                    tree,
-                    mgr.smt(z3_eq(mgr.bv("$var1").to_smt(), z3.StringVal("x"))),
-                )
-            ),
-        )
-
-        assert tree.get_subtree((0, 0, 2, 0)).value == "<var>"
-        # assert not tree.get_subtree((0, 0, 2, 0)).children
-
         self.assertTrue(
             quantified_formula_might_match(
-                formula,
-                (0, 0, 2, 0),
+                cast(language.ForallFormula, mgr.create(formula)),
+                (0, 2, 0, 2),
                 tree,
                 LANG_GRAMMAR,
             )
@@ -1578,6 +1416,80 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
                 tree,
                 grammar,
                 reachable,
+            )
+        )
+
+    def test_can_extend_leaf_to_make_quantifier_match_parent_1(self):
+        tree = DerivationTree.from_parse_tree(
+            next(EarleyParser(LANG_GRAMMAR).parse("c := 6 ; x := c"))
+        )
+
+        open_tree = tree.replace_path(
+            (0, 0, 2), DerivationTree("<digit>")
+        ).replace_path((0, 2, 0, 0), DerivationTree("<var>"))
+
+        self.assertEqual("c := <digit> ; <var> := c", str(open_tree))
+
+        lhs = BoundVariable("lhs", "<var>")
+        var = BoundVariable("rhs", "<var>")
+        assgn_2 = BoundVariable("assgn_2", "<assgn>")
+
+        var_inst = open_tree.get_subtree((0, 0, 0))
+        assgn_1_inst = open_tree.get_subtree((0, 2, 0))
+
+        formula = exists_bind(
+            BindExpression(lhs, " := ", "<rhs>"),
+            assgn_2,
+            open_tree,
+            StructuralPredicateFormula(BEFORE_PREDICATE, assgn_2, assgn_1_inst)
+            & smt_for(
+                z3_eq(lhs.to_smt(), var.to_smt()), lhs, var
+            ).substitute_expressions({var: var_inst}),
+        )
+
+        for leaf_path, _ in open_tree.open_leaves():
+            self.assertFalse(
+                can_extend_leaf_to_make_quantifier_match_parent(
+                    cast(language.QuantifiedFormula, formula),
+                    leaf_path,
+                    open_tree,
+                    LANG_GRAMMAR,
+                    gg.GrammarGraph.from_grammar(LANG_GRAMMAR).reachable,
+                )
+            )
+
+    def test_can_extend_leaf_to_make_quantifier_match_parent_2(self):
+        tree = DerivationTree(
+            "<start>",
+            (
+                DerivationTree(
+                    "<xml-tree>",
+                    (
+                        DerivationTree("<xml-open-tag>"),
+                        DerivationTree(
+                            "<inner-xml-tree>",
+                            (DerivationTree("<text>"),),
+                        ),
+                        DerivationTree("<xml-close-tag>"),
+                    ),
+                ),
+            ),
+        )
+
+        formula = parse_isla(
+            """
+forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> clid}>" 
+    in start:
+  (= opid clid)"""
+        ).substitute_expressions({start_constant(): tree})
+
+        self.assertTrue(
+            can_extend_leaf_to_make_quantifier_match_parent(
+                cast(language.QuantifiedFormula, formula),
+                (0, 0),
+                tree,
+                XML_GRAMMAR,
+                gg.GrammarGraph.from_grammar(XML_GRAMMAR).reachable,
             )
         )
 

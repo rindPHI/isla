@@ -2466,7 +2466,7 @@ class ISLaSolver:
             path_to_nonterminal,
             tree,
             self.grammar,
-            self.reachable_reflexively,
+            self.graph.reachable,
         )
 
     @lru_cache(maxsize=None)
@@ -2481,9 +2481,6 @@ class ISLaSolver:
             assert to_node is not None, f"Node {to_nonterminal} not found in graph"
 
             return self.graph.dijkstra(from_node, to_node)[0][to_node]
-
-    def reachable_reflexively(self, from_nonterminal: str, to_nonterminal: str) -> bool:
-        return self.node_distance(from_nonterminal, to_nonterminal) < sys.maxsize
 
     @lru_cache(maxsize=None)
     def extract_regular_expression(self, nonterminal: str) -> z3.ReRef:
