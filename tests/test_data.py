@@ -19,6 +19,17 @@ LANG_GRAMMAR = {
     "<digit>": list(string.digits)
 }
 
+CONFIG_GRAMMAR: Grammar = {
+    "<start>": ["<config>"],
+    "<config>": ["pagesize=<pagesize>\nbufsize=<bufsize>"],
+    "<pagesize>": ["<int>"],
+    "<bufsize>": ["<int>"],
+    "<int>": ["<leaddigit><digits>"],
+    "<digits>": ["", "<digit><digits>"],
+    "<digit>": list("0123456789"),
+    "<leaddigit>": list("123456789"),
+}
+
 SIMPLE_CSV_GRAMMAR = {
     "<start>": ["<csv-header><csv-records>"],
     "<csv-header>": ["<csv-field-list>\n"],

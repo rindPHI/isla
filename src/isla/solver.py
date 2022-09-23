@@ -39,6 +39,7 @@ import isla.three_valued_truth
 from isla import language
 from isla.derivation_tree import DerivationTree
 from isla.evaluator import evaluate
+from isla.evaluator import matches_for_quantified_formula
 from isla.existential_helpers import (
     insert_tree,
     DIRECT_EMBEDDING,
@@ -1567,7 +1568,7 @@ class ISLaSolver:
         for universal_formula in universal_formulas:
             matches: List[Dict[language.Variable, Tuple[Path, DerivationTree]]] = [
                 match
-                for match in isla.evaluator.matches_for_quantified_formula(
+                for match in matches_for_quantified_formula(
                     universal_formula, self.grammar
                 )
                 if not universal_formula.is_already_matched(
@@ -1607,7 +1608,7 @@ class ISLaSolver:
 
         matches: List[
             Dict[language.Variable, Tuple[Path, DerivationTree]]
-        ] = isla.evaluator.matches_for_quantified_formula(
+        ] = matches_for_quantified_formula(
             existential_formula, self.grammar
         )
 
@@ -2414,7 +2415,7 @@ class ISLaSolver:
         ]:
             if (
                 universal_formula.in_variable.is_complete()
-                and not isla.evaluator.matches_for_quantified_formula(
+                and not matches_for_quantified_formula(
                     universal_formula, self.grammar
                 )
             ):
@@ -2442,7 +2443,7 @@ class ISLaSolver:
                 for leaf_path, leaf_node in universal_formula.in_variable.open_leaves()
             ) and not [
                 match
-                for match in isla.evaluator.matches_for_quantified_formula(
+                for match in matches_for_quantified_formula(
                     universal_formula, self.grammar
                 )
                 if not universal_formula.is_already_matched(
@@ -2674,24 +2675,43 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
                     self.logger.debug("ALL PATHS COVERED")
                 else:
                     self.logger.debug(
-                        "COVERAGE RESET SINCE NO CHANGE IN COVERED PATHS SINCE %d ROUNDS (%d path(s) uncovered)",
+                        "COVERAGE RESET SINCE NO CHANGE IN COVERED PATHS SINCE %d "
+                        + "ROUNDS (%d path(s) uncovered)",
                         self.reset_coverage_after_n_round_with_no_coverage,
                         len(graph_paths) - len(self.covered_k_paths),
                     )
 
                     # uncovered_paths = (
-                    #        self.graph.k_paths(self.cost_settings.k, include_terminals=False) -
-                    #        self.covered_k_paths)
-                    # self.logger.debug("\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]))
+                    #     self.graph.k_paths(
+                    #         self.cost_settings.k, include_terminals=False
+                    #     )
+                    #     - self.covered_k_paths
+                    # )
+                    # self.logger.debug(
+                    #     "\n".join(
+                    #         [
+                    #             ", ".join(f"'{n.symbol}'" for n in p)
+                    #             for p in uncovered_paths
+                    #         ]
+                    #     )
+                    # )
 
                 self.covered_k_paths = set()
             else:
                 pass
                 # uncovered_paths = (
-                #         self.graph.k_paths(self.cost_settings.k, include_terminals=False) -
-                #         self.covered_k_paths)
+                #     self.graph.k_paths(self.cost_settings.k, include_terminals=False)
+                #     - self.covered_k_paths
+                # )
                 # self.logger.debug("%d uncovered paths", len(uncovered_paths))
-                # self.logger.debug('\n' + "\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]) + '\n')
+                # self.logger.debug(
+                #     "\n"
+                #     + "\n".join(
+                #         [", ".join(f"'{n.symbol}'" for n in p)
+                #         for p in uncovered_paths]
+                #     )
+                #     + "\n"
+                # )
 
             if (
                 self.rounds_with_no_new_coverage
@@ -2893,8 +2913,9 @@ def can_extend_leaf_to_make_quantifier_match_parent(
             while not maybe_prefix_tree.is_valid_path(path_to_node_in_prefix_tree):
                 path_to_node_in_prefix_tree = path_to_node_in_prefix_tree[:-1]
 
-            # If this path in the prefix tree is sub-path of a path associated with a dummy
-            # variable, we do not resport a possible match; such an element can be freely instantiated.
+            # If this path in the prefix tree is sub-path of a path associated with a
+            # dummy variable, we do not resport a possible match; such an element can
+            # be freely instantiated.
             mapping_paths = [
                 path
                 for path in reverse_var_map

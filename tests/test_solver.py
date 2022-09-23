@@ -1,6 +1,5 @@
 import functools
 import heapq
-import itertools
 import logging
 import os
 import random
@@ -50,7 +49,7 @@ from isla.solver import (
     equivalent,
     SolverTimeout,
     UnknownResultError,
-    SemanticError,
+    SemanticError, can_extend_leaf_to_make_quantifier_match_parent,
 )
 from isla.type_defs import Grammar
 from isla.z3_helpers import z3_eq
@@ -65,7 +64,7 @@ from isla_formalizations.xml_lang import (
     validate_xml,
     XML_NO_ATTR_REDEF_CONSTRAINT,
 )
-from test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR
+from test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR, CONFIG_GRAMMAR
 
 
 class TestSolver(unittest.TestCase):
@@ -218,6 +217,50 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
                 tree,
                 grammar,
                 reachable,
+            )
+        )
+
+    def test_can_extend_leaf_to_make_quantifier_match_parent(self):
+        tree = DerivationTree(
+            "<start>",
+            (
+                DerivationTree(
+                    "<config>",
+                    (
+                        DerivationTree("pagesize=", ()),
+                        DerivationTree(
+                            "<pagesize>",
+                            (
+                                DerivationTree(
+                                    "<int>",
+                                    (
+                                        DerivationTree("<leaddigit>"),
+                                        DerivationTree("<digits>"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        DerivationTree("\nbufsize="),
+                        DerivationTree("<bufsize>"),
+                    ),
+                ),
+            ),
+        )
+
+        formula = parse_isla(
+            'forall <int> i="<leaddigit>" in start: (i = "7")'
+        ).substitute_expressions({start_constant(): tree})
+
+        path = (0, 1, 0, 1)
+        self.assertEqual("<digits>", tree.get_subtree(path).value)
+
+        self.assertTrue(
+            can_extend_leaf_to_make_quantifier_match_parent(
+                cast(language.QuantifiedFormula, formula),
+                path,
+                tree,
+                CONFIG_GRAMMAR,
+                gg.GrammarGraph.from_grammar(CONFIG_GRAMMAR).reachable,
             )
         )
 
@@ -846,17 +889,6 @@ forall int colno:
             return result
 
     def test_parse(self):
-        CONFIG_GRAMMAR: Grammar = {
-            "<start>": ["<config>"],
-            "<config>": ["pagesize=<pagesize>\n" "bufsize=<bufsize>"],
-            "<pagesize>": ["<int>"],
-            "<bufsize>": ["<int>"],
-            "<int>": ["<leaddigit><digits>"],
-            "<digits>": ["", "<digit><digits>"],
-            "<digit>": list("0123456789"),
-            "<leaddigit>": list("123456789"),
-        }
-
         constraint = "<pagesize> = <bufsize>"
         solver = ISLaSolver(CONFIG_GRAMMAR, constraint)
 
@@ -877,22 +909,26 @@ forall int colno:
         )
 
     def test_check(self):
-        CONFIG_GRAMMAR: Grammar = {
-            "<start>": ["<config>"],
-            "<config>": ["pagesize=<pagesize>\n" "bufsize=<bufsize>"],
-            "<pagesize>": ["<int>"],
-            "<bufsize>": ["<int>"],
-            "<int>": ["<leaddigit><digits>"],
-            "<digits>": ["", "<digit><digits>"],
-            "<digit>": list("0123456789"),
-            "<leaddigit>": list("123456789"),
-        }
-
         constraint = "<pagesize> = <bufsize>"
         solver = ISLaSolver(CONFIG_GRAMMAR, constraint)
 
         self.assertTrue(solver.check("pagesize=12\nbufsize=12"))
         self.assertFalse(solver.check("pagesize=12\nbufsize=1200"))
+
+    def test_solve_config_grammar_leaddigit_equality(self):
+        # This raised an exception
+        solver = ISLaSolver(
+            CONFIG_GRAMMAR,
+            'forall <int> i="<leaddigit>" in <start>: (i = "7")',
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=1,
+        )
+
+        for _ in range(10):
+            # TODO: There should be more solutions!
+            solution = str(solver.solve())
+            logging.getLogger(type(self).__name__).info(f"Found solution: {solution}")
+            self.assertTrue(len(solution) > 1 or solution == "7")
 
     def test_check_unknown(self):
         never_ready = SemanticPredicate(

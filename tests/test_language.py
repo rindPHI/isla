@@ -47,7 +47,7 @@ from isla_formalizations.xml_lang import (
     XML_GRAMMAR,
     XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
 )
-from test_data import LANG_GRAMMAR
+from test_data import LANG_GRAMMAR, CONFIG_GRAMMAR
 
 
 def path_to_string(p) -> str:
@@ -190,10 +190,10 @@ class TestLanguage(unittest.TestCase):
         assgn = BoundVariable("$assgn", "<assgn>")
 
         bind_expr: BindExpression = lhs + " := " + rhs
-        # tree, bindings = bind_expr.to_tree_prefix(assgn.n_type, LANG_GRAMMAR)[0]  # TODO: Uncomment
-        # self.assertEqual("<var> := <rhs>", str(tree))
-        # self.assertEqual((0,), bindings[lhs])
-        # self.assertEqual((2,), bindings[rhs])
+        tree, bindings = bind_expr.to_tree_prefix(assgn.n_type, LANG_GRAMMAR)[0]
+        self.assertEqual("<var> := <rhs>", str(tree))
+        self.assertEqual((0,), bindings[lhs])
+        self.assertEqual((2,), bindings[rhs])
 
         prog = BoundVariable("$prog", "<stmt>")
         lhs_2 = BoundVariable("$lhs_2", "<var>")
@@ -207,6 +207,50 @@ class TestLanguage(unittest.TestCase):
         self.assertEqual((0, 2), bindings[rhs])
         self.assertEqual((2, 0, 0), bindings[lhs_2])
         self.assertEqual((2, 0, 2), bindings[rhs_2])
+
+    def test_bind_expr_match_less_specific_tree(self):
+        tree = DerivationTree(
+            "<int>", (DerivationTree("<leaddigit>"), DerivationTree("<digits>"))
+        )
+
+        mexpr = BindExpression(DummyVariable("<leaddigit>"))
+
+        self.assertFalse(mexpr.match(tree, CONFIG_GRAMMAR))
+
+    def test_match_less_specific_tree(self):
+        tree = DerivationTree(
+            "<int>", (DerivationTree("<leaddigit>"), DerivationTree("<digits>"))
+        )
+
+        mexpr_tree = DerivationTree(
+            "<int>", (DerivationTree("<leaddigit>"), DerivationTree("<digits>", ()))
+        )
+
+        # The match expression requires an empty <digits> element, while the value
+        # for the <digits> element of the matched tree is not yet fixed. Thus, there
+        # should be *no* match.
+        # TODO: Assert that a *potential* match is detected by the respective function.
+
+        self.assertFalse(
+            match(
+                tree,
+                mexpr_tree,
+                {DummyVariable("<leaddigit>"): (0,), DummyVariable(""): (1,)},
+            )
+        )
+
+    def test_match_same_tree_empty_children(self):
+        tree = DerivationTree(
+            "<int>", (DerivationTree("<leaddigit>"), DerivationTree("<digits>", ()))
+        )
+
+        self.assertTrue(
+            match(
+                tree,
+                tree,
+                {DummyVariable("<leaddigit>"): (0,), DummyVariable(""): (1,)},
+            )
+        )
 
     def test_dnf_conversion(self):
         a = Constant("$a", "<var>")
