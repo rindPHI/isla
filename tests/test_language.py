@@ -229,7 +229,6 @@ class TestLanguage(unittest.TestCase):
         # The match expression requires an empty <digits> element, while the value
         # for the <digits> element of the matched tree is not yet fixed. Thus, there
         # should be *no* match.
-        # TODO: Assert that a *potential* match is detected by the respective function.
 
         self.assertFalse(
             match(

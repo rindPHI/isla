@@ -303,9 +303,7 @@ class BindExpression:
                 continue
 
             new_dummies = (
-                [DummyVariable(char) for char in elem.n_type]
-                if elem.n_type
-                else [elem]
+                [DummyVariable(char) for char in elem.n_type] if elem.n_type else [elem]
             )
             split_bound_elements.extend(new_dummies)
             dummy_var_map[elem] = new_dummies
@@ -4096,17 +4094,19 @@ def match(
     path_in_t: Path = (),
 ) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
     """
-    This function is described in the [ISLa language specification](https://rindphi.github.io/isla/islaspec/).
-    It takes a derivation tree corresponding to a match expression and a mapping from bound variables to their
-    paths inside those trees. The result is a mapping from variables to their positions in the given tree `t`,
-    or None if there is no match.
+    This function is described in the
+    [ISLa language specification](https://rindphi.github.io/isla/islaspec/).
+    It takes a derivation tree corresponding to a match expression and a mapping from
+    bound variables to their paths inside those trees. The result is a mapping from
+    variables to their positions in the given tree `t`, or None if there is no match.
 
     :param t: The derivation tree to match.
     :param mexpr_tree: One derivation tree resulting from parsing the match expression.
-    :param mexpr_var_paths: A mapping from variables bound in the match expression to their paths in `mexpr_tree`.
+    :param mexpr_var_paths: A mapping from variables bound in the match expression to
+    their paths in `mexpr_tree`.
     :param path_in_t: The path in the original tree t (at the beginning of recursion).
-    :return: `None` if there is no match, or a mapping of variables in the match expression to their
-    matching subtrees in `t`.
+    :return: `None` if there is no match, or a mapping of variables in the match
+    expression to their matching subtrees in `t`.
     """
 
     def is_complete_match(
@@ -4186,8 +4186,8 @@ def match(
         mexpr_var_paths[var] is not None for var in mexpr_var_paths
     )
 
-    # On the other hand, if the numbers of children differ (and `mexpr_tree` *does*
-    # have children), this cannot possibly be a match.
+    # On the other hand, if the numbers of children differ (and `mexpr_tree` *does* have
+    # children), this cannot possibly be a match.
     if len(t.children or []) != len(mexpr_tree.children or []):
         return None
 

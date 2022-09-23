@@ -5,6 +5,21 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.0.1] - 2022-09-23
+
+### Changed
+
+- The evaluation function `evaluate_legacy` now better accounts for open derivation 
+  trees, issuing "unknown" in more cases. For example, if a universal quantifier 
+  matches *possible expansions* of an open derivation tree, we return "unknown;" 
+  similarly if an existential quantifier is not satisfied by any concrete match, but
+  there are potential matches (of instantiations of open subtrees) left
+- Fix in `can_extend_leaf_to_make_quantifier_match_parent`, which sometimes did not
+  satisfy its intended semantics of only returning True for *potential* matches, and
+  not for current ones
+- Bug fix: Epsilon expansions in match expressions caused problems before (see test case
+  "test_solve_config_grammar_leaddigit_equality" in "test_solver.py")
+
 ## [1.0.0] - 2022-09-22
 
 This first major ISLa release comes with a command line interface and a new solver API.
