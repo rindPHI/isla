@@ -51,6 +51,8 @@ from isla.helpers import (
     is_prefix,
     Maybe,
     chain_functions,
+    eassert,
+    Exceptional,
 )
 from isla.helpers import (
     replace_line_breaks,
@@ -282,8 +284,9 @@ class BindExpression:
         maybe_tree = parse(flattened_bind_expr_str, in_nonterminal, immutable_grammar)
         if not maybe_tree.is_present():
             language_core_logger.warning(
-                'Parsing match expression string "%s" caused a syntax error. If this is not a '
-                "test case where this behavior is intended, it should probably be investigated.",
+                'Parsing match expression string "%s" caused a syntax error. If this is'
+                + " not a test case where this behavior is intended, it should probably"
+                + " be investigated.",
                 flattened_bind_expr_str,
             )
             return Maybe.nothing()
@@ -299,7 +302,9 @@ class BindExpression:
                 split_bound_elements.append(elem)
                 continue
 
-            new_dummies = [DummyVariable(char) for char in elem.n_type]
+            new_dummies = (
+                [DummyVariable(char) for char in elem.n_type] if elem.n_type else [elem]
+            )
             split_bound_elements.extend(new_dummies)
             dummy_var_map[elem] = new_dummies
 
@@ -335,26 +340,60 @@ class BindExpression:
                 assert var.n_type == var_n_type
                 remaining_bound_elements.remove(var)
                 match_expr_matches[var] = path
-            elif str(child) == child.value:
+            elif len(child.children) == 3 and child.children[0].value == "<LANGLE>":
+                assert is_nonterminal(child.value)
+                skip_paths_below.add(path)
+                match_expr_tree = match_expr_tree.replace_path(
+                    path, DerivationTree(child.value, None)
+                )
+                var_n_type = "<" + child.children[1].value + ">"
+
+                var = next(
+                    var for var in remaining_bound_elements if var.n_type == var_n_type
+                )
+                remaining_bound_elements.remove(var)
+                match_expr_matches[var] = path
+            elif str(child) == child.value or not str(child):
+                # TODO: Check if `()` is always the right choice for the children
                 match_expr_tree = match_expr_tree.replace_path(
                     path,
                     DerivationTree(
-                        child.value, None if is_nonterminal(child.value) else ()
+                        child.value,
+                        ()
+                        # None if is_nonterminal(child.value) else ()
                     ),
                 )
                 skip_paths_below.add(path)
 
                 for char in (
-                    [child.value] if is_nonterminal(child.value) else list(child.value)
-                ):
-                    var = next(
-                        var for var in remaining_bound_elements if var.n_type == char
+                    [""]
+                    if not str(child)
+                    else (
+                        [child.value]
+                        if is_nonterminal(child.value)
+                        else list(child.value)
                     )
-                    assert isinstance(var, DummyVariable)
-                    remaining_bound_elements.remove(var)
+                ):
+                    var = (
+                        Maybe.from_iterator(
+                            var
+                            for var in remaining_bound_elements
+                            if var.n_type == char
+                        )
+                        .if_present(
+                            lambda var: eassert(var, isinstance(var, DummyVariable))
+                        )
+                        .if_present(remaining_bound_elements.remove)
+                        .orelse(lambda: DummyVariable(""))
+                        .get()
+                    )
+
                     match_expr_matches[var] = path
 
-        tree.traverse(search, abort_condition=lambda p, t: not remaining_bound_elements)
+        tree.traverse(
+            search,
+            # abort_condition=lambda p, t: not remaining_bound_elements
+        )
 
         # In the result, we have to combine all terminals that point to the same path.
         consolidated_matches = consolidate_match_expression_matches(match_expr_matches)
@@ -4055,17 +4094,19 @@ def match(
     path_in_t: Path = (),
 ) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
     """
-    This function is described in the [ISLa language specification](https://rindphi.github.io/isla/islaspec/).
-    It takes a derivation tree corresponding to a match expression and a mapping from bound variables to their
-    paths inside those trees. The result is a mapping from variables to their positions in the given tree `t`,
-    or None if there is no match.
+    This function is described in the
+    [ISLa language specification](https://rindphi.github.io/isla/islaspec/).
+    It takes a derivation tree corresponding to a match expression and a mapping from
+    bound variables to their paths inside those trees. The result is a mapping from
+    variables to their positions in the given tree `t`, or None if there is no match.
 
     :param t: The derivation tree to match.
     :param mexpr_tree: One derivation tree resulting from parsing the match expression.
-    :param mexpr_var_paths: A mapping from variables bound in the match expression to their paths in `mexpr_tree`.
+    :param mexpr_var_paths: A mapping from variables bound in the match expression to
+    their paths in `mexpr_tree`.
     :param path_in_t: The path in the original tree t (at the beginning of recursion).
-    :return: `None` if there is no match, or a mapping of variables in the match expression to their
-    matching subtrees in `t`.
+    :return: `None` if there is no match, or a mapping of variables in the match
+    expression to their matching subtrees in `t`.
     """
 
     def is_complete_match(
@@ -4084,19 +4125,32 @@ def match(
             for leaf_path, _ in t.leaves()
         )
 
-    if t.value != mexpr_tree.value:
+    if (
+        t.value != mexpr_tree.value
+        or Exceptional.of(lambda: len(mexpr_tree.children) == 0 and t.children is None)
+        .recover(lambda _: False)
+        .get()
+    ):
         return None
 
-    # If the match expression does not have children, we have a match!
-    if not mexpr_tree.children:
+    # If the match expression tree is "open," we have a match!
+    if (
+        mexpr_tree.children is None
+        or Exceptional.of(
+            lambda: len(mexpr_tree.children) == 0 and len(t.children) == 0
+        )
+        .recover(lambda _: False)
+        .get()
+    ):
         assert not mexpr_var_paths or all(not path for path in mexpr_var_paths.values())
 
         if not is_nonterminal(t.value):
             # We matched a terminal symbol.
-            # In that case, the concatenation of all dummy variables remaining in the mexpr_var_paths
-            # should equal the current tree symbol. The join is due to the split of dummies we perform
-            # in tree prefix creation; this is needed for certain grammars where nonterminals sequences
-            # are not "bundled," but occur in different subtrees.
+            # In that case, the concatenation of all dummy variables remaining in the
+            # mexpr_var_paths should equal the current tree symbol. The join is due to
+            # the split of dummies we perform in tree prefix creation; this is needed
+            # for certain grammars where nonterminals sequences are not "bundled," but
+            # occur in different subtrees.
             assert all(isinstance(var, DummyVariable) for var in mexpr_var_paths)
             assert (
                 not mexpr_var_paths
@@ -4122,15 +4176,18 @@ def match(
 
         assert 0 <= len(mexpr_var_paths) <= 1
 
-        # `mexpr_var_paths` will have the form `{bv: ()}` iff this position is associated to a
-        # bound variable; associate the current tree `t` to `bv` then. Otherwise, we return
-        # an empty mapping (which signals success, just not binding!).
+        # `mexpr_var_paths` will have the form `{bv: ()}` iff this position is
+        # associated to a bound variable; associate the current tree `t` to `bv` then.
+        # Otherwise, we return an empty mapping (which signals success, just not
+        # binding!).
         return {bv: (path_in_t, t) for bv in mexpr_var_paths if not mexpr_var_paths[bv]}
 
-    assert not mexpr_var_paths or all(mexpr_var_paths[var] for var in mexpr_var_paths)
+    assert not mexpr_var_paths or all(
+        mexpr_var_paths[var] is not None for var in mexpr_var_paths
+    )
 
-    # On the other hand, if the numbers of children differ (and `mexpr_tree` *does* have children),
-    # this cannot possibly be a match.
+    # On the other hand, if the numbers of children differ (and `mexpr_tree` *does* have
+    # children), this cannot possibly be a match.
     if len(t.children or []) != len(mexpr_tree.children or []):
         return None
 

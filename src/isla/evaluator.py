@@ -2,14 +2,15 @@ import copy
 import itertools
 import logging
 from functools import reduce
-from typing import Union, Optional, Set, Dict, cast, Tuple, List
+from typing import Union, Optional, Set, Dict, cast, Tuple, List, Callable
 
 import z3
 from grammar_graph import gg
 from orderedset import OrderedSet
 
+from isla import language
 from isla.derivation_tree import DerivationTree
-from isla.helpers import is_nonterminal, Maybe, chain_functions
+from isla.helpers import is_nonterminal, Maybe, chain_functions, is_prefix
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
     STANDARD_SEMANTIC_PREDICATES,
@@ -122,9 +123,10 @@ def evaluate(
     if not assumptions and not FilterVisitor(
         lambda f: isinstance(f, NumericQuantifiedFormula)
     ).collect(formula):
-        # The legacy evaluation performs better, but only works w/o NumericQuantifiedFormulas / assumptions.
-        # It might be possible to consider assumptions, but the implemented method works and we would
-        # rather not invest that work to gain some seconds of performance.
+        # The legacy evaluation performs better, but only works w/o
+        # NumericQuantifiedFormulas / assumptions. # It might be possible to consider
+        # assumptions, but the implemented method works and we would rather not invest
+        # that work to gain some seconds of performance.
         return evaluate_legacy(
             formula, grammar, {}, reference_tree, trie=subtrees_trie, graph=graph
         )
@@ -168,16 +170,18 @@ def evaluate(
             lambda f: evaluate_predicates_action(f, reference_tree, graph),
         )
 
-        # The remaining formula is a pure SMT formula if there were no quantifiers over open trees.
-        # In the case that there *were* such quantifiers, we still convert to an SMT formula, replacing
-        # all quantifiers with fresh predicates, which still allows us to perform an evaluation.
+        # The remaining formula is a pure SMT formula if there were no quantifiers over
+        # open trees. In the case that there *were* such quantifiers, we still convert
+        # to an SMT formula, replacing all quantifiers with fresh predicates, which
+        # still allows us to perform an evaluation.
         smt_formula: z3.BoolRef = approximate_isla_to_smt_formula(
             without_predicates, replace_untranslatable_with_predicate=True
         )
 
         smt_result = is_valid(smt_formula)
 
-        # We return unknown / false directly if the result is unknown / false for any assumption.
+        # We return unknown / false directly if the result is unknown / false for any
+        # assumption.
         if smt_result.is_unknown():
             return ThreeValuedTruth.unknown()
         elif smt_result.is_false():
@@ -236,12 +240,13 @@ def eliminate_quantifiers_in_assumptions(
     # NOTE: We could eliminate unsatisfiable preconditions already here, but that turned
     #       out to be quite expensive. Rather, we check whether the precondition was
     #       unsatisfiable before returning a negative evaluation result.
-    # NOTE: We only check propositional unsatisfiability, which is an approximation; thus,
-    #       it is theoretically possible that we return a negative result for an actually
-    #       true formula. This, however, only happens with assumptions present, which are
-    #       used in the solver when checking whether an existential quantifier can be quickly
-    #       removed. Not removing the quantifier is thus not soundness critical. Also,
-    #       false negative results should generally be less critical than false positive ones.
+    # NOTE: We only check propositional unsatisfiability, which is an approximation;
+    #       thus, it is theoretically possible that we return a negative result for an
+    #       actually true formula. This, however, only happens with assumptions present,
+    #       which are used in the solver when checking whether an existential quantifier
+    #       can be quickly removed. Not removing the quantifier is thus not soundness
+    #       critical. Also, false negative results should generally be less critical
+    #       than false positive ones.
     return {
         assumptions
         for assumptions in itertools.product(
@@ -253,14 +258,14 @@ def eliminate_quantifiers_in_assumptions(
                         assumption, grammar=grammar, keep_existential_quantifiers=True
                     )
                 )
-                # By quantifier elimination, we might obtain the original formula the same way
-                # it was derived before. This has to be excluded, to ensure that the formula
-                # is not trivially satisfied
+                # By quantifier elimination, we might obtain the original formula the
+                # same way it was derived before. This has to be excluded, to ensure
+                # that the formula is not trivially satisfied
                 if conjunct != formula
             ]
         )
-        # if not propositionally_unsatisfiable(
-        #     reduce(Formula.__and__, assumptions, SMTFormula(z3.BoolVal(True))))  # <- See comment above
+        # if not propositionally_unsatisfiable(  # <- See comment above
+        #     reduce(Formula.__and__, assumptions, SMTFormula(z3.BoolVal(True))))
     }
 
 
@@ -277,12 +282,14 @@ def well_formed(
     #     exists <?NONTERMINAL> length_field in container:
     #       exists int decimal:
     #         (hex_to_decimal(length_field, decimal) and
-    #          (= (div (str.len (str.replace_all container " " "")) 2) (str.to.int decimal)))
+    #          (= (div (str.len (str.replace_all container " " "")) 2)
+    #          (str.to.int decimal)))
     #   ```
-    #  is reported as ill-formed since `container`, the in-expression of the existential qfr,
-    #  is reported to be bound by the SMT formula. This could be an actual problem, but not when
-    #  evaluating, only when generating. With two symbols for the SMT formula, I simply received
-    #  a timeout. Can we defer the Z3 call in the solver until `container` is fixed?
+    #  is reported as ill-formed since `container`, the in-expression of the existential
+    #  qfr, is reported to be bound by the SMT formula. This could be an actual problem,
+    #  but not when evaluating, only when generating. With two symbols for the SMT
+    #  formula, I simply received a timeout. Can we defer the Z3 call in the solver
+    #  until `container` is fixed?
 
     bound_vars = OrderedSet([]) if bound_vars is None else bound_vars
     in_expr_vars = OrderedSet([]) if in_expr_vars is None else in_expr_vars
@@ -572,7 +579,6 @@ def evaluate_legacy(
     grammar: Grammar | str,
     assignments: Dict[Variable, Tuple[Path, DerivationTree]],
     reference_tree: DerivationTree,
-    vacuously_satisfied: Optional[Set[Formula]] = None,
     trie: Optional[SubtreesTrie] = None,
     graph: Optional[gg.GrammarGraph] = None,
 ) -> ThreeValuedTruth:
@@ -585,7 +591,6 @@ def evaluate_legacy(
     :param grammar: The reference grammar.
     :param assignments: The assignments recorded so far.
     :param reference_tree: The tree to which the paths in assignments refer.
-    :param vacuously_satisfied: A set into which universal formulas will be added when they're vacuously satisfied.
     :param trie: A prefix tree (tree) mapping tree paths from `reference_tree` (in pre-order) to subtrees.
     :param graph: The GrammarGraph for `grammar`.
     :return: A (three-valued) truth value.
@@ -596,13 +601,12 @@ def evaluate_legacy(
     grammar = parse_bnf(grammar) if isinstance(grammar, str) else grammar
     graph = gg.GrammarGraph.from_grammar(grammar) if graph is None else graph
     trie = reference_tree.trie() if trie is None else trie
-    vacuously_satisfied = set() if vacuously_satisfied is None else vacuously_satisfied
 
     def raise_not_implemented_error(
-        formula: Formula,
+        f: Formula,
     ) -> Maybe[ThreeValuedTruth]:
         raise NotImplementedError(
-            f"Don't know how to evaluate the formula {unparse_isla(formula)}"
+            f"Don't know how to evaluate the formula {unparse_isla(f)}"
         )
 
     def close(evaluation_function: callable) -> callable:
@@ -612,7 +616,6 @@ def evaluate_legacy(
             reference_tree,
             graph,
             grammar,
-            vacuously_satisfied,
             trie,
         )
 
@@ -638,7 +641,7 @@ def evaluate_legacy(
 
 
 def evaluate_exists_int_formula(
-    formula: Formula, _1, _2, _3, _4, _5, _6
+    formula: Formula, _1, _2, _3, _4, _5
 ) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, ExistsIntFormula):
         return Maybe.nothing()
@@ -655,7 +658,6 @@ def evaluate_smt_formula(
     _2,
     _3,
     _4,
-    _5,
 ) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, SMTFormula):
         return Maybe.nothing()
@@ -663,17 +665,20 @@ def evaluate_smt_formula(
     try:
         translation = evaluate_z3_expression(formula.formula)
 
+        var_map: Dict[str, Variable] = {var.name: var for var in assignments}
+
+        args_instantiation = [assignments[var_map[arg]][1] for arg in translation[0]]
+
+        if any(inst.is_open() for inst in args_instantiation):
+            return Maybe(ThreeValuedTruth.unknown())
+
+        string_instantiations = tuple(map(str, args_instantiation))
+
         try:
-            var_map: Dict[str, Variable] = {var.name: var for var in assignments}
-
-            args_instantiation = tuple(
-                [str(assignments[var_map[arg]][1]) for arg in translation[0]]
-            )
-
             return Maybe(
                 ThreeValuedTruth.from_bool(
-                    translation[1](args_instantiation)
-                    if args_instantiation
+                    translation[1](string_instantiations)
+                    if string_instantiations
                     else translation[1]
                 )
             )
@@ -703,7 +708,6 @@ def evaluate_quantified_formula(
     reference_tree: DerivationTree,
     graph: gg.GrammarGraph,
     grammar: Grammar,
-    vacuously_satisfied: Set[Formula],
     trie: SubtreesTrie,
 ) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, QuantifiedFormula):
@@ -751,9 +755,30 @@ def evaluate_quantified_formula(
         for path, tree in assignment.values()
     )
 
+    # If the reference tree contains open leaves, we have to check whether those
+    # might eventually match the quantifier. In the case of a universal quantifier,
+    # this results in an "unknown" verdict in any case; in the case of an existential
+    # quantifier, it results in "unknown" only if no instantiation matches the
+    # quantifier.
+
+    has_potential_matches = any(
+        quantified_formula_might_match(
+            (
+                formula
+                if isinstance(formula.in_variable, DerivationTree)
+                else formula.substitute_expressions({formula.in_variable: in_inst})
+            ).substitute_expressions({v: t for v, (_, t) in assignments.items()}),
+            path_to_nonterminal,
+            reference_tree,
+            grammar,
+            graph.reachable,
+        )
+        for path_to_nonterminal, _ in reference_tree.open_leaves()
+    )
+
     if isinstance(formula, ForallFormula):
-        if not new_assignments:
-            vacuously_satisfied.add(formula)
+        if has_potential_matches:
+            return Maybe(ThreeValuedTruth.unknown())
 
         return Maybe(
             ThreeValuedTruth.all(
@@ -762,7 +787,6 @@ def evaluate_quantified_formula(
                     grammar,
                     new_assignment,
                     reference_tree,
-                    vacuously_satisfied,
                     trie,
                     graph=graph,
                 )
@@ -770,19 +794,22 @@ def evaluate_quantified_formula(
             )
         )
     elif isinstance(formula, ExistsFormula):
-        return Maybe(
-            ThreeValuedTruth.any(
-                evaluate_legacy(
-                    formula.inner_formula,
-                    grammar,
-                    new_assignment,
-                    reference_tree,
-                    vacuously_satisfied,
-                    trie,
-                    graph=graph,
-                )
-                for new_assignment in new_assignments
+        result = ThreeValuedTruth.any(
+            evaluate_legacy(
+                formula.inner_formula,
+                grammar,
+                new_assignment,
+                reference_tree,
+                trie,
+                graph=graph,
             )
+            for new_assignment in new_assignments
+        )
+
+        return Maybe(
+            ThreeValuedTruth.unknown()
+            if not result.is_true() and has_potential_matches
+            else result
         )
 
 
@@ -793,7 +820,6 @@ def evaluate_structural_predicate_formula(
     _1,
     _2,
     _3,
-    _4,
 ) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, StructuralPredicateFormula):
         return Maybe.nothing()
@@ -822,7 +848,6 @@ def evaluate_semantic_predicate_formula(
     graph: gg.GrammarGraph,
     _2,
     _3,
-    _4,
 ) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, SemanticPredicateFormula):
         return Maybe.nothing()
@@ -861,7 +886,6 @@ def evaluate_negated_formula_formula(
     reference_tree: DerivationTree,
     graph: gg.GrammarGraph,
     grammar: Grammar,
-    vacuously_satisfied: Set[Formula],
     trie: SubtreesTrie,
 ) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, NegatedFormula):
@@ -874,7 +898,6 @@ def evaluate_negated_formula_formula(
                 grammar,
                 assignments,
                 reference_tree,
-                vacuously_satisfied,
                 trie,
                 graph=graph,
             )
@@ -888,7 +911,6 @@ def evaluate_conjunctive_formula_formula(
     reference_tree: DerivationTree,
     graph: gg.GrammarGraph,
     grammar: Grammar,
-    vacuously_satisfied: Set[Formula],
     trie: SubtreesTrie,
 ) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, ConjunctiveFormula):
@@ -901,7 +923,6 @@ def evaluate_conjunctive_formula_formula(
                 grammar,
                 assignments,
                 reference_tree,
-                vacuously_satisfied,
                 trie,
                 graph=graph,
             )
@@ -916,7 +937,6 @@ def evaluate_disjunctive_formula(
     reference_tree: DerivationTree,
     graph: gg.GrammarGraph,
     grammar: Grammar,
-    vacuously_satisfied: Set[Formula],
     trie: SubtreesTrie,
 ) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, DisjunctiveFormula):
@@ -929,7 +949,6 @@ def evaluate_disjunctive_formula(
                 grammar,
                 assignments,
                 reference_tree,
-                vacuously_satisfied,
                 trie,
                 graph=graph,
             )
@@ -1292,3 +1311,140 @@ def fix_str_to_int(formula: z3.BoolRef) -> z3.BoolRef:
         return None
 
     return replace_in_z3_expr(formula, replacement)
+
+
+def quantified_formula_might_match(
+    qfd_formula: QuantifiedFormula,
+    path_to_nonterminal: Path,
+    tree: DerivationTree,
+    grammar: Grammar,
+    reachable: Optional[Callable[[str, str], bool]] = None,
+) -> bool:
+    """
+    This function returns `True` if in order to match the `qfd_formula`, the given path
+    has to be expanded. It will return `False` if expanding that path makes no difference,
+    either because there is a match already or because the expansion will not contribute
+    to a future match. The purpose is to check, e.g., if a nonterminal shall be expanded
+     or "freely" instantiated; or to check if a quantifier can be removed, because it won't
+      match any expansion (in addition of not already matchine!).
+
+    :param qfd_formula: The quantified formula for which to check if the given tree path might become a match.
+    :param path_to_nonterminal: The path in the tree to check.
+    :param tree: The context tree.
+    :param grammar: The reference grammar.
+    :param reachable: A reachability function in the grammar.
+    :return: `True` iff some expansion of this path matches the formula, and the formula does not already match.
+    """
+    if reachable is None:
+        reachable = gg.GrammarGraph.from_grammar(grammar).reachable
+
+    node = tree.get_subtree(path_to_nonterminal)
+    assert not node.children, "quantified_formula_might_match only works for leaf nodes"
+
+    if qfd_formula.in_variable.find_node(node) is None:
+        return False
+
+    if qfd_formula.is_already_matched(node):
+        # This formula won't match node IFF there is no subtree in node that matches.
+        return any(
+            quantified_formula_might_match(qfd_formula, path, node, grammar, reachable)
+            for path, _ in node.paths()
+            if path
+        )
+
+    qfd_nonterminal = qfd_formula.bound_variable.n_type
+
+    if qfd_nonterminal == node.value:
+        return qfd_formula.bind_expression is not None
+
+    if qfd_nonterminal != node.value and (
+        node.value == qfd_nonterminal or reachable(node.value, qfd_nonterminal)
+    ):
+        return True
+
+    if qfd_formula.bind_expression is None:
+        # The formula matches a (parent) element or not, but it's no future match.
+        return False
+
+    # This leaf won't reach the "root node" of the match tree for `qfd_formula`.
+    assert qfd_nonterminal != node.value and not (
+        node.value == qfd_nonterminal or reachable(node.value, qfd_nonterminal)
+    )
+
+    return can_extend_leaf_to_make_quantifier_match_parent(
+        qfd_formula, path_to_nonterminal, tree, grammar, reachable
+    )
+
+
+def can_extend_leaf_to_make_quantifier_match_parent(
+    qfd_formula: QuantifiedFormula,
+    path_to_nonterminal: Path,
+    tree: DerivationTree,
+    grammar: Grammar,
+    reachable: Callable[[str, str], bool],
+) -> bool:
+    """
+    This function returns `True` if expanding at the given path makes `qfd_formula` match some parent.
+
+    :param qfd_formula: The quantified formula for which to check if the given tree path might become a match.
+    :param path_to_nonterminal: The path in the tree to check.
+    :param tree: The context tree.
+    :param grammar: The reference grammar.
+    :param reachable: A reachability function in the grammar.
+    :return: `True` iff expanding the given path makes `qfd_formula` match higher up in the tree.
+    """
+    # Return true if extending this leaf makes the quantifier match some parent.
+
+    node = tree.get_subtree(path_to_nonterminal)
+
+    maybe_prefix_tree: DerivationTree
+    for maybe_prefix_tree, var_map in qfd_formula.bind_expression.to_tree_prefix(
+        qfd_formula.bound_variable.n_type, grammar
+    ):
+        reverse_var_map = {path: var for var, path in var_map.items()}
+
+        for idx in reversed(range(len(path_to_nonterminal))):
+            subtree = tree.get_subtree(path_to_nonterminal[:idx])
+            if not maybe_prefix_tree.is_potential_prefix(
+                subtree
+            ) or qfd_formula.is_already_matched(subtree):
+                continue
+
+            # If the current nonterminal does not need to be further expanded to match
+            # the prefix tree, we need to return false; otherwise, we would needlessly
+            # expand nonterminals that could actually be freely instantiated.
+
+            path_to_node_in_prefix_tree = path_to_nonterminal[idx:]
+
+            while not maybe_prefix_tree.is_valid_path(path_to_node_in_prefix_tree):
+                path_to_node_in_prefix_tree = path_to_node_in_prefix_tree[:-1]
+
+            # If this path in the prefix tree is sub-path of a path associated with a
+            # *nonterminal* dummy variable, we do not report a possible match; such an
+            # element can be freely instantiated. For a terminal dummy variable, a
+            # possible match is reported if the leaf can be expanded to match that
+            # variable.
+            mapping_paths = [
+                path
+                for path in reverse_var_map
+                if is_prefix(path_to_node_in_prefix_tree, path)
+            ]
+            assert mapping_paths
+
+            if all(
+                isinstance(reverse_var_map[mapping_path], language.DummyVariable)
+                and is_nonterminal(reverse_var_map[mapping_path].n_type)
+                for mapping_path in mapping_paths
+            ):
+                continue
+
+            node_in_prefix_tree = maybe_prefix_tree.get_subtree(
+                path_to_node_in_prefix_tree
+            )
+
+            if (
+                node.value == node_in_prefix_tree.value and node_in_prefix_tree.children
+            ) or reachable(node.value, node_in_prefix_tree.value):
+                return True
+
+    return False

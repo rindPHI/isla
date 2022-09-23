@@ -638,9 +638,10 @@ class Maybe(Generic[T], MonadPlus[Optional[T]]):
     def lazy_mplus(self, f: Callable[[S, ...], "Maybe[T]"], *args: S) -> "Maybe[T]":
         return f(*args) if self.a is None else self
 
-    def if_present(self, f: Callable[[T], None]) -> None:
+    def if_present(self, f: Callable[[T], None]) -> "Maybe[T]":
         if self.a is not None:
             f(self.a)
+        return self
 
     def is_present(self) -> bool:
         return self.a is not None
@@ -681,6 +682,10 @@ class Exceptional(Generic[E, T], Monad[T]):
             return Failure(exc)
 
     @abstractmethod
+    def get(self) -> T:
+        pass
+
+    @abstractmethod
     def map(self, f: Callable[[T], S]) -> "Exceptional[S]":
         pass
 
@@ -695,6 +700,9 @@ class Exceptional(Generic[E, T], Monad[T]):
 class Success(Generic[T], Exceptional[Exception, T]):
     a: T
 
+    def get(self) -> T:
+        return self.a
+
     def bind(self, f: Callable[[T], "Exceptional[S]"]) -> "Exceptional[S]":
         return f(self.a)
 
@@ -708,6 +716,9 @@ class Success(Generic[T], Exceptional[Exception, T]):
 @dataclass(frozen=True)
 class Failure(Generic[E], Exceptional[E, Any]):
     a: E
+
+    def get(self) -> E:
+        raise AttributeError(f"{type(self).__name__} does not support get()")
 
     def bind(self, _) -> "Exceptional[T]":
         return self
@@ -747,3 +758,8 @@ def get_isla_resource_file_content(path_to_file: str) -> str:
     with importlib.resources.as_file(traversable) as path:
         with open(path, "r") as file:
             return file.read()
+
+
+def eassert(expr: T, condition: bool | Callable[[T], bool]) -> T:
+    assert condition if isinstance(condition, bool) else condition(expr)
+    return expr

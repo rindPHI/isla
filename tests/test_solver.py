@@ -1,6 +1,5 @@
 import functools
 import heapq
-import itertools
 import logging
 import os
 import random
@@ -45,7 +44,6 @@ from isla.solver import (
     get_quantifier_chains,
     CostComputer,
     GrammarBasedBlackboxCostComputer,
-    quantified_formula_might_match,
     implies,
     equivalent,
     SolverTimeout,
@@ -65,162 +63,10 @@ from isla_formalizations.xml_lang import (
     validate_xml,
     XML_NO_ATTR_REDEF_CONSTRAINT,
 )
-from test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR
+from test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR, CONFIG_GRAMMAR
 
 
 class TestSolver(unittest.TestCase):
-    def test_qfd_formula_might_match_1(self):
-        mgr = language.VariableManager(LANG_GRAMMAR)
-        solver = ISLaSolver(
-            LANG_GRAMMAR,
-            mgr.smt(z3_eq(mgr.const("$DUMMY", "<start>").to_smt(), z3.StringVal(""))),
-        )
-
-        tree = isla.derivation_tree.DerivationTree.from_parse_tree(
-            (
-                "<start>",
-                [
-                    (
-                        "<stmt>",
-                        [
-                            (
-                                "<assgn>",
-                                [
-                                    ("<var>", None),  # Path (0, 0, 0)
-                                    (" := ", []),
-                                    ("<rhs>", [("<var>", None)]),
-                                ],
-                            ),
-                            (" ; ", []),
-                            (
-                                "<stmt>",
-                                [
-                                    (
-                                        "<assgn>",
-                                        [
-                                            ("<var>", None),
-                                            (" := ", []),
-                                            ("<rhs>", None),
-                                        ],
-                                    )
-                                ],
-                            ),
-                        ],
-                    )
-                ],
-            )
-        )
-
-        formula = cast(
-            language.QuantifiedFormula,
-            mgr.create(
-                sc.forall_bind(
-                    language.BindExpression(mgr.bv("$var1", "<var>")),
-                    mgr.bv("$rhs1", "<rhs>"),
-                    tree,
-                    mgr.smt(z3_eq(mgr.bv("$var1").to_smt(), z3.StringVal("x"))),
-                )
-            ),
-        )
-
-        assert tree.get_subtree((0, 0, 2, 0)).value == "<var>"
-        # assert not tree.get_subtree((0, 0, 2, 0)).children
-
-        self.assertTrue(
-            solver.quantified_formula_might_match(formula, (0, 0, 2, 0), tree)
-        )
-
-    def test_qfd_formula_might_match_2(self):
-        path = (0, 0, 0)
-
-        tree = DerivationTree(
-            "<start>",
-            (
-                DerivationTree(
-                    "<stmt>",
-                    (
-                        DerivationTree(
-                            "<assgn>",
-                            (
-                                DerivationTree("<var>"),
-                                DerivationTree(" := ", ()),
-                                DerivationTree("<rhs>"),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        )
-
-        grammar = LANG_GRAMMAR
-        graph = gg.GrammarGraph.from_grammar(LANG_GRAMMAR)
-        reachable = lambda fr, to: fr == to or graph.reachable(fr, to)
-
-        formula = parse_isla(
-            """
-forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
-  exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
-    (before(assgn_2, assgn_1) and (= lhs rhs))
-""",
-            LANG_GRAMMAR,
-            {BEFORE_PREDICATE},
-        )
-
-        formula = formula.substitute_expressions(
-            {language.Constant("start", "<start>"): tree}
-        )
-
-        self.assertFalse(
-            quantified_formula_might_match(
-                cast(language.QuantifiedFormula, formula),
-                path,
-                tree,
-                grammar,
-                reachable,
-            )
-        )
-
-    def test_qfd_formula_might_match_3(self):
-        path = (0, 0, 2)
-        tree = DerivationTree.from_parse_tree(
-            (
-                "<start>",
-                [
-                    (
-                        "<stmt>",
-                        [("<assgn>", [("<var>", None), (" := ", []), ("<rhs>", None)])],
-                    )
-                ],
-            )
-        )
-        grammar = LANG_GRAMMAR
-        graph = gg.GrammarGraph.from_grammar(LANG_GRAMMAR)
-        reachable = lambda fr, to: fr == to or graph.reachable(fr, to)
-
-        formula = parse_isla(
-            """
-forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
-  exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
-    (before(assgn_2, assgn_1) and (= lhs rhs))
-""",
-            LANG_GRAMMAR,
-            {BEFORE_PREDICATE},
-        )
-
-        formula = formula.substitute_expressions(
-            {language.Constant("start", "<start>"): tree}
-        )
-
-        self.assertTrue(
-            quantified_formula_might_match(
-                cast(language.QuantifiedFormula, formula),
-                path,
-                tree,
-                grammar,
-                reachable,
-            )
-        )
-
     def test_atomic_smt_formula(self):
         assgn = language.Constant("$assgn", "<assgn>")
         formula = language.SMTFormula(
@@ -759,7 +605,6 @@ forall int colno:
             enforce_unique_trees_in_queue=False,
             # debug=True,
             num_solutions=60,
-            precompute_reachability=False,
             custom_test_func=extract_tar,
             cost_computer=GrammarBasedBlackboxCostComputer(
                 CostSettings(
@@ -786,7 +631,6 @@ forall int colno:
             enforce_unique_trees_in_queue=False,
             debug=True,
             num_solutions=10,
-            precompute_reachability=False,
         )
 
     @staticmethod
@@ -846,17 +690,6 @@ forall int colno:
             return result
 
     def test_parse(self):
-        CONFIG_GRAMMAR: Grammar = {
-            "<start>": ["<config>"],
-            "<config>": ["pagesize=<pagesize>\n" "bufsize=<bufsize>"],
-            "<pagesize>": ["<int>"],
-            "<bufsize>": ["<int>"],
-            "<int>": ["<leaddigit><digits>"],
-            "<digits>": ["", "<digit><digits>"],
-            "<digit>": list("0123456789"),
-            "<leaddigit>": list("123456789"),
-        }
-
         constraint = "<pagesize> = <bufsize>"
         solver = ISLaSolver(CONFIG_GRAMMAR, constraint)
 
@@ -877,22 +710,45 @@ forall int colno:
         )
 
     def test_check(self):
-        CONFIG_GRAMMAR: Grammar = {
-            "<start>": ["<config>"],
-            "<config>": ["pagesize=<pagesize>\n" "bufsize=<bufsize>"],
-            "<pagesize>": ["<int>"],
-            "<bufsize>": ["<int>"],
-            "<int>": ["<leaddigit><digits>"],
-            "<digits>": ["", "<digit><digits>"],
-            "<digit>": list("0123456789"),
-            "<leaddigit>": list("123456789"),
-        }
-
         constraint = "<pagesize> = <bufsize>"
         solver = ISLaSolver(CONFIG_GRAMMAR, constraint)
 
         self.assertTrue(solver.check("pagesize=12\nbufsize=12"))
         self.assertFalse(solver.check("pagesize=12\nbufsize=1200"))
+
+    def test_solve_config_grammar_leaddigit_equality(self):
+        # This raised an exception
+        solver = ISLaSolver(
+            CONFIG_GRAMMAR,
+            'forall <int> i="<leaddigit>" in <start>: (i = "7")',
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=1,
+        )
+
+        for _ in range(10):
+            solution = solver.solve()
+            logging.getLogger(type(self).__name__).info(f"Found solution: {solution}")
+            for _, int_tree in solution.filter(lambda n: n.value == "<int>"):
+                self.assertTrue(len(str(int_tree)) > 1 or str(int_tree) == "7")
+
+        solver = ISLaSolver(
+            CONFIG_GRAMMAR,
+            'forall <int> i="<leaddigit><digits>" in <start>: (i = "7")',
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=1,
+        )
+
+        for i in range(10):
+            try:
+                solution = solver.solve()
+                logging.getLogger(type(self).__name__).info(
+                    f"Found solution: {solution}"
+                )
+                for _, int_tree in solution.filter(lambda n: n.value == "<int>"):
+                    self.assertTrue(str(int_tree) == "7")
+            except StopIteration:
+                self.assertEqual(1, i)  # Only 1 solution
+                break
 
     def test_check_unknown(self):
         never_ready = SemanticPredicate(
@@ -1164,7 +1020,6 @@ not(
         max_number_free_instantiations=1,
         max_number_smt_instantiations=1,
         enforce_unique_trees_in_queue=True,
-        precompute_reachability=False,
         debug=False,
         state_tree_out="/tmp/state_tree.xml",
         log_out="/tmp/isla_log.txt",
@@ -1195,7 +1050,6 @@ not(
             max_number_free_instantiations=max_number_free_instantiations,
             max_number_smt_instantiations=max_number_smt_instantiations,
             enforce_unique_trees_in_queue=enforce_unique_trees_in_queue,
-            precompute_reachability=precompute_reachability,
             debug=debug,
             cost_computer=cost_computer,
             timeout_seconds=timeout_seconds,

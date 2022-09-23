@@ -32,13 +32,17 @@ from grammar_to_regex.regex import regex_to_z3
 from orderedset import OrderedSet
 from packaging import version
 
-import isla.evaluator
 import isla.helpers
 import isla.isla_shortcuts as sc
 import isla.three_valued_truth
 from isla import language
 from isla.derivation_tree import DerivationTree
-from isla.evaluator import evaluate
+from isla.evaluator import (
+    evaluate,
+    quantified_formula_might_match,
+    get_toplevel_quantified_formulas,
+)
+from isla.evaluator import matches_for_quantified_formula
 from isla.existential_helpers import (
     insert_tree,
     DIRECT_EMBEDDING,
@@ -58,7 +62,6 @@ from isla.helpers import (
     canonical,
     lazyjoin,
     lazystr,
-    is_prefix,
     Maybe,
     chain_functions,
     Exceptional,
@@ -78,7 +81,6 @@ from isla.language import (
     ensure_unique_bound_variables,
     parse_isla,
     get_conjuncts,
-    QuantifiedFormula,
     parse_bnf,
     ForallIntFormula,
 )
@@ -103,7 +105,7 @@ class SolutionState:
             # Have to instantiate variables first
             return isla.three_valued_truth.ThreeValuedTruth.unknown()
 
-        return isla.evaluator.evaluate(self.constraint, self.tree, grammar)
+        return evaluate(self.constraint, self.tree, grammar)
 
     def complete(self) -> bool:
         if not self.tree.is_complete():
@@ -244,7 +246,8 @@ class SemanticError(Exception):
 
 class ISLaSolver:
     """
-    The solver class for ISLa formulas/constraints. Main methods: `solve()` and `evaluate()`.
+    The solver class for ISLa formulas/constraints. Its methods are
+    `solve()`, `check(DerivationTree | str)`, and `parse(str)`.
     """
 
     def __init__(
@@ -261,7 +264,6 @@ class ISLaSolver:
         max_number_smt_instantiations: int = 10,
         max_number_tree_insertion_results: int = 5,
         enforce_unique_trees_in_queue: bool = True,
-        precompute_reachability: bool = False,
         debug: bool = False,
         cost_computer: Optional["CostComputer"] = None,
         timeout_seconds: Optional[int] = None,
@@ -290,9 +292,6 @@ class ISLaSolver:
         by tree insertion.
         :param enforce_unique_trees_in_queue: If true, states with the same tree as an already existing tree in the
         queue are discarded, irrespectively of the constraint.
-        :param precompute_reachability: If true, the distances between all grammar nodes are pre-computed using
-        Floyd-Warshall's algorithm. This makes sense if there are many expensive distance queries, e.g., in a big
-        grammar and a constraint with relatively many universal quantifiers.
         :param debug: If true, debug information about the evolution of states is collected, notably in the
         field state_tree. The root of the tree is in the field state_tree_root. The field costs stores the computed
         cost values for all new nodes.
@@ -416,30 +415,6 @@ class ISLaSolver:
         self.max_number_smt_instantiations: int = max_number_smt_instantiations
         self.max_number_tree_insertion_results = max_number_tree_insertion_results
         self.enforce_unique_trees_in_queue = enforce_unique_trees_in_queue
-
-        self.precompute_reachability = precompute_reachability
-        if precompute_reachability:
-            # Pre-compute grammar graph distances for more performant reachability queries
-            self.logger.info(
-                "Pre-Computing shortest distances between all grammar nodes "
-                "for quicker reachability queries..."
-            )
-            node_distances: [
-                Dict[gg.Node, Dict[gg.Node, int]]
-            ] = self.graph.shortest_distances(infinity=sys.maxsize)
-            u: gg.Node
-            self.node_distances: [Dict[str, Dict[str, int]]] = {
-                u.symbol: {
-                    v.symbol: dist
-                    for v, dist in node_distances[u].items()
-                    if not isinstance(v, gg.ChoiceNode)
-                }
-                for u in self.graph.all_nodes
-                if type(u) is gg.NonterminalNode
-            }
-            self.logger.info(
-                "DONE Pre-Computing shortest distances between all grammar nodes."
-            )
 
         # Initialize Queue
         initial_tree = DerivationTree(
@@ -828,7 +803,7 @@ class ISLaSolver:
             # The following check for validity is not only a performance measure, but required
             # when existential integer formulas are re-inserted. Otherwise, new constants get
             # introduced, and the solver won't terminate.
-            if isla.evaluator.evaluate(
+            if evaluate(
                 existential_int_formula,
                 state.tree,
                 self.grammar,
@@ -1566,7 +1541,7 @@ class ISLaSolver:
         for universal_formula in universal_formulas:
             matches: List[Dict[language.Variable, Tuple[Path, DerivationTree]]] = [
                 match
-                for match in isla.evaluator.matches_for_quantified_formula(
+                for match in matches_for_quantified_formula(
                     universal_formula, self.grammar
                 )
                 if not universal_formula.is_already_matched(
@@ -1606,9 +1581,7 @@ class ISLaSolver:
 
         matches: List[
             Dict[language.Variable, Tuple[Path, DerivationTree]]
-        ] = isla.evaluator.matches_for_quantified_formula(
-            existential_formula, self.grammar
-        )
+        ] = matches_for_quantified_formula(existential_formula, self.grammar)
 
         for match in matches:
             inst_formula = existential_formula.inner_formula.substitute_expressions(
@@ -2413,9 +2386,7 @@ class ISLaSolver:
         ]:
             if (
                 universal_formula.in_variable.is_complete()
-                and not isla.evaluator.matches_for_quantified_formula(
-                    universal_formula, self.grammar
-                )
+                and not matches_for_quantified_formula(universal_formula, self.grammar)
             ):
                 result = SolutionState(
                     language.replace_formula(
@@ -2441,7 +2412,7 @@ class ISLaSolver:
                 for leaf_path, leaf_node in universal_formula.in_variable.open_leaves()
             ) and not [
                 match
-                for match in isla.evaluator.matches_for_quantified_formula(
+                for match in matches_for_quantified_formula(
                     universal_formula, self.grammar
                 )
                 if not universal_formula.is_already_matched(
@@ -2468,24 +2439,8 @@ class ISLaSolver:
             path_to_nonterminal,
             tree,
             self.grammar,
-            self.reachable_reflexively,
+            self.graph.reachable,
         )
-
-    @lru_cache(maxsize=None)
-    def node_distance(self, nonterminal: str, to_nonterminal: str) -> int:
-        if self.precompute_reachability:
-            return self.node_distances[nonterminal][to_nonterminal]
-        else:
-            from_node = self.graph.get_node(nonterminal)
-            to_node = self.graph.get_node(to_nonterminal)
-
-            assert from_node is not None, f"Node {nonterminal} not found in graph"
-            assert to_node is not None, f"Node {to_nonterminal} not found in graph"
-
-            return self.graph.dijkstra(from_node, to_node)[0][to_node]
-
-    def reachable_reflexively(self, from_nonterminal: str, to_nonterminal: str) -> bool:
-        return self.node_distance(from_nonterminal, to_nonterminal) < sys.maxsize
 
     @lru_cache(maxsize=None)
     def extract_regular_expression(self, nonterminal: str) -> z3.ReRef:
@@ -2673,24 +2628,43 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
                     self.logger.debug("ALL PATHS COVERED")
                 else:
                     self.logger.debug(
-                        "COVERAGE RESET SINCE NO CHANGE IN COVERED PATHS SINCE %d ROUNDS (%d path(s) uncovered)",
+                        "COVERAGE RESET SINCE NO CHANGE IN COVERED PATHS SINCE %d "
+                        + "ROUNDS (%d path(s) uncovered)",
                         self.reset_coverage_after_n_round_with_no_coverage,
                         len(graph_paths) - len(self.covered_k_paths),
                     )
 
                     # uncovered_paths = (
-                    #        self.graph.k_paths(self.cost_settings.k, include_terminals=False) -
-                    #        self.covered_k_paths)
-                    # self.logger.debug("\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]))
+                    #     self.graph.k_paths(
+                    #         self.cost_settings.k, include_terminals=False
+                    #     )
+                    #     - self.covered_k_paths
+                    # )
+                    # self.logger.debug(
+                    #     "\n".join(
+                    #         [
+                    #             ", ".join(f"'{n.symbol}'" for n in p)
+                    #             for p in uncovered_paths
+                    #         ]
+                    #     )
+                    # )
 
                 self.covered_k_paths = set()
             else:
                 pass
                 # uncovered_paths = (
-                #         self.graph.k_paths(self.cost_settings.k, include_terminals=False) -
-                #         self.covered_k_paths)
+                #     self.graph.k_paths(self.cost_settings.k, include_terminals=False)
+                #     - self.covered_k_paths
+                # )
                 # self.logger.debug("%d uncovered paths", len(uncovered_paths))
-                # self.logger.debug('\n' + "\n".join([", ".join(f"'{n.symbol}'" for n in p) for p in uncovered_paths]) + '\n')
+                # self.logger.debug(
+                #     "\n"
+                #     + "\n".join(
+                #         [", ".join(f"'{n.symbol}'" for n in p)
+                #         for p in uncovered_paths]
+                #     )
+                #     + "\n"
+                # )
 
             if (
                 self.rounds_with_no_new_coverage
@@ -2787,134 +2761,12 @@ def compute_tree_closing_cost(tree: DerivationTree, graph: GrammarGraph) -> floa
 def get_quantifier_chains(
     formula: language.Formula,
 ) -> List[Tuple[Union[language.QuantifiedFormula, language.ExistsIntFormula], ...]]:
-    univ_toplevel_formulas = isla.evaluator.get_toplevel_quantified_formulas(formula)
+    univ_toplevel_formulas = get_toplevel_quantified_formulas(formula)
     return [
         (f,) + c
         for f in univ_toplevel_formulas
         for c in (get_quantifier_chains(f.inner_formula) or [()])
     ]
-
-
-def quantified_formula_might_match(
-    qfd_formula: QuantifiedFormula,
-    path_to_nonterminal: Path,
-    tree: DerivationTree,
-    grammar: Grammar,
-    reachable: Callable[[str, str], bool],
-) -> bool:
-    """
-    This function returns `True` if in order to match the `qfd_formula`, the given path
-    has to be expanded. It will return `False` if expanding that path makes no difference,
-    either because there is a match already or because the expansion will not contribute
-    to a future match. The purpose is to check, e.g., if a nonterminal shall be expanded
-     or "freely" instantiated; or to check if a quantifier can be removed, because it won't
-      match any expansion (in addition of not already matchine!).
-
-    :param qfd_formula: The quantified formula for which to check if the given tree path might become a match.
-    :param path_to_nonterminal: The path in the tree to check.
-    :param tree: The context tree.
-    :param grammar: The reference grammar.
-    :param reachable: A reachability function in the grammar.
-    :return: `True` iff some expansion of this path matches the formula, and the formula does not already match.
-    """
-    node = tree.get_subtree(path_to_nonterminal)
-    assert not node.children, "quantified_formula_might_match only works for leaf nodes"
-
-    if qfd_formula.in_variable.find_node(node) is None:
-        return False
-
-    if qfd_formula.is_already_matched(node):
-        # This formula won't match node IFF there is no subtree in node that matches.
-        return any(
-            quantified_formula_might_match(qfd_formula, path, node, grammar, reachable)
-            for path, _ in node.paths()
-            if path
-        )
-
-    qfd_nonterminal = qfd_formula.bound_variable.n_type
-
-    if qfd_nonterminal == node.value:
-        return qfd_formula.bind_expression is not None
-
-    if qfd_nonterminal != node.value and reachable(node.value, qfd_nonterminal):
-        return True
-
-    if qfd_formula.bind_expression is None:
-        return False  # The formula matches a (parent) element or not, but it's no future match.
-
-    # This leaf won't reach the "root node" of the match tree for `qfd_formula`.
-    assert qfd_nonterminal != node.value and not reachable(node.value, qfd_nonterminal)
-
-    return can_extend_leaf_to_make_quantifier_match_parent(
-        qfd_formula, path_to_nonterminal, tree, grammar, reachable
-    )
-
-
-def can_extend_leaf_to_make_quantifier_match_parent(
-    qfd_formula: QuantifiedFormula,
-    path_to_nonterminal: Path,
-    tree: DerivationTree,
-    grammar: Grammar,
-    reachable: Callable[[str, str], bool],
-) -> bool:
-    """
-    This function returns `True` if expanding at the given path makes `qfd_formula` match some parent.
-
-    :param qfd_formula: The quantified formula for which to check if the given tree path might become a match.
-    :param path_to_nonterminal: The path in the tree to check.
-    :param tree: The context tree.
-    :param grammar: The reference grammar.
-    :param reachable: A reachability function in the grammar.
-    :return: `True` iff expanding the given path makes `qfd_formula` match higher up in the tree.
-    """
-    # Return true if extending this leaf makes the quantifier match some parent.
-    node = tree.get_subtree(path_to_nonterminal)
-
-    maybe_prefix_tree: DerivationTree
-    for maybe_prefix_tree, var_map in qfd_formula.bind_expression.to_tree_prefix(
-        qfd_formula.bound_variable.n_type, grammar
-    ):
-        reverse_var_map = {path: var for var, path in var_map.items()}
-
-        for idx in reversed(range(len(path_to_nonterminal))):
-            subtree = tree.get_subtree(path_to_nonterminal[:idx])
-            if not maybe_prefix_tree.is_potential_prefix(
-                subtree
-            ) or qfd_formula.is_already_matched(subtree):
-                continue
-
-            # If the current nonterminal does not need to be further expanded to match
-            # the prefix tree, we need to return false; otherwise, we would needlessly
-            # expand nonterminals that could actually be freely instantiated.
-
-            path_to_node_in_prefix_tree = path_to_nonterminal[idx:]
-
-            while not maybe_prefix_tree.is_valid_path(path_to_node_in_prefix_tree):
-                path_to_node_in_prefix_tree = path_to_node_in_prefix_tree[:-1]
-
-            # If this path in the prefix tree is sub-path of a path associated with a dummy
-            # variable, we do not resport a possible match; such an element can be freely instantiated.
-            mapping_paths = [
-                path
-                for path in reverse_var_map
-                if is_prefix(path_to_node_in_prefix_tree, path)
-            ]
-            assert mapping_paths
-
-            if all(
-                isinstance(reverse_var_map[mapping_path], language.DummyVariable)
-                for mapping_path in mapping_paths
-            ):
-                continue
-
-            node_in_prefix_tree = maybe_prefix_tree.get_subtree(
-                path_to_node_in_prefix_tree
-            )
-
-            if reachable(node.value, node_in_prefix_tree.value):
-                return True
-
-    return False
 
 
 @lru_cache()
