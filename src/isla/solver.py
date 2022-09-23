@@ -612,8 +612,24 @@ class ISLaSolver:
             # If p1, p2 are in participating_paths, then we consider the following
             # path combinations in the listed order:
             # {p1}, {p2}, {p1, p2}, {p1[:-1]}, {p2[:-1]}, {p1[:-1], p2}, {p1, p2[:-1]},
-            # {p1[:-1], p2[:-1]}, ...
-            for round in range(min(map(len, participating_paths))):
+            # {p1[:-1], p2[:-1]}, ...  # TODO: Current order differs
+            sub_paths = {
+                tuple([path[:i] for i in reversed(range(1, len(path) + 1))])
+                for path in participating_paths
+            }
+
+            for paths in reversed(
+                sorted(
+                    itertools.product(*sub_paths),
+                    key=lambda paths: (
+                        min(map(len, paths)),
+                        max(map(len, paths)),
+                    ),
+                )
+            ):
+                # TODO: Consider combinations (1-tuples, 2-tuples, ...) of the paths,
+                #       prune them, check whether result has "unknown" satisfiablity,
+                #       put into solver if this is the case.
                 pass
 
             print(formula_to_satisfy)
