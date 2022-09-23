@@ -94,24 +94,11 @@ def evaluate(
     subtrees_trie = reference_tree.trie() if subtrees_trie is None else subtrees_trie
     graph = gg.GrammarGraph.from_grammar(grammar) if graph is None else graph
 
-    formula = (
+    formula = instantiate_top_level_constant(
         parse_isla(formula, grammar, structural_predicates, semantic_predicates)
         if isinstance(formula, str)
-        else formula
-    )
-
-    top_level_constants = {
-        c
-        for c in VariablesCollector.collect(formula)
-        if isinstance(c, Constant) and not c.is_numeric()
-    }
-    assert len(top_level_constants) <= 1
-    formula = (
-        formula.substitute_expressions(
-            {next(iter(top_level_constants)): reference_tree}
-        )
-        if len(top_level_constants) > 0
-        else formula
+        else formula,
+        reference_tree,
     )
 
     # NOTE: Deactivated, might be too strict for evaluation (though maybe
@@ -196,6 +183,23 @@ def evaluate(
 
     # We have proven the formula true for all assumptions: Return True
     return ThreeValuedTruth.true()
+
+
+def instantiate_top_level_constant(formula, reference_tree):
+    top_level_constants = {
+        c
+        for c in VariablesCollector.collect(formula)
+        if isinstance(c, Constant) and not c.is_numeric()
+    }
+    assert len(top_level_constants) <= 1
+    formula = (
+        formula.substitute_expressions(
+            {next(iter(top_level_constants)): reference_tree}
+        )
+        if len(top_level_constants) > 0
+        else formula
+    )
+    return formula
 
 
 def evaluate_predicates_action(

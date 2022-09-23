@@ -3,6 +3,7 @@ import functools
 import importlib.resources
 import itertools
 import math
+import random
 import re
 import sys
 from abc import ABC, abstractmethod
@@ -763,3 +764,9 @@ def get_isla_resource_file_content(path_to_file: str) -> str:
 def eassert(expr: T, condition: bool | Callable[[T], bool]) -> T:
     assert condition if isinstance(condition, bool) else condition(expr)
     return expr
+
+
+def shuffle(l: List[T]) -> List[T]:
+    l_ = list(l)
+    random.shuffle(l_)
+    return l_

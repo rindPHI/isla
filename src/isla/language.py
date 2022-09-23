@@ -560,9 +560,16 @@ def grammar_to_match_expr_grammar(
 
 
 class FormulaVisitor:
+    def __init__(self):
+        self.in_negation_scope = False
+
     def do_continue(self, formula: "Formula") -> bool:
-        """If this returns False, this formula should not call the visit methods for its children."""
+        """If this returns False, this formula should not call the visit methods for
+        its children."""
         return True
+
+    def toggle_negation_scope(self) -> None:
+        self.in_negation_scope = not self.in_negation_scope
 
     def visit_predicate_formula(self, formula: "StructuralPredicateFormula"):
         pass
@@ -596,6 +603,12 @@ class FormulaVisitor:
 
 
 class FormulaTransformer(ABC):
+    def __init__(self):
+        self.in_negation_scope = False
+
+    def toggle_negation_scope(self) -> None:
+        self.in_negation_scope = not self.in_negation_scope
+
     @abstractmethod
     def transform_predicate_formula(
         self, formula: "StructuralPredicateFormula"
@@ -1224,9 +1237,12 @@ class NegatedFormula(PropositionalCombinator):
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_negated_formula(self)
+
+        visitor.toggle_negation_scope()
         if visitor.do_continue(self):
             for formula in self.args:
                 formula.accept(visitor)
+        visitor.toggle_negation_scope()
 
     def transform(self, transformer: FormulaTransformer) -> "Formula":
         return transformer.transform_negated_formula(
@@ -1348,6 +1364,7 @@ class SMTFormula(Formula):
         instantiated_variables: Optional[OrderedSet[Variable]] = None,
         substitutions: Optional[Dict[Variable, DerivationTree]] = None,
         auto_eval: bool = True,
+        auto_subst: bool = True,
     ):
         """
         Encapsulates an SMT formula.
@@ -1376,6 +1393,8 @@ class SMTFormula(Formula):
         # is ground. Deactivate only for special purposes, e.g., vacuity checking.
         self.auto_eval = auto_eval
         # self.auto_eval = False
+
+        self.auto_subst = auto_subst
 
     def __getstate__(self) -> Dict[str, bytes]:
         result: Dict[str, bytes] = {
@@ -1424,6 +1443,7 @@ class SMTFormula(Formula):
             instantiated_variables=self.instantiated_variables,
             substitutions=self.substitutions,
             auto_eval=self.auto_eval,
+            auto_subst=self.auto_subst,
         )
 
     def substitute_expressions(
@@ -1452,11 +1472,19 @@ class SMTFormula(Formula):
         )
 
         complete_substitutions = {
-            k: v for k, v in new_substitutions.items() if v.is_complete()
+            k: v
+            for k, v in new_substitutions.items()
+            if v.is_complete() and self.auto_subst
         }
         new_substitutions = {
-            k: v for k, v in new_substitutions.items() if not v.is_complete()
+            k: v
+            for k, v in new_substitutions.items()
+            if not v.is_complete() or not self.auto_subst
         }
+
+        assert set(complete_substitutions.keys()).isdisjoint(
+            set(new_substitutions.keys())
+        )
 
         new_instantiated_variables = OrderedSet(
             [
@@ -1499,6 +1527,7 @@ class SMTFormula(Formula):
             instantiated_variables=new_instantiated_variables,
             substitutions=new_substitutions,
             auto_eval=self.auto_eval,
+            auto_subst=self.auto_subst,
         )
 
     def tree_arguments(self) -> OrderedSet[DerivationTree]:
@@ -1521,6 +1550,7 @@ class SMTFormula(Formula):
                 instantiated_variables=self.instantiated_variables,
                 substitutions=self.substitutions,
                 auto_eval=self.auto_eval,
+                auto_subst=self.auto_subst,
             )
         )
 
@@ -1546,6 +1576,7 @@ class SMTFormula(Formula):
             | other.instantiated_variables,
             substitutions=self.substitutions | other.substitutions,
             auto_eval=self.auto_eval and other.auto_eval,
+            auto_subst=self.auto_subst and other.auto_subst,
         )
 
     def conjunction(self, other: "SMTFormula") -> "SMTFormula":
@@ -1567,6 +1598,7 @@ class SMTFormula(Formula):
             | other.instantiated_variables,
             substitutions=self.substitutions | other.substitutions,
             auto_eval=self.auto_eval and other.auto_eval,
+            auto_subst=self.auto_subst and other.auto_subst,
         )
 
     def __len__(self):
@@ -1579,6 +1611,7 @@ class SMTFormula(Formula):
             instantiated_variables=self.instantiated_variables,
             substitutions=self.substitutions,
             auto_eval=self.auto_eval,
+            auto_subst=self.auto_subst,
         )
 
     def __repr__(self):
@@ -2012,6 +2045,7 @@ class ExistsFormula(QuantifiedFormula):
 
 class VariablesCollector(FormulaVisitor):
     def __init__(self):
+        super().__init__()
         self.result: OrderedSet[Variable] = OrderedSet()
 
     @staticmethod
@@ -2051,6 +2085,7 @@ class VariablesCollector(FormulaVisitor):
 
 class BoundVariablesCollector(FormulaVisitor):
     def __init__(self):
+        super().__init__()
         self.result: OrderedSet[BoundVariable] = OrderedSet()
 
     @staticmethod
@@ -2083,6 +2118,7 @@ class FilterVisitor(FormulaVisitor):
         filter_fun: Callable[[Formula], bool],
         do_continue: Callable[[Formula], bool] = lambda f: True,
     ):
+        super().__init__()
         self.filter = filter_fun
         self.result: List[Formula] = []
         self.do_continue = do_continue
@@ -2321,6 +2357,7 @@ def convert_smt_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]
             instantiated_variables=instantiated_variables,
             substitutions=substitutions,
             auto_eval=formula.auto_eval,
+            auto_subst=formula.auto_subst,
         )
     )
 
@@ -4085,6 +4122,14 @@ def set_smt_auto_eval(formula: Formula, auto_eval: bool = False):
             formula.auto_eval = auto_eval
 
     formula.accept(AutoEvalVisitor())
+
+
+def set_smt_auto_subst(formula: Formula, auto_subst: bool = False):
+    class AutoSubstVisitor(FormulaVisitor):
+        def visit_smt_formula(self, formula: SMTFormula):
+            formula.auto_subst = auto_subst
+
+    formula.accept(AutoSubstVisitor())
 
 
 def match(

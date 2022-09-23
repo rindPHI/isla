@@ -1005,6 +1005,28 @@ not(
         print("\n".join(map(str, solutions)))
         self.assertEqual(30, len(solutions))
 
+    def test_repair_correct_assignment(self):
+        formula = """
+forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
+  exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
+    (before(assgn_2, assgn_1) and (= lhs rhs))"""
+
+        inp = "x := 1 ; y := x"
+
+        solver = ISLaSolver(LANG_GRAMMAR, formula)
+        self.assertEqual(inp, str(solver.repair(inp).orelse(lambda: "").get()))
+
+    def test_repair_wrong_assignment(self):
+        formula = """
+forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
+  exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
+    (before(assgn_2, assgn_1) and (= lhs rhs))"""
+
+        inp = "x := 1 ; y := z"
+
+        solver = ISLaSolver(LANG_GRAMMAR, formula)
+        print(solver.repair(inp))
+
     def execute_generation_test(
         self,
         formula: language.Formula | str = "true",

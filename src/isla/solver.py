@@ -41,6 +41,7 @@ from isla.evaluator import (
     evaluate,
     quantified_formula_might_match,
     get_toplevel_quantified_formulas,
+    eliminate_quantifiers,
 )
 from isla.evaluator import matches_for_quantified_formula
 from isla.existential_helpers import (
@@ -52,6 +53,7 @@ from isla.existential_helpers import (
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer, expansion_key
 from isla.helpers import (
     delete_unreachable,
+    shuffle,
     dict_of_lists_to_list_of_dicts,
     replace_line_breaks,
     weighted_geometric_mean,
@@ -83,6 +85,9 @@ from isla.language import (
     get_conjuncts,
     parse_bnf,
     ForallIntFormula,
+    set_smt_auto_eval,
+    NoopFormulaTransformer,
+    set_smt_auto_subst,
 )
 from isla.parser import EarleyParser
 from isla.type_defs import Grammar, Path, ImmutableList
@@ -425,7 +430,7 @@ class ISLaSolver:
                 lambda c: self.formula.substitute_expressions({c: initial_tree})
             )
             .orelse(lambda: true())
-            .a
+            .get()
         )
         initial_state = SolutionState(initial_formula, initial_tree)
         initial_states = self.establish_invariant(initial_state)
@@ -485,7 +490,9 @@ class ISLaSolver:
         else:
             return bool(result)
 
-    def parse(self, inp: str, nonterminal: str = "<start>") -> DerivationTree:
+    def parse(
+        self, inp: str, nonterminal: str = "<start>", skip_check: bool = False
+    ) -> DerivationTree:
         """
         Parses the given input `inp`. Raises a `SyntaxError` if the input does not
         satisfy the grammar, a `SemanticError` if it does not satisfy the constraint
@@ -496,6 +503,7 @@ class ISLaSolver:
         :param nonterminal: The nonterminal to start parsing with, if a string
         corresponding to a sub-grammar shall be parsed. We don't check semantic
         correctness in that case.
+        :param skip_check: If True, the semantic check is left out.
         :return: A parsed `DerivationTree`.
         """
         grammar = copy.deepcopy(self.grammar)
@@ -513,10 +521,104 @@ class ISLaSolver:
             self.logger.error(f'Error parsing "{inp}" starting with "{nonterminal}"')
             raise err
 
-        if nonterminal == "<start>" and not self.check(tree):
+        if not skip_check and nonterminal == "<start>" and not self.check(tree):
             raise SemanticError()
 
         return tree
+
+    def repair(self, inp: DerivationTree | str) -> Maybe[DerivationTree]:
+        if isinstance(inp, str):
+            inp = self.parse(inp, skip_check=True)
+
+        if self.check(inp) or not self.top_constant.is_present():
+            return Maybe(inp)
+
+        formula = self.top_constant.map(
+            lambda c: self.formula.substitute_expressions({c: inp})
+        ).get()
+
+        set_smt_auto_eval(formula, False)
+        set_smt_auto_subst(formula, False)
+
+        qfr_free = eliminate_quantifiers(
+            formula,
+            grammar=self.grammar,
+            numeric_constants={
+                c
+                for c in VariablesCollector.collect(formula)
+                if isinstance(c, language.Constant) and c.is_numeric()
+            },
+        )
+
+        # We first evaluate all structural predicates; for now, we do not interfere
+        # with structure.
+
+        class EvaluatePredicateTransformer(NoopFormulaTransformer):
+            def transform_predicate_formula(
+                self, sub_formula: language.StructuralPredicateFormula
+            ) -> language.Formula:
+                return sc.true() if sub_formula.evaluate(inp) else sc.false()
+
+            def transform_conjunctive_formula(
+                self, sub_formula: language.ConjunctiveFormula
+            ) -> language.Formula:
+                return reduce(language.Formula.__and__, sub_formula.args)
+
+            def transform_disjunctive_formula(
+                self, sub_formula: language.DisjunctiveFormula
+            ) -> language.Formula:
+                return reduce(language.Formula.__or__, sub_formula.args)
+
+            def transform_smt_formula(
+                self, sub_formula: language.SMTFormula
+            ) -> language.Formula:
+                # We instantiate the formula and check whether it evaluates to
+                # True (or False in a negation scope); in that case, we replace
+                # it by "true." Otherwise, we keep it for later analysis.
+
+                instantiated_formula = copy.deepcopy(sub_formula)
+                set_smt_auto_subst(instantiated_formula, True)
+                set_smt_auto_eval(instantiated_formula, True)
+                instantiated_formula = instantiated_formula.substitute_expressions(
+                    sub_formula.substitutions
+                )
+
+                assert instantiated_formula in {sc.true(), sc.false()}
+
+                return (
+                    sc.true()
+                    if (instantiated_formula == sc.true()) ^ self.in_negation_scope
+                    else sub_formula
+                )
+
+        semantic_only = qfr_free.transform(EvaluatePredicateTransformer())
+
+        if semantic_only == sc.false():
+            # This cannot be repaired while preserving structure; for existential
+            # problems, we could try tree insertion. We leave this for future work.
+            return Maybe.nothing()
+
+        # We try to satisfy any of the remaining disjunctive elements, in random order
+        for formula_to_satisfy in shuffle(split_disjunction(semantic_only)):
+            # Now, we consider all combinations of 1, 2, ... of the derivation trees
+            # participating in the formula. We successively prune deeper and deeper
+            # subtrees until the resulting input evaluates to "unknown" for the given
+            # formula.
+
+            participating_paths = {
+                inp.find_node(arg) for arg in formula_to_satisfy.tree_arguments()
+            }
+
+            # If p1, p2 are in participating_paths, then we consider the following
+            # path combinations in the listed order:
+            # {p1}, {p2}, {p1, p2}, {p1[:-1]}, {p2[:-1]}, {p1[:-1], p2}, {p1, p2[:-1]},
+            # {p1[:-1], p2[:-1]}, ...
+            for round in range(min(map(len, participating_paths))):
+                pass
+
+            print(formula_to_satisfy)
+
+        raise NotImplementedError()
 
     def solve(self) -> DerivationTree:
         """
