@@ -123,9 +123,10 @@ def evaluate(
     if not assumptions and not FilterVisitor(
         lambda f: isinstance(f, NumericQuantifiedFormula)
     ).collect(formula):
-        # The legacy evaluation performs better, but only works w/o NumericQuantifiedFormulas / assumptions.
-        # It might be possible to consider assumptions, but the implemented method works and we would
-        # rather not invest that work to gain some seconds of performance.
+        # The legacy evaluation performs better, but only works w/o
+        # NumericQuantifiedFormulas / assumptions. # It might be possible to consider
+        # assumptions, but the implemented method works and we would rather not invest
+        # that work to gain some seconds of performance.
         return evaluate_legacy(
             formula, grammar, {}, reference_tree, trie=subtrees_trie, graph=graph
         )
@@ -169,16 +170,18 @@ def evaluate(
             lambda f: evaluate_predicates_action(f, reference_tree, graph),
         )
 
-        # The remaining formula is a pure SMT formula if there were no quantifiers over open trees.
-        # In the case that there *were* such quantifiers, we still convert to an SMT formula, replacing
-        # all quantifiers with fresh predicates, which still allows us to perform an evaluation.
+        # The remaining formula is a pure SMT formula if there were no quantifiers over
+        # open trees. In the case that there *were* such quantifiers, we still convert
+        # to an SMT formula, replacing all quantifiers with fresh predicates, which
+        # still allows us to perform an evaluation.
         smt_formula: z3.BoolRef = approximate_isla_to_smt_formula(
             without_predicates, replace_untranslatable_with_predicate=True
         )
 
         smt_result = is_valid(smt_formula)
 
-        # We return unknown / false directly if the result is unknown / false for any assumption.
+        # We return unknown / false directly if the result is unknown / false for any
+        # assumption.
         if smt_result.is_unknown():
             return ThreeValuedTruth.unknown()
         elif smt_result.is_false():
@@ -237,12 +240,13 @@ def eliminate_quantifiers_in_assumptions(
     # NOTE: We could eliminate unsatisfiable preconditions already here, but that turned
     #       out to be quite expensive. Rather, we check whether the precondition was
     #       unsatisfiable before returning a negative evaluation result.
-    # NOTE: We only check propositional unsatisfiability, which is an approximation; thus,
-    #       it is theoretically possible that we return a negative result for an actually
-    #       true formula. This, however, only happens with assumptions present, which are
-    #       used in the solver when checking whether an existential quantifier can be quickly
-    #       removed. Not removing the quantifier is thus not soundness critical. Also,
-    #       false negative results should generally be less critical than false positive ones.
+    # NOTE: We only check propositional unsatisfiability, which is an approximation;
+    #       thus, it is theoretically possible that we return a negative result for an
+    #       actually true formula. This, however, only happens with assumptions present,
+    #       which are used in the solver when checking whether an existential quantifier
+    #       can be quickly removed. Not removing the quantifier is thus not soundness
+    #       critical. Also, false negative results should generally be less critical
+    #       than false positive ones.
     return {
         assumptions
         for assumptions in itertools.product(
@@ -254,14 +258,14 @@ def eliminate_quantifiers_in_assumptions(
                         assumption, grammar=grammar, keep_existential_quantifiers=True
                     )
                 )
-                # By quantifier elimination, we might obtain the original formula the same way
-                # it was derived before. This has to be excluded, to ensure that the formula
-                # is not trivially satisfied
+                # By quantifier elimination, we might obtain the original formula the
+                # same way it was derived before. This has to be excluded, to ensure
+                # that the formula is not trivially satisfied
                 if conjunct != formula
             ]
         )
-        # if not propositionally_unsatisfiable(
-        #     reduce(Formula.__and__, assumptions, SMTFormula(z3.BoolVal(True))))  # <- See comment above
+        # if not propositionally_unsatisfiable(  # <- See comment above
+        #     reduce(Formula.__and__, assumptions, SMTFormula(z3.BoolVal(True))))
     }
 
 
@@ -278,12 +282,14 @@ def well_formed(
     #     exists <?NONTERMINAL> length_field in container:
     #       exists int decimal:
     #         (hex_to_decimal(length_field, decimal) and
-    #          (= (div (str.len (str.replace_all container " " "")) 2) (str.to.int decimal)))
+    #          (= (div (str.len (str.replace_all container " " "")) 2)
+    #          (str.to.int decimal)))
     #   ```
-    #  is reported as ill-formed since `container`, the in-expression of the existential qfr,
-    #  is reported to be bound by the SMT formula. This could be an actual problem, but not when
-    #  evaluating, only when generating. With two symbols for the SMT formula, I simply received
-    #  a timeout. Can we defer the Z3 call in the solver until `container` is fixed?
+    #  is reported as ill-formed since `container`, the in-expression of the existential
+    #  qfr, is reported to be bound by the SMT formula. This could be an actual problem,
+    #  but not when evaluating, only when generating. With two symbols for the SMT
+    #  formula, I simply received a timeout. Can we defer the Z3 call in the solver
+    #  until `container` is fixed?
 
     bound_vars = OrderedSet([]) if bound_vars is None else bound_vars
     in_expr_vars = OrderedSet([]) if in_expr_vars is None else in_expr_vars
@@ -573,7 +579,6 @@ def evaluate_legacy(
     grammar: Grammar | str,
     assignments: Dict[Variable, Tuple[Path, DerivationTree]],
     reference_tree: DerivationTree,
-    vacuously_satisfied: Optional[Set[Formula]] = None,
     trie: Optional[SubtreesTrie] = None,
     graph: Optional[gg.GrammarGraph] = None,
 ) -> ThreeValuedTruth:
@@ -586,7 +591,6 @@ def evaluate_legacy(
     :param grammar: The reference grammar.
     :param assignments: The assignments recorded so far.
     :param reference_tree: The tree to which the paths in assignments refer.
-    :param vacuously_satisfied: A set into which universal formulas will be added when they're vacuously satisfied.
     :param trie: A prefix tree (tree) mapping tree paths from `reference_tree` (in pre-order) to subtrees.
     :param graph: The GrammarGraph for `grammar`.
     :return: A (three-valued) truth value.
@@ -597,13 +601,12 @@ def evaluate_legacy(
     grammar = parse_bnf(grammar) if isinstance(grammar, str) else grammar
     graph = gg.GrammarGraph.from_grammar(grammar) if graph is None else graph
     trie = reference_tree.trie() if trie is None else trie
-    vacuously_satisfied = set() if vacuously_satisfied is None else vacuously_satisfied
 
     def raise_not_implemented_error(
-        formula: Formula,
+        f: Formula,
     ) -> Maybe[ThreeValuedTruth]:
         raise NotImplementedError(
-            f"Don't know how to evaluate the formula {unparse_isla(formula)}"
+            f"Don't know how to evaluate the formula {unparse_isla(f)}"
         )
 
     def close(evaluation_function: callable) -> callable:
@@ -613,7 +616,6 @@ def evaluate_legacy(
             reference_tree,
             graph,
             grammar,
-            vacuously_satisfied,
             trie,
         )
 
@@ -639,7 +641,7 @@ def evaluate_legacy(
 
 
 def evaluate_exists_int_formula(
-    formula: Formula, _1, _2, _3, _4, _5, _6
+    formula: Formula, _1, _2, _3, _4, _5
 ) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, ExistsIntFormula):
         return Maybe.nothing()
@@ -656,7 +658,6 @@ def evaluate_smt_formula(
     _2,
     _3,
     _4,
-    _5,
 ) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, SMTFormula):
         return Maybe.nothing()
@@ -707,7 +708,6 @@ def evaluate_quantified_formula(
     reference_tree: DerivationTree,
     graph: gg.GrammarGraph,
     grammar: Grammar,
-    vacuously_satisfied: Set[Formula],
     trie: SubtreesTrie,
 ) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, QuantifiedFormula):
@@ -777,9 +777,6 @@ def evaluate_quantified_formula(
     )
 
     if isinstance(formula, ForallFormula):
-        if not new_assignments:
-            vacuously_satisfied.add(formula)
-
         if has_potential_matches:
             return Maybe(ThreeValuedTruth.unknown())
 
@@ -790,7 +787,6 @@ def evaluate_quantified_formula(
                     grammar,
                     new_assignment,
                     reference_tree,
-                    vacuously_satisfied,
                     trie,
                     graph=graph,
                 )
@@ -804,7 +800,6 @@ def evaluate_quantified_formula(
                 grammar,
                 new_assignment,
                 reference_tree,
-                vacuously_satisfied,
                 trie,
                 graph=graph,
             )
@@ -825,7 +820,6 @@ def evaluate_structural_predicate_formula(
     _1,
     _2,
     _3,
-    _4,
 ) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, StructuralPredicateFormula):
         return Maybe.nothing()
@@ -854,7 +848,6 @@ def evaluate_semantic_predicate_formula(
     graph: gg.GrammarGraph,
     _2,
     _3,
-    _4,
 ) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, SemanticPredicateFormula):
         return Maybe.nothing()
@@ -893,7 +886,6 @@ def evaluate_negated_formula_formula(
     reference_tree: DerivationTree,
     graph: gg.GrammarGraph,
     grammar: Grammar,
-    vacuously_satisfied: Set[Formula],
     trie: SubtreesTrie,
 ) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, NegatedFormula):
@@ -906,7 +898,6 @@ def evaluate_negated_formula_formula(
                 grammar,
                 assignments,
                 reference_tree,
-                vacuously_satisfied,
                 trie,
                 graph=graph,
             )
@@ -920,7 +911,6 @@ def evaluate_conjunctive_formula_formula(
     reference_tree: DerivationTree,
     graph: gg.GrammarGraph,
     grammar: Grammar,
-    vacuously_satisfied: Set[Formula],
     trie: SubtreesTrie,
 ) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, ConjunctiveFormula):
@@ -933,7 +923,6 @@ def evaluate_conjunctive_formula_formula(
                 grammar,
                 assignments,
                 reference_tree,
-                vacuously_satisfied,
                 trie,
                 graph=graph,
             )
@@ -948,7 +937,6 @@ def evaluate_disjunctive_formula(
     reference_tree: DerivationTree,
     graph: gg.GrammarGraph,
     grammar: Grammar,
-    vacuously_satisfied: Set[Formula],
     trie: SubtreesTrie,
 ) -> Maybe[ThreeValuedTruth]:
     if not isinstance(formula, DisjunctiveFormula):
@@ -961,7 +949,6 @@ def evaluate_disjunctive_formula(
                 grammar,
                 assignments,
                 reference_tree,
-                vacuously_satisfied,
                 trie,
                 graph=graph,
             )
