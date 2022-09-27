@@ -5,7 +5,16 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.2.0] - 2022-09-27
+
+### Changed
+
+- Added the option to pass multiple constraints via multiple `--constraint` command
+  line parameters in the CLI.
+
 ## [1.1.0] - 2022-09-27
+
+### Added
 
 - Added the CLI command `isla repair` and solver method `ISLaSolver.repair` for
   repairing inputs violating semantic constraints.
