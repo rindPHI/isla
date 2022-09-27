@@ -9,6 +9,8 @@ ISLa: Input Specification Language
 [![DOI](https://zenodo.org/badge/428626626.svg)](https://zenodo.org/badge/latestdoi/428626626)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
+<img src="isla_logo_bright_transparent.png" alt="ISLa Logo" style="margin-left: auto; margin-right: auto; display: block; width: 400px"/> 
+
 **_Inputs on Demand!_**
 
 ISLa is a *grammar-aware string constraint solver* with its own specification language.
