@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 from contextlib import redirect_stdout, redirect_stderr
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List, Optional
 
 from grammar_graph import gg
 
@@ -403,18 +403,22 @@ def ensure_constraint_present(stderr, parser, args, files: Dict[str, str]) -> No
 
 def parse_constraint(
     subcommand: str,
-    constraint_arg: str,
+    constraint_arg: Optional[List[str]],
     files: Dict[str, str],
     grammar: Grammar,
     stderr,
 ) -> language.Formula:
+    constraint_arg = constraint_arg or []
+    assert isinstance(constraint_arg, list)
+    assert all(isinstance(elem, str) for elem in constraint_arg)
+
     constraint = true()
 
     try:
-        if constraint_arg:
+        for constraint_str in constraint_arg:
             with redirect_stderr(stderr):
                 constraint &= parse_isla(
-                    constraint_arg,
+                    constraint_str,
                     structural_predicates=STANDARD_STRUCTURAL_PREDICATES,
                     semantic_predicates=STANDARD_SEMANTIC_PREDICATES,
                     grammar=grammar,
@@ -902,8 +906,10 @@ def constraint_arg(parser):
     parser.add_argument(
         "-c",
         "--constraint",
-        help="An ISLa constraint. If constraints are passed as file(s), too, then all "
-        + "provided constraints are combined to one conjunction",
+        help="Add ISLa constraints to the solver. All constraints passed via "
+        "`--constraint` as well as constraints passed as file(s) "
+        "are combined to a single conjunction",
+        action="append",
     )
 
 
