@@ -3235,24 +3235,32 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             bound_var_type = xpath_expr[1][0][0]
             assert is_nonterminal(bound_var_type)
 
-            if len(xpath_expr) == 2 and len(xpath_expr[1]) == 1:
-                bound_var = final_bound_variable
-            else:
-                # TODO: This else leg seems to be untested. Check if/when it is executed.
-                bound_var = fresh_bound_variable(
-                    self.used_variables,
-                    BoundVariable(bound_var_type[1:-1], bound_var_type),
-                    add=False,
-                )
-                self.used_variables.add(bound_var.name)
+            assert (
+                len(xpath_expr) == 2 and len(xpath_expr[1]) == 1
+            ), "If this fails, uncomment the else branch in the source code."
 
-                xpath_expr = list_set(
-                    xpath_expr[1:], 0, list_set(xpath_expr[1], 0, (bound_var.name, 0))
-                )
-                self.vars_for_xpath_expressions[xpath_expr] = final_bound_variable
+            # NOTE: Previously, the following else branch was in place here, but it was
+            #       never executed. Leaving this here for the moment in case it covers
+            #       an edge case that was not explicitly tested (2022-09-27).
+            # else:
+            #     assert False
+            #     bound_var = fresh_bound_variable(
+            #         self.used_variables,
+            #         BoundVariable(bound_var_type[1:-1], bound_var_type),
+            #         add=False,
+            #     )
+            #     self.used_variables.add(bound_var.name)
+            #
+            #     xpath_expr = list_set(
+            #         xpath_expr[1:], 0, list_set(xpath_expr[1], 0, (bound_var.name, 0))
+            #     )
+            #     self.vars_for_xpath_expressions[xpath_expr] = final_bound_variable
 
             formula = univ_close_over_var_push_in(
-                formula, bound_var, in_var=in_var, qfd_vars=final_bound_variable
+                formula,
+                final_bound_variable,
+                in_var=in_var,
+                qfd_vars=final_bound_variable,
             )
 
             return self.close_over_xpath_expressions(formula)
