@@ -254,7 +254,8 @@ class SemanticError(Exception):
 class ISLaSolver:
     """
     The solver class for ISLa formulas/constraints. Its methods are
-    `solve()`, `check(DerivationTree | str)`, and `parse(str)`.
+    `solve()`, `check(DerivationTree | str)`, `parse(str)`, and
+    `repair(DerivationTree | str)`.
     """
 
     def __init__(
@@ -599,6 +600,13 @@ class ISLaSolver:
     def repair(
         self, inp: DerivationTree | str, fix_timeout_seconds: int = 3
     ) -> Maybe[DerivationTree]:
+        """
+        TODO
+        :param inp:
+        :param fix_timeout_seconds:
+        :return:
+        """
+
         if isinstance(inp, str):
             inp = self.parse(inp, skip_check=True)
 
