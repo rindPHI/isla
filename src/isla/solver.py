@@ -91,6 +91,7 @@ from isla.language import (
     NoopFormulaTransformer,
     set_smt_auto_subst,
 )
+from isla.mutator import Mutator
 from isla.parser import EarleyParser
 from isla.type_defs import Grammar, Path, ImmutableList
 from isla.z3_helpers import z3_solve, z3_subst, z3_eq, z3_and
@@ -598,7 +599,7 @@ class ISLaSolver:
         return tree
 
     def repair(
-        self, inp: DerivationTree | str, fix_timeout_seconds: int = 3
+        self, inp: DerivationTree | str, fix_timeout_seconds: float = 3
     ) -> Maybe[DerivationTree]:
         """
         Attempts to repair the given input. The input must not violate syntactic
@@ -613,8 +614,7 @@ class ISLaSolver:
         :return: A fixed input (or the original, if it was not broken) or nothing.
         """
 
-        if isinstance(inp, str):
-            inp = self.parse(inp, skip_check=True)
+        inp = self.parse(inp, skip_check=True) if isinstance(inp, str) else inp
 
         if self.check(inp) or not self.top_constant.is_present():
             return Maybe(inp)
@@ -693,6 +693,40 @@ class ISLaSolver:
                     return maybe_completed
 
         raise Maybe.nothing()
+
+    def mutate(
+        self,
+        inp: DerivationTree | str,
+        min_mutations: int = 2,
+        max_mutations: int = 5,
+        fix_timeout_seconds: float = 1,
+    ) -> DerivationTree:
+        """
+        Mutates `inp` such that the result satisfies the constraint.
+
+        :param inp: The input to mutate.
+        :param min_mutations: The minimum number of mutation steps to perform.
+        :param max_mutations: The maximum number of mutation steps to perform.
+        :param fix_timeout_seconds: A timeout used when calling the solver for fixing
+        an abstracted input. Usually, a low timeout suffices.
+        :return: A mutated input.
+        """
+
+        inp = self.parse(inp, skip_check=True) if isinstance(inp, str) else inp
+        mutator = Mutator(
+            self.grammar,
+            min_mutations=min_mutations,
+            max_mutations=max_mutations,
+            graph=self.graph,
+        )
+
+        while True:
+            mutated = mutator.mutate(inp)
+            if mutated.structurally_equal(inp):
+                continue
+            maybe_fixed = self.repair(mutated, fix_timeout_seconds)
+            if maybe_fixed.is_present():
+                return maybe_fixed.get()
 
     def solve(self) -> DerivationTree:
         """

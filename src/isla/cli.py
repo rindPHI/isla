@@ -271,7 +271,10 @@ def repair(stdout, stderr, parser, args):
         sys.exit(1)
 
     if not maybe_repaired.is_present():
-        print("sorry, I could not repair this input", file=stderr)
+        print(
+            "sorry, I could not repair this input (tip: try `isla mutate` instead)",
+            file=stderr,
+        )
         sys.exit(1)
 
     def write_result(tree: DerivationTree):
@@ -282,6 +285,38 @@ def repair(stdout, stderr, parser, args):
             print(str(tree), file=stdout)
 
     maybe_repaired.if_present(write_result)
+    sys.exit(0)
+
+
+def mutate(stdout, stderr, parser, args):
+    files = read_files(args)
+    ensure_grammar_present(stderr, parser, args, files)
+    ensure_constraint_present(stderr, parser, args, files)
+    command = args.command
+
+    grammar = parse_grammar(command, args.grammar, files, stderr)
+    constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
+    inp = get_input_string(command, stderr, args, files)
+
+    solver = ISLaSolver(grammar, constraint)
+
+    try:
+        mutated = solver.mutate(
+            inp,
+            fix_timeout_seconds=args.timeout,
+            min_mutations=args.min_mutations,
+            max_mutations=args.max_mutations,
+        )
+    except SyntaxError:
+        print("input could not be parsed", file=stderr)
+        sys.exit(1)
+
+    if args.output_file:
+        with open(args.output_file, "w") as file:
+            file.write(str(mutated))
+    else:
+        print(str(mutated), file=stdout)
+
     sys.exit(0)
 
 
@@ -366,6 +401,7 @@ The ISLa command line interface.""",
     create_check_parser(subparsers, stdout, stderr)
     create_parse_parser(subparsers, stdout, stderr)
     create_repair_parser(subparsers, stdout, stderr)
+    create_mutate_parser(subparsers, stdout, stderr)
     create_create_parser(subparsers, stdout, stderr)
 
     return parser
@@ -727,6 +763,60 @@ successfully repaired. If no file is given, the result is printed to stdout""",
         help="""
 the number of (fractions of) seconds after which the solver should stop finding
 solutions when trying to repair an incomplete input""",
+    )
+
+    log_level_arg(parser)
+    grammar_constraint_or_input_files_arg(parser)
+
+
+def create_mutate_parser(subparsers, stdout, stderr):
+    parser = subparsers.add_parser(
+        "mutate",
+        help="mutate an input such that the result satisfies an ISLa constraint",
+        description="""
+Performs structural mutations on the given input and repairs it afterward (see
+`isla repair` such that the result satisfies the given constraint(s).""",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.set_defaults(func=lambda *args: mutate(stdout, stderr, parser, *args))
+
+    input_string_arg(parser)
+
+    parser.add_argument(
+        "-o",
+        "--output-file",
+        help="""
+The file into which to write the mutated result. If no file is given, the result is
+printed to stdout""",
+    )
+
+    grammar_arg(parser)
+    constraint_arg(parser)
+
+    parser.add_argument(
+        "-x",
+        "--min-mutations",
+        type=int,
+        default=2,
+        help="the minimum number of mutation steps to perform",
+    )
+
+    parser.add_argument(
+        "-X",
+        "--max-mutations",
+        type=int,
+        default=5,
+        help="the maximum number of mutation steps to perform",
+    )
+
+    parser.add_argument(
+        "-t",
+        "--timeout",
+        type=float,
+        default=1.0,
+        help="""
+the number of (fractions of) seconds after which the solver should stop finding
+solutions when trying to repair a mutated input""",
     )
 
     log_level_arg(parser)

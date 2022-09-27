@@ -36,6 +36,7 @@ from isla.language import (
     SemanticPredicate,
     SemPredEvalResult,
 )
+from isla.parser import EarleyParser
 from isla.solver import (
     ISLaSolver,
     SolutionState,
@@ -509,6 +510,7 @@ forall int colno:
             debug=True,
         )
 
+    @pytest.mark.flaky(reruns=3, reruns_delay=2)
     def test_rest(self):
         random.seed(10)
         self.execute_generation_test(
@@ -1111,6 +1113,24 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
             .map(solver.check)
             .orelse(lambda: False),
         )
+
+    def test_mutate_assignment(self):
+        formula = """
+forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
+  exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
+    (before(assgn_2, assgn_1) and (= lhs rhs))"""
+
+        inp = DerivationTree.from_parse_tree(
+            next(EarleyParser(LANG_GRAMMAR).parse("x := 1 ; y := x"))
+        )
+
+        solver = ISLaSolver(LANG_GRAMMAR, formula)
+        graph = gg.GrammarGraph.from_grammar(LANG_GRAMMAR)
+
+        for _ in range(10):
+            mutated = solver.mutate(inp)
+            self.assertTrue(not inp.structurally_equal(mutated))
+            self.assertTrue(graph.tree_is_valid(mutated))
 
     def execute_generation_test(
         self,
