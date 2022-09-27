@@ -601,10 +601,16 @@ class ISLaSolver:
         self, inp: DerivationTree | str, fix_timeout_seconds: int = 3
     ) -> Maybe[DerivationTree]:
         """
-        TODO
-        :param inp:
-        :param fix_timeout_seconds:
-        :return:
+        Attempts to repair the given input. The input must not violate syntactic
+        (grammar) constraints. If semantic constraints are violated, this method
+        gradually abstracts the input and tries to turn it into a valid one.
+        Note that intensive structural manipulations are not performed; we merely
+        try to satisfy SMT-LIB and semantic predicate constraints.
+
+        :param inp: The input to fix.
+        :param fix_timeout_seconds: A timeout used when calling the solver for an
+        abstracted input. Usually, a low timeout suffices.
+        :return: A fixed input (or the original, if it was not broken) or nothing.
         """
 
         if isinstance(inp, str):
