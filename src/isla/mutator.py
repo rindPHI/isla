@@ -1,7 +1,8 @@
 import random
-from typing import Tuple, Callable
+from typing import Tuple, Callable, Optional
 
 from grammar_graph import gg
+from grammar_graph.gg import GrammarGraph
 
 from isla.derivation_tree import DerivationTree
 from isla.existential_helpers import paths_between, path_to_tree
@@ -18,10 +19,14 @@ from isla.type_defs import Grammar, Path
 
 class Mutator:
     def __init__(
-        self, grammar: Grammar, min_mutations: int = 2, max_mutations: int = 5
+        self,
+        grammar: Grammar,
+        min_mutations: int = 2,
+        max_mutations: int = 5,
+        graph: Optional[gg.GrammarGraph] = None,
     ):
         self.fuzzer = GrammarCoverageFuzzer(grammar)
-        self.graph = gg.GrammarGraph.from_grammar(grammar)
+        self.graph = graph or gg.GrammarGraph.from_grammar(grammar)
         self.canonical_grammar = canonical(grammar)
 
         self.min_mutations = min_mutations
