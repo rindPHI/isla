@@ -22,7 +22,7 @@ from isla import language
 from isla.derivation_tree import DerivationTree
 from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_ADDITION
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
-from isla.helpers import crange, Exceptional, Maybe
+from isla.helpers import crange, Exceptional, Maybe, to_id
 from isla.isla_predicates import (
     BEFORE_PREDICATE,
     COUNT_PREDICATE,
@@ -1004,6 +1004,113 @@ not(
         solutions = [solver.solve() for _ in range(30)]
         print("\n".join(map(str, solutions)))
         self.assertEqual(30, len(solutions))
+
+    def test_repair_correct_assignment(self):
+        formula = """
+forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
+  exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
+    (before(assgn_2, assgn_1) and (= lhs rhs))"""
+
+        inp = "x := 1 ; y := x"
+
+        solver = ISLaSolver(LANG_GRAMMAR, formula)
+        self.assertEqual(inp, str(solver.repair(inp).orelse(lambda: "").get()))
+
+    def test_repair_wrong_assignment(self):
+        formula = """
+forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
+  exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
+    (before(assgn_2, assgn_1) and (= lhs rhs))"""
+        solver = ISLaSolver(LANG_GRAMMAR, formula)
+
+        self.assertEqual(
+            Maybe(True),
+            solver.repair("x := 1 ; y := z")
+            .map(to_id(print))
+            .map(solver.check)
+            .orelse(lambda: False),
+        )
+
+        self.assertEqual(
+            Maybe(True),
+            solver.repair("x := 0 ; y := z ; z := c")
+            .map(to_id(print))
+            .map(solver.check)
+            .orelse(lambda: False),
+        )
+
+    def test_repair_long_wrong_assignment(self):
+        formula = """
+forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
+  exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
+    (before(assgn_2, assgn_1) and (= lhs rhs))"""
+        solver = ISLaSolver(LANG_GRAMMAR, formula)
+
+        self.assertEqual(
+            Maybe(True),
+            solver.repair("x := 1 ; x := a ; x := b ; x := c")
+            .map(to_id(print))
+            .map(solver.check)
+            .orelse(lambda: False),
+        )
+
+    def test_repair_unrepairable_wrong_assignment(self):
+        # If this test fails, it can be a good sign, since it requires a
+        # structural change to succeed that was not implemented at the time
+        # of writing the test.
+
+        formula = """
+forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
+  exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
+    (before(assgn_2, assgn_1) and (= lhs rhs))"""
+        solver = ISLaSolver(LANG_GRAMMAR, formula)
+
+        self.assertEqual(
+            Maybe(False),
+            solver.repair("x := a ; y := z ; z := c")
+            .map(solver.check)
+            .orelse(lambda: False),
+        )
+
+    def test_repair_unbalanced_xml_tree(self):
+        solver = ISLaSolver(XML_GRAMMAR, XML_WELLFORMEDNESS_CONSTRAINT)
+
+        self.assertEqual(
+            Maybe(True),
+            solver.repair("<a>asdf</b>")
+            .map(to_id(print))
+            .map(solver.check)
+            .orelse(lambda: False),
+        )
+
+    def test_repair_undeclared_xml_namespace(self):
+        solver = ISLaSolver(
+            XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, XML_NAMESPACE_CONSTRAINT
+        )
+
+        self.assertEqual(
+            Maybe(True),
+            solver.repair('<a><b x:y="asdf"/></a>')
+            .map(to_id(print))
+            .map(solver.check)
+            .orelse(lambda: False),
+        )
+
+        self.assertEqual(
+            Maybe(True),
+            solver.repair('<a xmlns:z="fdsa"><b x:y="asdf"/></a>')
+            .map(to_id(print))
+            .map(solver.check)
+            .orelse(lambda: False),
+        )
+
+        self.assertEqual(
+            Maybe(True),
+            solver.repair('<a w:z="fdsa"><b x:y="asdf"/></a>')
+            .map(to_id(print))
+            .map(solver.check)
+            .orelse(lambda: False),
+        )
 
     def execute_generation_test(
         self,

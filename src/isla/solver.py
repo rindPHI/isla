@@ -21,6 +21,7 @@ from typing import (
     cast,
     Callable,
     Iterable,
+    Generator,
 )
 
 import pkg_resources
@@ -41,6 +42,7 @@ from isla.evaluator import (
     evaluate,
     quantified_formula_might_match,
     get_toplevel_quantified_formulas,
+    eliminate_quantifiers,
 )
 from isla.evaluator import matches_for_quantified_formula
 from isla.existential_helpers import (
@@ -52,6 +54,7 @@ from isla.existential_helpers import (
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer, expansion_key
 from isla.helpers import (
     delete_unreachable,
+    shuffle,
     dict_of_lists_to_list_of_dicts,
     replace_line_breaks,
     weighted_geometric_mean,
@@ -65,6 +68,7 @@ from isla.helpers import (
     Maybe,
     chain_functions,
     Exceptional,
+    eliminate_suffixes,
 )
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
@@ -83,6 +87,9 @@ from isla.language import (
     get_conjuncts,
     parse_bnf,
     ForallIntFormula,
+    set_smt_auto_eval,
+    NoopFormulaTransformer,
+    set_smt_auto_subst,
 )
 from isla.parser import EarleyParser
 from isla.type_defs import Grammar, Path, ImmutableList
@@ -247,7 +254,8 @@ class SemanticError(Exception):
 class ISLaSolver:
     """
     The solver class for ISLa formulas/constraints. Its methods are
-    `solve()`, `check(DerivationTree | str)`, and `parse(str)`.
+    `solve()`, `check(DerivationTree | str)`, `parse(str)`, and
+    `repair(DerivationTree | str)`.
     """
 
     def __init__(
@@ -277,6 +285,7 @@ class ISLaSolver:
         tree_insertion_methods: Optional[int] = None,
         activate_unsat_support: bool = False,
         grammar_unwinding_threshold: int = 4,
+        initial_tree: Maybe[DerivationTree] = Maybe.nothing(),
     ):
         """
         Constructs a new ISLaSolver object. Passing a grammar and a formula is mandatory.
@@ -317,6 +326,8 @@ class ISLaSolver:
         in the reference grammar up to a depth of `grammar_unwinding_threshold`. If this is too shallow, it can
         happen that an equation etc. cannot be solved; if it is too deep, it can negatively impact performance
         (and quite tremendously so).
+        :param initial_tree: An initial input tree for the queue, if the solver shall
+        not start from the tree `(<start>, None)`.
         """
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -417,21 +428,30 @@ class ISLaSolver:
         self.enforce_unique_trees_in_queue = enforce_unique_trees_in_queue
 
         # Initialize Queue
-        initial_tree = DerivationTree(
-            self.top_constant.map(lambda c: c.n_type).orelse(lambda: "<start>").a, None
-        )
+        self.initial_tree = (
+            initial_tree
+            + Maybe(
+                DerivationTree(
+                    self.top_constant.map(lambda c: c.n_type)
+                    .orelse(lambda: "<start>")
+                    .get(),
+                    None,
+                )
+            )
+        ).get()
+
         initial_formula = (
             self.top_constant.map(
-                lambda c: self.formula.substitute_expressions({c: initial_tree})
+                lambda c: self.formula.substitute_expressions({c: self.initial_tree})
             )
             .orelse(lambda: true())
-            .a
+            .get()
         )
-        initial_state = SolutionState(initial_formula, initial_tree)
+        initial_state = SolutionState(initial_formula, self.initial_tree)
         initial_states = self.establish_invariant(initial_state)
 
         self.queue: List[Tuple[float, SolutionState]] = []
-        self.tree_hashes_in_queue: Set[int] = {initial_tree.structural_hash()}
+        self.tree_hashes_in_queue: Set[int] = {self.initial_tree.structural_hash()}
         self.state_hashes_in_queue: Set[int] = {hash(state) for state in initial_states}
         for state in initial_states:
             heapq.heappush(self.queue, (self.compute_cost(state), state))
@@ -459,6 +479,62 @@ class ISLaSolver:
             for state in initial_states:
                 self.costs[state] = self.compute_cost(state)
 
+    def copy_without_queue(
+        self,
+        grammar: Maybe[Grammar | str] = Maybe.nothing(),
+        formula: Maybe[language.Formula | str] = Maybe.nothing(),
+        max_number_free_instantiations: Maybe[int] = Maybe.nothing(),
+        max_number_smt_instantiations: Maybe[int] = Maybe.nothing(),
+        max_number_tree_insertion_results: Maybe[int] = Maybe.nothing(),
+        enforce_unique_trees_in_queue: Maybe[bool] = Maybe.nothing(),
+        debug: Maybe[bool] = Maybe.nothing(),
+        cost_computer: Maybe["CostComputer"] = Maybe.nothing(),
+        timeout_seconds: Maybe[int] = Maybe.nothing(),
+        global_fuzzer: Maybe[bool] = Maybe.nothing(),
+        predicates_unique_in_int_arg: Maybe[
+            Tuple[language.SemanticPredicate, ...]
+        ] = Maybe.nothing(),
+        fuzzer_factory: Maybe[Callable[[Grammar], GrammarFuzzer]] = Maybe.nothing(),
+        tree_insertion_methods: Maybe[int] = Maybe.nothing(),
+        activate_unsat_support: Maybe[bool] = Maybe.nothing(),
+        grammar_unwinding_threshold: Maybe[int] = Maybe.nothing(),
+        initial_tree: Maybe[DerivationTree] = Maybe.nothing(),
+    ):
+        return ISLaSolver(
+            grammar=grammar.orelse(lambda: self.grammar).get(),
+            formula=formula.orelse(lambda: self.formula).get(),
+            max_number_free_instantiations=max_number_free_instantiations.orelse(
+                lambda: self.max_number_free_instantiations
+            ).get(),
+            max_number_smt_instantiations=max_number_smt_instantiations.orelse(
+                lambda: self.max_number_smt_instantiations
+            ).get(),
+            max_number_tree_insertion_results=max_number_tree_insertion_results.orelse(
+                lambda: self.max_number_tree_insertion_results
+            ).get(),
+            enforce_unique_trees_in_queue=enforce_unique_trees_in_queue.orelse(
+                lambda: self.enforce_unique_trees_in_queue
+            ).get(),
+            debug=debug.orelse(lambda: self.debug).get(),
+            cost_computer=cost_computer.orelse(lambda: self.cost_computer).get(),
+            timeout_seconds=timeout_seconds.orelse(lambda: self.timeout_seconds).a,
+            global_fuzzer=global_fuzzer.orelse(lambda: self.global_fuzzer).get(),
+            predicates_unique_in_int_arg=predicates_unique_in_int_arg.orelse(
+                lambda: self.predicates_unique_in_int_arg
+            ).get(),
+            fuzzer_factory=fuzzer_factory.orelse(lambda: self.fuzzer_factory).get(),
+            tree_insertion_methods=tree_insertion_methods.orelse(
+                lambda: self.tree_insertion_methods
+            ).get(),
+            activate_unsat_support=activate_unsat_support.orelse(
+                lambda: self.activate_unsat_support
+            ).get(),
+            grammar_unwinding_threshold=grammar_unwinding_threshold.orelse(
+                lambda: self.grammar_unwinding_threshold
+            ).get(),
+            initial_tree=initial_tree,
+        )
+
     def check(self, inp: DerivationTree | str) -> bool:
         """
         Evaluates whether the given derivation tree satisfies the constraint passed to
@@ -485,7 +561,9 @@ class ISLaSolver:
         else:
             return bool(result)
 
-    def parse(self, inp: str, nonterminal: str = "<start>") -> DerivationTree:
+    def parse(
+        self, inp: str, nonterminal: str = "<start>", skip_check: bool = False
+    ) -> DerivationTree:
         """
         Parses the given input `inp`. Raises a `SyntaxError` if the input does not
         satisfy the grammar, a `SemanticError` if it does not satisfy the constraint
@@ -496,6 +574,7 @@ class ISLaSolver:
         :param nonterminal: The nonterminal to start parsing with, if a string
         corresponding to a sub-grammar shall be parsed. We don't check semantic
         correctness in that case.
+        :param skip_check: If True, the semantic check is left out.
         :return: A parsed `DerivationTree`.
         """
         grammar = copy.deepcopy(self.grammar)
@@ -513,10 +592,107 @@ class ISLaSolver:
             self.logger.error(f'Error parsing "{inp}" starting with "{nonterminal}"')
             raise err
 
-        if nonterminal == "<start>" and not self.check(tree):
+        if not skip_check and nonterminal == "<start>" and not self.check(tree):
             raise SemanticError()
 
         return tree
+
+    def repair(
+        self, inp: DerivationTree | str, fix_timeout_seconds: int = 3
+    ) -> Maybe[DerivationTree]:
+        """
+        Attempts to repair the given input. The input must not violate syntactic
+        (grammar) constraints. If semantic constraints are violated, this method
+        gradually abstracts the input and tries to turn it into a valid one.
+        Note that intensive structural manipulations are not performed; we merely
+        try to satisfy SMT-LIB and semantic predicate constraints.
+
+        :param inp: The input to fix.
+        :param fix_timeout_seconds: A timeout used when calling the solver for an
+        abstracted input. Usually, a low timeout suffices.
+        :return: A fixed input (or the original, if it was not broken) or nothing.
+        """
+
+        if isinstance(inp, str):
+            inp = self.parse(inp, skip_check=True)
+
+        if self.check(inp) or not self.top_constant.is_present():
+            return Maybe(inp)
+
+        formula = self.top_constant.map(
+            lambda c: self.formula.substitute_expressions({c: inp})
+        ).get()
+
+        set_smt_auto_eval(formula, False)
+        set_smt_auto_subst(formula, False)
+
+        qfr_free = eliminate_quantifiers(
+            formula,
+            grammar=self.grammar,
+            numeric_constants={
+                c
+                for c in VariablesCollector.collect(formula)
+                if isinstance(c, language.Constant) and c.is_numeric()
+            },
+        )
+
+        # We first evaluate all structural predicates; for now, we do not interfere
+        # with structure.
+        semantic_only = qfr_free.transform(EvaluatePredicateFormulasTransformer(inp))
+
+        if semantic_only == sc.false():
+            # This cannot be repaired while preserving structure; for existential
+            # problems, we could try tree insertion. We leave this for future work.
+            return Maybe.nothing()
+
+        # We try to satisfy any of the remaining disjunctive elements, in random order
+        for formula_to_satisfy in shuffle(split_disjunction(semantic_only)):
+            # Now, we consider all combinations of 1, 2, ... of the derivation trees
+            # participating in the formula. We successively prune deeper and deeper
+            # subtrees until the resulting input evaluates to "unknown" for the given
+            # formula.
+
+            participating_paths = {
+                inp.find_node(arg) for arg in formula_to_satisfy.tree_arguments()
+            }
+
+            def do_complete(tree: DerivationTree) -> Maybe[DerivationTree]:
+                return (
+                    Exceptional.of(
+                        self.copy_without_queue(
+                            initial_tree=Maybe(tree),
+                            timeout_seconds=Maybe(fix_timeout_seconds),
+                        ).solve
+                    )
+                    .map(Maybe)
+                    .recover(
+                        lambda _: Maybe.nothing(),
+                        UnknownResultError,
+                        TimeoutError,
+                        StopIteration,
+                    )
+                    .reraise()
+                    .get()
+                )
+
+            # If p1, p2 are in participating_paths, then we consider the following
+            # path combinations (roughly) in the listed order:
+            # {p1}, {p2}, {p1, p2}, {p1[:-1]}, {p2[:-1]}, {p1[:-1], p2}, {p1, p2[:-1]},
+            # {p1[:-1], p2[:-1]}, ...
+            for abstracted_tree in generate_abstracted_trees(inp, participating_paths):
+                maybe_completed: Maybe[DerivationTree] = (
+                    Exceptional.of(lambda: self.check(abstracted_tree))
+                    .map(lambda _: Maybe.nothing())
+                    .recover(lambda _: Maybe(abstracted_tree), UnknownResultError)
+                    .recover(lambda _: Maybe.nothing())
+                    .get()
+                    .bind(do_complete)
+                )
+
+                if maybe_completed.is_present():
+                    return maybe_completed
+
+        raise Maybe.nothing()
 
     def solve(self) -> DerivationTree:
         """
@@ -2887,3 +3063,98 @@ def equivalent(
         .map(lambda _: False)
         .recover(lambda e: isinstance(e, StopIteration))
     ).a
+
+
+def generate_abstracted_trees(
+    inp: DerivationTree, participating_paths: Set[Path]
+) -> Generator[DerivationTree, None, None]:
+    """
+    Yields trees that are more and more "abstracted," i.e., pruned, at prefixes of the
+    paths specified in `participating_paths`.
+
+    :param inp: The unabstracted input.
+    :param participating_paths: The paths to abstract.
+    :return: A generator of more and more abstract trees, beginning with the most
+    concrete and ending with the most abstract ones.
+    """
+    sub_paths = {
+        tuple(
+            [
+                (len(path) - i, tuple(path[:i]))
+                for i in reversed(range(1, len(path) + 1))
+            ]
+        )
+        for path in participating_paths
+    }
+
+    already_seen: Set[frozenset[Path]] = set()
+    for l_diffs_and_paths in itertools.islice(
+        sorted(
+            itertools.product(*sub_paths),
+            key=lambda l_diffs_and_paths_: (
+                max(map(lambda t: t[0], l_diffs_and_paths_))
+            ),
+        ),
+        1,
+        None,
+    ):
+        for chosen_paths in [
+            tuple(eliminate_suffixes([c[1] for c in combination]))
+            for k in range(1, len(participating_paths) + 1)
+            for combination in itertools.combinations(l_diffs_and_paths, k)
+        ]:
+            if frozenset(chosen_paths) in already_seen:
+                continue
+            already_seen.add(frozenset(chosen_paths))
+
+            yield inp.substitute(
+                {
+                    inp.get_subtree(chosen_path): DerivationTree(
+                        inp.get_subtree(chosen_path).value
+                    )
+                    for chosen_path in chosen_paths
+                }
+            )
+
+
+class EvaluatePredicateFormulasTransformer(NoopFormulaTransformer):
+    def __init__(self, inp: DerivationTree):
+        super().__init__()
+        self.inp = inp
+
+    def transform_predicate_formula(
+        self, sub_formula: language.StructuralPredicateFormula
+    ) -> language.Formula:
+        return sc.true() if sub_formula.evaluate(self.inp) else sc.false()
+
+    def transform_conjunctive_formula(
+        self, sub_formula: language.ConjunctiveFormula
+    ) -> language.Formula:
+        return reduce(language.Formula.__and__, sub_formula.args)
+
+    def transform_disjunctive_formula(
+        self, sub_formula: language.DisjunctiveFormula
+    ) -> language.Formula:
+        return reduce(language.Formula.__or__, sub_formula.args)
+
+    def transform_smt_formula(
+        self, sub_formula: language.SMTFormula
+    ) -> language.Formula:
+        # We instantiate the formula and check whether it evaluates to
+        # True (or False in a negation scope); in that case, we replace
+        # it by "true." Otherwise, we keep it for later analysis.
+
+        instantiated_formula = copy.deepcopy(sub_formula)
+        set_smt_auto_subst(instantiated_formula, True)
+        set_smt_auto_eval(instantiated_formula, True)
+        instantiated_formula = instantiated_formula.substitute_expressions(
+            sub_formula.substitutions
+        )
+
+        assert instantiated_formula in {sc.true(), sc.false()}
+
+        return (
+            sc.true()
+            if (instantiated_formula == sc.true()) ^ self.in_negation_scope
+            else sub_formula
+        )

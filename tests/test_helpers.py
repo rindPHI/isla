@@ -1,4 +1,5 @@
 import copy
+import itertools
 import unittest
 from typing import Optional
 
@@ -15,6 +16,14 @@ from isla.helpers import (
     canonical,
     Exceptional,
     Success,
+    eliminate_suffixes,
+    to_id,
+    is_path,
+    pop,
+    replace_line_breaks,
+    parent_reflexive,
+    parent_or_child,
+    Failure,
 )
 from isla.isla_predicates import is_before
 from isla.parser import EarleyParser
@@ -297,9 +306,105 @@ class TestHelpers(unittest.TestCase):
             .a,
         )
 
+    def test_eliminate_suffixes(self):
+        self.assertEqual([(0,), (0,)], eliminate_suffixes([(0,), (0,)]))
 
-if __name__ == "__main__":
-    unittest.main()
+        self.assertEqual(
+            [(0, 2, 0, 2), (0, 0, 0)], eliminate_suffixes([(0, 2, 0, 2), (0, 0, 0)])
+        )
+
+        for permutation in itertools.permutations(
+            [
+                (0, 2),
+                (0, 2, 0, 2),
+                (1, 0),
+            ],
+            3,
+        ):
+            self.assertEqual(
+                {
+                    (0, 2),
+                    (1, 0),
+                },
+                set(eliminate_suffixes(permutation)),
+            )
+
+    def test_to_id(self):
+        x = 17
+
+        def f(inp):
+            nonlocal x
+            x = inp
+
+        self.assertEqual(-12, to_id(f)(-12))
+        self.assertEqual(-12, x)
+
+    def test_is_path(self):
+        self.assertTrue(is_path((1, 2, 3)))
+        self.assertFalse(is_path((1, 2, "a")))
+        self.assertFalse(is_path([1, 2]))
+
+    def test_pop(self):
+        l = [1, 2, 3]
+        self.assertEqual(1, pop(l))
+        self.assertEqual([2, 3], l)
+        self.assertEqual(3, pop(l, index=1))
+        self.assertEqual([2], l)
+        self.assertEqual(42, pop([], 42))
+        self.assertEqual(None, pop([]))
+
+    def test_replace_line_breaks(self):
+        self.assertEqual(rf"a\nb", replace_line_breaks("a\nb"))
+
+    def test_parent_reflexive(self):
+        self.assertTrue(parent_reflexive((1, 2), (1, 2)))
+        self.assertTrue(parent_reflexive((1, 2), (1, 2, 3)))
+        self.assertFalse(parent_reflexive((1, 2, 3), (1, 2)))
+
+    def test_parent_or_child(self):
+        self.assertTrue(parent_or_child((1, 2), (1, 2, 3)))
+        self.assertTrue(parent_or_child((1, 2, 3), (1, 2)))
+        self.assertFalse(parent_or_child((1, 3, 2), (1, 2)))
+        self.assertFalse(
+            parent_or_child(
+                (1, 2),
+                (1, 3, 2),
+            )
+        )
+
+    def test_delete_unreachable(self):
+        grammar = {"<start>": ["<b>"], "<a>": ["a"], "<b>": ["b"]}
+        expected = {"<start>": ["<b>"], "<b>": ["b"]}
+        delete_unreachable(grammar)
+        self.assertEqual(expected, grammar)
+
+        grammar = {"<start>": ["<a><b>"], "<a>": ["a"], "<b>": ["b"]}
+        expected = {"<start>": ["<a><b>"], "<a>": ["a"], "<b>": ["b"]}
+        delete_unreachable(grammar)
+        self.assertEqual(expected, grammar)
+
+    def test_exceptional_reraise(self):
+        try:
+            Exceptional.of(lambda: 1 // 0).reraise()
+            self.fail()
+        except ZeroDivisionError:
+            pass
+
+        Exceptional.of(lambda: 2 // 1).reraise()
+
+    def test_recover(self):
+        self.assertEqual(
+            Success(True), Exceptional.of(lambda: 1 // 0).recover(lambda _: True)
+        )
+
+        self.assertEqual(
+            Success(True),
+            Exceptional.of(lambda: 1 // 0).recover(lambda _: True, ZeroDivisionError),
+        )
+
+        self.assertIsInstance(
+            Exceptional.of(lambda: 1 // 0).recover(lambda _: True, SyntaxError), Failure
+        )
 
 
 def parse(inp: str, grammar: Grammar, start_symbol: Optional[str] = None) -> ParseTree:
@@ -310,3 +415,7 @@ def parse(inp: str, grammar: Grammar, start_symbol: Optional[str] = None) -> Par
         grammar["<start>"] = [start_symbol]
         delete_unreachable(grammar)
         return next(EarleyParser(grammar).parse(inp))[1][0]
+
+
+if __name__ == "__main__":
+    unittest.main()

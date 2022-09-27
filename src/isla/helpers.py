@@ -3,6 +3,7 @@ import functools
 import importlib.resources
 import itertools
 import math
+import random
 import re
 import sys
 from abc import ABC, abstractmethod
@@ -690,9 +691,11 @@ class Exceptional(Generic[E, T], Monad[T]):
         pass
 
     @abstractmethod
-    def recover(
-        self, f: Callable[[E], T], t: Type[E] = BaseException
-    ) -> "Exceptional[E, T]":
+    def recover(self, f: Callable[[E], T], *exc_types: Type[E]) -> "Exceptional[E, T]":
+        pass
+
+    @abstractmethod
+    def reraise(self) -> "Exceptional[T]":
         pass
 
 
@@ -709,7 +712,10 @@ class Success(Generic[T], Exceptional[Exception, T]):
     def map(self, f: Callable[[T], S]) -> "Exceptional[S]":
         return Exceptional.of(lambda: f(self.a))
 
-    def recover(self, _, __=BaseException) -> "Success[T]":
+    def recover(self, _, *__) -> "Success[T]":
+        return self
+
+    def reraise(self) -> "Success[T]":
         return self
 
 
@@ -726,13 +732,14 @@ class Failure(Generic[E], Exceptional[E, Any]):
     def map(self, _) -> "Exceptional[S]":
         return self
 
-    def recover(
-        self, f: Callable[[E], T], t: Type[E] = BaseException
-    ) -> "Exceptional[E, T]":
-        if isinstance(self.a, t):
+    def recover(self, f: Callable[[E], T], *exc_types: Type[E]) -> "Exceptional[E, T]":
+        if not exc_types or any(isinstance(self.a, exc) for exc in exc_types):
             return Exceptional.of(lambda: f(self.a))
         else:
             return self
+
+    def reraise(self) -> Exceptional[E, Any]:
+        raise self.a
 
 
 def chain_functions(
@@ -763,3 +770,31 @@ def get_isla_resource_file_content(path_to_file: str) -> str:
 def eassert(expr: T, condition: bool | Callable[[T], bool]) -> T:
     assert condition if isinstance(condition, bool) else condition(expr)
     return expr
+
+
+def shuffle(a_list: List[T]) -> List[T]:
+    result: List[T] = list(a_list)
+    random.shuffle(result)
+    return result
+
+
+Seq = TypeVar("Seq", bound=Sequence)
+
+
+def eliminate_suffixes(a_list: Sequence[Seq]) -> List[Seq]:
+    return [
+        seq
+        for idx_1, seq in enumerate(a_list)
+        if not any(
+            idx_1 != idx_2 and len(pref) < len(seq) and pref == seq[: len(pref)]
+            for idx_2, pref in enumerate(a_list)
+        )
+    ]
+
+
+def to_id(f: Callable[[T], Any]) -> Callable[[T], T]:
+    def result(inp: T) -> T:
+        f(inp)
+        return inp
+
+    return result

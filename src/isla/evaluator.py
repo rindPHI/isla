@@ -56,6 +56,7 @@ from isla.z3_helpers import (
     z3_or,
     z3_eq,
     replace_in_z3_expr,
+    z3_subst,
 )
 
 logger = logging.getLogger("evaluator")
@@ -94,24 +95,11 @@ def evaluate(
     subtrees_trie = reference_tree.trie() if subtrees_trie is None else subtrees_trie
     graph = gg.GrammarGraph.from_grammar(grammar) if graph is None else graph
 
-    formula = (
+    formula = instantiate_top_level_constant(
         parse_isla(formula, grammar, structural_predicates, semantic_predicates)
         if isinstance(formula, str)
-        else formula
-    )
-
-    top_level_constants = {
-        c
-        for c in VariablesCollector.collect(formula)
-        if isinstance(c, Constant) and not c.is_numeric()
-    }
-    assert len(top_level_constants) <= 1
-    formula = (
-        formula.substitute_expressions(
-            {next(iter(top_level_constants)): reference_tree}
-        )
-        if len(top_level_constants) > 0
-        else formula
+        else formula,
+        reference_tree,
     )
 
     # NOTE: Deactivated, might be too strict for evaluation (though maybe
@@ -196,6 +184,23 @@ def evaluate(
 
     # We have proven the formula true for all assumptions: Return True
     return ThreeValuedTruth.true()
+
+
+def instantiate_top_level_constant(formula, reference_tree):
+    top_level_constants = {
+        c
+        for c in VariablesCollector.collect(formula)
+        if isinstance(c, Constant) and not c.is_numeric()
+    }
+    assert len(top_level_constants) <= 1
+    formula = (
+        formula.substitute_expressions(
+            {next(iter(top_level_constants)): reference_tree}
+        )
+        if len(top_level_constants) > 0
+        else formula
+    )
+    return formula
 
 
 def evaluate_predicates_action(
@@ -662,8 +667,25 @@ def evaluate_smt_formula(
     if not isinstance(formula, SMTFormula):
         return Maybe.nothing()
 
+    if formula.free_variables().difference(assignments) or any(
+        tree.is_open() for tree in formula.substitutions.values()
+    ):
+        return Maybe(ThreeValuedTruth.unknown())
+
+    z3_formula = (
+        z3_subst(
+            formula.formula,
+            {
+                z3.String(var.name): z3.StringVal(str(tree))
+                for var, tree in formula.substitutions.items()
+            },
+        )
+        if formula.substitutions
+        else formula.formula
+    )
+
     try:
-        translation = evaluate_z3_expression(formula.formula)
+        translation = evaluate_z3_expression(z3_formula)
 
         var_map: Dict[str, Variable] = {var.name: var for var in assignments}
 

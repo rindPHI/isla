@@ -872,6 +872,110 @@ exists <assgn> assgn:
 
         self.assertTrue("does not satisfy" in stdout)
 
+    def test_repair_assgn_lang_correct_input_outfile(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+        out_file = tempfile.NamedTemporaryFile("w", delete=False)
+
+        constraint = """
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        inp = "x := 1 ; a := x"
+
+        stdout, stderr, code = run_isla(
+            "repair",
+            "--output-file",
+            out_file.name,
+            "-i",
+            inp,
+            grammar_file.name,
+            constraint_file.name,
+        )
+
+        self.assertFalse(code)
+        self.assertFalse(stdout)
+        self.assertFalse(stderr)
+
+        with open(out_file.name, "r") as file:
+            output = file.read()
+
+        self.assertEqual(output, inp)
+
+        out_file.close()
+        os.remove(out_file.name)
+
+    def test_repair_assgn_lang_wrong_input(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        constraint = """
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        inp = "x := 1 ; a := y"
+
+        stdout, stderr, code = run_isla(
+            "repair",
+            "-i",
+            inp,
+            grammar_file.name,
+            constraint_file.name,
+        )
+
+        self.assertFalse(code)
+        self.assertFalse(stderr)
+
+        solver = ISLaSolver(LANG_GRAMMAR, constraint)
+        self.assertTrue(solver.check(stdout))
+
+    def test_repair_assgn_lang_unparseable_input(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        constraint = """
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        inp = "salami"
+
+        stdout, stderr, code = run_isla(
+            "repair",
+            "-i",
+            inp,
+            grammar_file.name,
+            constraint_file.name,
+        )
+
+        self.assertFalse(stdout)
+        self.assertEqual(1, code)
+        self.assertIn("could not be parsed", stderr)
+
+    def test_repair_assgn_lang_unrepairable_input(self):
+        # NOTE: If this test fails, it could mean that the repairer was improved and
+        #       now supports structural manipulations.
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        constraint = """
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        inp = "x := y"
+
+        stdout, stderr, code = run_isla(
+            "repair",
+            "-i",
+            inp,
+            grammar_file.name,
+            constraint_file.name,
+        )
+
+        self.assertFalse(stdout)
+        self.assertEqual(1, code)
+        self.assertIn("could not repair", stderr)
+
+
 
 if __name__ == "__main__":
     unittest.main()

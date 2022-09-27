@@ -252,6 +252,39 @@ def parse(stdout, stderr, parser, args):
     maybe_tree.if_present(write_tree)
 
 
+def repair(stdout, stderr, parser, args):
+    files = read_files(args)
+    ensure_grammar_present(stderr, parser, args, files)
+    ensure_constraint_present(stderr, parser, args, files)
+    command = args.command
+
+    grammar = parse_grammar(command, args.grammar, files, stderr)
+    constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
+    inp = get_input_string(command, stderr, args, files)
+
+    solver = ISLaSolver(grammar, constraint)
+
+    try:
+        maybe_repaired = solver.repair(inp, fix_timeout_seconds=args.timeout)
+    except SyntaxError:
+        print("input could not be parsed", file=stderr)
+        sys.exit(1)
+
+    if not maybe_repaired.is_present():
+        print("sorry, I could not repair this input", file=stderr)
+        sys.exit(1)
+
+    def write_result(tree: DerivationTree):
+        if args.output_file:
+            with open(args.output_file, "w") as file:
+                file.write(str(tree))
+        else:
+            print(str(tree), file=stdout)
+
+    maybe_repaired.if_present(write_result)
+    sys.exit(0)
+
+
 def do_check(stdout, stderr, parser, args) -> Tuple[int, str, Maybe[DerivationTree]]:
     files = read_files(args)
     ensure_grammar_present(stderr, parser, args, files)
@@ -332,6 +365,7 @@ The ISLa command line interface.""",
     create_fuzz_parser(subparsers, stdout, stderr)
     create_check_parser(subparsers, stdout, stderr)
     create_parse_parser(subparsers, stdout, stderr)
+    create_repair_parser(subparsers, stdout, stderr)
     create_create_parser(subparsers, stdout, stderr)
 
     return parser
@@ -654,6 +688,47 @@ indentation; otherwise the whole string is printed on a single line""",
     grammar_constraint_or_input_files_arg(parser)
 
 
+def create_repair_parser(subparsers, stdout, stderr):
+    parser = subparsers.add_parser(
+        "repair",
+        help="try to repair an existing input such that it satisfies an ISLa constraint",
+        description="""
+Parses an input and, if it does not already satisfy the specified constraint, gradually
+abstracts the input and tries to instantiate the abstracted parts such that the result
+satisfies the constraint. The input must be parseable using the grammar. Note that
+currently, no intensive structural manipulations are performed; we rather intend to fix
+the valuation of SMT-LIB and semantic predicate constraints.""",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.set_defaults(func=lambda *args: repair(stdout, stderr, parser, *args))
+
+    input_string_arg(parser)
+
+    parser.add_argument(
+        "-o",
+        "--output-file",
+        help="""
+The file into which to write the repaired result in case that the input could be
+successfully repaired. If no file is given, the result is printed to stdout""",
+    )
+
+    grammar_arg(parser)
+    constraint_arg(parser)
+
+    parser.add_argument(
+        "-t",
+        "--timeout",
+        type=float,
+        default=3,
+        help="""
+the number of (fractions of) seconds after which the solver should stop finding
+solutions when trying to repair an incomplete input""",
+    )
+
+    log_level_arg(parser)
+    grammar_constraint_or_input_files_arg(parser)
+
+
 def create_create_parser(subparsers, stdout, stderr):
     parser = subparsers.add_parser(
         "create",
@@ -705,7 +780,7 @@ def grammar_constraint_or_input_files_arg(parser):
         type=argparse.FileType("r", encoding="UTF-8"),
         help="""
 Possibly multiple ISLa constraint (`*.isla`) and BNF grammar (`*.bnf`) or Python
-grammar (`*.py`) files, and/or an input file for checking/parsing. Multiple grammar
+grammar (`*.py`) files, and/or an input file to process. Multiple grammar
 files will be simply merged; multiple ISLa constraints will be combined to a
 disjunction. Python grammar files must declare a variable `grammar` of type
 `Dict[str, List[str]]`, including a rule for a nonterminal named "<start>" that expands
