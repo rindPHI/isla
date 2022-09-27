@@ -1,12 +1,18 @@
 import random
-from typing import Tuple
+from typing import Tuple, Callable
 
 from grammar_graph import gg
 
 from isla.derivation_tree import DerivationTree
 from isla.existential_helpers import paths_between, path_to_tree
 from isla.fuzzer import GrammarCoverageFuzzer
-from isla.helpers import Maybe, Exceptional, parent_or_child, is_nonterminal, canonical
+from isla.helpers import (
+    Maybe,
+    Exceptional,
+    parent_or_child,
+    canonical,
+    to_id,
+)
 from isla.type_defs import Grammar, Path
 
 
@@ -21,18 +27,63 @@ class Mutator:
         self.min_mutations = min_mutations
         self.max_mutations = max_mutations
 
-        self.mutators = [
+    def __get_mutator(self) -> Callable[[DerivationTree], Maybe[DerivationTree]]:
+        mutators = [
             self.replace_subtree_randomly,
-            self.swap_subtrees,
             self.generalize_subtree,
+            self.swap_subtrees,
         ]
 
+        return random.choices(
+            mutators,
+            weights=[2**i for i in range(1, len(mutators) + 1)],
+            k=1,
+        )[0]
+
     def mutate(self, inp: DerivationTree) -> DerivationTree:
-        for _ in range(random.randint(self.min_mutations, self.max_mutations)):
-            pass
+        target_num_mutations = random.randint(self.min_mutations, self.max_mutations)
+
+        applied_mutations = 0
+
+        def inc_applied_mutations(_):
+            nonlocal applied_mutations
+            applied_mutations += 1
+
+        while applied_mutations < target_num_mutations:
+            inp = (
+                self.__get_mutator()(inp)
+                .map(to_id(inc_applied_mutations))
+                .orelse(lambda: inp)
+                .get()
+            )
+
+        return inp
 
     def replace_subtree_randomly(self, inp: DerivationTree) -> Maybe[DerivationTree]:
-        path, subtree = random.choice(inp.paths())
+        candidate_paths = [
+            (path, subtree) for path, subtree in inp.paths() if subtree.children
+        ]
+
+        num_candidate_paths = len(candidate_paths)
+
+        # Decrease weights for paths with many children: Prefer local mutations.
+        path, subtree = random.choices(
+            candidate_paths,
+            weights=[
+                1
+                + num_candidate_paths
+                - len(
+                    [
+                        other_path
+                        for other_path, _ in candidate_paths
+                        if path == other_path[: len(path)]
+                    ]
+                )
+                for path, _ in candidate_paths
+            ],
+            k=1,
+        )[0]
+
         return Maybe(
             self.fuzzer.expand_tree(
                 inp.replace_path(path, DerivationTree(subtree.value))
@@ -86,6 +137,14 @@ class Mutator:
             )
         )
 
+        matching_leaf = random.choice(
+            [p for p, t in self_embedding_tree.leaves() if t.value == tree.value]
+        )
+
         return Maybe(
-            self.fuzzer.expand_tree(inp.replace_path(path, self_embedding_tree))
+            self.fuzzer.expand_tree(
+                inp.replace_path(
+                    path, self_embedding_tree.replace_path(matching_leaf, tree)
+                )
+            )
         )
