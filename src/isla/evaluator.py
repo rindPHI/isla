@@ -56,6 +56,7 @@ from isla.z3_helpers import (
     z3_or,
     z3_eq,
     replace_in_z3_expr,
+    z3_subst,
 )
 
 logger = logging.getLogger("evaluator")
@@ -666,8 +667,25 @@ def evaluate_smt_formula(
     if not isinstance(formula, SMTFormula):
         return Maybe.nothing()
 
+    if formula.free_variables().difference(assignments) or any(
+        tree.is_open() for tree in formula.substitutions.values()
+    ):
+        return Maybe(ThreeValuedTruth.unknown())
+
+    z3_formula = (
+        z3_subst(
+            formula.formula,
+            {
+                z3.String(var.name): z3.StringVal(str(tree))
+                for var, tree in formula.substitutions.items()
+            },
+        )
+        if formula.substitutions
+        else formula.formula
+    )
+
     try:
-        translation = evaluate_z3_expression(formula.formula)
+        translation = evaluate_z3_expression(z3_formula)
 
         var_map: Dict[str, Variable] = {var.name: var for var in assignments}
 

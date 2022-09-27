@@ -596,7 +596,9 @@ class ISLaSolver:
 
         return tree
 
-    def repair(self, inp: DerivationTree | str) -> Maybe[DerivationTree]:
+    def repair(
+        self, inp: DerivationTree | str, fix_timeout_seconds: int = 3
+    ) -> Maybe[DerivationTree]:
         if isinstance(inp, str):
             inp = self.parse(inp, skip_check=True)
 
@@ -643,10 +645,18 @@ class ISLaSolver:
             def do_complete(tree: DerivationTree) -> Maybe[DerivationTree]:
                 return (
                     Exceptional.of(
-                        self.copy_without_queue(initial_tree=Maybe(tree)).solve
+                        self.copy_without_queue(
+                            initial_tree=Maybe(tree),
+                            timeout_seconds=Maybe(fix_timeout_seconds),
+                        ).solve
                     )
                     .map(Maybe)
-                    .recover(Maybe.nothing, UnknownResultError, StopIteration)
+                    .recover(
+                        lambda _: Maybe.nothing(),
+                        UnknownResultError,
+                        TimeoutError,
+                        StopIteration,
+                    )
                     .reraise()
                     .get()
                 )
@@ -3083,14 +3093,14 @@ def generate_abstracted_trees(
                 continue
             already_seen.add(frozenset(chosen_paths))
 
-            curr_tree = inp
-            for chosen_path in chosen_paths:
-                curr_tree = curr_tree.replace_path(
-                    chosen_path,
-                    DerivationTree(curr_tree.get_subtree(chosen_path).value),
-                )
-
-            yield curr_tree
+            yield inp.substitute(
+                {
+                    inp.get_subtree(chosen_path): DerivationTree(
+                        inp.get_subtree(chosen_path).value
+                    )
+                    for chosen_path in chosen_paths
+                }
+            )
 
 
 class EvaluatePredicateFormulasTransformer(NoopFormulaTransformer):

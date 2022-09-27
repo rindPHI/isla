@@ -1039,6 +1039,21 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
             .orelse(lambda: False),
         )
 
+    def test_repair_long_wrong_assignment(self):
+        formula = """
+forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
+  exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
+    (before(assgn_2, assgn_1) and (= lhs rhs))"""
+        solver = ISLaSolver(LANG_GRAMMAR, formula)
+
+        self.assertEqual(
+            Maybe(True),
+            solver.repair("x := 1 ; x := a ; x := b ; x := c")
+            .map(to_id(print))
+            .map(solver.check)
+            .orelse(lambda: False),
+        )
+
     def test_repair_unrepairable_wrong_assignment(self):
         # If this test fails, it can be a good sign, since it requires a
         # structural change to succeed that was not implemented at the time
@@ -1076,18 +1091,18 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         self.assertEqual(
             Maybe(True),
             solver.repair('<a><b x:y="asdf"/></a>')
-                .map(to_id(print))
-                .map(solver.check)
-                .orelse(lambda: False),
-                )
+            .map(to_id(print))
+            .map(solver.check)
+            .orelse(lambda: False),
+        )
 
         self.assertEqual(
             Maybe(True),
             solver.repair('<a xmlns:z="fdsa"><b x:y="asdf"/></a>')
-                .map(to_id(print))
-                .map(solver.check)
-                .orelse(lambda: False),
-                )
+            .map(to_id(print))
+            .map(solver.check)
+            .orelse(lambda: False),
+        )
 
         self.assertEqual(
             Maybe(True),
