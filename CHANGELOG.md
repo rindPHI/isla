@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.3.0] - 2022-09-27
+
+### Added
+
+- Added the CLI command `isla mutate` and solver method `ISLaSolver.mutate` for
+  mutating inputs in a semantics-preserving way.
+
 ## [1.2.0] - 2022-09-27
 
 ### Changed
