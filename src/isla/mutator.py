@@ -2,7 +2,6 @@ import random
 from typing import Tuple, Callable, Optional
 
 from grammar_graph import gg
-from grammar_graph.gg import GrammarGraph
 
 from isla.derivation_tree import DerivationTree
 from isla.existential_helpers import paths_between, path_to_tree
