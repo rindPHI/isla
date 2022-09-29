@@ -8,6 +8,7 @@ from typing import Union
 from xml.dom.minidom import Document
 
 from docutils.core import publish_doctree
+from orderedset import OrderedSet
 
 import isla.derivation_tree
 from isla.helpers import srange
@@ -60,9 +61,12 @@ REST_GRAMMAR = {
         "<paragraph_char_nospace><paragraph_chars_nospace>",
         "<paragraph_char_nospace>",
     ],
-    "<paragraph_char>": list(set(srange(string.printable)) - set(srange("_{}`|*"))),
+    "<paragraph_char>": list(
+        OrderedSet(srange(string.printable)) - OrderedSet(srange("_{}`|*"))
+    ),
     "<paragraph_char_nospace>": list(
-        set(srange(string.printable)) - set(srange("_{}`|*" + string.whitespace))
+        OrderedSet(srange(string.printable))
+        - OrderedSet(srange("_{}`|*" + string.whitespace))
     ),
     "<presep>": srange(" \t,;()"),
     "<postsep>": srange(" \t,.;()"),
@@ -73,10 +77,12 @@ REST_GRAMMAR = {
     "<digit>": srange(string.digits),
     "<nobr-string>": ["<nobr-char>", "<nobr-char><nobr-string>"],
     # Exclude tab in <nobr-char> since otherwise, title can get too long (counts more than one character)
-    "<nobr-char>": list(set(srange(string.printable)) - set(srange("\n\r\t_{}`|"))),
+    "<nobr-char>": list(
+        OrderedSet(srange(string.printable)) - OrderedSet(srange("\n\r\t_{}`|"))
+    ),
     "<title-first-char>": list(
-        set(srange(string.printable))
-        - set(srange(string.whitespace + "\b\f\v-*+_{}`|=-"))
+        OrderedSet(srange(string.printable))
+        - OrderedSet(srange(string.whitespace + "\b\f\v-*+_{}`|=-"))
     ),
     "<underline>": ["<eqs>", "<dashes>"],
     "<eqs>": ["=", "=<eqs>"],

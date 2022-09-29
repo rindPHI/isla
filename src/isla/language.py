@@ -3963,6 +3963,7 @@ def unparse_grammar(grammar: Grammar) -> str:
             .replace("\n", r"\n")
             .replace("\r", r"\r")
             .replace("\t", r"\t")
+            .replace("\\", r"\\")
         )
 
     return "\n".join(

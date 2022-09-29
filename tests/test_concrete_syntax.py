@@ -4,6 +4,7 @@ from typing import cast
 
 import pytest
 import z3
+from grammar_graph import gg
 from orderedset import OrderedSet
 
 import isla.isla_shortcuts as sc
@@ -26,6 +27,7 @@ from isla.language import (
 )
 from isla.z3_helpers import z3_eq
 from isla_formalizations import scriptsizec
+from isla_formalizations.rest import REST_GRAMMAR
 from isla_formalizations.tar import TAR_CHECKSUM_PREDICATE, TAR_GRAMMAR
 from isla_formalizations.xml_lang import (
     XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
@@ -767,6 +769,15 @@ forall <assgn> assgn="<var> := {<rhs> rhs}" in start:
             self.fail("Expected SyntaxError")
         except SyntaxError as serr:
             self.assertIn("Unbound variables: var in formula", str(serr))
+
+    def test_parse_rest_bnf(self):
+        unparsed = unparse_grammar(REST_GRAMMAR)
+
+        for idx, line in enumerate(unparsed.split('\n')):
+            print(f'{str(idx + 1).rjust(3)}: {line}')
+
+        parsed = parse_bnf(unparsed)
+        gg.GrammarGraph.from_grammar(parsed)
 
 
 if __name__ == "__main__":
