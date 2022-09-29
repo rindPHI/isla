@@ -772,10 +772,6 @@ forall <assgn> assgn="<var> := {<rhs> rhs}" in start:
 
     def test_parse_rest_bnf(self):
         unparsed = unparse_grammar(REST_GRAMMAR)
-
-        for idx, line in enumerate(unparsed.split('\n')):
-            print(f'{str(idx + 1).rjust(3)}: {line}')
-
         parsed = parse_bnf(unparsed)
         gg.GrammarGraph.from_grammar(parsed)
 
