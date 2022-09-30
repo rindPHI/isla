@@ -343,3 +343,12 @@ Then you can, for instance, run `python3 tests/xml_demo.py` inside the virtual e
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md).
+
+## Copyright, Authors and License
+
+Copyright © 2022 [CISPA Helmholtz Center for Information Security](https://cispa.de/en).
+
+The ISLa code and documentation was, unless otherwise indicated, authored by
+[Dominic Steinhöfel](https://www.dominic-steinhoefel.de).
+
+ISLa is released under the GNU General Public License v3.0 (see [COPYING](COPYING)).
