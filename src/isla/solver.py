@@ -2761,9 +2761,9 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
 
     def __repr__(self):
         return (
-            f"GrammarBasedBlackboxCostComputer("
+            "GrammarBasedBlackboxCostComputer("
             + f"{repr(self.cost_settings)}, "
-            + f"graph, "
+            + "graph, "
             + f"{self.reset_coverage_after_n_round_with_no_coverage}, "
             + f"{self.symbol_costs})"
         )
