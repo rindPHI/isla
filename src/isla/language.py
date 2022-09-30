@@ -3943,11 +3943,11 @@ def unparse_isla(formula: Formula) -> str:
 def unparse_grammar(grammar: Grammar) -> str:
     def escape(elem: str) -> str:
         return (
-            elem.replace('"', r"\"")
+            elem.replace("\\", r"\\")
+            .replace('"', r"\"")
             .replace("\n", r"\n")
             .replace("\r", r"\r")
             .replace("\t", r"\t")
-            .replace("\\", r"\\")
         )
 
     return "\n".join(

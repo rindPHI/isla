@@ -771,11 +771,10 @@ forall <assgn> assgn="<var> := {<rhs> rhs}" in start:
         except SyntaxError as serr:
             self.assertIn("Unbound variables: var in formula", str(serr))
 
-    def test_parse_rest_bnf(self):
+    def test_unparse_parse_rest_bnf(self):
         unparsed = unparse_grammar(REST_GRAMMAR)
         parsed = parse_bnf(unparsed)
-        print(parsed)
-        gg.GrammarGraph.from_grammar(parsed)
+        self.assertEqual(unparsed, unparse_grammar(parsed))
 
     def test_parse_match_expression_with_escape_char(self):
         isla_emitter = ISLaEmitter(None)
