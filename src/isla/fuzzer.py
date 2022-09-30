@@ -5,7 +5,7 @@
 #
 #   - Dominic Steinhoefel
 
-# "Fuzzing: Breaking Things with Random Inputs" - a chapter of "The Fuzzing Book"
+# "Fuzzing: Breaking Things with Random Inputs" - a chapter of "The Fuzzing Book"
 # Web site: https://www.fuzzingbook.org/html/Fuzzer.html
 # Last change: 2021-11-09 14:01:19+01:00
 #
