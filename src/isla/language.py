@@ -3265,14 +3265,15 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             return self.close_over_xpath_expressions(formula)
 
         def find_var(var_name: str, error_message: str) -> Variable:
-            try:
-                return next(
+            return (
+                Maybe.from_iterator(
                     var
                     for var in VariablesCollector.collect(formula)
                     if var.name == var_name
                 )
-            except StopIteration:
-                raise RuntimeError(error_message)
+                .raise_if_not_present(lambda: RuntimeError(error_message))
+                .get()
+            )
 
         first_var = cast(
             BoundVariable,

@@ -14,6 +14,7 @@ from isla.isla_predicates import (
     BEFORE_PREDICATE,
     LEVEL_PREDICATE,
     STANDARD_STRUCTURAL_PREDICATES,
+    COUNT_PREDICATE,
 )
 from isla.language import (
     DummyVariable,
@@ -28,6 +29,7 @@ from isla.language import (
 )
 from isla.z3_helpers import z3_eq
 from isla_formalizations import scriptsizec
+from isla_formalizations.csv import CSV_HEADERBODY_GRAMMAR
 from isla_formalizations.rest import REST_GRAMMAR
 from isla_formalizations.tar import TAR_CHECKSUM_PREDICATE, TAR_GRAMMAR
 from isla_formalizations.xml_lang import (
@@ -603,7 +605,10 @@ forall <number> number_1:
         grammar_str = rf'''
 <start> ::= <A>
 <A> ::= "\\a\\" | "\r" | "\n" | "\"" | "\\t" | "\\\\\\"'''
-        expected = {"<start>": ["<A>"], "<A>": ["\\a\\", "\r", "\n", '"', "\\t", "\\\\\\"]}
+        expected = {
+            "<start>": ["<A>"],
+            "<A>": ["\\a\\", "\r", "\n", '"', "\\t", "\\\\\\"],
+        }
 
         self.assertEqual(expected, parse_bnf(grammar_str))
 
@@ -793,6 +798,27 @@ forall <assgn> assgn="<var> := {<rhs> rhs}" in start:
         )
 
         self.assertEqual(expected, parsed)
+
+    def test_unparse_negated_csv_property(self):
+        constraint = """
+exists <csv-header> header in start:
+  exists <csv-body> body in start:
+    exists <csv-record> hline in header:
+      forall int colno:
+        ((((not (>= (str.to.int colno) 3)) or
+          (not (<= (str.to.int colno) 5))) or
+         not(count(hline, "<raw-field>", colno))) or
+        exists <csv-record> line in body:
+          not(count(line, "<raw-field>", colno)))
+""".strip()
+
+        parsed = parse_isla(
+            constraint,
+            CSV_HEADERBODY_GRAMMAR,
+            semantic_predicates={COUNT_PREDICATE},
+        )
+
+        self.assertEqual(constraint, unparse_isla(parsed))
 
 
 if __name__ == "__main__":

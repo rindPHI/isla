@@ -2759,6 +2759,15 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
 
         self.logger = logging.getLogger(type(self).__name__)
 
+    def __repr__(self):
+        return (
+            f"GrammarBasedBlackboxCostComputer("
+            + f"{repr(self.cost_settings)}, "
+            + f"graph, "
+            + f"{self.reset_coverage_after_n_round_with_no_coverage}, "
+            + f"{self.symbol_costs})"
+        )
+
     def compute_cost(self, state: SolutionState) -> float:
         # How costly is it to finish the tree?
         tree_closing_cost = self.compute_tree_closing_cost(state.tree)
