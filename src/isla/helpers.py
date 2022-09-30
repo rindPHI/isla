@@ -798,3 +798,22 @@ def to_id(f: Callable[[T], Any]) -> Callable[[T], T]:
         return inp
 
     return result
+
+
+def instantiate_escaped_symbols(text: str) -> str:
+    backslash_escape_placeholder = "$$BESC$$"
+    assert backslash_escape_placeholder not in text
+
+    repl_map = {
+        "\\b": "\b",
+        "\\t": "\t",
+        "\\n": "\n",
+        "\\r": "\r",
+        '\\"': '"',
+    }
+
+    text = text.replace("\\\\", backslash_escape_placeholder)
+    for escaped_char in repl_map:
+        text = text.replace(escaped_char, repl_map[escaped_char])
+
+    return text.replace(backslash_escape_placeholder, "\\")

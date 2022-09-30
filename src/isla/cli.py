@@ -25,6 +25,7 @@ from isla.solver import (
     CostWeightVector,
     CostComputer,
     SemanticError,
+    STD_COST_SETTINGS,
 )
 from isla.type_defs import Grammar
 
@@ -899,8 +900,11 @@ def weight_vector_arg(parser):
         "-w",
         "--weight-vector",
         help="""
-Set the ISLa weight vector. Expects a comma-separated list of floating point values""",
-        default="1,0.3,2,1,18",
+Set the ISLa weight vector. Expects a comma-separated list of floating point values
+for the following cost factors: (1) Tree closing cost, (2) constraint cost, (3)
+derivation depth penalty, (4) low per-input k-path coverage penalty, and (5)
+low global k-path coverage penalty""",
+        default=",".join(map(str, STD_COST_SETTINGS.weight_vector)),
     )
 
 

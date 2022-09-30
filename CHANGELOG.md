@@ -5,6 +5,23 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.3.2] - 2022-09-30
+
+### Changed
+
+- Bugfix in `unparse_grammar` related to escaping.
+- Changed standard cost weight vector in CLI (now defaults to
+  `isla.solver.STD_COST_SETTINGS.weight_vector`).
+- Describing individual cost vector components in CLI help text.
+
+## [1.3.1] - 2022-09-30
+
+### Changed
+
+- Fixed bug in `unparse_grammar`: Backslashes are correctly escaped now.
+- Fixed bug in parsing of match expressions: Escaped symbols are not handled correctly.
+- Made order of terminals in REST_GRAMMAR deterministic.
+
 ## [1.3.0] - 2022-09-27
 
 ### Added

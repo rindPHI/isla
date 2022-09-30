@@ -53,6 +53,7 @@ from isla.helpers import (
     chain_functions,
     eassert,
     Exceptional,
+    instantiate_escaped_symbols,
 )
 from isla.helpers import (
     replace_line_breaks,
@@ -2681,10 +2682,8 @@ class MExprEmitter(MexprParserListener.MexprParserListener):
 
     def exitMatchExprChars(self, ctx: MexprParser.MatchExprCharsContext):
         text = antlr_get_text_with_whitespace(ctx)
-        text = text.replace("{{", "{")
-        text = text.replace("}}", "}")
-        text = text.replace('\\"', '"')
-        self.result.append(text)
+        text = text.replace("{{", "{").replace("}}", "}")
+        self.result.append(instantiate_escaped_symbols(text))
 
     def exitMatchExprVar(self, ctx: MexprParser.MatchExprVarContext):
         self.result.append(
@@ -3266,14 +3265,15 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             return self.close_over_xpath_expressions(formula)
 
         def find_var(var_name: str, error_message: str) -> Variable:
-            try:
-                return next(
+            return (
+                Maybe.from_iterator(
                     var
                     for var in VariablesCollector.collect(formula)
                     if var.name == var_name
                 )
-            except StopIteration:
-                raise RuntimeError(error_message)
+                .raise_if_not_present(lambda: RuntimeError(error_message))
+                .get()
+            )
 
         first_var = cast(
             BoundVariable,
@@ -3809,22 +3809,7 @@ class BnfEmitter(bnfListener.bnfListener):
                 assert child_text[-1] == '"'
                 child_text = child_text[1:-1]
 
-            # Instantiate escaped characters
-            backslash_escape_placeholder = "$$BESC$$"
-            assert backslash_escape_placeholder not in child_text
-            child_text = child_text.replace("\\\\", backslash_escape_placeholder)
-            repl_map = {
-                "\\b": "\b",
-                "\\t": "\t",
-                "\\n": "\n",
-                "\\r": "\r",
-                '\\"': '"',
-            }
-            for escaped_char in repl_map:
-                child_text = child_text.replace(escaped_char, repl_map[escaped_char])
-            child_text = child_text.replace(backslash_escape_placeholder, "\\")
-
-            elems.append(child_text)
+            elems.append(instantiate_escaped_symbols(child_text))
         self.partial_results[ctx] = "".join(elems)
 
 
@@ -3959,7 +3944,8 @@ def unparse_isla(formula: Formula) -> str:
 def unparse_grammar(grammar: Grammar) -> str:
     def escape(elem: str) -> str:
         return (
-            elem.replace('"', r"\"")
+            elem.replace("\\", r"\\")
+            .replace('"', r"\"")
             .replace("\n", r"\n")
             .replace("\r", r"\r")
             .replace("\t", r"\t")
