@@ -53,6 +53,7 @@ from isla.helpers import (
     chain_functions,
     eassert,
     Exceptional,
+    instantiate_escaped_symbols,
 )
 from isla.helpers import (
     replace_line_breaks,
@@ -2681,10 +2682,8 @@ class MExprEmitter(MexprParserListener.MexprParserListener):
 
     def exitMatchExprChars(self, ctx: MexprParser.MatchExprCharsContext):
         text = antlr_get_text_with_whitespace(ctx)
-        text = text.replace("{{", "{")
-        text = text.replace("}}", "}")
-        text = text.replace('\\"', '"')
-        self.result.append(text)
+        text = text.replace("{{", "{").replace("}}", "}")
+        self.result.append(instantiate_escaped_symbols(text))
 
     def exitMatchExprVar(self, ctx: MexprParser.MatchExprVarContext):
         self.result.append(
@@ -3809,22 +3808,7 @@ class BnfEmitter(bnfListener.bnfListener):
                 assert child_text[-1] == '"'
                 child_text = child_text[1:-1]
 
-            # Instantiate escaped characters
-            backslash_escape_placeholder = "$$BESC$$"
-            assert backslash_escape_placeholder not in child_text
-            child_text = child_text.replace("\\\\", backslash_escape_placeholder)
-            repl_map = {
-                "\\b": "\b",
-                "\\t": "\t",
-                "\\n": "\n",
-                "\\r": "\r",
-                '\\"': '"',
-            }
-            for escaped_char in repl_map:
-                child_text = child_text.replace(escaped_char, repl_map[escaped_char])
-            child_text = child_text.replace(backslash_escape_placeholder, "\\")
-
-            elems.append(child_text)
+            elems.append(instantiate_escaped_symbols(child_text))
         self.partial_results[ctx] = "".join(elems)
 
 

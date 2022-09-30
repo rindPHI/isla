@@ -24,6 +24,7 @@ from isla.language import (
     unparse_isla,
     parse_bnf,
     unparse_grammar,
+    ISLaEmitter,
 )
 from isla.z3_helpers import z3_eq
 from isla_formalizations import scriptsizec
@@ -601,8 +602,8 @@ forall <number> number_1:
     def test_parse_bnf_with_escape_chars(self):
         grammar_str = rf'''
 <start> ::= <A>
-<A> ::= "\r" | "\n" | "\"" | "\\t" | "\\\\\\"'''
-        expected = {"<start>": ["<A>"], "<A>": ["\r", "\n", '"', "\\t", "\\\\\\"]}
+<A> ::= "\\a\\" | "\r" | "\n" | "\"" | "\\t" | "\\\\\\"'''
+        expected = {"<start>": ["<A>"], "<A>": ["\\a\\", "\r", "\n", '"', "\\t", "\\\\\\"]}
 
         self.assertEqual(expected, parse_bnf(grammar_str))
 
@@ -773,7 +774,26 @@ forall <assgn> assgn="<var> := {<rhs> rhs}" in start:
     def test_parse_rest_bnf(self):
         unparsed = unparse_grammar(REST_GRAMMAR)
         parsed = parse_bnf(unparsed)
+        print(parsed)
         gg.GrammarGraph.from_grammar(parsed)
+
+    def test_parse_match_expression_with_escape_char(self):
+        isla_emitter = ISLaEmitter(None)
+
+        DummyVariable.cnt = 0
+        parsed = isla_emitter.parse_mexpr(
+            r"{<a> a}a\\n\n\r{<b> b}<c>", VariableManager()
+        )
+
+        DummyVariable.cnt = 0
+        expected = language.BindExpression(
+            language.BoundVariable("a", "<a>"),
+            DummyVariable("a\\n\n\r"),
+            language.BoundVariable("b", "<b>"),
+            language.DummyVariable("<c>"),
+        )
+
+        self.assertEqual(expected, parsed)
 
 
 if __name__ == "__main__":
