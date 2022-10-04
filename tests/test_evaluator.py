@@ -34,6 +34,7 @@ from isla.evaluator import (
     matches_for_quantified_formula,
     quantified_formula_might_match,
     can_extend_leaf_to_make_quantifier_match_parent,
+    fix_str_to_int,
 )
 from isla.fuzzer import GrammarCoverageFuzzer
 from isla.helpers import srange
@@ -1554,6 +1555,22 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
                 gg.GrammarGraph.from_grammar(CONFIG_GRAMMAR).reachable,
             )
         )
+
+    def test_fix_str_to_int(self):
+        x = z3.Int("x")
+        formula = z3_eq(z3.StrToInt(z3.StringVal("-2")), x)
+
+        solver = z3.Solver()
+        solver.add(formula)
+        solver.check()
+        self.assertEqual(-1, solver.model()[x].as_long())
+
+        fixed_formula = fix_str_to_int(formula)
+
+        solver = z3.Solver()
+        solver.add(fixed_formula)
+        solver.check()
+        self.assertEqual(-2, solver.model()[x].as_long())
 
 
 if __name__ == "__main__":

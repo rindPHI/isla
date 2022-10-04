@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.3.3] - 2022-10-04
+
+### Changed
+
+- Solved packaging bug: Resource files for the `isla create` command were not
+  packaged in installation packages; this is now fixed.
+
 ## [1.3.2] - 2022-09-30
 
 ### Changed
