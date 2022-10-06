@@ -17,5 +17,6 @@ pytest-rerunfailures>=10.2
 pytest-xdist>=2.4.0
 pytest>=7.1.2
 setuptools-antlr>=0.4.0
+toml>=0.10.2
 tox>=3.25.0
 z3-solver>=4.8.17.0

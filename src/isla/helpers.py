@@ -676,6 +676,9 @@ class Maybe(Generic[T], MonadPlus[Optional[T]]):
             raise AttributeError("No element present")
         return self.a
 
+    def get_unsafe(self) -> Optional[T]:
+        return self.a
+
     def __add__(
         self,
         other: "Maybe[T]" | Tuple[Callable[[S, ...], "Maybe[T]"], S],
@@ -686,6 +689,9 @@ class Maybe(Generic[T], MonadPlus[Optional[T]]):
         assert isinstance(other, tuple)
         assert callable(other[0])
         return self.lazy_mplus(*other)
+
+    def __bool__(self):
+        return self.is_present()
 
 
 E = TypeVar("E", bound=Exception)

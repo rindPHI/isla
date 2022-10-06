@@ -5,6 +5,27 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.4.1] - 2022-10-06
+
+### Changed
+
+- Bug fix: Added forgotten requirement. The "toml" package needs to be installed to use
+  ISLa 1.4.0.
+
+## [1.4.0] - 2022-10-06
+
+### Added
+
+- Configuration of default ISLa CLI options via `.islarc` files. The ISLa CLI searches
+  for an `.islarc` files first in the current working directory, then in the user's
+  home directory, and uses a bundled resource file as a fallback. All found 
+  configurations are merged; in case of conflicts, earlier found ones take precedence
+  (i.e., the options specified in `./.islarc` override all others). The file format
+  for `.islarc` files is TOML.
+- Added `isla config` command to write the default configuration either to a specified
+  output file or to the standard output. This comes handy when one is unsure about the
+  available options and to start a complete custom configuration.
+
 ## [1.3.3] - 2022-10-04
 
 ### Changed

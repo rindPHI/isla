@@ -27,11 +27,13 @@ from typing import Tuple
 
 from isla import __version__ as isla_version
 from isla import cli
-from isla.cli import DATA_FORMAT_ERROR, USAGE_ERROR
+from isla.cli import DATA_FORMAT_ERROR, USAGE_ERROR, read_isla_rc_defaults, get_default
+from isla.helpers import Maybe, get_isla_resource_file_content
 from isla.language import unparse_grammar
 from isla.parser import EarleyParser
 from isla.solver import (
     ISLaSolver,
+    STD_COST_SETTINGS,
 )
 from isla.type_defs import Grammar
 from test_data import LANG_GRAMMAR
@@ -1112,6 +1114,119 @@ exists <assgn> assgn:
         solver = ISLaSolver(LANG_GRAMMAR, constraint)
         self.assertTrue(solver.check(stdout))
 
+    def test_read_isla_rc_correct_format(self):
+        config = read_isla_rc_defaults()
+        self.assertIn("default", config)
+        self.assertTrue(isinstance(key, str) for key in config)
+        self.assertTrue(isinstance(value, dict) for value in config.values())
+        self.assertTrue(
+            isinstance(inner_key, str) for key in config for inner_key in config[key]
+        )
+        self.assertTrue(
+            type(inner_value) in [float, int, str, bool]
+            for value in config.values()
+            for inner_value in value.values()
+        )
+
+    def test_default_isla_rc_weight_vector_is_isla_standard(self):
+        self.assertEqual(
+            ",".join(map(str, STD_COST_SETTINGS.weight_vector)),
+            read_isla_rc_defaults()["solve"]["--weight-vector"],
+        )
+
+    def test_isla_rc_override(self):
+        non_default_config = """
+[[defaults.solve]]
+
+"-k" = -42
+"""
+
+        config = read_isla_rc_defaults(Maybe(non_default_config))
+
+        self.assertEqual(
+            -42,
+            config["solve"]["-k"],
+        )
+
+        # Other values are preserved
+        self.assertEqual(
+            ",".join(map(str, STD_COST_SETTINGS.weight_vector)),
+            config["solve"]["--weight-vector"],
+        )
+
+    def test_isla_rc_invalid_format(self):
+        non_default_config = """
+[[defaults]]
+
+"-k" = -42
+"""
+
+        self.assertRaises(
+            RuntimeError, lambda: read_isla_rc_defaults(Maybe(non_default_config))
+        )
+
+    def test_get_default(self):
+        stderr = io.StringIO()
+        self.assertTrue(get_default(stderr, "solve", "--log-level"))
+        self.assertFalse(stderr.getvalue())
+
+        stderr = io.StringIO()
+        self.assertEqual(
+            ",".join(map(str, STD_COST_SETTINGS.weight_vector)),
+            get_default(stderr, "solve", "--weight-vector").get(),
+        )
+        self.assertFalse(stderr.getvalue())
+
+        stderr = io.StringIO()
+        self.assertFalse(get_default(stderr, "solve", "--all-problems-of-the-world"))
+        self.assertFalse(stderr.getvalue())
+
+    def test_get_default_invalid_format(self):
+        non_default_config = """
+[[defaults]]
+
+"-k" = -42
+"""
+
+        stderr = io.StringIO()
+        try:
+            get_default(stderr, "solve", "-k", Maybe(non_default_config))
+            code = 0
+        except SystemExit as sys_exit:
+            code = sys_exit.code
+
+        self.assertEqual(1, code)
+        self.assertIn("error", stderr.getvalue())
+        self.assertIn("Unexpected .islarc format", stderr.getvalue())
+
+    def test_dump_config(self):
+        stdout, stderr, code = run_isla("config")
+
+        self.assertFalse(code)
+        self.assertFalse(stderr)
+
+        self.assertEqual(get_isla_resource_file_content("resources/.islarc"), stdout)
+
+    def test_dump_config_outfile(self):
+        out_file = tempfile.NamedTemporaryFile("w", delete=False)
+
+        stdout, stderr, code = run_isla(
+            "config",
+            "--output-file",
+            out_file.name,
+        )
+
+        self.assertFalse(code)
+        self.assertFalse(stdout)
+        self.assertFalse(stderr)
+
+        with open(out_file.name, "r") as file:
+            config = file.read()
+
+        self.assertEqual(get_isla_resource_file_content("resources/.islarc"), config)
+
+        out_file.close()
+        os.remove(out_file.name)
 
 
 if __name__ == "__main__":
