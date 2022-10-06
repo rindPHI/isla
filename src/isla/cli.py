@@ -20,11 +20,14 @@ import argparse
 import json
 import logging
 import os
+import pathlib
 import subprocess
 import sys
 from contextlib import redirect_stdout, redirect_stderr
+from functools import lru_cache
 from typing import Dict, Tuple, List, Optional
 
+import toml
 from grammar_graph import gg
 
 from isla import __version__ as isla_version, language
@@ -43,7 +46,6 @@ from isla.solver import (
     CostWeightVector,
     CostComputer,
     SemanticError,
-    STD_COST_SETTINGS,
 )
 from isla.type_defs import Grammar
 
@@ -53,6 +55,7 @@ DATA_FORMAT_ERROR = 65
 
 
 def main(*args: str, stdout=sys.stdout, stderr=sys.stderr):
+    read_isla_rc_defaults()
     parser = create_parsers(stdout, stderr)
 
     with redirect_stdout(stdout):
@@ -81,6 +84,13 @@ def main(*args: str, stdout=sys.stdout, stderr=sys.stderr):
 
     if hasattr(args, "log_level"):
         logging.basicConfig(stream=stderr, level=level_mapping[args.log_level])
+    else:
+        get_default(stderr, args.command, "--log-level").if_present(
+            lambda level: logging.basicConfig(
+                stream=stderr,
+                level=level_mapping[level],
+            )
+        )
 
     args.func(args)
 
@@ -402,6 +412,16 @@ def create(stdout, stderr, parser, args):
         readme_file.write(readme_text)
 
 
+def dump_config(stdout, stderr, parser, args):
+    config_file_content = get_isla_resource_file_content("resources/.islarc")
+
+    if args.output_file:
+        with open(args.output_file, "w") as file:
+            file.write(config_file_content)
+    else:
+        print(config_file_content, file=stdout)
+
+
 def create_parsers(stdout, stderr):
     parser = argparse.ArgumentParser(
         prog="isla",
@@ -422,6 +442,7 @@ The ISLa command line interface.""",
     create_repair_parser(subparsers, stdout, stderr)
     create_mutate_parser(subparsers, stdout, stderr)
     create_create_parser(subparsers, stdout, stderr)
+    create_dump_config_parser(subparsers, stdout, stderr)
 
     return parser
 
@@ -624,7 +645,7 @@ Create solutions to an ISLa constraint and a reference grammar.""",
     parser.add_argument(
         "--unsat-support",
         action="store_true",
-        default=False,
+        default=get_default(stderr, "solve", "--unsat-support").get(),
         help="""
 Activate support for unsatisfiable constraints. This can be required to make the
 analysis of unsatisfiable constraints terminate, but reduces the performance of the
@@ -669,7 +690,7 @@ the input file""",
         "-e",
         "--ending",
         metavar="FILE_ENDING",
-        default=".txt",
+        default=get_default(stderr, "fuzz", "--ending").get(),
         help="""
 The file ending for the generated files that are passed to the test target, if the
 test target expects a particular format""",
@@ -724,6 +745,7 @@ satisfies an ISLa constraint.""",
     parser.add_argument(
         "-o",
         "--output-file",
+        default=get_default(stderr, "parse", "--output-file").get_unsafe(),
         help="""
 The file into which to write the (JSON) derivation tree in case that the input
 could be successfully parsed and checked. If no file is given, the tree is printed
@@ -735,7 +757,7 @@ to stdout""",
         "--pretty-print",
         type=bool,
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=get_default(stderr, "parse", "--pretty-print").get(),
         help="""
 if this flag is set, the created JSON parse tree is printed on multiple lines with
 indentation; otherwise the whole string is printed on a single line""",
@@ -766,6 +788,7 @@ the valuation of SMT-LIB and semantic predicate constraints.""",
     parser.add_argument(
         "-o",
         "--output-file",
+        default=get_default(stderr, "repair", "--output-file").get_unsafe(),
         help="""
 The file into which to write the repaired result in case that the input could be
 successfully repaired. If no file is given, the result is printed to stdout""",
@@ -778,7 +801,7 @@ successfully repaired. If no file is given, the result is printed to stdout""",
         "-t",
         "--timeout",
         type=float,
-        default=3,
+        default=get_default(stderr, "repair", "--timeout").get(),
         help="""
 the number of (fractions of) seconds after which the solver should stop finding
 solutions when trying to repair an incomplete input""",
@@ -804,6 +827,7 @@ Performs structural mutations on the given input and repairs it afterward (see
     parser.add_argument(
         "-o",
         "--output-file",
+        default=get_default(stderr, "mutate", "--output-file").get_unsafe(),
         help="""
 The file into which to write the mutated result. If no file is given, the result is
 printed to stdout""",
@@ -816,7 +840,7 @@ printed to stdout""",
         "-x",
         "--min-mutations",
         type=int,
-        default=2,
+        default=get_default(stderr, "mutate", "--min-mutations").get(),
         help="the minimum number of mutation steps to perform",
     )
 
@@ -824,7 +848,7 @@ printed to stdout""",
         "-X",
         "--max-mutations",
         type=int,
-        default=5,
+        default=get_default(stderr, "mutate", "--max-mutations").get(),
         help="the maximum number of mutation steps to perform",
     )
 
@@ -832,7 +856,7 @@ printed to stdout""",
         "-t",
         "--timeout",
         type=float,
-        default=1.0,
+        default=get_default(stderr, "mutate", "--timeout").get(),
         help="""
 the number of (fractions of) seconds after which the solver should stop finding
 solutions when trying to repair a mutated input""",
@@ -856,7 +880,7 @@ specification project.""",
     parser.add_argument(
         "-b",
         "--base-name",
-        default="project",
+        default=get_default(stderr, "create", "--base-name").get(),
         help="the base name for the created stubs",
     )
 
@@ -864,6 +888,25 @@ specification project.""",
         "output_dir",
         metavar="OUTPUT_DIR",
         help="the directory into which to write the created stubs",
+    )
+
+
+def create_dump_config_parser(subparsers, stdout, stderr):
+    parser = subparsers.add_parser(
+        "config",
+        help="dumps the default configuration file",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description="""
+Dumps the default `.islarc` configuration file.""",
+    )
+    parser.set_defaults(func=lambda *args: dump_config(stdout, stderr, parser, *args))
+
+    parser.add_argument(
+        "-o",
+        "--output-file",
+        help="""
+The file into which to write the current default `.islarc`. If no file is given, the
+configuration is printed to stdout""",
     )
 
 
@@ -904,16 +947,20 @@ a file input. However, a grammar and a constraint must be specified somehow.""",
 
 
 def log_level_arg(parser):
+    command = parser.prog.split(" ")[-1]
+
     parser.add_argument(
         "-l",
         "--log-level",
         choices=["ERROR", "WARNING", "INFO", "DEBUG"],
-        default="WARNING",
+        default=get_default(sys.stderr, command, "--log-level").get(),
         help="set the logging level",
     )
 
 
 def weight_vector_arg(parser):
+    command = parser.prog.split(" ")[-1]
+
     parser.add_argument(
         "-w",
         "--weight-vector",
@@ -922,25 +969,29 @@ Set the ISLa weight vector. Expects a comma-separated list of floating point val
 for the following cost factors: (1) Tree closing cost, (2) constraint cost, (3)
 derivation depth penalty, (4) low per-input k-path coverage penalty, and (5)
 low global k-path coverage penalty""",
-        default=",".join(map(str, STD_COST_SETTINGS.weight_vector)),
+        default=get_default(sys.stderr, command, "--weight-vector").get(),
     )
 
 
 def k_arg(parser):
+    command = parser.prog.split(" ")[-1]
+
     parser.add_argument(
         "-k",
         type=int,
         help="""
 set the length of the k-paths to be considered for coverage computations""",
-        default=3,
+        default=get_default(sys.stderr, command, "-k").get(),
     )
 
 
 def unwinding_depth_arg(parser):
+    command = parser.prog.split(" ")[-1]
+
     parser.add_argument(
         "--unwinding-depth",
         type=int,
-        default=4,
+        default=get_default(sys.stderr, command, "--unwinding-depth").get(),
         help="""
 Set the depth until which nonregular grammar elements in SMT-LIB expressions are
 unwound to make them regular before the SMT solver is queried""",
@@ -948,9 +999,12 @@ unwound to make them regular before the SMT solver is queried""",
 
 
 def unique_trees_arg(parser):
+    command = parser.prog.split(" ")[-1]
+
     parser.add_argument(
         "--unique-trees",
         action="store_true",
+        default=get_default(sys.stderr, command, "--unique-trees").get(),
         help="""
 Enforces the uniqueness of derivation trees in the solver queue. This setting can
 improve the generator performance, but can also lead to omitted interesting solutions
@@ -959,22 +1013,26 @@ in certain cases""",
 
 
 def smt_insts_arg(parser):
+    command = parser.prog.split(" ")[-1]
+
     parser.add_argument(
         "-s",
         "--smt-instantiations",
         type=int,
-        default=10,
+        default=get_default(sys.stderr, command, "--smt-instantiations").get(),
         help="""
 the number of solutions obtained from the SMT solver for atomic SMT-LIB formulas""",
     )
 
 
 def free_insts_arg(parser):
+    command = parser.prog.split(" ")[-1]
+
     parser.add_argument(
         "-f",
         "--free-instantiations",
         type=int,
-        default=10,
+        default=get_default(sys.stderr, command, "--free-instantiations").get(),
         help="""
 the number of times an unconstrained nonterminal should be randomly instantiated
 """,
@@ -982,11 +1040,13 @@ the number of times an unconstrained nonterminal should be randomly instantiated
 
 
 def timeout_arg(parser):
+    command = parser.prog.split(" ")[-1]
+
     parser.add_argument(
         "-t",
         "--timeout",
         type=float,
-        default=-1,
+        default=get_default(sys.stderr, command, "--timeout").get(),
         help="""
 The number of (fractions of) seconds after which the solver should stop finding
 solutions. Negative numbers imply that no timeout is set""",
@@ -994,11 +1054,13 @@ solutions. Negative numbers imply that no timeout is set""",
 
 
 def num_solutions_arg(parser):
+    command = parser.prog.split(" ")[-1]
+
     parser.add_argument(
         "-n",
         "--num-solutions",
         type=int,
-        default=1,
+        default=get_default(sys.stderr, command, "--num-solutions").get(),
         help="""
 The number of solutions to generate. Negative numbers indicate an infinite number of
 solutions (you need ot set a `--timeout` or forcefully stop ISLa)""",
@@ -1006,9 +1068,12 @@ solutions (you need ot set a `--timeout` or forcefully stop ISLa)""",
 
 
 def output_dir_arg(parser, required: bool = False):
+    command = parser.prog.split(" ")[-1]
+
     parser.add_argument(
         "-d",
         "--output-dir",
+        default=get_default(sys.stderr, command, "--output-dir").get_unsafe(),
         required=required,
         help="a directory into which to place generated output files",
     )
@@ -1046,6 +1111,99 @@ def assert_path_is_dir(stderr, command: str, out_dir: str) -> None:
             file=stderr,
         )
         sys.exit(USAGE_ERROR)
+
+
+@lru_cache
+def read_isla_rc_defaults(
+    content: Maybe[str] = Maybe.nothing(),
+) -> Dict[str, Dict[str, str | int | float | bool]]:
+    """
+    Attempts to read an `.islarc` configuration from the following source, in the
+    given order:
+
+    1. The `content` parameter
+    2. The file `./.islarc` (in the current working directory)
+    3. The file `~/.islarc` (in the current user's home directory)
+    4. The file `resources/.islarc` (bundled with the ISLa distribution)
+
+    Returns a configuration dictionary. The keys are ISLa commands or "default" for a
+    fallback; the values are dictionaries from command line parameters to default
+    values. Configurations in the files listed above are merged; Defaults specified in
+    configuration sources earlier in the list take precedence in case of conflicts.
+
+    :param content: An optional TOML configuration string (not a path!).
+    :return: The configuration dictionary.
+    """
+
+    sources: List[str] = []
+    content.if_present(lambda c: sources.append(c))
+
+    dirs = (os.getcwd(), pathlib.Path.home())
+    candidate_locations = [os.path.join(dir, ".islarc") for dir in dirs]
+    sources.extend(
+        [
+            pathlib.Path(location).read_text()
+            for location in candidate_locations
+            if os.path.exists(location)
+        ]
+    )
+
+    sources.append(get_isla_resource_file_content("resources/.islarc"))
+
+    all_defaults = [toml.loads(source).get("defaults", {}) for source in sources]
+
+    result: Dict[str, Dict[str, str | int | float | bool]] = {}
+
+    for defaults in all_defaults:
+        # Expecting something like
+        #
+        # {
+        #     "default": [{"--log-level": "WARNING"}],
+        #     "create": [{"--base-name": "project", "--output-dir": "."}],
+        #     ...
+        # }
+
+        if (
+            not isinstance(defaults, dict)
+            or any(not isinstance(key, str) for key in defaults)
+            or not all(
+                isinstance(value, list)
+                and len(value) == 1
+                and isinstance(value[0], dict)
+                and all(isinstance(inner_key, str) for inner_key in value[0])
+                and all(
+                    isinstance(inner_value, str)
+                    or isinstance(inner_value, int)
+                    or isinstance(inner_value, float)
+                    or isinstance(inner_value, bool)
+                    for inner_value in value[0].values()
+                )
+                for value in defaults.values()
+            )
+        ):
+            raise RuntimeError(
+                "Unexpected .islarc format: defaults should be a "
+                + "non-nested array of tables"
+            )
+
+        for key, value in defaults.items():
+            for inner_key, inner_value in value[0].items():
+                result.setdefault(key, {}).setdefault(inner_key, inner_value)
+
+    return result
+
+
+def get_default(
+    stderr, command: str, argument: str, content: Maybe[str] = Maybe.nothing()
+) -> Maybe[str | int | float | bool]:
+    try:
+        config = read_isla_rc_defaults(content)
+    except RuntimeError as err:
+        print(f"isla {command}: error: could not load .islarc ({err})", file=stderr)
+        sys.exit(1)
+
+    default = config.get("default", {}).get(argument, None)
+    return Maybe(config.get(command, {}).get(argument, default))
 
 
 if __name__ == "__main__":

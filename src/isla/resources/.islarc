@@ -1,0 +1,51 @@
+[[defaults.default]]
+
+"--log-level" = "WARNING"
+
+[[defaults.create]]
+
+"--base-name" = "project"
+
+[[defaults.solve]]
+
+# "--output-dir" can point to a directory, default (no assignment) is stdout
+"--num-solutions" = 1
+"--timeout" = -1
+"--unsat-support" = false
+"--free-instantiations" = 10
+"--smt-instantiations" = 10
+"--unique-trees" = false
+"--unwinding-depth" = 4
+"--weight-vector" = "7,1,4,2,19"
+"-k" = 3
+
+[[defaults.fuzz]]
+
+"--ending" = ".txt"
+"--output-dir" = "."
+"--num-solutions" = 1
+"--timeout" = -1
+"--unsat-support" = false
+"--free-instantiations" = 10
+"--smt-instantiations" = 10
+"--unique-trees" = false
+"--unwinding-depth" = 4
+"--weight-vector" = "7,1,4,2,19"
+"-k" = 3
+
+[[defaults.mutate]]
+
+# "--output-file" can point to a file, default (no assignment) is stdout
+"--min-mutations" = 2
+"--max-mutations" = 5
+"--timeout" = 1.0
+
+[[defaults.parse]]
+
+# "--output-file" can point to a file, default (no assignment) is stdout
+"--pretty-print" = true
+
+[[defaults.repair]]
+
+# "--output-file" can point to a file, default (no assignment) is stdout
+"--timeout" = 3.0
