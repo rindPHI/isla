@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.4.1] - 2022-10-06
+
+### Changed
+
+- Bug fix: Added forgotten requirement. The "toml" package needs to be installed to use
+  ISLa 1.4.0.
+
 ## [1.4.0] - 2022-10-06
 
 ### Added
