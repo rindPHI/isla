@@ -5,6 +5,14 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Changed
+
+- Bug fix: Wrong precedence of multiplication/division and addition/subtraction in
+  ISLa parser; `x * y + z` was parsed `x * (y + z)`. This is now corrected.
+- Bug fix: Null bytes at the level of SMT expressions (`\u{}`) were not handled
+  correctly in `z3_helpers.evalute_z3_expression`; instead of `\x00`, they were
+  treated as the 4-character string `\u{}`.
+
 ## [1.4.1] - 2022-10-06
 
 ### Changed

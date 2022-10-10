@@ -24,7 +24,7 @@ def serializedATN():
         156,9,3,3,3,158,8,3,1,3,1,3,1,3,1,3,4,3,164,8,3,11,3,12,3,165,1,
         3,1,3,3,3,170,8,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,
         3,5,3,184,8,3,10,3,12,3,187,9,3,1,4,1,4,1,5,1,5,1,5,0,2,4,6,6,0,
-        2,4,6,8,10,0,5,1,0,37,38,2,0,25,26,36,36,2,0,7,7,39,42,2,0,23,24,
+        2,4,6,8,10,0,5,2,0,25,26,36,36,1,0,37,38,2,0,7,7,39,42,2,0,23,24,
         28,30,6,0,7,7,15,16,18,19,21,21,25,26,36,42,231,0,13,1,0,0,0,2,17,
         1,0,0,0,4,113,1,0,0,0,6,169,1,0,0,0,8,188,1,0,0,0,10,190,1,0,0,0,
         12,14,3,2,1,0,13,12,1,0,0,0,13,14,1,0,0,0,14,15,1,0,0,0,15,16,3,
@@ -1556,7 +1556,7 @@ class IslaLanguageParser ( Parser ):
                         pass
 
                     elif la_ == 2:
-                        localctx = IslaLanguageParser.SexprInfixPlusMinusContext(self, IslaLanguageParser.SexprContext(self, _parentctx, _parentState))
+                        localctx = IslaLanguageParser.SexprInfixMulDivContext(self, IslaLanguageParser.SexprContext(self, _parentctx, _parentState))
                         self.pushNewRecursionContext(localctx, _startState, self.RULE_sexpr)
                         self.state = 174
                         if not self.precpred(self._ctx, 4):
@@ -1565,7 +1565,7 @@ class IslaLanguageParser ( Parser ):
                         self.state = 175
                         localctx.op = self._input.LT(1)
                         _la = self._input.LA(1)
-                        if not(_la==37 or _la==38):
+                        if not(((_la) & ~0x3f) == 0 and ((1 << _la) & 68820140032) != 0):
                             localctx.op = self._errHandler.recoverInline(self)
                         else:
                             self._errHandler.reportMatch(self)
@@ -1575,7 +1575,7 @@ class IslaLanguageParser ( Parser ):
                         pass
 
                     elif la_ == 3:
-                        localctx = IslaLanguageParser.SexprInfixMulDivContext(self, IslaLanguageParser.SexprContext(self, _parentctx, _parentState))
+                        localctx = IslaLanguageParser.SexprInfixPlusMinusContext(self, IslaLanguageParser.SexprContext(self, _parentctx, _parentState))
                         self.pushNewRecursionContext(localctx, _startState, self.RULE_sexpr)
                         self.state = 177
                         if not self.precpred(self._ctx, 3):
@@ -1584,7 +1584,7 @@ class IslaLanguageParser ( Parser ):
                         self.state = 178
                         localctx.op = self._input.LT(1)
                         _la = self._input.LA(1)
-                        if not(((_la) & ~0x3f) == 0 and ((1 << _la) & 68820140032) != 0):
+                        if not(_la==37 or _la==38):
                             localctx.op = self._errHandler.recoverInline(self)
                         else:
                             self._errHandler.reportMatch(self)

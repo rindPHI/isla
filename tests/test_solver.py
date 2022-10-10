@@ -1150,6 +1150,49 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
             self.assertTrue(not inp.structurally_equal(mutated))
             self.assertTrue(graph.tree_is_valid(mutated))
 
+    def test_solve_complex_numeric_formula_heartbeat(self):
+        heartbeat_request_grammar = {
+            "<start>": ["<heartbeat-request>"],
+            "<heartbeat-request>": ["\x01<payload-length><payload><padding>"],
+            "<payload-length>": ["<byte><byte>"],
+            "<payload>": ["<bytes>"],
+            "<padding>": ["<bytes>"],
+            "<bytes>": ["<byte><bytes>", "<byte>"],
+            "<byte>": [chr(i) for i in range(256)],
+        }
+
+        length_constraint = """
+  256 * str.to_code(<payload-length>.<byte>[1])
++ str.to_code(<payload-length>.<byte>[2]) 
+= str.len(<payload>) * 2 and
+<payload-length>.<byte> = "\x02"
+"""
+
+        self.execute_generation_test(
+            grammar=heartbeat_request_grammar,
+            formula=length_constraint,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=5,
+            enforce_unique_trees_in_queue=True,
+            num_solutions=5,
+            # print_only=True
+        )
+
+    def test_solve_complex_quantifier_free_numeric_formula_heartbeat(self):
+        heartbeat_request_grammar = {
+            "<start>": ["<heartbeat-request>"],
+            "<heartbeat-request>": ["\x01<payload-length><payload><padding>"],
+            "<payload-length>": ["<byte><byte>"],
+            "<payload>": ["<bytes>"],
+            "<padding>": ["<bytes>"],
+            "<bytes>": ["<byte><bytes>", "<byte>"],
+            "<byte>": [chr(i) for i in range(256)],
+        }
+
+        solver = ISLaSolver(
+            grammar=heartbeat_request_grammar, max_number_smt_instantiations=2
+        )
+
     def execute_generation_test(
         self,
         formula: language.Formula | str = "true",

@@ -112,7 +112,7 @@ def evaluate_z3_string_value(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
     if not z3.is_string_value(expr):
         return Maybe.nothing()
     expr: z3.StringVal
-    return Maybe(((), expr.as_string()))
+    return Maybe(((), expr.as_string().replace(r"\u{}", "\x00")))
 
 
 def evaluate_z3_int_value(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
@@ -503,6 +503,10 @@ def evaluate_z3_str_to_code(
     if expr.decl().kind() != z3.Z3_OP_STR_TO_CODE:
         return Maybe.nothing()
 
+    assert (
+        len(children_results) == 1
+    ), f"Unexpected argument length {len(children_results)}"
+
     return Maybe(
         construct_result(
             lambda args: ord(args[0]),
@@ -758,7 +762,8 @@ def smt_expr_to_str(  # noqa: C901
         z3.Z3_OP_SEQ_IN_RE: "str.in_re",
         z3.Z3_OP_SEQ_CONCAT: "str.++",
         z3.Z3_OP_RE_CONCAT: "re.++",
-        z3.Z3_OP_STR_TO_INT: "str.to.int",  # <- Different from standard SMT-LIB (Z3 version)
+        z3.Z3_OP_STR_TO_INT: "str.to.int",
+        # <- Different from standard SMT-LIB (Z3 version)
     }
 
     if z3.is_var(f):

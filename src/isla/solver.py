@@ -2148,18 +2148,19 @@ class ISLaSolver:
         """
         Attempts to solve the given SMT-LIB formulas by calling Z3.
 
-        Note that this function does not unify variables pointing to the same derivation trees.
-        E.g., a solution may be returned for the formula `var_1 = "a" and var_2 = "b"`, though
-        `var_1` and `var_2` point to the same `<var>` tree as defined by their substitutions maps.
-        Unification is performed in `eliminate_all_semantic_formulas`.
+        Note that this function does not unify variables pointing to the same derivation
+        trees. E.g., a solution may be returned for the formula `var_1 = "a" and
+        var_2 = "b"`, though `var_1` and `var_2` point to the same `<var>` tree as
+        defined by their substitutions maps. Unification is performed in
+        `eliminate_all_semantic_formulas`.
 
         :param smt_formulas: The SMT-LIB formulas to solve.
         :param max_instantiations: The maximum number of instantiations to produce.
         :return: A (possibly empty) list of solutions.
         """
 
-        # If any SMT formula refers to *sub*trees in the instantiations of other SMT formulas,
-        # we have to instantiate those first.
+        # If any SMT formula refers to *sub*trees in the instantiations of other SMT
+        # formulas, we have to instantiate those first.
 
         conflicts = self.get_conflicts(smt_formulas)
 
@@ -2242,15 +2243,17 @@ class ISLaSolver:
             }
 
             if new_solution in solutions:
-                # This can happen for trivial solutions, i.e., if the formula is logically valid.
-                # Then, the assignment for that constant will always be {}
+                # This can happen for trivial solutions, i.e., if the formula is
+                # logically valid. Then, the assignment for that constant will
+                # always be {}
                 return solutions
             else:
                 solutions.append(new_solution)
                 if new_internal_solution:
                     internal_solutions.append(new_internal_solution)
                 else:
-                    # Again, for a trivial solution (e.g., True), the assignment can be empty
+                    # Again, for a trivial solution (e.g., True), the assignment
+                    # can be empty.
                     break
 
         return solutions
