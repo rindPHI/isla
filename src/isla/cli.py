@@ -1,5 +1,3 @@
-#!/usr/bin/env python3 -O
-
 # Copyright © 2022 CISPA Helmholtz Center for Information Security.
 # Author: Dominic Steinhöfel.
 #
@@ -34,8 +32,11 @@ from grammar_graph import gg
 
 from isla import __version__ as isla_version, language
 from isla.derivation_tree import DerivationTree
-from isla.helpers import is_float, Maybe, get_isla_resource_file_content, \
-    assertions_activated
+from isla.helpers import (
+    is_float,
+    Maybe,
+    get_isla_resource_file_content,
+)
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
     STANDARD_SEMANTIC_PREDICATES,
@@ -58,9 +59,9 @@ DATA_FORMAT_ERROR = 65
 
 
 def main(*args: str, stdout=sys.stdout, stderr=sys.stderr):
-    if '-O' in sys.argv:
-        sys.argv.remove('-O')
-        os.execl(sys.executable, sys.executable, '-O', *sys.argv)
+    if "-O" in sys.argv:
+        sys.argv.remove("-O")
+        os.execl(sys.executable, sys.executable, "-O", *sys.argv)
         sys.exit(0)
 
     read_isla_rc_defaults()
@@ -1215,8 +1216,8 @@ def get_default(
 
 
 if __name__ == "__main__":
-    if '-O' in sys.argv:
-        sys.argv.remove('-O')
-        os.execl(sys.executable, sys.executable, '-O', *sys.argv)
+    if "-O" in sys.argv:
+        sys.argv.remove("-O")
+        os.execl(sys.executable, sys.executable, "-O", *sys.argv)
     else:
         main()
