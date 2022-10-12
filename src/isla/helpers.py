@@ -21,6 +21,7 @@ import functools
 import importlib.resources
 import itertools
 import math
+import operator
 import random
 import re
 import sys
@@ -841,3 +842,46 @@ def instantiate_escaped_symbols(text: str) -> str:
         text = text.replace(escaped_char, repl_map[escaped_char])
 
     return text.replace(backslash_escape_placeholder, "\\")
+
+
+def get_elem_by_equivalence(
+    elem: T, elems: Iterable[S], equiv: Callable[[T, S], bool] = operator.eq
+) -> S:
+    """
+    Returns the first element in `elems` that is equivalent to `elem` according
+    to the relation `equiv`. Raises an AssertionError if no such element exists.
+
+    :param elem: The element for which an equivalent one should be found.
+    :param elems: The container to search.
+    :param equiv: An equivalence relation. Default is standard equivalence `==`.
+    :return: An equivalent element from `elems`.
+    """
+    return (
+        Maybe.from_iterator(
+            other_elem for other_elem in elems if equiv(elem, other_elem)
+        )
+        .raise_if_not_present(
+            lambda: AssertionError(
+                f"Could not find element equivalent to {elem} in container {elems}"
+            )
+        )
+        .get()
+    )
+
+
+def get_expansions(leaf_value: str, grammar: CanonicalGrammar):
+    all_expansions = grammar[leaf_value]
+
+    terminal_expansions = [
+        expansion
+        for expansion in all_expansions
+        if len(expansion) == 1 and not is_nonterminal(expansion[0])
+    ]
+
+    expansions = [
+        expansion
+        for expansion in all_expansions
+        if expansion not in terminal_expansions
+    ]
+
+    return terminal_expansions, expansions
