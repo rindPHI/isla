@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.6.0] - 2022-10-12
+
+### Added
+
+- Command line argument `-O` which runs ISLa in optimized mode with deactivated
+  assertions. Recommended if speed is an issue.
+
 ## [1.5.0] - 2022-10-12
 
 ### Added
