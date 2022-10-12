@@ -1165,7 +1165,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         length_constraint = """
   256 * str.to_code(<payload-length>.<byte>[1])
 + str.to_code(<payload-length>.<byte>[2]) 
-= str.len(<payload>) * 2 and
+= str.len(<payload>) and
 <payload-length>.<byte> = "\x01"
 """
 
@@ -1314,7 +1314,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
             to_exclude[0], {var: z3.StringVal(str(val)) for var, val in model.items()}
         )
 
-    def test_filter_numeric_variables(self):
+    def test_filter_length_variables(self):
         byte_3879 = language.BoundVariable("<byte>_3879", "<byte>")
         payload_3824 = language.BoundVariable("<payload>_3824", "<payload>")
         byte_3880 = language.BoundVariable("<byte>_3880", "<byte>")
@@ -1331,16 +1331,14 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         formula_2 = z3_eq(byte_3879.to_smt(), z3.StringVal("\x01"))
 
         (
-            str_to_code_vars,
             length_vars,
             flexible_vars,
-        ) = ISLaSolver.filter_numeric_variables(
+        ) = ISLaSolver.filter_length_variables(
             {byte_3879, payload_3824, byte_3880}, (formula_1, formula_2)
         )
 
-        self.assertFalse(flexible_vars)
         self.assertEqual({payload_3824}, length_vars)
-        self.assertEqual({byte_3879, byte_3880}, str_to_code_vars)
+        self.assertEqual({byte_3879, byte_3880}, flexible_vars)
 
         # Test 2: Both `byte_...` variables have to be equal. This should not change
         # anything, as we can still work with the codes.
@@ -1348,16 +1346,14 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         formula_3 = z3_eq(byte_3879.to_smt(), byte_3880.to_smt())
 
         (
-            str_to_code_vars,
             length_vars,
             flexible_vars,
-        ) = ISLaSolver.filter_numeric_variables(
+        ) = ISLaSolver.filter_length_variables(
             {byte_3879, payload_3824, byte_3880}, (formula_1, formula_2, formula_3)
         )
 
-        self.assertFalse(flexible_vars)
         self.assertEqual({payload_3824}, length_vars)
-        self.assertEqual({byte_3879, byte_3880}, str_to_code_vars)
+        self.assertEqual({byte_3879, byte_3880}, flexible_vars)
 
         # Test 3: Variable `byte_3879` occurs in an equation with the length variable
         # variable `payload_3824`. Thus, all variables end up "flexible."
@@ -1365,16 +1361,14 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         formula_4 = z3_eq(byte_3879.to_smt(), payload_3824.to_smt())
 
         (
-            str_to_code_vars,
             length_vars,
             flexible_vars,
-        ) = ISLaSolver.filter_numeric_variables(
+        ) = ISLaSolver.filter_length_variables(
             {byte_3879, payload_3824, byte_3880},
             (formula_1, formula_2, formula_4),
         )
 
         self.assertEqual({byte_3879, byte_3880, payload_3824}, flexible_vars)
-        self.assertFalse(str_to_code_vars)
 
     def test_create_fixed_length_tree(self):
         payload_grammar = {

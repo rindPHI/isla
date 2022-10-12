@@ -5,6 +5,16 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.5.0] - 2022-10-12
+
+### Added
+
+- Added special handling for `str.len` applications: For variables exclusively
+  occurring inside `str.len`, we only ask Z3 for a solution to the numeric length,
+  and then randomly create a string of that length. The `ISLaSolver` has a new option
+  `enable_optimized_z3_queries` to disable this behavior. Future releases will also 
+  have a CLI option for that purpose.
+
 ### Changed
 
 - Bug fix: Wrong precedence of multiplication/division and addition/subtraction in

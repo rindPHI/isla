@@ -315,6 +315,7 @@ class ISLaSolver:
         activate_unsat_support: bool = False,
         grammar_unwinding_threshold: int = 4,
         initial_tree: Maybe[DerivationTree] = Maybe.nothing(),
+        enable_optimized_z3_queries: bool = True,
     ):
         """
         Constructs a new ISLaSolver object. Passing a grammar and a formula is mandatory.
@@ -357,6 +358,10 @@ class ISLaSolver:
         (and quite tremendously so).
         :param initial_tree: An initial input tree for the queue, if the solver shall
         not start from the tree `(<start>, None)`.
+        :param enable_optimized_z3_queries: Enables preprocessing of Z3 queries (mainly
+        numeric problems concerning things like length). This can improve performance
+        significantly; however, it might happen that certain problems cannot be solved
+        anymore. In that case, this option can/should be deactivated.
         """
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -2119,6 +2124,7 @@ class ISLaSolver:
                 assert isinstance(
                     orig, DerivationTree
                 ), f"Expected a DerivationTree, given: {type(orig).__name__}"
+
                 for path, tree in [
                     (p, t) for p, t in orig.paths() if t not in solution_with_subtrees
                 ]:
@@ -2219,7 +2225,7 @@ class ISLaSolver:
             assert maybe_model is not None
 
             new_solution = {
-                tree_substitutions.get(constant, constant): (maybe_model[constant])
+                tree_substitutions.get(constant, constant): maybe_model[constant]
                 for constant in constants
             }
 
@@ -2257,22 +2263,19 @@ class ISLaSolver:
         # After solving the constraint, we parse `var'` into a string and reverse
         # the substitution for the final solution.
 
-        str_to_code_vars, length_vars, flexible_vars = self.filter_numeric_variables(
+        length_vars, flexible_vars = self.filter_length_variables(
             variables, smt_formulas
         )
-
-        flexible_vars.update(str_to_code_vars)
-        str_to_code_vars = set([])
 
         # Add language constraints for "flexible" variables
         formulas: List[z3.BoolRef] = self.generate_language_constraints(
             flexible_vars, tree_substitutions
         )
 
-        # Create fresh variables for `str_to_code` and `length` variables.
+        # Create fresh variables for `str.len` variables.
         all_variables = set(variables)
         fresh_var_map: Dict[language.Variable, z3.ExprRef] = {}
-        for constant in str_to_code_vars.union(length_vars):
+        for constant in length_vars:
             fresh = fresh_constant(
                 all_variables,
                 language.Constant(constant.name, "NOT-NEEDED"),
@@ -2295,93 +2298,11 @@ class ISLaSolver:
             and expr.children()[0] in {var.to_smt() for var in length_vars}
         }
 
-        # In `smt_formulas`, we replace all `str.to_code(...)` terms and equations
-        # between "str.to_code" variables with the corresponding fresh variable(s),
-        # and equations between such variables and a string literal with an equation
-        # of the fresh variable and the code point of the string literal.
-        # TODO: Handle equations between str.to_code variables and integers (simple
-        #       replacement, but has to be considered in the filtering)
-
-        replacement_map.update(
-            {
-                expr: fresh_var_map[
-                    get_elem_by_equivalence(
-                        expr.children()[0],
-                        str_to_code_vars,
-                        lambda e1, e2: e1 == e2.to_smt(),
-                    )
-                ]
-                for formula in smt_formulas
-                for expr in visit_z3_expr(formula)
-                if expr.decl().kind() == z3.Z3_OP_STR_TO_CODE
-                and expr.children()[0] in {var.to_smt() for var in str_to_code_vars}
-            }
-        )
-
-        replacement_map.update(
-            {
-                expr: z3_eq(
-                    fresh_var_map[
-                        get_elem_by_equivalence(
-                            next(
-                                child for child in expr.children() if is_z3_var(child)
-                            ),
-                            variables,
-                            lambda e1, e2: e1 == e2.to_smt(),
-                        )
-                    ],
-                    z3.IntVal(
-                        ord(
-                            smt_string_val_to_string(
-                                next(
-                                    child
-                                    for child in expr.children()
-                                    if z3.is_string_value(child)
-                                )
-                            )
-                        )
-                    ),
-                )
-                for formula in smt_formulas
-                for expr in visit_z3_expr(formula)
-                if expr.decl().kind() == z3.Z3_OP_EQ
-                and set(expr.children()).intersection(
-                    {var.to_smt() for var in str_to_code_vars}
-                )
-                and any(z3.is_string_value(child) for child in expr.children())
-            }
-        )
-
-        replacement_map.update(
-            {
-                z3_subst(
-                    expr,
-                    {var.to_smt(): repl for var, repl in fresh_var_map.items()},
-                )
-                for formula in smt_formulas
-                for expr in visit_z3_expr(formula)
-                if expr.decl().kind() == z3.Z3_OP_EQ
-                and all(is_z3_var(child) for child in expr.children())
-                and set(expr.children()) == {var.to_smt() for var in str_to_code_vars}
-            }
-        )
-
         # Perform substitution, add formulas
         formulas.extend(
             [
                 cast(z3.BoolRef, z3_subst(formula, replacement_map))
                 for formula in smt_formulas
-            ]
-        )
-
-        # Add range constraints for str.to_code variables
-        formulas.extend(
-            [
-                z3.And(
-                    z3.IntVal(0) <= fresh_var_map[var],
-                    fresh_var_map[var] <= z3.IntVal(0xFFFF),
-                )
-                for var in str_to_code_vars
             ]
         )
 
@@ -2396,19 +2317,12 @@ class ISLaSolver:
                     else (
                         z3_eq(
                             fresh_var_map[constant],
-                            z3.IntVal(ord(smt_string_val_to_string(string_val))),
+                            z3.IntVal(len(smt_string_val_to_string(string_val))),
                         )
-                        if constant in str_to_code_vars
-                        else (
-                            z3_eq(
-                                fresh_var_map[constant],
-                                z3.IntVal(len(smt_string_val_to_string(string_val))),
-                            )
-                            if constant in length_vars
-                            # "str.to_int(constant) == 42" has been shown to be more
-                            # efficiently solvable than "x == '17'"---fewer timeouts!
-                            else (z3_eq(constant.to_smt(), string_val))
-                        )
+                        if constant in length_vars
+                        # "str.to_int(constant) == 42" has been shown to be more
+                        # efficiently solvable than "x == '17'"---fewer timeouts!
+                        else (z3_eq(constant.to_smt(), string_val))
                     )
                     for constant, string_val in prev_solution.items()
                 ]
@@ -2454,19 +2368,17 @@ class ISLaSolver:
         return sat_result, result
 
     @staticmethod
-    def filter_numeric_variables(
+    def filter_length_variables(
         variables: Set[language.Variable], smt_formulas: ImmutableList[z3.BoolRef]
-    ) -> Tuple[Set[language.Variable], Set[language.Variable], Set[language.Variable]]:
+    ) -> Tuple[Set[language.Variable], Set[language.Variable]]:
         """
-        Divides the given constants into (1) those that only occur in `str.to_code(...)`
-        expressions, or additionally in simple equations `... = "..."` with string
-        literals, (2) those that occur only in `length(...)` contexts, and (3)
-        "flexible" constants occurring in other contexts.
+        Divides the given constants into (1) those that occur only in `length(...)`
+        contexts, and (2) "flexible" constants occurring in other contexts.
 
         :param variables: The constants to divide/filter from.
         :param smt_formulas: The SMT formulas to consider in the filtering.
-        :return: A pair of constants occurring in `str.to_code` contexts, and the
-        remaining ones. The union of both sets equals `constants`, and both sets
+        :return: A pair of constants occurring in `str.len` contexts, and the
+        remaining ones. The union of both sets equals `variables`, and both sets
         are disjoint.
         """
 
@@ -2500,33 +2412,6 @@ class ISLaSolver:
             if any(is_z3_var(child) for child in expr.children())
         }
 
-        # `str.to_code` variables are those that (1) do occur in `(str.to_code, (var,))`
-        # contexts and (2) apart from that at most in contexts `(==, params)` contexts
-        # where in params, there are only string literals or other `str.to_code`
-        # variables. "Flexible" variables are all others. We initialize the set of
-        # "flexible" variables with all those that occur in different contexts.
-
-        def is_complex_context(context: Context) -> bool:
-            decl, args = context
-            if decl.kind() not in [
-                z3.Z3_OP_EQ,
-                z3.Z3_OP_STR_TO_CODE,
-                z3.Z3_OP_SEQ_LENGTH,
-            ]:
-                return True
-
-            if decl.kind() == z3.Z3_OP_EQ and any(arg is None for arg in context[1]):
-                return True
-
-            return False
-
-        def occurs_in_complex_context(var: language.Variable) -> bool:
-            return any(
-                var is context_elem and is_complex_context(context)
-                for context in contexts
-                for context_elem in context[1]
-            )
-
         def contexts_for(var: language.Variable) -> Set[Context]:
             return {
                 context
@@ -2535,41 +2420,8 @@ class ISLaSolver:
                 if var is context_elem
             }
 
-        def occurs_in_str_to_code_context(var: language.Variable) -> bool:
-            return any(
-                context[0].kind() == z3.Z3_OP_STR_TO_CODE
-                for context in contexts_for(var)
-            )
-
-        flexible_vars: Set[language.Variable] = {
-            var
-            for var in variables
-            if occurs_in_complex_context(var)
-            or (
-                not occurs_in_str_to_code_context(var)
-                and not all(
-                    context[0].kind() == z3.Z3_OP_SEQ_LENGTH
-                    for context in contexts_for(var)
-                )
-            )
-        }
-
-        # Variables occurring in equations with flexible variables are also flexible
-        flexible_vars.update(
-            {
-                var
-                for var in variables
-                if any(
-                    context[0].kind() == z3.Z3_OP_EQ and other_var in flexible_vars
-                    for context in contexts
-                    for other_var in context[1]
-                    if isinstance(other_var, language.Variable)
-                )
-            }
-        )
-
-        # The set `length_vars` consists of all variables that are not in the "flexible"
-        # set that occur in at least one `Length(...)` context.
+        # The set `length_vars` consists of all variables that only occur in
+        # `str.len(...)` context.
         length_vars: Set[language.Variable] = {
             var
             for var in variables
@@ -2581,18 +2433,14 @@ class ISLaSolver:
             )
         }
 
-        # The set `str_to_code_vars` consists of all variables that are not
-        # in the "flexible" set and which *only* occur in `length(...)` contexts.
-        str_to_code_vars: Set[language.Variable] = {
-            var
-            for var in variables
-            if occurs_in_str_to_code_context(var) and var not in flexible_vars
-        }
+        flexible_vars = variables.difference(length_vars)
 
-        assert not str_to_code_vars.intersection(flexible_vars)
-        assert variables == str_to_code_vars.union(flexible_vars).union(length_vars)
+        # Trivial in the current implementation; but we might add further optimizations
+        # eventually.
+        assert not length_vars.intersection(flexible_vars)
+        assert set(variables) == set(flexible_vars.union(length_vars))
 
-        return str_to_code_vars, length_vars, flexible_vars
+        return length_vars, flexible_vars
 
     def generate_language_constraints(
         self,
@@ -3564,69 +3412,82 @@ def create_fixed_length_tree(
     start: DerivationTree | str,
     canonical_grammar: CanonicalGrammar,
     target_length: int,
-    curr_len: Optional[int] = None,
-    open_leaves: Optional[Tuple[Tuple[Path, DerivationTree], ...]] = None,
 ) -> Optional[DerivationTree]:
     start = DerivationTree(start) if isinstance(start, str) else start
-    open_leaves = (((), start),) if open_leaves is None else open_leaves
-    curr_len = 0 if curr_len is None else curr_len
+    stack: List[
+        Tuple[DerivationTree, int, ImmutableList[Tuple[Path, DerivationTree]]]
+    ] = [
+        (start, 0, (((), start),)),
+    ]
 
-    if not open_leaves:
-        return None if curr_len != target_length else start
+    while stack:
+        tree, curr_len, open_leaves = stack.pop()
 
-    if curr_len >= target_length:
-        return None
+        if not open_leaves:
+            if curr_len == target_length:
+                return tree
+            else:
+                continue
 
-    for idx, (path, leaf) in enumerate(open_leaves):
-        terminal_expansions, expansions = get_expansions(leaf.value, canonical_grammar)
+        if curr_len >= target_length:
+            continue
 
-        if terminal_expansions:
-            expansions.append(random.choice(terminal_expansions))
-
-        # Only choose one random terminal expansion; keep all nonterminal expansions
-        expansions = sorted(
-            expansions,
-            key=lambda expansion: len(
-                [elem for elem in expansion if is_nonterminal(elem)]
-            ),
-        )
-
-        for expansion in expansions:
-            new_children = tuple(
-                [
-                    DerivationTree(elem, None if is_nonterminal(elem) else ())
-                    for elem in expansion
-                ]
+        idx: int
+        path: Path
+        leaf: DerivationTree
+        for idx, (path, leaf) in reversed(list(enumerate(open_leaves))):
+            terminal_expansions, expansions = get_expansions(
+                leaf.value, canonical_grammar
             )
 
-            expanded_tree = start.replace_path(
-                path,
-                DerivationTree(
-                    leaf.value,
-                    new_children,
+            if terminal_expansions:
+                expansions.append(random.choice(terminal_expansions))
+
+            # Only choose one random terminal expansion; keep all nonterminal expansions
+            expansions = sorted(
+                expansions,
+                key=lambda expansion: len(
+                    [elem for elem in expansion if is_nonterminal(elem)]
                 ),
             )
 
-            maybe_result = create_fixed_length_tree(
-                expanded_tree,
-                canonical_grammar,
-                target_length,
-                curr_len=curr_len
-                + sum(
-                    [len(child.value) for child in new_children if child.children == ()]
-                ),
-                open_leaves=open_leaves[:idx]
-                + tuple(
+            for expansion in reversed(expansions):
+                new_children = tuple(
                     [
-                        (path + (child_idx,), new_child)
-                        for child_idx, new_child in enumerate(new_children)
-                        if is_nonterminal(new_child.value)
+                        DerivationTree(elem, None if is_nonterminal(elem) else ())
+                        for elem in expansion
                     ]
                 )
-                + open_leaves[idx + 1 :],
-            )
 
-            if maybe_result:
-                return maybe_result
+                expanded_tree = tree.replace_path(
+                    path,
+                    DerivationTree(
+                        leaf.value,
+                        new_children,
+                    ),
+                )
+
+                stack.append(
+                    (
+                        expanded_tree,
+                        curr_len
+                        + sum(
+                            [
+                                len(child.value)
+                                for child in new_children
+                                if child.children == ()
+                            ]
+                        ),
+                        open_leaves[:idx]
+                        + tuple(
+                            [
+                                (path + (child_idx,), new_child)
+                                for child_idx, new_child in enumerate(new_children)
+                                if is_nonterminal(new_child.value)
+                            ]
+                        )
+                        + open_leaves[idx + 1 :],
+                    )
+                )
 
     return None

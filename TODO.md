@@ -1,5 +1,6 @@
 # TODOs and Open Issues
 
+- Add CLI option for `enable-optimized-z3-queries`.
 - XPath: Formula `exists <assgn> assgn: assgn..<digit> = "7"` cannot be parsed
   (assignment language).
 - Repair too aggressive; example (assignment language):

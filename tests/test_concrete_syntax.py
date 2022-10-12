@@ -543,7 +543,7 @@ str.len(<string>.<chars>)""",
         expected = parse_isla(
             """
 forall <string> string="{<high-byte> high-byte}{<low-byte> low-byte}{<chars> chars}" in start:
-  (= (* (+ (str.to_code low-byte) (str.to_code high-byte)) 256) (str.len chars))"""
+  (= (+ (str.to_code low-byte) (* (str.to_code high-byte) 256)) (str.len chars))"""
         )
 
         self.assertEqual(expected, result)
