@@ -398,6 +398,7 @@ class ISLaSolver:
             predicates_unique_in_int_arg
         )
         self.grammar_unwinding_threshold = grammar_unwinding_threshold
+        self.enable_optimized_z3_queries = enable_optimized_z3_queries
 
         if activate_unsat_support and tree_insertion_methods is None:
             self.tree_insertion_methods = 0
@@ -2263,9 +2264,13 @@ class ISLaSolver:
         # After solving the constraint, we parse `var'` into a string and reverse
         # the substitution for the final solution.
 
-        length_vars, flexible_vars = self.filter_length_variables(
-            variables, smt_formulas
-        )
+        if self.enable_optimized_z3_queries:
+            length_vars, flexible_vars = self.filter_length_variables(
+                variables, smt_formulas
+            )
+        else:
+            length_vars = set([])
+            flexible_vars = set(variables)
 
         # Add language constraints for "flexible" variables
         formulas: List[z3.BoolRef] = self.generate_language_constraints(
@@ -2275,12 +2280,12 @@ class ISLaSolver:
         # Create fresh variables for `str.len` variables.
         all_variables = set(variables)
         fresh_var_map: Dict[language.Variable, z3.ExprRef] = {}
-        for constant in length_vars:
+        for var in length_vars:
             fresh = fresh_constant(
                 all_variables,
-                language.Constant(constant.name, "NOT-NEEDED"),
+                language.Constant(var.name, "NOT-NEEDED"),
             )
-            fresh_var_map[constant] = z3.Int(fresh.name)
+            fresh_var_map[var] = z3.Int(fresh.name)
 
         # In `smt_formulas`, we replace all `length(...)` terms for "length variables"
         # with the corresponding fresh variable.
@@ -2310,21 +2315,21 @@ class ISLaSolver:
             prev_solution_formula = z3_and(
                 [
                     z3_eq(
-                        z3.StrToInt(constant.to_smt()),
+                        z3.StrToInt(var.to_smt()),
                         z3.IntVal(int(smt_string_val_to_string(string_val))),
                     )
-                    if constant.is_numeric()
+                    if var.is_numeric()
                     else (
                         z3_eq(
-                            fresh_var_map[constant],
+                            fresh_var_map[var],
                             z3.IntVal(len(smt_string_val_to_string(string_val))),
                         )
-                        if constant in length_vars
+                        if var in length_vars
                         # "str.to_int(constant) == 42" has been shown to be more
                         # efficiently solvable than "x == '17'"---fewer timeouts!
-                        else (z3_eq(constant.to_smt(), string_val))
+                        else (z3_eq(var.to_smt(), string_val))
                     )
-                    for constant, string_val in prev_solution.items()
+                    for var, string_val in prev_solution.items()
                 ]
             )
 
