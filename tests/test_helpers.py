@@ -46,7 +46,7 @@ from isla.helpers import (
 from isla.isla_predicates import is_before
 from isla.parser import EarleyParser
 from isla.type_defs import Grammar, ParseTree
-from isla.z3_helpers import evaluate_z3_expression, z3_eq, smt_expr_to_str
+from isla.z3_helpers import evaluate_z3_expression, z3_eq, smt_expr_to_str, DomainError
 from test_data import LANG_GRAMMAR
 
 
@@ -423,6 +423,15 @@ class TestHelpers(unittest.TestCase):
         self.assertIsInstance(
             Exceptional.of(lambda: 1 // 0).recover(lambda _: True, SyntaxError), Failure
         )
+
+    def test_evaluate_empty_str_to_int(self):
+        f = z3.StrToInt(z3.StringVal(""))
+
+        try:
+            evaluate_z3_expression(f)
+            self.fail("Expected exception")
+        except DomainError as err:
+            self.assertIn("Empty string cannot be converted to int", str(err))
 
 
 def parse(inp: str, grammar: Grammar, start_symbol: Optional[str] = None) -> ParseTree:

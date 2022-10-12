@@ -140,7 +140,7 @@ def evaluate_z3_str_to_int(
     if expr.decl().kind() != z3.Z3_OP_STR_TO_INT:
         return Maybe.nothing()
 
-    if isinstance(children_results[0], str) and not children_results[0]:
+    if isinstance(children_results[0][1], str) and not children_results[0][1]:
         raise DomainError("Empty string cannot be converted to int.")
 
     def constructor(args):
@@ -635,11 +635,6 @@ def is_valid(formula: z3.BoolRef, timeout: int = 500) -> ThreeValuedTruth:
 
 
 def z3_eq(formula_1: z3.ExprRef, formula_2: z3.ExprRef | str | int) -> z3.BoolRef:
-    if formula_1 is None:
-        return formula_2 is None
-    if formula_2 is None:
-        return formula_1 is None
-
     a, b = _coerce_exprs(formula_1, formula_2)
     return z3.BoolRef(
         z3.Z3_mk_eq(formula_1.ctx_ref(), a.as_ast(), b.as_ast()), formula_1.ctx
