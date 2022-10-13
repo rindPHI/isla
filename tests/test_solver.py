@@ -1388,6 +1388,24 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         parser = PEGParser(payload_grammar)
         parser.parse(str(result))  # No error
 
+    def test_create_zero_length_tree(self):
+        payload_grammar = {
+            "<start>": ["<payload>"],
+            "<payload>": ["<bytes>"],
+            "<bytes>": ["", "<byte><bytes>"],
+            "<byte>": [chr(i) for i in range(256)],
+        }
+
+        result = create_fixed_length_tree(
+            "<start>", canonical(payload_grammar), target_length=0
+        )
+
+        self.assertEqual(0, len(str(result)))
+
+        # Check that parsing works correctly
+        parser = PEGParser(payload_grammar)
+        parser.parse(str(result))  # No error
+
     def execute_generation_test(
         self,
         formula: language.Formula | str = "true",

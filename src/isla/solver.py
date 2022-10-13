@@ -3443,7 +3443,7 @@ def create_fixed_length_tree(
             else:
                 continue
 
-        if curr_len >= target_length:
+        if curr_len > target_length:
             continue
 
         idx: int

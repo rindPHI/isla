@@ -5,6 +5,14 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.7.2] - 2022-10-13
+
+### Changed
+
+- Creation of zero-length trees for `str.len(var)` expressions, if `var` only occurs
+  inside `str.len` applications and optimized Z3 queries are enabled, now works; before,
+  such a tree was not found.
+
 ## [1.7.1] - 2022-10-13
 
 ### Changed
