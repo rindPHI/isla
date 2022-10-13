@@ -1245,6 +1245,23 @@ exists <assgn> assgn:
         )
         self.assertEqual(1, code)
 
+    def test_solve_heartbeat_grammar(self):
+        grammar_str = r"""grammar = {
+    "<start>": ["<heartbeat-request>"],
+    "<heartbeat-request>": ["\x01<payload-length><payload><padding>"],
+    "<payload-length>": ["<byte><byte>"],
+    "<payload>": ["<bytes>"],
+    "<padding>": ["<bytes>"],
+    "<bytes>": ["<byte><bytes>", ""],
+    "<byte>": [chr(i) for i in range(256)],
+}"""
+
+        grammar_file = write_python_grammar_file(grammar_str)
+
+        stdout, stderr, code = run_isla("solve", grammar_file.name)
+        print(stdout)
+        print(stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

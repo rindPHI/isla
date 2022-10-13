@@ -77,6 +77,10 @@ class DerivationTree:
         self.__is_open = is_open
         if children is None:
             self.__is_open = True
+        elif not children:
+            self.__is_open = False
+        elif any(child.__is_open for child in children):
+            self.__is_open = True
 
     def to_json(self) -> str:
         the_dict = self.__dict__
@@ -229,7 +233,7 @@ class DerivationTree:
 
         def action(_, node: DerivationTree) -> bool:
             nonlocal result
-            if node.children is None:
+            if node.__is_open or node.children is None:
                 result = True
                 return True
 
@@ -460,7 +464,7 @@ class DerivationTree:
             children = parent.children
             new_children = children[:idx] + (replacement,) + children[idx + 1 :]
 
-            if replacement.__is_open is True:
+            if replacement.__is_open is True or replacement.children is None:
                 is_open = True
             elif replacement.__is_open is False and parent.__is_open is False:
                 is_open = False

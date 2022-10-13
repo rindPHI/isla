@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.7.3] - 2022-10-13
+
+### Changed
+
+- Performance fix with most impact in instantiating large structures with the grammar
+  fuzzer: More caching & propagation of the "is open" status of derivation trees.
+
 ## [1.7.2] - 2022-10-13
 
 ### Changed
