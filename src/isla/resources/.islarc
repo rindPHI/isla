@@ -9,6 +9,8 @@
 [[defaults.solve]]
 
 # "--output-dir" can point to a directory, default (no assignment) is stdout
+"--tree" = false
+"--pretty-print" = false
 "--num-solutions" = 1
 "--timeout" = -1
 "--unsat-support" = false

@@ -1228,6 +1228,5 @@ exists <assgn> assgn:
         out_file.close()
         os.remove(out_file.name)
 
-
 if __name__ == "__main__":
     unittest.main()

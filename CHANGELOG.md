@@ -5,6 +5,16 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.7.0] - 2022-10-13
+
+### Added
+
+- CLI argument `--tree` for `isla solve` to produce JSON output (derivation trees)
+  rather than "unparsed" strings.
+- The CLI commands `check`, `repair`, and `mutate` now also accept derivation trees
+  in JSON format as inputs, circumventing the need for parsing if, e.g., piping an
+  input produced by a grammar fuzzer to the checker.
+
 ## [1.6.0] - 2022-10-12
 
 ### Added

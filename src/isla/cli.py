@@ -36,6 +36,8 @@ from isla.helpers import (
     is_float,
     Maybe,
     get_isla_resource_file_content,
+    Exceptional,
+    eassert,
 )
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
@@ -137,13 +139,27 @@ def solve(stdout, stderr, parser, args):
         i = 0
         while not (0 < num_solutions <= i):
             try:
-                result = solver.solve()
+                tree = solver.solve()
+                result = (
+                    derivation_tree_to_json(tree, args.pretty_print)
+                    if args.tree
+                    else str(tree)
+                )
 
                 if not output_dir:
-                    print(result, flush=True, file=stdout)
+                    print(
+                        result,
+                        flush=True,
+                        file=stdout,
+                    )
                 else:
-                    with open(os.path.join(output_dir, f"{i}.txt"), "wb") as out_file:
-                        out_file.write(str(result).encode("utf-8"))
+                    with open(
+                        os.path.join(
+                            output_dir, f"{i}.{'json' if args.tree else 'txt'}"
+                        ),
+                        "wb",
+                    ) as out_file:
+                        out_file.write(result.encode("utf-8"))
             except StopIteration:
                 print("UNSAT", flush=True, file=stderr)
                 break
@@ -278,9 +294,7 @@ def parse(stdout, stderr, parser, args):
         sys.exit(code)
 
     def write_tree(tree: DerivationTree):
-        json_str = json.dumps(
-            tree.to_parse_tree(), indent=None if not args.pretty_print else 4
-        )
+        json_str = derivation_tree_to_json(tree, args.pretty_print)
         if args.output_file:
             with open(args.output_file, "w") as file:
                 file.write(json_str)
@@ -298,15 +312,15 @@ def repair(stdout, stderr, parser, args):
 
     grammar = parse_grammar(command, args.grammar, files, stderr)
     constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
-    inp = get_input_string(command, stderr, args, files)
-
-    solver = ISLaSolver(grammar, constraint)
 
     try:
-        maybe_repaired = solver.repair(inp, fix_timeout_seconds=args.timeout)
+        inp = get_input_string(command, stderr, args, files, grammar, constraint)
     except SyntaxError:
         print("input could not be parsed", file=stderr)
         sys.exit(1)
+
+    solver = ISLaSolver(grammar, constraint)
+    maybe_repaired = solver.repair(inp, fix_timeout_seconds=args.timeout)
 
     if not maybe_repaired.is_present():
         print(
@@ -334,20 +348,21 @@ def mutate(stdout, stderr, parser, args):
 
     grammar = parse_grammar(command, args.grammar, files, stderr)
     constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
-    inp = get_input_string(command, stderr, args, files)
-
-    solver = ISLaSolver(grammar, constraint)
 
     try:
-        mutated = solver.mutate(
-            inp,
-            fix_timeout_seconds=args.timeout,
-            min_mutations=args.min_mutations,
-            max_mutations=args.max_mutations,
-        )
+        inp = get_input_string(command, stderr, args, files, grammar, constraint)
     except SyntaxError:
         print("input could not be parsed", file=stderr)
         sys.exit(1)
+
+    solver = ISLaSolver(grammar, constraint)
+
+    mutated = solver.mutate(
+        inp,
+        fix_timeout_seconds=args.timeout,
+        min_mutations=args.min_mutations,
+        max_mutations=args.max_mutations,
+    )
 
     if args.output_file:
         with open(args.output_file, "w") as file:
@@ -366,18 +381,21 @@ def do_check(stdout, stderr, parser, args) -> Tuple[int, str, Maybe[DerivationTr
 
     grammar = parse_grammar(command, args.grammar, files, stderr)
     constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
-    inp = get_input_string(command, stderr, args, files)
-
-    solver = ISLaSolver(grammar, constraint)
 
     try:
-        tree = solver.parse(inp)
+        tree = get_input_string(command, stderr, args, files, grammar, constraint)
     except SyntaxError:
         return (
             1,
             "input could not be parsed",
             Maybe.nothing(),
         )
+
+    try:
+        solver = ISLaSolver(grammar, constraint)
+
+        if not solver.check(tree):
+            raise SemanticError()
     except SemanticError:
         return 1, "input does not satisfy the ISLa constraint", Maybe.nothing()
 
@@ -607,7 +625,29 @@ def parse_cost_computer_spec(
     return cost_computer
 
 
-def get_input_string(command: str, stderr, args, files: Dict[str, str]) -> str:
+def get_input_string(
+    command: str,
+    stderr,
+    args,
+    files: Dict[str, str],
+    grammar: Grammar,
+    constraint: language.Formula,
+) -> DerivationTree:
+    """
+    Looks for a passed input (either via `args.input_string` or a file name) and
+    parses it, if any. Terminates with a `USAGE_ERROR` if no input can be found.
+    Raises a `SyntaxError` if the input could not be parsed. If an input is recognized
+    as a valid derivation tree in JSON format, it is treated as such and not parsed.
+
+    :param command: The calling command.
+    :param stderr: The standard error sink to use.
+    :param args: The command line arguments.
+    :param files: The passed files.
+    :param grammar: The specified grammar.
+    :param constraint: The specified constraint.
+    :return: A derivation tree of the given input.
+    """
+
     if args.input_string:
         inp = args.input_string
     else:
@@ -631,9 +671,22 @@ def get_input_string(command: str, stderr, args, files: Dict[str, str]) -> str:
         inp = files[possible_inputs[0]]
 
         # Somehow, spurious newlines appear when reading files...
-        if inp[-1] == "\n":
-            inp = inp[:-1]
-    return inp
+        inp = inp[:-1] if inp[-1] == "\n" else inp
+
+    def solver():
+        return ISLaSolver(grammar, constraint)
+
+    def graph():
+        return gg.GrammarGraph.from_grammar(grammar)
+
+    return (
+        Exceptional.of(lambda: json.loads(inp))
+        .map(DerivationTree.from_parse_tree)
+        .map(lambda tree: eassert(tree, graph().tree_is_valid(tree)))
+        .recover(lambda _: solver().parse(inp, skip_check=True))
+        .reraise()
+        .get()
+    )
 
 
 def create_solve_parser(subparsers, stdout, stderr):
@@ -649,6 +702,28 @@ Create solutions to an ISLa constraint and a reference grammar.""",
     grammar_arg(parser)
     constraint_arg(parser)
     output_dir_arg(parser)
+
+    parser.add_argument(
+        "-T",
+        "--tree",
+        action=argparse.BooleanOptionalAction,
+        default=get_default(sys.stderr, "solve", "--tree").get(),
+        help="""
+outputs derivation trees in JSON format instead of strings""",
+    )
+
+    parser.add_argument(
+        "-p",
+        "--pretty-print",
+        type=bool,
+        action=argparse.BooleanOptionalAction,
+        default=get_default(stderr, "solve", "--pretty-print").get(),
+        help="""
+If this flag is set, created JSON parse trees are printed on multiple lines with
+indentation; otherwise the whole string is printed on a single line. Only relevant
+if `--tree` is used.""",
+    )
+
     num_solutions_arg(parser)
     timeout_arg(parser)
     parser.add_argument(
@@ -1213,6 +1288,10 @@ def get_default(
 
     default = config.get("default", {}).get(argument, None)
     return Maybe(config.get(command, {}).get(argument, default))
+
+
+def derivation_tree_to_json(tree: DerivationTree, pretty_print: bool = False) -> str:
+    return json.dumps(tree.to_parse_tree(), indent=None if not pretty_print else 4)
 
 
 if __name__ == "__main__":
