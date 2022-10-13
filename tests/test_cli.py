@@ -1228,5 +1228,23 @@ exists <assgn> assgn:
         out_file.close()
         os.remove(out_file.name)
 
+    def test_assertion_error(self):
+        stdout, stderr, code = run_isla(
+            "solve",
+            "--grammar",
+            '<start> ::= "a"',
+            "--constraint",
+            "str.len(<start>) > 1",
+        )
+
+        self.assertFalse(stdout)
+        self.assertIn("AssertionError", stderr)
+        self.assertIn(
+            "Could not create a tree with the start symbol '<start>' of length 2",
+            stderr,
+        )
+        self.assertEqual(1, code)
+
+
 if __name__ == "__main__":
     unittest.main()

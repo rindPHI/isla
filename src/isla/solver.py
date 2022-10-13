@@ -88,6 +88,7 @@ from isla.helpers import (
     eliminate_suffixes,
     get_elem_by_equivalence,
     get_expansions,
+    eassert,
 )
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
@@ -2354,10 +2355,18 @@ class ISLaSolver:
                 )
                 if var in flexible_vars
                 else (
-                    create_fixed_length_tree(
-                        start=var.n_type,
-                        canonical_grammar=self.canonical_grammar,
-                        target_length=maybe_model[fresh_var_map[var]].as_long(),
+                    eassert(
+                        create_fixed_length_tree(
+                            start=var.n_type,
+                            canonical_grammar=self.canonical_grammar,
+                            target_length=maybe_model[fresh_var_map[var]].as_long(),
+                        ),
+                        lambda t: t is not None,
+                        f"Could not create a tree with the start symbol '{var.n_type}' "
+                        + f"of length {maybe_model[fresh_var_map[var]].as_long()}; try "
+                        + f"to run the solver without optimized Z3 queries or make "
+                        f"sure that lengths are restricted to syntactically valid "
+                        f"ones (according to the grammar).",
                     )
                     if var in length_vars
                     else (

@@ -165,6 +165,13 @@ def solve(stdout, stderr, parser, args):
                 break
             except TimeoutError:
                 break
+            except Exception as exc:
+                print(
+                    f"isla solve: error: An exception ({type(exc).__name__}) occurred "
+                    + f"during constraint solving, message: `{exc}`",
+                    file=stderr,
+                )
+                sys.exit(1)
 
             i += 1
     except KeyboardInterrupt:

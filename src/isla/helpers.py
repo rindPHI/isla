@@ -792,8 +792,12 @@ def get_isla_resource_file_content(path_to_file: str) -> str:
             return file.read()
 
 
-def eassert(expr: T, condition: bool | Callable[[T], bool]) -> T:
-    assert condition if isinstance(condition, bool) else condition(expr)
+def eassert(
+    expr: T, condition: bool | Callable[[T], bool], msg: str | Callable[[], str] = ""
+) -> T:
+    assert condition if isinstance(condition, bool) else condition(expr), (
+        msg if isinstance(msg, str) else msg()
+    )
     return expr
 
 
