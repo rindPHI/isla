@@ -5,6 +5,16 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.7.1] - 2022-10-13
+
+### Changed
+
+- Asserting that creation of fixed-length trees (see comment to version 1.5.0) did work
+  as expected; error message suggests disabling optimized queries or refining
+  constraints.
+- The CLI captures all exceptions for `isla solve` and reports them to the command line
+  rather than crashing ungracefully.
+
 ## [1.7.0] - 2022-10-13
 
 ### Added

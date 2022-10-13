@@ -2364,9 +2364,9 @@ class ISLaSolver:
                         lambda t: t is not None,
                         f"Could not create a tree with the start symbol '{var.n_type}' "
                         + f"of length {maybe_model[fresh_var_map[var]].as_long()}; try "
-                        + f"to run the solver without optimized Z3 queries or make "
-                        f"sure that lengths are restricted to syntactically valid "
-                        f"ones (according to the grammar).",
+                        + "to run the solver without optimized Z3 queries or make "
+                        + "sure that lengths are restricted to syntactically valid "
+                        + "ones (according to the grammar).",
                     )
                     if var in length_vars
                     else (
