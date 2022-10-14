@@ -1,5 +1,6 @@
 # TODOs and Open Issues
 
+- Unicode symbols in BNF syntax (e.g., \u0001)
 - Add CLI option for `enable-optimized-z3-queries`.
 - XPath: Formula `exists <assgn> assgn: assgn..<digit> = "7"` cannot be parsed
   (assignment language).
