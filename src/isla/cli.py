@@ -442,8 +442,25 @@ def create(stdout, stderr, parser, args):
     constraint_file.write(constraint_text)
     constraint_file.close()
 
-    with open(os.path.join(out_dir, "README.md"), "w") as readme_file:
+    readme_path = os.path.join(out_dir, "README.md")
+    with open(readme_path, "w") as readme_file:
         readme_file.write(readme_text)
+
+    print(
+        "`isla create` produced the following files: "
+        + ", ".join(
+            map(
+                str,
+                [
+                    readme_path,
+                    grammar_1_file.name,
+                    grammar_2_file.name,
+                    constraint_file.name,
+                ],
+            )
+        ),
+        file=stdout,
+    )
 
 
 def dump_config(stdout, stderr, parser, args):

@@ -5,6 +5,10 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Changed
+
+- `isla create` now prints out the created files.
+
 ## [1.7.3] - 2022-10-13
 
 ### Changed

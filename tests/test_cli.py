@@ -631,7 +631,7 @@ exists <assgn> assgn:
         out_dir = tempfile.TemporaryDirectory()
 
         stdout, stderr, code = run_isla("create", "-b", "assgn_lang", out_dir.name)
-        self.assertFalse(stdout)
+        self.assertIn("`isla create` produced the following files: ", stdout)
         self.assertFalse(stderr)
         self.assertFalse(code)
 
