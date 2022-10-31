@@ -425,7 +425,7 @@ def embed_tree(
 def crop(
     mk_parser: Callable[[str], Callable[[str], List[ParseTree]]],
     tree: DerivationTree,
-    width: Union[int, DerivationTree],
+    width: Variable | DerivationTree,
 ) -> SemPredEvalResult:
     if not tree.is_complete():
         return SemPredEvalResult(None)

@@ -18,7 +18,9 @@
 
 import copy
 import random
+import string
 import unittest
+from typing import Callable, List
 
 import pytest
 from grammar_graph import gg
@@ -36,16 +38,21 @@ from isla.isla_predicates import (
     NTH_PREDICATE,
     DIRECT_CHILD_PREDICATE,
     octal_to_dec,
+    is_after,
+    is_before,
+    is_different_position,
+    crop,
 )
 from isla.language import parse_isla, SemPredEvalResult
 from isla.parser import EarleyParser
 from isla.solver import ISLaSolver
-from isla.type_defs import Path
+from isla.type_defs import Path, ParseTree
 from isla_formalizations import tar, rest, scriptsizec
 from isla_formalizations.csv import CSV_GRAMMAR
 from isla_formalizations.tar import octal_conv_grammar
 from isla_formalizations.xml_lang import XML_GRAMMAR
 from test_data import LANG_GRAMMAR
+from test_helpers import parse
 
 
 class TestPredicates(unittest.TestCase):
@@ -498,6 +505,63 @@ count(start, "<assgn>", "5")""",
         )
         solution = solver.solve()
         self.assertEqual(5, len(solution.filter(lambda n: n.value == "<assgn>")))
+
+    def test_is_after(self):
+        tree = DerivationTree.from_parse_tree(parse("a := b ; x := y", LANG_GRAMMAR))
+        sub_1 = tree.filter(lambda sub: str(sub) == "a := b")[-1]
+        sub_2 = tree.filter(lambda sub: str(sub) == "x := y")[-1]
+        self.assertTrue(is_after(tree, sub_2[0], sub_1[0]))
+        self.assertFalse(is_after(tree, sub_1[0], sub_2[0]))
+
+    def test_is_before(self):
+        tree = DerivationTree.from_parse_tree(parse("a := b ; x := y", LANG_GRAMMAR))
+        sub_1 = tree.filter(lambda sub: str(sub) == "a := b")[-1]
+        sub_2 = tree.filter(lambda sub: str(sub) == "x := y")[-1]
+        self.assertTrue(is_before(tree, sub_1[0], sub_2[0]))
+        self.assertFalse(is_before(tree, sub_2[0], sub_1[0]))
+
+    def test_is_different_position(self):
+        tree = DerivationTree.from_parse_tree(parse("a := b ; x := y", LANG_GRAMMAR))
+        sub_1 = tree.filter(lambda sub: str(sub) == "a := b")[-1]
+        sub_2 = tree.filter(lambda sub: str(sub) == "x := y")[-1]
+        self.assertTrue(is_different_position(tree, sub_1[0], sub_2[0]))
+        self.assertFalse(is_different_position(tree, sub_1[0], sub_1[0]))
+
+    def test_crop(self):
+        grammar = {
+            "<start>": ["<letters>"],
+            "<letters>": ["<letter>", "<letter><letters>"],
+            "<letter>": string.ascii_letters,
+        }
+
+        def mk_parser(start_symbol: str) -> Callable[[str], List[ParseTree]]:
+            _grammar = copy.deepcopy(grammar)
+            if start_symbol != "<start>":
+                _grammar["<start>"] = [start_symbol]
+                delete_unreachable(_grammar)
+            return lambda inp: list(EarleyParser(_grammar).parse(inp))
+
+        inp = DerivationTree.from_parse_tree(parse("abcdefghijkl", grammar))
+        result = crop(mk_parser, inp, DerivationTree("3", ()))
+        self.assertTrue(result.ready())
+        self.assertFalse(result.is_boolean())
+        self.assertEqual("abc", str(result.result[inp]))
+
+        var = language.Variable("var", "<num>")
+        result = crop(mk_parser, inp, var)
+        self.assertTrue(result.ready())
+        self.assertFalse(result.is_boolean())
+        self.assertEqual(len(str(inp)), int(str(result.result[var])))
+
+        inp = DerivationTree.from_parse_tree(parse("abcd", grammar))
+        result = crop(mk_parser, inp, DerivationTree("4", ()))
+        self.assertTrue(result.ready())
+        self.assertTrue(result.is_boolean())
+        self.assertTrue(result.result)
+
+        inp = DerivationTree.from_parse_tree(parse("abcd", grammar))
+        result = crop(mk_parser, inp, DerivationTree("4", None))
+        self.assertFalse(result.ready())
 
 
 if __name__ == "__main__":
