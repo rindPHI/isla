@@ -5,6 +5,76 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.8.0] - 2022-10-21
+
+### Added
+
+- Added `isla find` command to filter files passing syntactic & semantic constraints
+
+### Changed
+
+- `isla create` now prints out the created files.
+
+## [1.7.3] - 2022-10-13
+
+### Changed
+
+- Performance fix with most impact in instantiating large structures with the grammar
+  fuzzer: More caching & propagation of the "is open" status of derivation trees.
+
+## [1.7.2] - 2022-10-13
+
+### Changed
+
+- Creation of zero-length trees for `str.len(var)` expressions, if `var` only occurs
+  inside `str.len` applications and optimized Z3 queries are enabled, now works; before,
+  such a tree was not found.
+
+## [1.7.1] - 2022-10-13
+
+### Changed
+
+- Asserting that creation of fixed-length trees (see comment to version 1.5.0) did work
+  as expected; error message suggests disabling optimized queries or refining
+  constraints.
+- The CLI captures all exceptions for `isla solve` and reports them to the command line
+  rather than crashing ungracefully.
+
+## [1.7.0] - 2022-10-13
+
+### Added
+
+- CLI argument `--tree` for `isla solve` to produce JSON output (derivation trees)
+  rather than "unparsed" strings.
+- The CLI commands `check`, `repair`, and `mutate` now also accept derivation trees
+  in JSON format as inputs, circumventing the need for parsing if, e.g., piping an
+  input produced by a grammar fuzzer to the checker.
+
+## [1.6.0] - 2022-10-12
+
+### Added
+
+- Command line argument `-O` which runs ISLa in optimized mode with deactivated
+  assertions. Recommended if speed is an issue.
+
+## [1.5.0] - 2022-10-12
+
+### Added
+
+- Added special handling for `str.len` applications: For variables exclusively
+  occurring inside `str.len`, we only ask Z3 for a solution to the numeric length,
+  and then randomly create a string of that length. The `ISLaSolver` has a new option
+  `enable_optimized_z3_queries` to disable this behavior. Future releases will also 
+  have a CLI option for that purpose.
+
+### Changed
+
+- Bug fix: Wrong precedence of multiplication/division and addition/subtraction in
+  ISLa parser; `x * y + z` was parsed `x * (y + z)`. This is now corrected.
+- Bug fix: Null bytes at the level of SMT expressions (`\u{}`) were not handled
+  correctly in `z3_helpers.evalute_z3_expression`; instead of `\x00`, they were
+  treated as the 4-character string `\u{}`.
+
 ## [1.4.1] - 2022-10-06
 
 ### Changed

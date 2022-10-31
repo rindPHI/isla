@@ -112,7 +112,7 @@ def evaluate_z3_string_value(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
     if not z3.is_string_value(expr):
         return Maybe.nothing()
     expr: z3.StringVal
-    return Maybe(((), expr.as_string()))
+    return Maybe(((), expr.as_string().replace(r"\u{}", "\x00")))
 
 
 def evaluate_z3_int_value(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
@@ -140,7 +140,7 @@ def evaluate_z3_str_to_int(
     if expr.decl().kind() != z3.Z3_OP_STR_TO_INT:
         return Maybe.nothing()
 
-    if isinstance(children_results[0], str) and not children_results[0]:
+    if isinstance(children_results[0][1], str) and not children_results[0][1]:
         raise DomainError("Empty string cannot be converted to int.")
 
     def constructor(args):
@@ -503,6 +503,10 @@ def evaluate_z3_str_to_code(
     if expr.decl().kind() != z3.Z3_OP_STR_TO_CODE:
         return Maybe.nothing()
 
+    assert (
+        len(children_results) == 1
+    ), f"Unexpected argument length {len(children_results)}"
+
     return Maybe(
         construct_result(
             lambda args: ord(args[0]),
@@ -559,7 +563,8 @@ def z3_solve(
 
     for _ in range(20):
         solver = z3.Solver()
-        solver.set("timeout", timeout_ms)
+        if timeout_ms is not None:
+            solver.set("timeout", timeout_ms)
         for formula in formulas:
             solver.add(formula)
         result = solver.check()
@@ -568,6 +573,9 @@ def z3_solve(
             model = solver.model()
 
         if result != z3.unknown:
+            break
+
+        if timeout_ms is None:
             break
 
         timeout_ms = int(timeout_ms * 0.9) + 1
@@ -627,11 +635,6 @@ def is_valid(formula: z3.BoolRef, timeout: int = 500) -> ThreeValuedTruth:
 
 
 def z3_eq(formula_1: z3.ExprRef, formula_2: z3.ExprRef | str | int) -> z3.BoolRef:
-    if formula_1 is None:
-        return formula_2 is None
-    if formula_2 is None:
-        return formula_1 is None
-
     a, b = _coerce_exprs(formula_1, formula_2)
     return z3.BoolRef(
         z3.Z3_mk_eq(formula_1.ctx_ref(), a.as_ast(), b.as_ast()), formula_1.ctx
@@ -758,7 +761,8 @@ def smt_expr_to_str(  # noqa: C901
         z3.Z3_OP_SEQ_IN_RE: "str.in_re",
         z3.Z3_OP_SEQ_CONCAT: "str.++",
         z3.Z3_OP_RE_CONCAT: "re.++",
-        z3.Z3_OP_STR_TO_INT: "str.to.int",  # <- Different from standard SMT-LIB (Z3 version)
+        z3.Z3_OP_STR_TO_INT: "str.to.int",
+        # <- Different from standard SMT-LIB (Z3 version)
     }
 
     if z3.is_var(f):
@@ -807,3 +811,16 @@ def smt_expr_to_str(  # noqa: C901
         return f"({kind} ({' '.join(vars)}) {smt_expr_to_str(f.body(), qfd_var_stack)})"
 
     raise NotImplementedError(f"{str(f)} ({type(f).__name__})")
+
+
+def smt_string_val_to_string(smt_val: z3.StringVal) -> str:
+    r"""
+    Converts `smt_val` to its string representation. Handles the special case of
+    null-bytes characters in `smt_val`: Those are represented as `\u{}` by `as_string()`
+    and get converted to `\x00`.
+
+    :param smt_val: The `z3.StringVal` to convert to a Python string.
+    :return: The Python string representation of `smt_val`.
+    """
+
+    return smt_val.as_string().replace(r"\u{}", "\x00")

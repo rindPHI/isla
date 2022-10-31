@@ -26,6 +26,7 @@ import pickle
 import re
 import string
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from functools import reduce, lru_cache
 from typing import (
     Union,
@@ -126,20 +127,6 @@ class Variable:
             other.name,
             other.n_type,
         )
-
-    # Comparisons (<, <=, >, >=) implemented s.t. variables can be used, e.g., in priority lists
-    def __lt__(self, other):
-        return self.name < other.name
-
-    def __le__(self, other):
-        return self.name <= other.name
-
-    def __gt__(self, other):
-        assert issubclass(type(other), Variable)
-        return self.name > other.name
-
-    def __ge__(self, other):
-        return self.name >= other.name
 
     def __hash__(self):
         return hash((type(self).__name__, self.name, self.n_type))
@@ -877,31 +864,14 @@ def substitute(
     return result
 
 
+@dataclass(frozen=True)
 class StructuralPredicate:
-    def __init__(
-        self,
-        name: str,
-        arity: int,
-        eval_fun: Callable[[DerivationTree, Union[Path, str], ...], bool],
-    ):
-        self.name = name
-        self.arity = arity
-        self.eval_fun = eval_fun
+    name: str
+    arity: int
+    eval_fun: Callable[[DerivationTree, Union[Path, str], ...], bool]
 
     def evaluate(self, context_tree: DerivationTree, *instantiations: Union[Path, str]):
         return self.eval_fun(context_tree, *instantiations)
-
-    def __eq__(self, other):
-        return type(other) is StructuralPredicate and (self.name, self.arity) == (
-            other.name,
-            other.arity,
-        )
-
-    def __hash__(self):
-        return hash((self.name, self.arity))
-
-    def __repr__(self):
-        return f"Predicate({self.name}, {self.arity})"
 
     def __str__(self):
         return self.name
@@ -1046,13 +1016,14 @@ SemPredArg = Union[DerivationTree, Variable, str, int]
 
 
 class SemanticPredicateEvalFun(Protocol):
+    @abstractmethod
     def __call__(
         self,
         graph: Optional[gg.GrammarGraph],
         *args: DerivationTree | Constant | str | int,
         negate=False,
     ) -> SemPredEvalResult:
-        ...
+        raise NotImplementedError()
 
 
 class SemanticPredicate:

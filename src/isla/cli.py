@@ -23,16 +23,24 @@ import os
 import pathlib
 import subprocess
 import sys
+from argparse import Namespace, ArgumentParser
 from contextlib import redirect_stdout, redirect_stderr
 from functools import lru_cache
-from typing import Dict, Tuple, List, Optional
+from io import TextIOWrapper
+from typing import Dict, Tuple, List, Optional, Iterable
 
 import toml
 from grammar_graph import gg
 
 from isla import __version__ as isla_version, language
 from isla.derivation_tree import DerivationTree
-from isla.helpers import is_float, Maybe, get_isla_resource_file_content
+from isla.helpers import (
+    is_float,
+    Maybe,
+    get_isla_resource_file_content,
+    Exceptional,
+    eassert,
+)
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
     STANDARD_SEMANTIC_PREDICATES,
@@ -55,6 +63,11 @@ DATA_FORMAT_ERROR = 65
 
 
 def main(*args: str, stdout=sys.stdout, stderr=sys.stderr):
+    if "-O" in sys.argv:
+        sys.argv.remove("-O")
+        os.execl(sys.executable, sys.executable, "-O", *sys.argv)
+        sys.exit(0)
+
     read_isla_rc_defaults()
     parser = create_parsers(stdout, stderr)
 
@@ -95,8 +108,8 @@ def main(*args: str, stdout=sys.stdout, stderr=sys.stderr):
     args.func(args)
 
 
-def solve(stdout, stderr, parser, args):
-    files = read_files(args)
+def solve(stdout, stderr, parser: ArgumentParser, args: Namespace):
+    files = read_files(args.files)
     ensure_grammar_present(stderr, parser, args, files)
 
     command = args.command
@@ -128,31 +141,52 @@ def solve(stdout, stderr, parser, args):
         i = 0
         while not (0 < num_solutions <= i):
             try:
-                result = solver.solve()
+                tree = solver.solve()
+                result = (
+                    derivation_tree_to_json(tree, args.pretty_print)
+                    if args.tree
+                    else str(tree)
+                )
 
                 if not output_dir:
-                    print(result, flush=True, file=stdout)
+                    print(
+                        result,
+                        flush=True,
+                        file=stdout,
+                    )
                 else:
-                    with open(os.path.join(output_dir, f"{i}.txt"), "wb") as out_file:
-                        out_file.write(str(result).encode("utf-8"))
+                    with open(
+                        os.path.join(
+                            output_dir, f"{i}.{'json' if args.tree else 'txt'}"
+                        ),
+                        "wb",
+                    ) as out_file:
+                        out_file.write(result.encode("utf-8"))
             except StopIteration:
                 print("UNSAT", flush=True, file=stderr)
                 break
             except TimeoutError:
                 break
+            except Exception as exc:
+                print(
+                    f"isla solve: error: An exception ({type(exc).__name__}) occurred "
+                    + f"during constraint solving, message: `{exc}`",
+                    file=stderr,
+                )
+                sys.exit(1)
 
             i += 1
     except KeyboardInterrupt:
         sys.exit(0)
 
 
-def fuzz(_, stderr, parser, args):
+def fuzz(_, stderr, parser: ArgumentParser, args: Namespace):
     input_ending = "_input.txt"
     stdout_ending = "_stdout.txt"
     stderr_ending = "_stderr.txt"
     status_ending = "_status.txt"
 
-    files = read_files(args)
+    files = read_files(args.files)
     ensure_grammar_present(stderr, parser, args, files)
 
     command = args.command
@@ -244,7 +278,7 @@ def fuzz(_, stderr, parser, args):
         sys.exit(0)
 
 
-def get_fuzz_command(args, command, stderr):
+def get_fuzz_command(args: Namespace, command, stderr):
     fuzz_command: str = args.test_target
     if "{}" not in fuzz_command:
         print(
@@ -256,22 +290,53 @@ def get_fuzz_command(args, command, stderr):
     return fuzz_command
 
 
-def check(stdout, stderr, parser, args):
+def check(stdout, stderr, parser: ArgumentParser, args: Namespace):
     code, msg, _ = do_check(stdout, stderr, parser, args)
     print(msg, file=stdout)
     sys.exit(code)
 
 
-def parse(stdout, stderr, parser, args):
+def find(stdout, stderr, parser: ArgumentParser, args: Namespace):
+    language_spec_files: List[TextIOWrapper] = [
+        io_wrapper
+        for io_wrapper in args.files or []
+        if io_wrapper.name.endswith(".bnf")
+        or io_wrapper.name.endswith(".py")
+        or io_wrapper.name.endswith(".isla")
+    ]
+
+    input_files: List[TextIOWrapper] = [
+        io_wrapper
+        for io_wrapper in args.files or []
+        if io_wrapper not in language_spec_files
+    ]
+
+    if not input_files:
+        print("no files passed to `find`", file=stderr)
+        sys.exit(USAGE_ERROR)
+
+    success = False
+    for input_file in input_files:
+        args.files = language_spec_files + [input_file]
+        code, _, _ = do_check(stdout, stderr, parser, args)
+        if not code:
+            success = True
+            print(input_file.name, file=stdout)
+
+    if success:
+        sys.exit(0)
+    else:
+        sys.exit(1)
+
+
+def parse(stdout, stderr, parser: ArgumentParser, args: Namespace):
     code, msg, maybe_tree = do_check(stdout, stderr, parser, args)
     if code:
         print(msg, file=stdout)
         sys.exit(code)
 
     def write_tree(tree: DerivationTree):
-        json_str = json.dumps(
-            tree.to_parse_tree(), indent=None if not args.pretty_print else 4
-        )
+        json_str = derivation_tree_to_json(tree, args.pretty_print)
         if args.output_file:
             with open(args.output_file, "w") as file:
                 file.write(json_str)
@@ -281,23 +346,23 @@ def parse(stdout, stderr, parser, args):
     maybe_tree.if_present(write_tree)
 
 
-def repair(stdout, stderr, parser, args):
-    files = read_files(args)
+def repair(stdout, stderr, parser: ArgumentParser, args: Namespace):
+    files = read_files(args.files)
     ensure_grammar_present(stderr, parser, args, files)
     ensure_constraint_present(stderr, parser, args, files)
     command = args.command
 
     grammar = parse_grammar(command, args.grammar, files, stderr)
     constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
-    inp = get_input_string(command, stderr, args, files)
-
-    solver = ISLaSolver(grammar, constraint)
 
     try:
-        maybe_repaired = solver.repair(inp, fix_timeout_seconds=args.timeout)
+        inp = get_input_string(command, stderr, args, files, grammar, constraint)
     except SyntaxError:
         print("input could not be parsed", file=stderr)
         sys.exit(1)
+
+    solver = ISLaSolver(grammar, constraint)
+    maybe_repaired = solver.repair(inp, fix_timeout_seconds=args.timeout)
 
     if not maybe_repaired.is_present():
         print(
@@ -317,28 +382,29 @@ def repair(stdout, stderr, parser, args):
     sys.exit(0)
 
 
-def mutate(stdout, stderr, parser, args):
-    files = read_files(args)
+def mutate(stdout, stderr, parser: ArgumentParser, args: Namespace):
+    files = read_files(args.files)
     ensure_grammar_present(stderr, parser, args, files)
     ensure_constraint_present(stderr, parser, args, files)
     command = args.command
 
     grammar = parse_grammar(command, args.grammar, files, stderr)
     constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
-    inp = get_input_string(command, stderr, args, files)
-
-    solver = ISLaSolver(grammar, constraint)
 
     try:
-        mutated = solver.mutate(
-            inp,
-            fix_timeout_seconds=args.timeout,
-            min_mutations=args.min_mutations,
-            max_mutations=args.max_mutations,
-        )
+        inp = get_input_string(command, stderr, args, files, grammar, constraint)
     except SyntaxError:
         print("input could not be parsed", file=stderr)
         sys.exit(1)
+
+    solver = ISLaSolver(grammar, constraint)
+
+    mutated = solver.mutate(
+        inp,
+        fix_timeout_seconds=args.timeout,
+        min_mutations=args.min_mutations,
+        max_mutations=args.max_mutations,
+    )
 
     if args.output_file:
         with open(args.output_file, "w") as file:
@@ -349,33 +415,38 @@ def mutate(stdout, stderr, parser, args):
     sys.exit(0)
 
 
-def do_check(stdout, stderr, parser, args) -> Tuple[int, str, Maybe[DerivationTree]]:
-    files = read_files(args)
+def do_check(
+    stdout, stderr, parser: ArgumentParser, args: Namespace
+) -> Tuple[int, str, Maybe[DerivationTree]]:
+    files = read_files(args.files)
     ensure_grammar_present(stderr, parser, args, files)
     ensure_constraint_present(stderr, parser, args, files)
     command = args.command
 
     grammar = parse_grammar(command, args.grammar, files, stderr)
     constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
-    inp = get_input_string(command, stderr, args, files)
-
-    solver = ISLaSolver(grammar, constraint)
 
     try:
-        tree = solver.parse(inp)
+        tree = get_input_string(command, stderr, args, files, grammar, constraint)
     except SyntaxError:
         return (
             1,
             "input could not be parsed",
             Maybe.nothing(),
         )
+
+    try:
+        solver = ISLaSolver(grammar, constraint)
+
+        if not solver.check(tree):
+            raise SemanticError()
     except SemanticError:
         return 1, "input does not satisfy the ISLa constraint", Maybe.nothing()
 
     return 0, "input satisfies the ISLa constraint", Maybe(tree)
 
 
-def create(stdout, stderr, parser, args):
+def create(stdout, stderr, parser: ArgumentParser, args: Namespace):
     command = args.command
     out_dir = args.output_dir
     base_name = args.base_name
@@ -408,11 +479,28 @@ def create(stdout, stderr, parser, args):
     constraint_file.write(constraint_text)
     constraint_file.close()
 
-    with open(os.path.join(out_dir, "README.md"), "w") as readme_file:
+    readme_path = os.path.join(out_dir, "README.md")
+    with open(readme_path, "w") as readme_file:
         readme_file.write(readme_text)
 
+    print(
+        "`isla create` produced the following files: "
+        + ", ".join(
+            map(
+                str,
+                [
+                    readme_path,
+                    grammar_1_file.name,
+                    grammar_2_file.name,
+                    constraint_file.name,
+                ],
+            )
+        ),
+        file=stdout,
+    )
 
-def dump_config(stdout, stderr, parser, args):
+
+def dump_config(stdout, stderr, parser: ArgumentParser, args: Namespace):
     config_file_content = get_isla_resource_file_content("resources/.islarc")
 
     if args.output_file:
@@ -438,6 +526,7 @@ The ISLa command line interface.""",
     create_solve_parser(subparsers, stdout, stderr)
     create_fuzz_parser(subparsers, stdout, stderr)
     create_check_parser(subparsers, stdout, stderr)
+    create_find_parser(subparsers, stdout, stderr)
     create_parse_parser(subparsers, stdout, stderr)
     create_repair_parser(subparsers, stdout, stderr)
     create_mutate_parser(subparsers, stdout, stderr)
@@ -447,11 +536,13 @@ The ISLa command line interface.""",
     return parser
 
 
-def read_files(args) -> Dict[str, str]:
-    return {io_wrapper.name: io_wrapper.read() for io_wrapper in args.files}
+def read_files(files: Iterable[TextIOWrapper]) -> Dict[str, str]:
+    return {io_wrapper.name: io_wrapper.read() for io_wrapper in files}
 
 
-def ensure_grammar_present(stderr, parser, args, files: Dict[str, str]) -> None:
+def ensure_grammar_present(
+    stderr, parser: ArgumentParser, args: Namespace, files: Dict[str, str]
+) -> None:
     if not args.grammar and all(
         not file.endswith(".bnf") and not file.endswith(".py") for file in files
     ):
@@ -465,7 +556,9 @@ def ensure_grammar_present(stderr, parser, args, files: Dict[str, str]) -> None:
         exit(USAGE_ERROR)
 
 
-def ensure_constraint_present(stderr, parser, args, files: Dict[str, str]) -> None:
+def ensure_constraint_present(
+    stderr, parser: ArgumentParser, args: Namespace, files: Dict[str, str]
+) -> None:
     if not args.constraint and all(not file.endswith(".isla") for file in files):
         parser.print_usage(file=stderr)
         print(
@@ -598,8 +691,30 @@ def parse_cost_computer_spec(
     return cost_computer
 
 
-def get_input_string(command: str, stderr, args, files: Dict[str, str]) -> str:
-    if args.input_string:
+def get_input_string(
+    command: str,
+    stderr,
+    args: Namespace,
+    files: Dict[str, str],
+    grammar: Grammar,
+    constraint: language.Formula,
+) -> DerivationTree:
+    """
+    Looks for a passed input (either via `args.input_string` or a file name) and
+    parses it, if any. Terminates with a `USAGE_ERROR` if no input can be found.
+    Raises a `SyntaxError` if the input could not be parsed. If an input is recognized
+    as a valid derivation tree in JSON format, it is treated as such and not parsed.
+
+    :param command: The calling command.
+    :param stderr: The standard error sink to use.
+    :param args: The command line arguments.
+    :param files: The passed files.
+    :param grammar: The specified grammar.
+    :param constraint: The specified constraint.
+    :return: A derivation tree of the given input.
+    """
+
+    if hasattr(args, "input_string") and args.input_string:
         inp = args.input_string
     else:
         possible_inputs = [
@@ -622,9 +737,22 @@ def get_input_string(command: str, stderr, args, files: Dict[str, str]) -> str:
         inp = files[possible_inputs[0]]
 
         # Somehow, spurious newlines appear when reading files...
-        if inp[-1] == "\n":
-            inp = inp[:-1]
-    return inp
+        inp = inp[:-1] if inp[-1] == "\n" else inp
+
+    def solver():
+        return ISLaSolver(grammar, constraint)
+
+    def graph():
+        return gg.GrammarGraph.from_grammar(grammar)
+
+    return (
+        Exceptional.of(lambda: json.loads(inp))
+        .map(DerivationTree.from_parse_tree)
+        .map(lambda tree: eassert(tree, graph().tree_is_valid(tree)))
+        .recover(lambda _: solver().parse(inp, skip_check=True))
+        .reraise()
+        .get()
+    )
 
 
 def create_solve_parser(subparsers, stdout, stderr):
@@ -640,6 +768,28 @@ Create solutions to an ISLa constraint and a reference grammar.""",
     grammar_arg(parser)
     constraint_arg(parser)
     output_dir_arg(parser)
+
+    parser.add_argument(
+        "-T",
+        "--tree",
+        action=argparse.BooleanOptionalAction,
+        default=get_default(sys.stderr, "solve", "--tree").get(),
+        help="""
+outputs derivation trees in JSON format instead of strings""",
+    )
+
+    parser.add_argument(
+        "-p",
+        "--pretty-print",
+        type=bool,
+        action=argparse.BooleanOptionalAction,
+        default=get_default(stderr, "solve", "--pretty-print").get(),
+        help="""
+If this flag is set, created JSON parse trees are printed on multiple lines with
+indentation; otherwise the whole string is printed on a single line. Only relevant
+if `--tree` is used.""",
+    )
+
     num_solutions_arg(parser)
     timeout_arg(parser)
     parser.add_argument(
@@ -722,6 +872,23 @@ constraint.""",
     parser.set_defaults(func=lambda *args: check(stdout, stderr, parser, *args))
 
     input_string_arg(parser)
+
+    grammar_arg(parser)
+    constraint_arg(parser)
+    log_level_arg(parser)
+    grammar_constraint_or_input_files_arg(parser)
+
+
+def create_find_parser(subparsers, stdout, stderr):
+    parser = subparsers.add_parser(
+        "find",
+        help="filter files satisfying syntactic & semantic constraints",
+        description="""
+From a list of passed files, lists those that can be parsed with the given grammar and
+satisfy the given ISLa constraint(s).""",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.set_defaults(func=lambda *args: find(stdout, stderr, parser, *args))
 
     grammar_arg(parser)
     constraint_arg(parser)
@@ -936,13 +1103,14 @@ def grammar_constraint_or_input_files_arg(parser):
         type=argparse.FileType("r", encoding="UTF-8"),
         help="""
 Possibly multiple ISLa constraint (`*.isla`) and BNF grammar (`*.bnf`) or Python
-grammar (`*.py`) files, and/or an input file to process. Multiple grammar
-files will be simply merged; multiple ISLa constraints will be combined to a
-disjunction. Python grammar files must declare a variable `grammar` of type
-`Dict[str, List[str]]`, including a rule for a nonterminal named "<start>" that expands
-to a single other nonterminal. Note that you can _either_ pass a grammar as a file _or_
-via the `--grammar` option. For constraints, it is possible to use both the option and
-a file input. However, a grammar and a constraint must be specified somehow.""",
+grammar (`*.py`) files, and/or input files to process (currently, only the `find`
+command accepts more than one input file). Multiple grammar files will be simply merged;
+multiple ISLa constraints will be combined to a disjunction. Python grammar files must
+declare a variable `grammar` of type `Dict[str, List[str]]`, including a rule for a
+nonterminal named "<start>" that expands to a single other nonterminal. Note that you
+can _either_ pass a grammar as a file _or_ via the `--grammar` option. For constraints,
+it is possible to use both the option and a file input. However, a grammar and a
+constraint must be specified somehow.""",
     )
 
 
@@ -1067,7 +1235,7 @@ solutions (you need ot set a `--timeout` or forcefully stop ISLa)""",
     )
 
 
-def output_dir_arg(parser, required: bool = False):
+def output_dir_arg(parser: ArgumentParser, required: bool = False):
     command = parser.prog.split(" ")[-1]
 
     parser.add_argument(
@@ -1206,5 +1374,13 @@ def get_default(
     return Maybe(config.get(command, {}).get(argument, default))
 
 
+def derivation_tree_to_json(tree: DerivationTree, pretty_print: bool = False) -> str:
+    return json.dumps(tree.to_parse_tree(), indent=None if not pretty_print else 4)
+
+
 if __name__ == "__main__":
-    main()
+    if "-O" in sys.argv:
+        sys.argv.remove("-O")
+        os.execl(sys.executable, sys.executable, "-O", *sys.argv)
+    else:
+        main()

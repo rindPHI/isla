@@ -51,8 +51,8 @@ sexpr:
   | (SMT_NONBINARY_OP | smt_binary_op)         # SexprOp
   | op=SMT_NONBINARY_OP '(' ( sexpr ( ',' sexpr ) * ) ? ')' # SexprPrefix
   | sexpr op=SMT_INFIX_RE_STR sexpr            # SexprInfixReStr
-  | sexpr op=(PLUS | MINUS) sexpr              # SexprInfixPlusMinus
   | sexpr op=(MUL | DIV | MOD) sexpr           # SexprInfixMulDiv
+  | sexpr op=(PLUS | MINUS) sexpr              # SexprInfixPlusMinus
   | sexpr op=('=' | GEQ | LEQ | GT | LT) sexpr # SexprInfixEq
   | '(' op=sexpr sexpr + ')'                   # SepxrApp
   ;

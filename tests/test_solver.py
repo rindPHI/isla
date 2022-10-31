@@ -40,7 +40,7 @@ from isla import language
 from isla.derivation_tree import DerivationTree
 from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_ADDITION
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
-from isla.helpers import crange, Exceptional, Maybe, to_id
+from isla.helpers import crange, Exceptional, Maybe, to_id, canonical
 from isla.isla_predicates import (
     BEFORE_PREDICATE,
     COUNT_PREDICATE,
@@ -54,7 +54,7 @@ from isla.language import (
     SemanticPredicate,
     SemPredEvalResult,
 )
-from isla.parser import EarleyParser
+from isla.parser import EarleyParser, PEGParser
 from isla.solver import (
     ISLaSolver,
     SolutionState,
@@ -68,9 +68,10 @@ from isla.solver import (
     SolverTimeout,
     UnknownResultError,
     SemanticError,
+    create_fixed_length_tree,
 )
-from isla.type_defs import Grammar
-from isla.z3_helpers import z3_eq
+from isla.type_defs import Grammar, ImmutableList
+from isla.z3_helpers import z3_eq, smt_string_val_to_string
 from isla_formalizations import rest, tar, simple_tar, scriptsizec
 from isla_formalizations.csv import csv_lint, CSV_GRAMMAR, CSV_HEADERBODY_GRAMMAR
 from isla_formalizations.tar import extract_tar
@@ -1149,6 +1150,261 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
             mutated = solver.mutate(inp)
             self.assertTrue(not inp.structurally_equal(mutated))
             self.assertTrue(graph.tree_is_valid(mutated))
+
+    def test_solve_complex_numeric_formula_heartbeat(self):
+        heartbeat_request_grammar = {
+            "<start>": ["<heartbeat-request>"],
+            "<heartbeat-request>": ["\x01<payload-length><payload><padding>"],
+            "<payload-length>": ["<byte><byte>"],
+            "<payload>": ["<bytes>"],
+            "<padding>": ["<bytes>"],
+            "<bytes>": ["<byte><bytes>", "<byte>"],
+            "<byte>": [chr(i) for i in range(256)],
+        }
+
+        length_constraint = """
+  256 * str.to_code(<payload-length>.<byte>[1])
++ str.to_code(<payload-length>.<byte>[2]) 
+= str.len(<payload>) and
+<payload-length>.<byte> = "\x01"
+"""
+
+        self.execute_generation_test(
+            grammar=heartbeat_request_grammar,
+            formula=length_constraint,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=5,
+            enforce_unique_trees_in_queue=True,
+            num_solutions=5,
+            # print_only=True
+        )
+
+    def test_solve_complex_quantifier_free_numeric_formula_heartbeat(self):
+        heartbeat_request_grammar = {
+            "<start>": ["<heartbeat-request>"],
+            "<heartbeat-request>": ["\x01<payload-length><payload><padding>"],
+            "<payload-length>": ["<byte><byte>"],
+            "<payload>": ["<bytes>"],
+            "<padding>": ["<bytes>"],
+            "<bytes>": ["<byte><bytes>", "<byte>"],
+            "<byte>": [chr(i) for i in range(256)],
+        }
+
+        solver = ISLaSolver(
+            grammar=heartbeat_request_grammar, max_number_smt_instantiations=2
+        )
+
+        byte_1 = language.BoundVariable("<byte>_3879", "<byte>")
+        payload = language.BoundVariable("<payload>_3824", "<payload>")
+        byte_2 = language.BoundVariable("<byte>_3880", "<byte>")
+
+        byte_1_tree = DerivationTree("<byte>", None, id=3879)
+        byte_2_tree = DerivationTree("<byte>", None, id=3880)
+        payload_tree = DerivationTree("<payload>", None, id=3824)
+
+        formula_1 = language.SMTFormula(
+            z3_eq(
+                z3.IntVal(256) * z3.StrToCode(byte_1.to_smt())
+                + z3.StrToCode(byte_2.to_smt()),
+                z3.IntVal(2) * z3.Length(payload.to_smt()),
+            ),
+            instantiated_variables=OrderedSet([byte_2, payload, byte_1]),
+            substitutions={
+                byte_1: byte_1_tree,
+                byte_2: byte_2_tree,
+                payload: payload_tree,
+            },
+        )
+
+        formula_2 = language.SMTFormula(
+            z3_eq(byte_1.to_smt(), z3.StringVal("\x01")),
+            instantiated_variables=OrderedSet([byte_1]),
+            substitutions={byte_1: byte_1_tree},
+        )
+
+        solutions = solver.solve_quantifier_free_formula(
+            cast(ImmutableList[language.SMTFormula], (formula_1, formula_2)), 2
+        )
+
+        self.assertEqual(2, len(solutions))
+
+        for solution in solutions:
+            self.assertEqual(3, len(solution))
+            self.assertIn(byte_1_tree, solution)
+            self.assertIn(byte_2_tree, solution)
+            self.assertIn(payload_tree, solution)
+
+            self.assertEqual(1, ord(str(solution[byte_1_tree])))
+
+            self.assertEqual(
+                256 * ord(str(solution[byte_1_tree])) + ord(str(solution[byte_2_tree])),
+                2 * len(str(solution[payload_tree])),
+            )
+
+    def test_multiple_solutions_heartbeat(self):
+        heartbeat_request_grammar = {
+            "<start>": ["<heartbeat-request>"],
+            "<heartbeat-request>": ["\x01<payload-length><payload><padding>"],
+            "<payload-length>": ["<byte><byte>"],
+            "<payload>": ["<bytes>"],
+            "<padding>": ["<bytes>"],
+            "<bytes>": ["<byte><bytes>", "<byte>"],
+            "<byte>": [chr(i) for i in range(256)],
+        }
+
+        solver = ISLaSolver(
+            grammar=heartbeat_request_grammar, max_number_smt_instantiations=2
+        )
+
+        byte_1 = language.BoundVariable("<byte>_3879", "<byte>")
+        payload = language.BoundVariable("<payload>_3824", "<payload>")
+        byte_2 = language.BoundVariable("<byte>_3880", "<byte>")
+
+        byte_1_tree = DerivationTree("<byte>", None, id=3879)
+        byte_2_tree = DerivationTree("<byte>", None, id=3880)
+        payload_tree = DerivationTree("<payload>", None, id=3824)
+
+        formula_1 = z3_eq(
+            z3.IntVal(256) * z3.StrToCode(byte_1.to_smt())
+            + z3.StrToCode(byte_2.to_smt()),
+            z3.IntVal(2) * z3.Length(payload.to_smt()),
+        )
+
+        formula_2 = z3_eq(byte_1.to_smt(), z3.StringVal("\x01"))
+
+        to_exclude = [
+            {
+                byte_1: z3.StringVal("\x01"),
+                byte_2: z3.StringVal("\x00"),
+                language.BoundVariable("<payload>_3824", "<payload>"): z3.StringVal(
+                    "".join([random.choice(string.printable) for _ in range(256)])
+                ),
+            }
+        ]
+
+        sat_result, model = solver.solve_smt_formulas_with_language_constraints(
+            {byte_1, byte_2, payload},
+            cast(ImmutableList[z3.BoolRef], (formula_1, formula_2)),
+            {
+                byte_1: byte_1_tree,
+                byte_2: byte_2_tree,
+                payload: payload_tree,
+            },
+            to_exclude,
+        )
+
+        self.assertEqual(z3.sat, sat_result)
+
+        self.assertEqual(3, len(model))
+        self.assertIn(byte_1, model)
+        self.assertIn(byte_2, model)
+        self.assertIn(payload, model)
+
+        self.assertEqual(1, ord(str(model[byte_1])))
+
+        self.assertEqual(
+            256 * ord(str(model[byte_1])) + ord(str(model[byte_2])),
+            2 * len(str(model[payload])),
+        )
+
+        self.assertEqual(0, ord(smt_string_val_to_string(to_exclude[0][byte_2])))
+        self.assertNotEqual(0, ord(str(model[byte_2])))
+
+        self.assertNotEqual(
+            to_exclude[0], {var: z3.StringVal(str(val)) for var, val in model.items()}
+        )
+
+    def test_filter_length_variables(self):
+        byte_3879 = language.BoundVariable("<byte>_3879", "<byte>")
+        payload_3824 = language.BoundVariable("<payload>_3824", "<payload>")
+        byte_3880 = language.BoundVariable("<byte>_3880", "<byte>")
+
+        # Test 1: `byte_3879` and `byte_3880` only occur in `str.to.code` expressions
+        # or, in the case of `byte_3879`, in a simple equation.
+
+        formula_1 = z3_eq(
+            z3.IntVal(256) * z3.StrToCode(byte_3879.to_smt())
+            + z3.StrToCode(byte_3880.to_smt()),
+            z3.IntVal(2) * z3.Length(payload_3824.to_smt()),
+        )
+
+        formula_2 = z3_eq(byte_3879.to_smt(), z3.StringVal("\x01"))
+
+        (
+            length_vars,
+            flexible_vars,
+        ) = ISLaSolver.filter_length_variables(
+            {byte_3879, payload_3824, byte_3880}, (formula_1, formula_2)
+        )
+
+        self.assertEqual({payload_3824}, length_vars)
+        self.assertEqual({byte_3879, byte_3880}, flexible_vars)
+
+        # Test 2: Both `byte_...` variables have to be equal. This should not change
+        # anything, as we can still work with the codes.
+
+        formula_3 = z3_eq(byte_3879.to_smt(), byte_3880.to_smt())
+
+        (
+            length_vars,
+            flexible_vars,
+        ) = ISLaSolver.filter_length_variables(
+            {byte_3879, payload_3824, byte_3880}, (formula_1, formula_2, formula_3)
+        )
+
+        self.assertEqual({payload_3824}, length_vars)
+        self.assertEqual({byte_3879, byte_3880}, flexible_vars)
+
+        # Test 3: Variable `byte_3879` occurs in an equation with the length variable
+        # variable `payload_3824`. Thus, all variables end up "flexible."
+
+        formula_4 = z3_eq(byte_3879.to_smt(), payload_3824.to_smt())
+
+        (
+            length_vars,
+            flexible_vars,
+        ) = ISLaSolver.filter_length_variables(
+            {byte_3879, payload_3824, byte_3880},
+            (formula_1, formula_2, formula_4),
+        )
+
+        self.assertEqual({byte_3879, byte_3880, payload_3824}, flexible_vars)
+
+    def test_create_fixed_length_tree(self):
+        payload_grammar = {
+            "<start>": ["<payload>"],
+            "<payload>": ["<bytes>"],
+            "<bytes>": ["<byte><bytes>", "<byte>"],
+            "<byte>": [chr(i) for i in range(256)],
+        }
+
+        result = create_fixed_length_tree(
+            "<start>", canonical(payload_grammar), target_length=256
+        )
+
+        self.assertEqual(256, len(str(result)))
+
+        # Check that parsing works correctly
+        parser = PEGParser(payload_grammar)
+        parser.parse(str(result))  # No error
+
+    def test_create_zero_length_tree(self):
+        payload_grammar = {
+            "<start>": ["<payload>"],
+            "<payload>": ["<bytes>"],
+            "<bytes>": ["", "<byte><bytes>"],
+            "<byte>": [chr(i) for i in range(256)],
+        }
+
+        result = create_fixed_length_tree(
+            "<start>", canonical(payload_grammar), target_length=0
+        )
+
+        self.assertEqual(0, len(str(result)))
+
+        # Check that parsing works correctly
+        parser = PEGParser(payload_grammar)
+        parser.parse(str(result))  # No error
 
     def execute_generation_test(
         self,

@@ -27,7 +27,14 @@ from typing import Tuple
 
 from isla import __version__ as isla_version
 from isla import cli
-from isla.cli import DATA_FORMAT_ERROR, USAGE_ERROR, read_isla_rc_defaults, get_default
+from isla.cli import (
+    DATA_FORMAT_ERROR,
+    USAGE_ERROR,
+    read_isla_rc_defaults,
+    get_default,
+    derivation_tree_to_json,
+)
+from isla.derivation_tree import DerivationTree
 from isla.helpers import Maybe, get_isla_resource_file_content
 from isla.language import unparse_grammar
 from isla.parser import EarleyParser
@@ -631,7 +638,7 @@ exists <assgn> assgn:
         out_dir = tempfile.TemporaryDirectory()
 
         stdout, stderr, code = run_isla("create", "-b", "assgn_lang", out_dir.name)
-        self.assertFalse(stdout)
+        self.assertIn("`isla create` produced the following files: ", stdout)
         self.assertFalse(stderr)
         self.assertFalse(code)
 
@@ -707,6 +714,39 @@ exists <assgn> assgn:
         self.assertFalse(stderr)
 
         self.assertTrue("satisfies the ISLa constraint" in stdout)
+
+    def test_check_assgn_lang_correct_parsed_input(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        constraint = """
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        additional_constraint = 'exists <var>: <var> = "a"'
+
+        input_file = NamedTemporaryFile(suffix=".json")
+        solver = ISLaSolver(LANG_GRAMMAR, constraint)
+        input_file.write(
+            derivation_tree_to_json(solver.parse("x := 1 ; a := x")).encode("utf-8")
+        )
+        input_file.seek(0)
+
+        stdout, stderr, code = run_isla(
+            "check",
+            "--constraint",
+            additional_constraint,
+            grammar_file.name,
+            constraint_file.name,
+            input_file.name,
+        )
+
+        self.assertFalse(code)
+        self.assertFalse(stderr)
+
+        self.assertTrue("satisfies the ISLa constraint" in stdout)
+
+        input_file.close()
 
     def test_check_no_constraint_present(self):
         grammar_file = write_grammar_file(LANG_GRAMMAR)
@@ -835,6 +875,87 @@ exists <assgn> assgn:
         self.assertEqual(1, code)
         self.assertFalse(stderr)
         self.assertTrue("input could not be parsed" in stdout)
+
+    def test_find_assgn_files(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        contents = [
+            "<asdf> no-assgn 123",
+            "x := 1",
+            "a := 2 ; b := 3",
+            "a := a ; b := 1",
+            "a := x",
+        ]
+        files = []
+        for i, content in enumerate(contents):
+            file = NamedTemporaryFile(suffix=".txt")
+            file.write(content.encode("utf-8"))
+            file.seek(0)
+            files.append(file)
+
+        stdout, stderr, code = run_isla(
+            "find",
+            "--constraint",
+            'exists <assgn>: not <assgn>.<rhs>.<var> = "1"',
+            grammar_file.name,
+            *[file.name for file in files],
+        )
+
+        print(stdout)
+        print(stderr)
+
+        self.assertFalse(code)
+        self.assertFalse(stderr)
+        self.assertEqual("\n".join([file.name for file in files[3:]]), stdout)
+
+        for file in files:
+            file.close()
+
+    def test_find_assgn_files_unsuccessful(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        contents = ["x := 1", "a := 2 ; b := 3", "a := 4 ; b := 1", "a := 7"]
+        files = []
+        for i, content in enumerate(contents):
+            file = NamedTemporaryFile(suffix=".txt")
+            file.write(content.encode("utf-8"))
+            file.seek(0)
+            files.append(file)
+
+        stdout, stderr, code = run_isla(
+            "find",
+            "--constraint",
+            'exists <assgn>: not <assgn>.<rhs>.<var> = "1"',
+            grammar_file.name,
+            *[file.name for file in files],
+        )
+
+        print(stdout)
+        print(stderr)
+
+        self.assertEqual(1, code)
+        self.assertFalse(stderr)
+        self.assertFalse(stdout)
+
+        for file in files:
+            file.close()
+
+    def test_find_assgn_files_no_inputs(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        stdout, stderr, code = run_isla(
+            "find",
+            "--constraint",
+            'exists <assgn>: not <assgn>.<rhs>.<var> = "1"',
+            grammar_file.name,
+        )
+
+        print(stdout)
+        print(stderr)
+
+        self.assertEqual(USAGE_ERROR, code)
+        self.assertEqual("no files passed to `find`", stderr)
+        self.assertFalse(stdout)
 
     def test_parse_assgn_lang_correct_input_outfile(self):
         grammar_file = write_grammar_file(LANG_GRAMMAR)
@@ -1227,6 +1348,40 @@ exists <assgn> assgn:
 
         out_file.close()
         os.remove(out_file.name)
+
+    def test_assertion_error(self):
+        stdout, stderr, code = run_isla(
+            "solve",
+            "--grammar",
+            '<start> ::= "a"',
+            "--constraint",
+            "str.len(<start>) > 1",
+        )
+
+        self.assertFalse(stdout)
+        self.assertIn("AssertionError", stderr)
+        self.assertIn(
+            "Could not create a tree with the start symbol '<start>' of length 2",
+            stderr,
+        )
+        self.assertEqual(1, code)
+
+    def test_solve_heartbeat_grammar(self):
+        grammar_str = r"""grammar = {
+    "<start>": ["<heartbeat-request>"],
+    "<heartbeat-request>": ["\x01<payload-length><payload><padding>"],
+    "<payload-length>": ["<byte><byte>"],
+    "<payload>": ["<bytes>"],
+    "<padding>": ["<bytes>"],
+    "<bytes>": ["<byte><bytes>", ""],
+    "<byte>": [chr(i) for i in range(256)],
+}"""
+
+        grammar_file = write_python_grammar_file(grammar_str)
+
+        stdout, stderr, code = run_isla("solve", grammar_file.name)
+        print(stdout)
+        print(stderr)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,11 @@
 # TODOs and Open Issues
 
+- Unicode symbols in BNF syntax (e.g., \u0001)
+- Add CLI option for `enable-optimized-z3-queries`.
+- XPath: Formula `exists <assgn> assgn: assgn..<digit> = "7"` cannot be parsed
+  (assignment language).
+- Repair too aggressive; example (assignment language):
+  `isla repair grammar.bnf def-use.isla -i "a := 1 ; c := b"`
 - Fix TAR test! Problem introduced in commit with ID 9a82766f76247c1ff0cab738ef7c3133b36e44ce (10.0.9)
   Note: Cannot reproduce anymore; but have to look into the TAR case study, it seens to have slowed down.
 - Fix test case `test_predicates.test_count_pred_var_as_third_arg`
