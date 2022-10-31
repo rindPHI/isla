@@ -23,9 +23,11 @@ import os
 import pathlib
 import subprocess
 import sys
+from argparse import Namespace, ArgumentParser
 from contextlib import redirect_stdout, redirect_stderr
 from functools import lru_cache
-from typing import Dict, Tuple, List, Optional
+from io import TextIOWrapper
+from typing import Dict, Tuple, List, Optional, Iterable
 
 import toml
 from grammar_graph import gg
@@ -106,8 +108,8 @@ def main(*args: str, stdout=sys.stdout, stderr=sys.stderr):
     args.func(args)
 
 
-def solve(stdout, stderr, parser, args):
-    files = read_files(args)
+def solve(stdout, stderr, parser: ArgumentParser, args: Namespace):
+    files = read_files(args.files)
     ensure_grammar_present(stderr, parser, args, files)
 
     command = args.command
@@ -178,13 +180,13 @@ def solve(stdout, stderr, parser, args):
         sys.exit(0)
 
 
-def fuzz(_, stderr, parser, args):
+def fuzz(_, stderr, parser: ArgumentParser, args: Namespace):
     input_ending = "_input.txt"
     stdout_ending = "_stdout.txt"
     stderr_ending = "_stderr.txt"
     status_ending = "_status.txt"
 
-    files = read_files(args)
+    files = read_files(args.files)
     ensure_grammar_present(stderr, parser, args, files)
 
     command = args.command
@@ -276,7 +278,7 @@ def fuzz(_, stderr, parser, args):
         sys.exit(0)
 
 
-def get_fuzz_command(args, command, stderr):
+def get_fuzz_command(args: Namespace, command, stderr):
     fuzz_command: str = args.test_target
     if "{}" not in fuzz_command:
         print(
@@ -288,13 +290,46 @@ def get_fuzz_command(args, command, stderr):
     return fuzz_command
 
 
-def check(stdout, stderr, parser, args):
+def check(stdout, stderr, parser: ArgumentParser, args: Namespace):
     code, msg, _ = do_check(stdout, stderr, parser, args)
     print(msg, file=stdout)
     sys.exit(code)
 
 
-def parse(stdout, stderr, parser, args):
+def find(stdout, stderr, parser: ArgumentParser, args: Namespace):
+    language_spec_files: List[TextIOWrapper] = [
+        io_wrapper
+        for io_wrapper in args.files or []
+        if io_wrapper.name.endswith(".bnf")
+        or io_wrapper.name.endswith(".py")
+        or io_wrapper.name.endswith(".isla")
+    ]
+
+    input_files: List[TextIOWrapper] = [
+        io_wrapper
+        for io_wrapper in args.files or []
+        if io_wrapper not in language_spec_files
+    ]
+
+    if not input_files:
+        print("no files passed to `find`", file=stderr)
+        sys.exit(USAGE_ERROR)
+
+    success = False
+    for input_file in input_files:
+        args.files = language_spec_files + [input_file]
+        code, _, _ = do_check(stdout, stderr, parser, args)
+        if not code:
+            success = True
+            print(input_file.name, file=stdout)
+
+    if success:
+        sys.exit(0)
+    else:
+        sys.exit(1)
+
+
+def parse(stdout, stderr, parser: ArgumentParser, args: Namespace):
     code, msg, maybe_tree = do_check(stdout, stderr, parser, args)
     if code:
         print(msg, file=stdout)
@@ -311,8 +346,8 @@ def parse(stdout, stderr, parser, args):
     maybe_tree.if_present(write_tree)
 
 
-def repair(stdout, stderr, parser, args):
-    files = read_files(args)
+def repair(stdout, stderr, parser: ArgumentParser, args: Namespace):
+    files = read_files(args.files)
     ensure_grammar_present(stderr, parser, args, files)
     ensure_constraint_present(stderr, parser, args, files)
     command = args.command
@@ -347,8 +382,8 @@ def repair(stdout, stderr, parser, args):
     sys.exit(0)
 
 
-def mutate(stdout, stderr, parser, args):
-    files = read_files(args)
+def mutate(stdout, stderr, parser: ArgumentParser, args: Namespace):
+    files = read_files(args.files)
     ensure_grammar_present(stderr, parser, args, files)
     ensure_constraint_present(stderr, parser, args, files)
     command = args.command
@@ -380,8 +415,10 @@ def mutate(stdout, stderr, parser, args):
     sys.exit(0)
 
 
-def do_check(stdout, stderr, parser, args) -> Tuple[int, str, Maybe[DerivationTree]]:
-    files = read_files(args)
+def do_check(
+    stdout, stderr, parser: ArgumentParser, args: Namespace
+) -> Tuple[int, str, Maybe[DerivationTree]]:
+    files = read_files(args.files)
     ensure_grammar_present(stderr, parser, args, files)
     ensure_constraint_present(stderr, parser, args, files)
     command = args.command
@@ -409,7 +446,7 @@ def do_check(stdout, stderr, parser, args) -> Tuple[int, str, Maybe[DerivationTr
     return 0, "input satisfies the ISLa constraint", Maybe(tree)
 
 
-def create(stdout, stderr, parser, args):
+def create(stdout, stderr, parser: ArgumentParser, args: Namespace):
     command = args.command
     out_dir = args.output_dir
     base_name = args.base_name
@@ -463,7 +500,7 @@ def create(stdout, stderr, parser, args):
     )
 
 
-def dump_config(stdout, stderr, parser, args):
+def dump_config(stdout, stderr, parser: ArgumentParser, args: Namespace):
     config_file_content = get_isla_resource_file_content("resources/.islarc")
 
     if args.output_file:
@@ -489,6 +526,7 @@ The ISLa command line interface.""",
     create_solve_parser(subparsers, stdout, stderr)
     create_fuzz_parser(subparsers, stdout, stderr)
     create_check_parser(subparsers, stdout, stderr)
+    create_find_parser(subparsers, stdout, stderr)
     create_parse_parser(subparsers, stdout, stderr)
     create_repair_parser(subparsers, stdout, stderr)
     create_mutate_parser(subparsers, stdout, stderr)
@@ -498,11 +536,13 @@ The ISLa command line interface.""",
     return parser
 
 
-def read_files(args) -> Dict[str, str]:
-    return {io_wrapper.name: io_wrapper.read() for io_wrapper in args.files}
+def read_files(files: Iterable[TextIOWrapper]) -> Dict[str, str]:
+    return {io_wrapper.name: io_wrapper.read() for io_wrapper in files}
 
 
-def ensure_grammar_present(stderr, parser, args, files: Dict[str, str]) -> None:
+def ensure_grammar_present(
+    stderr, parser: ArgumentParser, args: Namespace, files: Dict[str, str]
+) -> None:
     if not args.grammar and all(
         not file.endswith(".bnf") and not file.endswith(".py") for file in files
     ):
@@ -516,7 +556,9 @@ def ensure_grammar_present(stderr, parser, args, files: Dict[str, str]) -> None:
         exit(USAGE_ERROR)
 
 
-def ensure_constraint_present(stderr, parser, args, files: Dict[str, str]) -> None:
+def ensure_constraint_present(
+    stderr, parser: ArgumentParser, args: Namespace, files: Dict[str, str]
+) -> None:
     if not args.constraint and all(not file.endswith(".isla") for file in files):
         parser.print_usage(file=stderr)
         print(
@@ -652,7 +694,7 @@ def parse_cost_computer_spec(
 def get_input_string(
     command: str,
     stderr,
-    args,
+    args: Namespace,
     files: Dict[str, str],
     grammar: Grammar,
     constraint: language.Formula,
@@ -672,7 +714,7 @@ def get_input_string(
     :return: A derivation tree of the given input.
     """
 
-    if args.input_string:
+    if hasattr(args, "input_string") and args.input_string:
         inp = args.input_string
     else:
         possible_inputs = [
@@ -830,6 +872,23 @@ constraint.""",
     parser.set_defaults(func=lambda *args: check(stdout, stderr, parser, *args))
 
     input_string_arg(parser)
+
+    grammar_arg(parser)
+    constraint_arg(parser)
+    log_level_arg(parser)
+    grammar_constraint_or_input_files_arg(parser)
+
+
+def create_find_parser(subparsers, stdout, stderr):
+    parser = subparsers.add_parser(
+        "find",
+        help="filter files satisfying syntactic & semantic constraints",
+        description="""
+From a list of passed files, lists those that can be parsed with the given grammar and
+satisfy the given ISLa constraint(s).""",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.set_defaults(func=lambda *args: find(stdout, stderr, parser, *args))
 
     grammar_arg(parser)
     constraint_arg(parser)
@@ -1044,13 +1103,14 @@ def grammar_constraint_or_input_files_arg(parser):
         type=argparse.FileType("r", encoding="UTF-8"),
         help="""
 Possibly multiple ISLa constraint (`*.isla`) and BNF grammar (`*.bnf`) or Python
-grammar (`*.py`) files, and/or an input file to process. Multiple grammar
-files will be simply merged; multiple ISLa constraints will be combined to a
-disjunction. Python grammar files must declare a variable `grammar` of type
-`Dict[str, List[str]]`, including a rule for a nonterminal named "<start>" that expands
-to a single other nonterminal. Note that you can _either_ pass a grammar as a file _or_
-via the `--grammar` option. For constraints, it is possible to use both the option and
-a file input. However, a grammar and a constraint must be specified somehow.""",
+grammar (`*.py`) files, and/or input files to process (currently, only the `find`
+command accepts more than one input file). Multiple grammar files will be simply merged;
+multiple ISLa constraints will be combined to a disjunction. Python grammar files must
+declare a variable `grammar` of type `Dict[str, List[str]]`, including a rule for a
+nonterminal named "<start>" that expands to a single other nonterminal. Note that you
+can _either_ pass a grammar as a file _or_ via the `--grammar` option. For constraints,
+it is possible to use both the option and a file input. However, a grammar and a
+constraint must be specified somehow.""",
     )
 
 
@@ -1175,7 +1235,7 @@ solutions (you need ot set a `--timeout` or forcefully stop ISLa)""",
     )
 
 
-def output_dir_arg(parser, required: bool = False):
+def output_dir_arg(parser: ArgumentParser, required: bool = False):
     command = parser.prog.split(" ")[-1]
 
     parser.add_argument(
