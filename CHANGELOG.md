@@ -5,6 +5,8 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.8.0] - 2022-10-21
+
 ### Added
 
 - Added `isla find` command to filter files passing syntactic & semantic constraints
