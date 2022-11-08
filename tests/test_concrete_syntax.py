@@ -837,6 +837,19 @@ exists <csv-header> header in start:
 
         self.assertEqual(constraint, unparse_isla(parsed))
 
+    def test_unparse_grammar_with_epsilon(self):
+        grammar = {
+            "<start>": ["<A>"],
+            "<A>": ["a", ""]
+        }
+
+        expected = '''
+<start> ::= <A>
+<A> ::= "a" | ""'''.strip()
+
+        self.assertEqual(expected, unparse_grammar(grammar))
+        self.assertEqual(grammar, parse_bnf(unparse_grammar(grammar)))
+
 
 if __name__ == "__main__":
     unittest.main()

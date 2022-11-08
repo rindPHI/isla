@@ -3943,8 +3943,10 @@ def unparse_grammar(grammar: Grammar) -> str:
     return "\n".join(
         f"{symbol} ::= "
         + " | ".join(
-            " ".join(
-                elem if is_nonterminal(elem) else f'"{escape(elem)}"'
+            '""'
+            if not expansion
+            else " ".join(
+                (elem if is_nonterminal(elem) else f'"{escape(elem)}"')
                 for elem in expansion
             )
             for expansion in expansions
