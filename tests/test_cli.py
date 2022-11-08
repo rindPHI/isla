@@ -34,7 +34,6 @@ from isla.cli import (
     get_default,
     derivation_tree_to_json,
 )
-from isla.derivation_tree import DerivationTree
 from isla.helpers import Maybe, get_isla_resource_file_content
 from isla.language import unparse_grammar
 from isla.parser import EarleyParser
@@ -299,6 +298,7 @@ exists <assgn> assgn:
             4,
         )
 
+        print(stderr)
         self.assertFalse(code)
         self.assertFalse(stderr)
         self.assertTrue(stdout)
@@ -425,9 +425,9 @@ exists <assgn> assgn:
             "solve", "--constraint", 'exists <a>: <a> = "B"', grammar_file.name
         )
 
-        self.assertEqual(DATA_FORMAT_ERROR, code)
+        self.assertEqual(USAGE_ERROR, code)
         self.assertFalse(stdout)
-        self.assertTrue("does not declare a variable `grammar`" in stderr)
+        self.assertTrue("Could not find any grammar definition" in stderr)
 
     def test_fuzz_unsat(self):
         out_dir = tempfile.TemporaryDirectory()
@@ -1382,6 +1382,59 @@ exists <assgn> assgn:
         stdout, stderr, code = run_isla("solve", grammar_file.name)
         print(stdout)
         print(stderr)
+
+    def test_solve_additional_structural_predicate(self):
+        # We rename the "before" predicate to "erofeb" and use it in the formula.
+        # To enable this, we import a new predicate definition through an external
+        # file.
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        predicate_file_content = """
+from typing import Set
+from isla.language import SemanticPredicate, StructuralPredicate
+
+def predicates() -> Set[StructuralPredicate | SemanticPredicate]:
+    from isla.language import SemanticPredicate, StructuralPredicate
+    from isla.isla_predicates import is_before
+
+    return {StructuralPredicate("erofeb", 2, is_before)}
+
+"""
+
+        predicate_file = NamedTemporaryFile(suffix=".py")
+        predicate_file.write(predicate_file_content.encode("utf-8"))
+        predicate_file.seek(0)
+
+        constraint = """
+exists <assgn> assgn:
+  (erofeb(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        stdout, stderr, code = run_isla(
+            "solve",
+            grammar_file.name,
+            constraint_file.name,
+            predicate_file.name,
+            "-n",
+            -1,
+            "-t",
+            4,
+        )
+
+        self.assertFalse(code)
+        self.assertFalse(stderr)
+        self.assertTrue(stdout)
+
+        solver = ISLaSolver(
+            LANG_GRAMMAR,
+            constraint.replace("erofeb", "before"),
+        )
+
+        for line in stdout.split("\n"):
+            self.assertTrue(solver.check(line))
+
+        grammar_file.close()
+        constraint_file.close()
 
 
 if __name__ == "__main__":

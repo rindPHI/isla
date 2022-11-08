@@ -5,6 +5,21 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Added
+
+- It is now possible to extend ISLa with custom structural or semantic predicates when
+  using the CLI (this concerns `isla solve`, `isla parse`, `isla check`, `isla fuzz`,
+  `isla mutate`, `isla find`, and `isla mutate`) by passing a Python file as input
+  that contains a function
+
+  ```python
+  predicates() -> typing.Set[isla.language.StructuralPredicate | isla.language.SemanticPredicate]
+  ```
+  
+  Additionally or alternatively, that file may define a variable `grammar` specifying
+  the grammar of the language under test. This behavior, already implemented in previous
+  ISLa versions, is unaffected by the predicate extension feature.
+
 ## [1.8.0] - 2022-10-21
 
 ### Added
