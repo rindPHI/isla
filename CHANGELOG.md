@@ -5,6 +5,8 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.9.0] - 2022-11-08
+
 ### Added
 
 - It is now possible to extend ISLa with custom structural or semantic predicates when
@@ -16,9 +18,17 @@ This file contains the notable changes in the ISLa project since version 0.2a1
   predicates() -> typing.Set[isla.language.StructuralPredicate | isla.language.SemanticPredicate]
   ```
   
-  Additionally or alternatively, that file may define a variable `grammar` specifying
-  the grammar of the language under test. This behavior, already implemented in previous
-  ISLa versions, is unaffected by the predicate extension feature.
+  Additionally or alternatively, that file may define a variable `grammar` or a function
+  `grammar()` specifying the grammar of the language under test. This behavior, already
+  implemented in previous ISLa versions (for the variable declaration, see "Changed"),
+  is unaffected by the predicate extension feature.
+
+### Changed
+
+- In Python extension files, grammars may *alternatively* be defined as the return
+  value of a function `def grammar() -> Dict[str, List[str]]` instead of an assignment
+  to a variable `grammar`. This is the preferred style; the variable assignment may get
+  deprecated in the future.
 
 ## [1.8.0] - 2022-10-21
 
