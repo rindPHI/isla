@@ -480,7 +480,7 @@ exists <assgn> assgn:
         self.assertEqual(DATA_FORMAT_ERROR, code)
         self.assertFalse(stdout)
         self.assertTrue("ParseCancellationException" in stderr)
-        self.assertTrue("parsing the grammar" in stderr)
+        self.assertTrue("occurred while processing a provided file" in stderr)
 
     def test_solve_parser_errors_constraint(self):
         stdout, stderr, code = run_isla(
@@ -1528,6 +1528,62 @@ exists <assgn> assgn:
         grammar_file.close()
         constraint_file.close()
 
+    def test_solve_additional_structural_predicate_dependency(self):
+        # Here, the predicates() function calls another function in the extension file.
+        # This is to test that it works.
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        predicate_file_content = """
+from typing import Set
+from isla.language import SemanticPredicate, StructuralPredicate
+
+def helper() -> Set[StructuralPredicate | SemanticPredicate]:
+    from isla.language import SemanticPredicate, StructuralPredicate
+    from isla.isla_predicates import is_before
+
+    return {StructuralPredicate("erofeb", 2, is_before)}
+    
+def predicates():
+    return helper()
+
+"""
+
+        predicate_file = NamedTemporaryFile(suffix=".py")
+        predicate_file.write(predicate_file_content.encode("utf-8"))
+        predicate_file.seek(0)
+
+        constraint = """
+exists <assgn> assgn:
+  (erofeb(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        stdout, stderr, code = run_isla(
+            "solve",
+            grammar_file.name,
+            constraint_file.name,
+            predicate_file.name,
+            "-n",
+            -1,
+            "-t",
+            4,
+        )
+
+        print(stderr)
+        self.assertFalse(code)
+        self.assertFalse(stderr)
+        self.assertTrue(stdout)
+
+        solver = ISLaSolver(
+            LANG_GRAMMAR,
+            constraint.replace("erofeb", "before"),
+        )
+
+        for line in stdout.split("\n"):
+            self.assertTrue(solver.check(line))
+
+        grammar_file.close()
+        constraint_file.close()
+
     def test_solve_additional_structural_predicate_not_callable(self):
         grammar_file = write_grammar_file(LANG_GRAMMAR)
 
@@ -1552,9 +1608,7 @@ exists <assgn> assgn:
         )
 
         self.assertEqual(DATA_FORMAT_ERROR, code)
-        self.assertIn(
-            "symbol `predicate` in Python extension file is not a function", stderr
-        )
+        self.assertIn("Unknown predicate erofeb", stderr)
         self.assertFalse(stdout)
 
         grammar_file.close()
