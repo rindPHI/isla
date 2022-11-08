@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 name = "isla-solver"
 version = "1.9.0"
 authors = [
-    { name = "Dominic Steinhöfel", email = "dominic.steinhoefel@cispa.de" },
+    { name = "Dominic Steinhoefel", email = "dominic.steinhoefel@cispa.de" },
 ]
 description = "The ISLa Input Specification Language and its solver."
 readme = "README.md"
