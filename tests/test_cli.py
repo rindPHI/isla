@@ -34,7 +34,6 @@ from isla.cli import (
     get_default,
     derivation_tree_to_json,
 )
-from isla.derivation_tree import DerivationTree
 from isla.helpers import Maybe, get_isla_resource_file_content
 from isla.language import unparse_grammar
 from isla.parser import EarleyParser
@@ -258,6 +257,62 @@ exists <assgn> assgn:
         grammar_file.close()
         constraint_file.close()
 
+    def test_solve_assgn_lang_python_grammar_as_function(self):
+        grammar_1_text = r"""
+from typing import Dict, List
+
+def grammar() -> Dict[str, List[str]]:
+    return {
+        "<start>": ["<stmt>"],
+        "<stmt>": ["<assgn> ; <stmt>", "<assgn>"],
+        "<assgn>": ["<var> := <rhs>"],
+    }
+"""
+        grammar_2_text = r"""
+from typing import Dict, List
+
+def grammar() -> Dict[str, List[str]]:
+    import string
+    return {
+        "<rhs>":
+            ["<var>", "<digit>"],
+        "<var>": list(string.ascii_lowercase),
+        "<digit>": list(string.digits)
+    }
+"""
+
+        grammar_file_1 = write_python_grammar_file(grammar_1_text)
+        grammar_file_2 = write_python_grammar_file(grammar_2_text)
+
+        constraint = """
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        stdout, stderr, code = run_isla(
+            "solve",
+            grammar_file_1.name,
+            constraint_file.name,
+            grammar_file_2.name,
+            "-n",
+            -1,
+            "-t",
+            4,
+        )
+
+        print(stderr)
+        self.assertFalse(code)
+        self.assertFalse(stderr)
+        self.assertTrue(stdout)
+
+        solver = ISLaSolver(LANG_GRAMMAR, constraint)
+        for line in stdout.split("\n"):
+            self.assertTrue(solver.check(line))
+
+        grammar_file_1.close()
+        grammar_file_2.close()
+        constraint_file.close()
+
     def test_solve_assgn_lang_python_grammar(self):
         grammar_1_text = r"""
 grammar = {
@@ -299,6 +354,7 @@ exists <assgn> assgn:
             4,
         )
 
+        print(stderr)
         self.assertFalse(code)
         self.assertFalse(stderr)
         self.assertTrue(stdout)
@@ -309,6 +365,42 @@ exists <assgn> assgn:
 
         grammar_file_1.close()
         grammar_file_2.close()
+        constraint_file.close()
+
+    def test_solve_assgn_lang_invalid_python_grammar(self):
+        grammar_text = r"""
+grammar = {
+    "<start>":
+        "<stmt>",  # no list
+    "<stmt>":
+        ["<assgn> ; <stmt>", "<assgn>"],
+    "<assgn>":
+        ["<var> := <rhs>"],
+}
+"""
+
+        grammar_file = write_python_grammar_file(grammar_text)
+
+        constraint = """
+exists <assgn> assgn:
+  (before(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        stdout, stderr, code = run_isla(
+            "solve",
+            grammar_file.name,
+            constraint_file.name,
+            "-n",
+            -1,
+            "-t",
+            4,
+        )
+
+        self.assertEqual(DATA_FORMAT_ERROR, code)
+        self.assertIn("A grammar must be of type `Dict[str, List[str]]`", stderr)
+        self.assertFalse(stdout)
+
+        grammar_file.close()
         constraint_file.close()
 
     def test_solve_assgn_lang_parameter_grammar(self):
@@ -425,9 +517,9 @@ exists <assgn> assgn:
             "solve", "--constraint", 'exists <a>: <a> = "B"', grammar_file.name
         )
 
-        self.assertEqual(DATA_FORMAT_ERROR, code)
+        self.assertEqual(USAGE_ERROR, code)
         self.assertFalse(stdout)
-        self.assertTrue("does not declare a variable `grammar`" in stderr)
+        self.assertTrue("Could not find any grammar definition" in stderr)
 
     def test_fuzz_unsat(self):
         out_dir = tempfile.TemporaryDirectory()
@@ -1382,6 +1474,168 @@ exists <assgn> assgn:
         stdout, stderr, code = run_isla("solve", grammar_file.name)
         print(stdout)
         print(stderr)
+
+    def test_solve_additional_structural_predicate(self):
+        # We rename the "before" predicate to "erofeb" and use it in the formula.
+        # To enable this, we import a new predicate definition through an external
+        # file.
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        predicate_file_content = """
+from typing import Set
+from isla.language import SemanticPredicate, StructuralPredicate
+
+def predicates() -> Set[StructuralPredicate | SemanticPredicate]:
+    from isla.language import SemanticPredicate, StructuralPredicate
+    from isla.isla_predicates import is_before
+
+    return {StructuralPredicate("erofeb", 2, is_before)}
+
+"""
+
+        predicate_file = NamedTemporaryFile(suffix=".py")
+        predicate_file.write(predicate_file_content.encode("utf-8"))
+        predicate_file.seek(0)
+
+        constraint = """
+exists <assgn> assgn:
+  (erofeb(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        stdout, stderr, code = run_isla(
+            "solve",
+            grammar_file.name,
+            constraint_file.name,
+            predicate_file.name,
+            "-n",
+            -1,
+            "-t",
+            4,
+        )
+
+        self.assertFalse(code)
+        self.assertFalse(stderr)
+        self.assertTrue(stdout)
+
+        solver = ISLaSolver(
+            LANG_GRAMMAR,
+            constraint.replace("erofeb", "before"),
+        )
+
+        for line in stdout.split("\n"):
+            self.assertTrue(solver.check(line))
+
+        grammar_file.close()
+        constraint_file.close()
+
+    def test_solve_additional_structural_predicate_not_callable(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        predicate_file = NamedTemporaryFile(suffix=".py")
+        predicate_file.write("predicates = set()\n".encode("utf-8"))
+        predicate_file.seek(0)
+
+        constraint = """
+exists <assgn> assgn:
+  (erofeb(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        stdout, stderr, code = run_isla(
+            "solve",
+            grammar_file.name,
+            constraint_file.name,
+            predicate_file.name,
+            "-n",
+            -1,
+            "-t",
+            4,
+        )
+
+        self.assertEqual(DATA_FORMAT_ERROR, code)
+        self.assertIn(
+            "symbol `predicate` in Python extension file is not a function", stderr
+        )
+        self.assertFalse(stdout)
+
+        grammar_file.close()
+        constraint_file.close()
+
+    def test_solve_additional_structural_predicate_no_iterable(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        predicate_file_content = """
+def predicates():
+    return 13
+"""
+
+        predicate_file = NamedTemporaryFile(suffix=".py")
+        predicate_file.write(predicate_file_content.encode("utf-8"))
+        predicate_file.seek(0)
+
+        constraint = """
+exists <assgn> assgn:
+  (erofeb(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        stdout, stderr, code = run_isla(
+            "solve",
+            grammar_file.name,
+            constraint_file.name,
+            predicate_file.name,
+            "-n",
+            -1,
+            "-t",
+            4,
+        )
+
+        self.assertEqual(DATA_FORMAT_ERROR, code)
+        self.assertIn(
+            "function `predicate` in Python extension file does not return an iterable",
+            stderr,
+        )
+        self.assertFalse(stdout)
+
+        grammar_file.close()
+        constraint_file.close()
+
+    def test_solve_additional_structural_predicate_no_predicates(self):
+        grammar_file = write_grammar_file(LANG_GRAMMAR)
+
+        predicate_file_content = """
+def predicates():
+    return [13]
+"""
+
+        predicate_file = NamedTemporaryFile(suffix=".py")
+        predicate_file.write(predicate_file_content.encode("utf-8"))
+        predicate_file.seek(0)
+
+        constraint = """
+exists <assgn> assgn:
+  (erofeb(assgn, <assgn>) and <assgn>.<rhs>.<var> = assgn.<var>)"""
+        constraint_file = write_constraint_file(constraint)
+
+        stdout, stderr, code = run_isla(
+            "solve",
+            grammar_file.name,
+            constraint_file.name,
+            predicate_file.name,
+            "-n",
+            -1,
+            "-t",
+            4,
+        )
+
+        self.assertEqual(DATA_FORMAT_ERROR, code)
+        self.assertIn(
+            "function `predicate` in Python extension file does not return an iterable "
+            + "of predicates",
+            stderr,
+        )
+        self.assertFalse(stdout)
+
+        grammar_file.close()
+        constraint_file.close()
 
 
 if __name__ == "__main__":

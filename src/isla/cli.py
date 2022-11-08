@@ -17,6 +17,7 @@
 # along with ISLa.  If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
+import collections.abc
 import json
 import logging
 import os
@@ -26,8 +27,9 @@ import sys
 from argparse import Namespace, ArgumentParser
 from contextlib import redirect_stdout, redirect_stderr
 from functools import lru_cache
+from functools import partial
 from io import TextIOWrapper
-from typing import Dict, Tuple, List, Optional, Iterable
+from typing import Dict, Tuple, List, Optional, Iterable, cast, Any, Callable, Set
 
 import toml
 from grammar_graph import gg
@@ -46,7 +48,7 @@ from isla.isla_predicates import (
     STANDARD_SEMANTIC_PREDICATES,
 )
 from isla.isla_shortcuts import true
-from isla.language import parse_bnf, parse_isla
+from isla.language import parse_bnf, parse_isla, StructuralPredicate, SemanticPredicate
 from isla.solver import (
     ISLaSolver,
     GrammarBasedBlackboxCostComputer,
@@ -119,7 +121,19 @@ def solve(stdout, stderr, parser: ArgumentParser, args: Namespace):
         assert_path_is_dir(stderr, command, output_dir)
 
     grammar = parse_grammar(command, args.grammar, files, stderr)
-    constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
+    # TODO: Also integrate predicates into other commands.
+    # TODO: Adapt help text; python files are not more general "extension" files
+    #       supplying grammars and/or predicates.
+    structural_predicates, semantic_predicates = read_predicates(files, stderr)
+    constraint = parse_constraint(
+        command,
+        args.constraint,
+        files,
+        grammar,
+        stderr,
+        structural_predicates=structural_predicates,
+        semantic_predicates=semantic_predicates,
+    )
     cost_computer = parse_cost_computer_spec(
         command, grammar, args.k, stderr, args.weight_vector
     )
@@ -134,6 +148,8 @@ def solve(stdout, stderr, parser: ArgumentParser, args: Namespace):
         timeout_seconds=args.timeout if args.timeout > 0 else None,
         activate_unsat_support=args.unsat_support,
         grammar_unwinding_threshold=args.unwinding_depth,
+        structural_predicates=structural_predicates,
+        semantic_predicates=semantic_predicates,
     )
 
     try:
@@ -180,6 +196,41 @@ def solve(stdout, stderr, parser: ArgumentParser, args: Namespace):
         sys.exit(0)
 
 
+def read_predicates(
+    files: Dict[str, str], stderr
+) -> Tuple[Set[StructuralPredicate], Set[SemanticPredicate]]:
+    """
+    Executes a Python extension file, if any, and extracts predicates defined there.
+    Returns those together with the standard predicates.
+    :param files: The passed files (mapping from names to contents).
+    :param stderr: Standard error sink.
+    :return: The predicates.
+    """
+
+    _, maybe_structural_predicates, maybe_semantic_predicates = (
+        Maybe.from_iterator(
+            file_content
+            for file_name, file_content in files.items()
+            if file_name.endswith(".py")
+        )
+        .map(
+            lambda file_content: process_python_extension("solve", file_content, stderr)
+        )
+        .orelse(lambda: (Maybe.nothing(), Maybe.nothing(), Maybe.nothing()))
+    ).get()
+
+    structural_predicates = (
+        STANDARD_STRUCTURAL_PREDICATES
+        | maybe_structural_predicates.orelse(lambda: set()).get()
+    )
+    semantic_predicates = (
+        STANDARD_SEMANTIC_PREDICATES
+        | maybe_semantic_predicates.orelse(lambda: set()).get()
+    )
+
+    return structural_predicates, semantic_predicates
+
+
 def fuzz(_, stderr, parser: ArgumentParser, args: Namespace):
     input_ending = "_input.txt"
     stdout_ending = "_stdout.txt"
@@ -195,7 +246,16 @@ def fuzz(_, stderr, parser: ArgumentParser, args: Namespace):
     assert_path_is_dir(stderr, command, output_dir)
 
     grammar = parse_grammar(command, args.grammar, files, stderr)
-    constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
+    structural_predicates, semantic_predicates = read_predicates(files, stderr)
+    constraint = parse_constraint(
+        command,
+        args.constraint,
+        files,
+        grammar,
+        stderr,
+        structural_predicates=structural_predicates,
+        semantic_predicates=semantic_predicates,
+    )
     cost_computer = parse_cost_computer_spec(
         command, grammar, args.k, stderr, args.weight_vector
     )
@@ -210,6 +270,8 @@ def fuzz(_, stderr, parser: ArgumentParser, args: Namespace):
         timeout_seconds=args.timeout if args.timeout > 0 else None,
         activate_unsat_support=False,
         grammar_unwinding_threshold=args.unwinding_depth,
+        structural_predicates=structural_predicates,
+        semantic_predicates=semantic_predicates,
     )
 
     fuzz_command = get_fuzz_command(args, command, stderr)
@@ -353,7 +415,16 @@ def repair(stdout, stderr, parser: ArgumentParser, args: Namespace):
     command = args.command
 
     grammar = parse_grammar(command, args.grammar, files, stderr)
-    constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
+    structural_predicates, semantic_predicates = read_predicates(files, stderr)
+    constraint = parse_constraint(
+        command,
+        args.constraint,
+        files,
+        grammar,
+        stderr,
+        structural_predicates=structural_predicates,
+        semantic_predicates=semantic_predicates,
+    )
 
     try:
         inp = get_input_string(command, stderr, args, files, grammar, constraint)
@@ -361,7 +432,12 @@ def repair(stdout, stderr, parser: ArgumentParser, args: Namespace):
         print("input could not be parsed", file=stderr)
         sys.exit(1)
 
-    solver = ISLaSolver(grammar, constraint)
+    solver = ISLaSolver(
+        grammar,
+        constraint,
+        structural_predicates=structural_predicates,
+        semantic_predicates=semantic_predicates,
+    )
     maybe_repaired = solver.repair(inp, fix_timeout_seconds=args.timeout)
 
     if not maybe_repaired.is_present():
@@ -389,7 +465,16 @@ def mutate(stdout, stderr, parser: ArgumentParser, args: Namespace):
     command = args.command
 
     grammar = parse_grammar(command, args.grammar, files, stderr)
-    constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
+    structural_predicates, semantic_predicates = read_predicates(files, stderr)
+    constraint = parse_constraint(
+        command,
+        args.constraint,
+        files,
+        grammar,
+        stderr,
+        structural_predicates=structural_predicates,
+        semantic_predicates=semantic_predicates,
+    )
 
     try:
         inp = get_input_string(command, stderr, args, files, grammar, constraint)
@@ -397,7 +482,12 @@ def mutate(stdout, stderr, parser: ArgumentParser, args: Namespace):
         print("input could not be parsed", file=stderr)
         sys.exit(1)
 
-    solver = ISLaSolver(grammar, constraint)
+    solver = ISLaSolver(
+        grammar,
+        constraint,
+        structural_predicates=structural_predicates,
+        semantic_predicates=semantic_predicates,
+    )
 
     mutated = solver.mutate(
         inp,
@@ -424,7 +514,16 @@ def do_check(
     command = args.command
 
     grammar = parse_grammar(command, args.grammar, files, stderr)
-    constraint = parse_constraint(command, args.constraint, files, grammar, stderr)
+    structural_predicates, semantic_predicates = read_predicates(files, stderr)
+    constraint = parse_constraint(
+        command,
+        args.constraint,
+        files,
+        grammar,
+        stderr,
+        structural_predicates=structural_predicates,
+        semantic_predicates=semantic_predicates,
+    )
 
     try:
         tree = get_input_string(command, stderr, args, files, grammar, constraint)
@@ -436,7 +535,12 @@ def do_check(
         )
 
     try:
-        solver = ISLaSolver(grammar, constraint)
+        solver = ISLaSolver(
+            grammar,
+            constraint,
+            structural_predicates=structural_predicates,
+            semantic_predicates=semantic_predicates,
+        )
 
         if not solver.check(tree):
             raise SemanticError()
@@ -576,6 +680,8 @@ def parse_constraint(
     files: Dict[str, str],
     grammar: Grammar,
     stderr,
+    structural_predicates: Set[StructuralPredicate] = STANDARD_STRUCTURAL_PREDICATES,
+    semantic_predicates: Set[SemanticPredicate] = STANDARD_SEMANTIC_PREDICATES,
 ) -> language.Formula:
     constraint_arg = constraint_arg or []
     assert isinstance(constraint_arg, list)
@@ -588,8 +694,8 @@ def parse_constraint(
             with redirect_stderr(stderr):
                 constraint &= parse_isla(
                     constraint_str,
-                    structural_predicates=STANDARD_STRUCTURAL_PREDICATES,
-                    semantic_predicates=STANDARD_SEMANTIC_PREDICATES,
+                    structural_predicates=structural_predicates,
+                    semantic_predicates=semantic_predicates,
                     grammar=grammar,
                 )
 
@@ -598,8 +704,8 @@ def parse_constraint(
                 with redirect_stderr(stderr):
                     constraint &= parse_isla(
                         constraint_file.read(),
-                        structural_predicates=STANDARD_STRUCTURAL_PREDICATES,
-                        semantic_predicates=STANDARD_SEMANTIC_PREDICATES,
+                        structural_predicates=structural_predicates,
+                        semantic_predicates=semantic_predicates,
                         grammar=grammar,
                     )
     except Exception as exc:
@@ -632,17 +738,23 @@ def parse_grammar(
                         if grammar_file_name.endswith(".bnf"):
                             grammar |= parse_bnf(grammar_file_content)
                         else:
-                            locals_ = {}
-                            exec(grammar_file_content, {}, locals_)
-                            if "grammar" not in locals_:
-                                print(
-                                    f"isla {subcommand}: error: a Python grammar does "
-                                    + "not declare a variable `grammar`",
-                                    file=stderr,
-                                )
-                                sys.exit(DATA_FORMAT_ERROR)
+                            grammar |= (
+                                process_python_extension(
+                                    subcommand, grammar_file_content, stderr
+                                )[0]
+                                .orelse(lambda: {})
+                                .get()
+                            )
 
-                            grammar |= locals_["grammar"]
+            if not grammar:
+                print(
+                    "Could not find any grammar definition in the given files "
+                    + f"{', '.join(files)}; either supply a BNF grammar as file "
+                    + "(`*.bnf`) or command line argument, or a Python grammar "
+                    + " as file(`*.py`) defining a variable `grammar`.",
+                    file=stderr,
+                )
+                sys.exit(USAGE_ERROR)
 
     except Exception as exc:
         exc_string = str(exc)
@@ -654,7 +766,100 @@ def parse_grammar(
             file=stderr,
         )
         sys.exit(DATA_FORMAT_ERROR)
+
     return grammar
+
+
+def process_python_extension(
+    subcommand: str, python_file_content: str, stderr
+) -> Tuple[
+    Maybe[Grammar], Maybe[Set[StructuralPredicate]], Maybe[Set[SemanticPredicate]]
+]:
+    locals_ = {}
+    exec(python_file_content, {}, locals_)
+
+    def assert_is_function(maybe_function: Any) -> Callable:
+        if not callable(maybe_function):
+            print(
+                f"isla {subcommand}: error: symbol `predicate` in Python extension "
+                + "file is not a function.",
+                file=stderr,
+            )
+            sys.exit(DATA_FORMAT_ERROR)
+
+        return maybe_function
+
+    def assert_is_set_of_predicates(
+        maybe_set_of_predicates: Any,
+    ) -> Set[StructuralPredicate | SemanticPredicate]:
+        if not isinstance(maybe_set_of_predicates, collections.abc.Iterable):
+            print(
+                f"isla {subcommand}: error: function `predicate` in Python extension "
+                + "file does not return an iterable.",
+                file=stderr,
+            )
+            sys.exit(DATA_FORMAT_ERROR)
+
+        if any(
+            not isinstance(elem, StructuralPredicate)
+            and not isinstance(elem, SemanticPredicate)
+            for elem in maybe_set_of_predicates
+        ):
+            print(
+                f"isla {subcommand}: error: function `predicate` in Python extension "
+                + "file does not return an iterable of predicates.",
+                file=stderr,
+            )
+            sys.exit(DATA_FORMAT_ERROR)
+
+        return set(maybe_set_of_predicates)
+
+    def assert_is_valid_grammar(maybe_grammar: Any) -> Grammar:
+        if (
+            not isinstance(maybe_grammar, dict)
+            or not all(isinstance(key, str) for key in maybe_grammar)
+            or not all(
+                isinstance(expansions, list) for expansions in maybe_grammar.values()
+            )
+            or not all(
+                isinstance(expansion, str)
+                for expansions in maybe_grammar.values()
+                for expansion in expansions
+            )
+        ):
+            print(
+                f"isla {subcommand}: error: A grammar must be of type "
+                + "`Dict[str, List[str]]`.",
+                file=stderr,
+            )
+            sys.exit(DATA_FORMAT_ERROR)
+
+        return maybe_grammar
+
+    grammar = (
+        cast(Maybe[Grammar], Maybe(locals_.get("grammar", None)))
+        .map(lambda grammar_: grammar_() if callable(grammar_) else grammar_)
+        .map(assert_is_valid_grammar)
+    )
+
+    predicates = (
+        Maybe(locals_.get("predicates"))
+        .map(assert_is_function)
+        .map(lambda f: f())
+        .map(assert_is_set_of_predicates)
+    )
+
+    structural_predicates = cast(
+        Maybe[Set[StructuralPredicate]],
+        predicates.map(partial(filter, StructuralPredicate.__instancecheck__)).map(set),
+    )
+
+    semantic_predicates = cast(
+        Maybe[Set[SemanticPredicate]],
+        predicates.map(partial(filter, SemanticPredicate.__instancecheck__)).map(set),
+    )
+
+    return grammar, structural_predicates, semantic_predicates
 
 
 def parse_cost_computer_spec(
@@ -808,7 +1013,7 @@ generator for satisfiable formulas""",
     weight_vector_arg(parser)
     k_arg(parser)
     log_level_arg(parser)
-    grammar_constraint_files_arg(parser)
+    grammar_constraint_extension_files_arg(parser)
 
 
 def create_fuzz_parser(subparsers, stdout, stderr):
@@ -857,7 +1062,7 @@ test target expects a particular format""",
     weight_vector_arg(parser)
     k_arg(parser)
     log_level_arg(parser)
-    grammar_constraint_files_arg(parser)
+    grammar_constraint_extension_files_arg(parser)
 
 
 def create_check_parser(subparsers, stdout, stderr):
@@ -1077,21 +1282,32 @@ configuration is printed to stdout""",
     )
 
 
-def grammar_constraint_files_arg(parser):
+def grammar_constraint_extension_files_arg(parser):
     parser.add_argument(
         "files",
         nargs="*",
         metavar="FILES",
         type=argparse.FileType("r", encoding="UTF-8"),
         help="""
-Possibly multiple ISLa constraint (`*.isla`) and BNF grammar (`*.bnf`) or Python
-grammar (`*.py`) files. Multiple grammar files will be simply merged; multiple ISLa
-constraints will be combined to a disjunction. Python grammar files must declare a
-variable `grammar` of type `Dict[str, List[str]]`, including a rule for a nonterminal
-named "<start>" that expands to a single other nonterminal. Note that you can _either_
-pass a grammar as a file _or_ via the `--grammar` option. For constraints, it is
-possible to use both the option and a file input. However, a grammar and a constraint
-must be specified somehow.""",
+Possibly multiple ISLa constraint (`*.isla`), BNF grammar (`*.bnf`) or Python
+extension (`*.py`) files. Multiple grammar files will be simply merged; multiple ISLa
+constraints will be combined to a disjunction. Grammars must declare a rule for a
+nonterminal "<start>" (the start symbol) expanding to a single other nonterminal.
+Python extension files can specify a grammar by declaring a variable `grammar` of type
+`Dict[str, List[str]]`, or (preferably) by specifying a function `grammar()` returning
+Dict objects of that type. Furthermore, they can specify additional structural or
+semantic predicates by declaring a function
+
+```python
+def predicates() -> typing.Set[
+        isla.language.StructuralPredicate |
+        isla.language.SemanticPredicate]:
+    # ...
+```
+
+Note that you can _either_ pass a grammar as a file _or_ via the `--grammar` option.
+For constraints, it is possible to use both the option and a file input. However, a
+grammar and a constraint must be specified somehow.""",
     )
 
 
@@ -1102,15 +1318,26 @@ def grammar_constraint_or_input_files_arg(parser):
         metavar="FILES",
         type=argparse.FileType("r", encoding="UTF-8"),
         help="""
-Possibly multiple ISLa constraint (`*.isla`) and BNF grammar (`*.bnf`) or Python
-grammar (`*.py`) files, and/or input files to process (currently, only the `find`
+Possibly multiple ISLa constraint (`*.isla`), BNF grammar (`*.bnf`), Python
+extension (`*.py`) files, and/or input files to process (currently, only the `find`
 command accepts more than one input file). Multiple grammar files will be simply merged;
-multiple ISLa constraints will be combined to a disjunction. Python grammar files must
-declare a variable `grammar` of type `Dict[str, List[str]]`, including a rule for a
-nonterminal named "<start>" that expands to a single other nonterminal. Note that you
-can _either_ pass a grammar as a file _or_ via the `--grammar` option. For constraints,
-it is possible to use both the option and a file input. However, a grammar and a
-constraint must be specified somehow.""",
+multiple ISLa constraints will be combined to a disjunction. Grammars must declare a
+rule for a nonterminal "<start>" (the start symbol) expanding to a single other
+nonterminal. Python extension files can specify a grammar by declaring a variable
+`grammar` of type `Dict[str, List[str]]`, or (preferably) by specifying a function
+`grammar()` returning Dict objects of that type. Furthermore, they can specify
+additional structural or semantic predicates by declaring a function
+
+```python
+def predicates() -> typing.Set[
+        isla.language.StructuralPredicate |
+        isla.language.SemanticPredicate]:
+    # ...
+```
+
+Note that you can _either_ pass a grammar as a file _or_ via the `--grammar` option.
+For constraints, it is possible to use both the option and a file input. However, a
+grammar and a constraint must be specified somehow.""",
     )
 
 
