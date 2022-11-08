@@ -1300,7 +1300,7 @@ semantic predicates by declaring a function
 
 ```python
 def predicates() -> typing.Set[
-        isla.language.StructuralPredicate | 
+        isla.language.StructuralPredicate |
         isla.language.SemanticPredicate]:
     # ...
 ```
@@ -1330,7 +1330,7 @@ additional structural or semantic predicates by declaring a function
 
 ```python
 def predicates() -> typing.Set[
-        isla.language.StructuralPredicate | 
+        isla.language.StructuralPredicate |
         isla.language.SemanticPredicate]:
     # ...
 ```
