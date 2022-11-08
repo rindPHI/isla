@@ -29,7 +29,7 @@ from contextlib import redirect_stdout, redirect_stderr
 from functools import lru_cache
 from functools import partial
 from io import TextIOWrapper
-from typing import Dict, Tuple, List, Optional, Iterable, cast, Any, Callable, Set
+from typing import Dict, Tuple, List, Optional, Iterable, cast, Any, Set
 
 import toml
 from grammar_graph import gg
@@ -121,9 +121,6 @@ def solve(stdout, stderr, parser: ArgumentParser, args: Namespace):
         assert_path_is_dir(stderr, command, output_dir)
 
     grammar = parse_grammar(command, args.grammar, files, stderr)
-    # TODO: Also integrate predicates into other commands.
-    # TODO: Adapt help text; python files are not more general "extension" files
-    #       supplying grammars and/or predicates.
     structural_predicates, semantic_predicates = read_predicates(files, stderr)
     constraint = parse_constraint(
         command,
@@ -762,7 +759,8 @@ def parse_grammar(
             exc_string = ""
         print(
             f"isla {subcommand}: error: A {type(exc).__name__} occurred "
-            + f"while parsing the grammar{f' ({exc_string})' if exc_string else ''}",
+            + "while processing a provided file"
+            + (f" ({exc_string})" if exc_string else ""),
             file=stderr,
         )
         sys.exit(DATA_FORMAT_ERROR)
@@ -775,19 +773,23 @@ def process_python_extension(
 ) -> Tuple[
     Maybe[Grammar], Maybe[Set[StructuralPredicate]], Maybe[Set[SemanticPredicate]]
 ]:
-    locals_ = {}
-    exec(python_file_content, {}, locals_)
+    query_program = """
+try:
+    grammar_ = grammar() if callable(grammar) else grammar
+except NameError:
+    grammar_ = None
 
-    def assert_is_function(maybe_function: Any) -> Callable:
-        if not callable(maybe_function):
-            print(
-                f"isla {subcommand}: error: symbol `predicate` in Python extension "
-                + "file is not a function.",
-                file=stderr,
-            )
-            sys.exit(DATA_FORMAT_ERROR)
+try:
+    predicates_ = predicates() if callable(predicates) else None
+except NameError as err:
+    predicates_ = None
+    err_ = err
+"""
 
-        return maybe_function
+    python_file_content = f"{python_file_content}\n{query_program}"
+
+    new_symbols = {}
+    exec(python_file_content, new_symbols)
 
     def assert_is_set_of_predicates(
         maybe_set_of_predicates: Any,
@@ -836,18 +838,11 @@ def process_python_extension(
 
         return maybe_grammar
 
-    grammar = (
-        cast(Maybe[Grammar], Maybe(locals_.get("grammar", None)))
-        .map(lambda grammar_: grammar_() if callable(grammar_) else grammar_)
-        .map(assert_is_valid_grammar)
+    grammar = cast(Maybe[Grammar], Maybe(new_symbols["grammar_"])).map(
+        assert_is_valid_grammar
     )
 
-    predicates = (
-        Maybe(locals_.get("predicates"))
-        .map(assert_is_function)
-        .map(lambda f: f())
-        .map(assert_is_set_of_predicates)
-    )
+    predicates = Maybe(new_symbols["predicates_"]).map(assert_is_set_of_predicates)
 
     structural_predicates = cast(
         Maybe[Set[StructuralPredicate]],

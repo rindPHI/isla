@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.9.1] - 2022-11-08
+
+### Changed
+
+- Bug fix: Python extension files could not use local definitions before (e.g., helper
+  functions); this is fixed now.
+
 ## [1.9.0] - 2022-11-08
 
 ### Added
