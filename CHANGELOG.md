@@ -11,6 +11,7 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 - Bug fix: Python extension files could not use local definitions before (e.g., helper
   functions); this is fixed now.
+- Buf fix: Epsilon productions are correctly processed in `unparse_grammar`.
 
 ## [1.9.0] - 2022-11-08
 
