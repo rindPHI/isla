@@ -5,6 +5,15 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.9.3] - 2022-11-10
+
+### Changed
+
+- Further improvements in input repair: Better ordering of abstracted trees. Now, all
+  abstractions are generated at once (not lazily in a generator), which *might* impact
+  performance; however, the results are ordered by tree size, i.e., less abstract trees
+  come first, which is the expected behavior. Code is simplified.
+
 ## [1.9.2] - 2022-11-10
 
 ### Changed

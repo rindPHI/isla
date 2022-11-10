@@ -39,7 +39,6 @@ from typing import (
     cast,
     Callable,
     Iterable,
-    Generator,
 )
 
 import pkg_resources
@@ -3342,7 +3341,7 @@ def equivalent(
 
 def generate_abstracted_trees(
     inp: DerivationTree, participating_paths: Set[Path]
-) -> Generator[DerivationTree, None, None]:
+) -> List[DerivationTree]:
     """
     Yields trees that are more and more "abstracted," i.e., pruned, at prefixes of the
     paths specified in `participating_paths`.
@@ -3352,40 +3351,35 @@ def generate_abstracted_trees(
     :return: A generator of more and more abstract trees, beginning with the most
     concrete and ending with the most abstract ones.
     """
-    parent_paths = {
+    parent_paths: Set[ImmutableList[Path]] = {
         tuple(
-            [
-                (len(path) - i, tuple(path[:i]))
-                for i in reversed(range(1, len(path) + 1))
-            ]
+            [tuple(path[:i]) for i in reversed(range(1, len(path) + 1))]
             if path
-            else [(0, ())]
+            else [()]
         )
         for path in participating_paths
     }
 
-    already_seen: Set[frozenset[Path]] = set()
-    for l_diffs_and_paths in sorted(
-        itertools.product(*parent_paths),
-        key=lambda l_diffs_and_paths_: (max(map(lambda t: t[0], l_diffs_and_paths_))),
-    ):
-        for chosen_paths in [
-            tuple(eliminate_suffixes([c[1] for c in combination]))
-            for k in range(1, len(participating_paths) + 1)
-            for combination in itertools.combinations(l_diffs_and_paths, k)
-        ]:
-            if frozenset(chosen_paths) in already_seen:
-                continue
-            already_seen.add(frozenset(chosen_paths))
+    abstraction_candidate_combinations: Set[ImmutableList[Path]] = {
+        tuple(eliminate_suffixes(combination))
+        for k in range(1, len(participating_paths) + 1)
+        for paths in itertools.product(*parent_paths)
+        for combination in itertools.combinations(paths, k)
+    }
 
-            yield inp.substitute(
-                {
-                    inp.get_subtree(chosen_path): DerivationTree(
-                        inp.get_subtree(chosen_path).value
-                    )
-                    for chosen_path in chosen_paths
-                }
-            )
+    result: Dict[int, DerivationTree] = {}
+    for paths_to_abstract in abstraction_candidate_combinations:
+        abstracted_tree = inp.substitute(
+            {
+                inp.get_subtree(path_to_abstract): DerivationTree(
+                    inp.get_subtree(path_to_abstract).value
+                )
+                for path_to_abstract in paths_to_abstract
+            }
+        )
+        result[abstracted_tree.structural_hash()] = abstracted_tree
+
+    return sorted(result.values(), key=lambda tree: -len(tree))
 
 
 class EvaluatePredicateFormulasTransformer(NoopFormulaTransformer):
