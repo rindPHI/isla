@@ -3360,15 +3360,9 @@ def generate_abstracted_trees(
     }
 
     already_seen: Set[frozenset[Path]] = set()
-    for l_diffs_and_paths in itertools.islice(
-        sorted(
-            itertools.product(*parent_paths),
-            key=lambda l_diffs_and_paths_: (
-                max(map(lambda t: t[0], l_diffs_and_paths_))
-            ),
-        ),
-        0,
-        None,
+    for l_diffs_and_paths in sorted(
+        itertools.product(*parent_paths),
+        key=lambda l_diffs_and_paths_: (max(map(lambda t: t[0], l_diffs_and_paths_))),
     ):
         for chosen_paths in [
             tuple(eliminate_suffixes([c[1] for c in combination]))
