@@ -5,6 +5,11 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Changed
+
+- Improved input repair; results are more local now, performance improvement for
+  more complicated repairs.
+
 ## [1.9.1] - 2022-11-08
 
 ### Changed

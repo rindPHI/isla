@@ -497,6 +497,8 @@ class ISLaSolver:
         self.step_cnt: int = 0
         self.last_cost_recomputation: int = 0
 
+        self.regex_cache = {}
+
         self.solutions: List[DerivationTree] = []
 
         # Debugging stuff
@@ -536,7 +538,7 @@ class ISLaSolver:
         grammar_unwinding_threshold: Maybe[int] = Maybe.nothing(),
         initial_tree: Maybe[DerivationTree] = Maybe.nothing(),
     ):
-        return ISLaSolver(
+        result = ISLaSolver(
             grammar=grammar.orelse(lambda: self.grammar).get(),
             formula=formula.orelse(lambda: self.formula).get(),
             max_number_free_instantiations=max_number_free_instantiations.orelse(
@@ -570,6 +572,10 @@ class ISLaSolver:
             ).get(),
             initial_tree=initial_tree,
         )
+
+        result.regex_cache = self.regex_cache
+
+        return result
 
     def check(self, inp: DerivationTree | str) -> bool:
         """
@@ -2871,8 +2877,10 @@ class ISLaSolver:
             self.graph.reachable,
         )
 
-    @lru_cache(maxsize=None)
     def extract_regular_expression(self, nonterminal: str) -> z3.ReRef:
+        if nonterminal in self.regex_cache:
+            return self.regex_cache[nonterminal]
+
         regex_conv = RegexConverter(
             self.grammar,
             compress_unions=True,
@@ -2932,6 +2940,8 @@ class ISLaSolver:
                         False
                     ), f"Input '{new_inp}' from regex language is not in grammar language."
                 prev.add(new_inp)
+
+        self.regex_cache[nonterminal] = z3_regex
 
         return z3_regex
 
@@ -3339,7 +3349,7 @@ def generate_abstracted_trees(
     :return: A generator of more and more abstract trees, beginning with the most
     concrete and ending with the most abstract ones.
     """
-    sub_paths = {
+    parent_paths = {
         tuple(
             [
                 (len(path) - i, tuple(path[:i]))
@@ -3352,12 +3362,12 @@ def generate_abstracted_trees(
     already_seen: Set[frozenset[Path]] = set()
     for l_diffs_and_paths in itertools.islice(
         sorted(
-            itertools.product(*sub_paths),
+            itertools.product(*parent_paths),
             key=lambda l_diffs_and_paths_: (
                 max(map(lambda t: t[0], l_diffs_and_paths_))
             ),
         ),
-        1,
+        0,
         None,
     ):
         for chosen_paths in [

@@ -53,6 +53,7 @@ from isla.language import (
     start_constant,
     SemanticPredicate,
     SemPredEvalResult,
+    parse_bnf,
 )
 from isla.parser import EarleyParser, PEGParser
 from isla.solver import (
@@ -69,6 +70,7 @@ from isla.solver import (
     UnknownResultError,
     SemanticError,
     create_fixed_length_tree,
+    generate_abstracted_trees,
 )
 from isla.type_defs import Grammar, ImmutableList
 from isla.z3_helpers import z3_eq, smt_string_val_to_string
@@ -1398,6 +1400,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         parser.parse(str(result))  # No error
 
     def test_icmp_payload_bytes_count(self):
+        # TODO: If bytes is nullable, `count` does not work!
         grammar = '''
 <start> ::= <icmp_message>
 <icmp_message> ::= <header> <payload_data>
@@ -1420,6 +1423,56 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
             max_number_smt_instantiations=1,
             enforce_unique_trees_in_queue=True,
             num_solutions=1,
+        )
+
+    def test_repair_icmp(self):
+        grammar = '''
+<start> ::= <icmp_message>
+<icmp_message> ::= <header> <payload_data>
+<header> ::= <type> <code> <checksum> <header_data>
+<payload_data> ::= <bytes> | ""
+<type> ::= <byte>
+<code> ::= <byte>
+<checksum> ::= <byte> <byte>
+<header_data> ::= <byte> <byte> <byte> <byte>
+<byte> ::= <zerof> <zerof> " "
+<bytes> ::= <byte> | <byte> <bytes>
+<zerof> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | "B" | "C" | "D" | "E" | "F"'''
+
+        constraint = '<type> = "08 "'
+        inp = "00 00 00 00 00 00 00 00 00 00 "
+
+        solver = ISLaSolver(grammar, constraint)
+        result = solver.repair(inp)
+        self.assertTrue(result.is_present())
+        self.assertEqual("08" + inp[2:], str(result.get()))
+
+    def test_generate_abstracted_trees(self):
+        grammar = '''
+<start> ::= <icmp_message>
+<icmp_message> ::= <header> <payload_data>
+<header> ::= <type> <code> <checksum> <header_data>
+<payload_data> ::= <bytes> | ""
+<type> ::= <byte>
+<code> ::= <byte>
+<checksum> ::= <byte> <byte>
+<header_data> ::= <byte> <byte> <byte> <byte>
+<byte> ::= <zerof> <zerof> " "
+<bytes> ::= <byte> | <byte> <bytes>
+<zerof> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | "B" | "C" | "D" | "E" | "F"'''
+
+        inp = DerivationTree.from_parse_tree(
+            next(
+                EarleyParser(parse_bnf(grammar)).parse("00 00 00 00 00 00 00 00 00 00 ")
+            )
+        )
+
+        abstracted_trees = list(generate_abstracted_trees(inp, {(0, 0, 0)}))
+        self.assertTrue(
+            any(
+                "<type>00 00 00 00 00 00 00 00 00 " == str(tree)
+                for tree in abstracted_trees
+            )
         )
 
     def execute_generation_test(
