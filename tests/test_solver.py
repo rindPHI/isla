@@ -53,6 +53,7 @@ from isla.language import (
     start_constant,
     SemanticPredicate,
     SemPredEvalResult,
+    parse_bnf,
 )
 from isla.parser import EarleyParser, PEGParser
 from isla.solver import (
@@ -69,6 +70,7 @@ from isla.solver import (
     UnknownResultError,
     SemanticError,
     create_fixed_length_tree,
+    generate_abstracted_trees,
 )
 from isla.type_defs import Grammar, ImmutableList
 from isla.z3_helpers import z3_eq, smt_string_val_to_string
@@ -84,6 +86,7 @@ from isla_formalizations.xml_lang import (
     XML_NO_ATTR_REDEF_CONSTRAINT,
 )
 from test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR, CONFIG_GRAMMAR
+from test_helpers import parse
 
 
 class TestSolver(unittest.TestCase):
@@ -1330,10 +1333,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
 
         formula_2 = z3_eq(byte_3879.to_smt(), z3.StringVal("\x01"))
 
-        (
-            length_vars,
-            flexible_vars,
-        ) = ISLaSolver.filter_length_variables(
+        (length_vars, flexible_vars,) = ISLaSolver.filter_length_variables(
             {byte_3879, payload_3824, byte_3880}, (formula_1, formula_2)
         )
 
@@ -1345,10 +1345,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
 
         formula_3 = z3_eq(byte_3879.to_smt(), byte_3880.to_smt())
 
-        (
-            length_vars,
-            flexible_vars,
-        ) = ISLaSolver.filter_length_variables(
+        (length_vars, flexible_vars,) = ISLaSolver.filter_length_variables(
             {byte_3879, payload_3824, byte_3880}, (formula_1, formula_2, formula_3)
         )
 
@@ -1360,10 +1357,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
 
         formula_4 = z3_eq(byte_3879.to_smt(), payload_3824.to_smt())
 
-        (
-            length_vars,
-            flexible_vars,
-        ) = ISLaSolver.filter_length_variables(
+        (length_vars, flexible_vars,) = ISLaSolver.filter_length_variables(
             {byte_3879, payload_3824, byte_3880},
             (formula_1, formula_2, formula_4),
         )
@@ -1405,6 +1399,241 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         # Check that parsing works correctly
         parser = PEGParser(payload_grammar)
         parser.parse(str(result))  # No error
+
+    def test_icmp_payload_bytes_count(self):
+        # TODO: If bytes is nullable, `count` does not work!
+        grammar = '''
+<start> ::= <icmp_message>
+<icmp_message> ::= <header> <payload_data>
+<header> ::= <type> <code> <checksum> <header_data>
+<payload_data> ::= <bytes> | ""
+<type> ::= <byte>
+<code> ::= <byte>
+<checksum> ::= <byte> <byte>
+<header_data> ::= <byte> <byte> <byte> <byte>
+<byte> ::= <zerof> <zerof> " "
+<bytes> ::= <byte> | <byte> <bytes>
+<zerof> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | "B" | "C" | "D" | "E" | "F"'''
+
+        constraint = 'count(<payload_data>, "<byte>", "2")'
+
+        self.execute_generation_test(
+            grammar=grammar,
+            formula=constraint,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=1,
+            enforce_unique_trees_in_queue=True,
+            num_solutions=1,
+        )
+
+    def test_repair_icmp(self):
+        grammar = '''
+<start> ::= <icmp_message>
+<icmp_message> ::= <header> <payload_data>
+<header> ::= <type> <code> <checksum> <header_data>
+<payload_data> ::= <bytes> | ""
+<type> ::= <byte>
+<code> ::= <byte>
+<checksum> ::= <byte> <byte>
+<header_data> ::= <byte> <byte> <byte> <byte>
+<byte> ::= <zerof> <zerof> " "
+<bytes> ::= <byte> | <byte> <bytes>
+<zerof> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | "B" | "C" | "D" | "E" | "F"'''
+
+        constraint = '<type> = "08 "'
+        inp = "00 00 00 00 00 00 00 00 00 00 "
+
+        solver = ISLaSolver(grammar, constraint)
+        result = solver.repair(inp)
+        self.assertTrue(result.is_present())
+        self.assertEqual("08" + inp[2:], str(result.get()))
+
+    def test_repair_semantic_predicate_csv(self):
+        csv_file = """a;b;c
+1;2
+3;4;5
+7;8;9;10
+"""
+
+        constraint = 'count(<csv-record>, "<raw-field>", "3")'
+        solver = ISLaSolver(CSV_GRAMMAR, constraint)
+        result = solver.repair(csv_file)
+        self.assertTrue(result.is_present())
+        self.assertIn("a;b;c", str(result.get()))
+        self.assertIn("3;4;5", str(result.get()))
+        self.assertFalse(solver.check(csv_file))
+        self.assertTrue(solver.check(result.get()))
+
+    def test_repair_icmp_mock_checksum(self):
+        grammar = '''
+<start> ::= <icmp_message>
+<icmp_message> ::= <header> <payload_data>
+<header> ::= <type> <code> <checksum> <header_data>
+<payload_data> ::= <bytes> | ""
+<type> ::= <byte>
+<code> ::= <byte>
+<checksum> ::= <byte> <byte>
+<header_data> ::= <byte> <byte> <byte> <byte>
+<byte> ::= <zerof> <zerof> " "
+<bytes> ::= <byte> | <byte> <bytes>
+<zerof> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | "B" | "C" | "D" | "E" | "F"'''
+
+        constraint = "checksum(<start>, <checksum>)"
+        inp = "00 00 00 00 00 00 00 00 00 00 "
+
+        def mock_checksum(
+            _1,
+            _2: DerivationTree,
+            checksum_tree: DerivationTree,
+        ) -> SemPredEvalResult:
+            return SemPredEvalResult(
+                {
+                    checksum_tree: DerivationTree.from_parse_tree(
+                        parse("11 11 ", parse_bnf(grammar), "<checksum>")
+                    )
+                }
+            )
+
+        solver = ISLaSolver(
+            grammar,
+            constraint,
+            semantic_predicates={
+                SemanticPredicate("checksum", 2, mock_checksum, binds_tree=False)
+            },
+        )
+
+        result = solver.repair(inp)
+
+        self.assertTrue(result.is_present())
+        self.assertEqual("11 11 ", str(result.get().get_subtree((0, 0, 2))))
+        self.assertEqual("00 00 11 11 00 00 00 00 00 00 ", str(result.get()))
+
+    def test_repair_icmp_mock_checksum_and_type(self):
+        grammar = '''
+<start> ::= <icmp_message>
+<icmp_message> ::= <header> <payload_data>
+<header> ::= <type> <code> <checksum> <header_data>
+<payload_data> ::= <bytes> | ""
+<type> ::= <byte>
+<code> ::= <byte>
+<checksum> ::= <byte> <byte>
+<header_data> ::= <byte> <byte> <byte> <byte>
+<byte> ::= <zerof> <zerof> " "
+<bytes> ::= <byte> | <byte> <bytes>
+<zerof> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | "B" | "C" | "D" | "E" | "F"'''
+
+        constraint = 'checksum(<start>, <checksum>) and <type> = "08 "'
+        inp = "00 00 00 00 00 00 00 00 00 00 "
+
+        def mock_checksum(
+            _1,
+            _2: DerivationTree,
+            checksum_tree: DerivationTree,
+        ) -> SemPredEvalResult:
+            return SemPredEvalResult(
+                {
+                    checksum_tree: DerivationTree.from_parse_tree(
+                        parse("11 11 ", parse_bnf(grammar), "<checksum>")
+                    )
+                }
+            )
+
+        solver = ISLaSolver(
+            grammar,
+            constraint,
+            semantic_predicates={
+                SemanticPredicate("checksum", 2, mock_checksum, binds_tree=False)
+            },
+        )
+
+        result = solver.repair(inp)
+
+        self.assertTrue(result.is_present())
+        self.assertEqual("08 00 11 11 00 00 00 00 00 00 ", str(result.get()))
+
+    def test_generate_abstracted_trees_icmp_type(self):
+        grammar = '''
+<start> ::= <icmp_message>
+<icmp_message> ::= <header> <payload_data>
+<header> ::= <type> <code> <checksum> <header_data>
+<payload_data> ::= <bytes> | ""
+<type> ::= <byte>
+<code> ::= <byte>
+<checksum> ::= <byte> <byte>
+<header_data> ::= <byte> <byte> <byte> <byte>
+<byte> ::= <zerof> <zerof> " "
+<bytes> ::= <byte> | <byte> <bytes>
+<zerof> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | "B" | "C" | "D" | "E" | "F"'''
+
+        inp = DerivationTree.from_parse_tree(
+            next(
+                EarleyParser(parse_bnf(grammar)).parse("00 00 00 00 00 00 00 00 00 00 ")
+            )
+        )
+
+        abstracted_trees = generate_abstracted_trees(inp, {(0, 0, 0)})
+        self.assertTrue(
+            any(
+                "<type>00 00 00 00 00 00 00 00 00 " == str(tree)
+                for tree in abstracted_trees
+            )
+        )
+
+    def test_generate_abstracted_trees_icmp_checksum(self):
+        grammar = '''
+<start> ::= <icmp_message>
+<icmp_message> ::= <header> <payload_data>
+<header> ::= <type> <code> <checksum> <header_data>
+<payload_data> ::= <bytes> | ""
+<type> ::= <byte>
+<code> ::= <byte>
+<checksum> ::= <byte> <byte>
+<header_data> ::= <byte> <byte> <byte> <byte>
+<byte> ::= <zerof> <zerof> " "
+<bytes> ::= <byte> | <byte> <bytes>
+<zerof> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | "B" | "C" | "D" | "E" | "F"'''
+
+        inp = DerivationTree.from_parse_tree(
+            next(
+                EarleyParser(parse_bnf(grammar)).parse("00 00 00 00 00 00 00 00 00 00 ")
+            )
+        )
+
+        abstracted_trees = generate_abstracted_trees(inp, {(), (0, 0, 2)})
+        self.assertIn("00 00 <checksum>00 00 00 00 00 00 ", map(str, abstracted_trees))
+
+    def test_generate_abstracted_trees_icmp_checksum_and_type(self):
+        grammar = '''
+<start> ::= <icmp_message>
+<icmp_message> ::= <header> <payload_data>
+<header> ::= <type> <code> <checksum> <header_data>
+<payload_data> ::= <bytes> | ""
+<type> ::= <byte>
+<code> ::= <byte>
+<checksum> ::= <byte> <byte>
+<header_data> ::= <byte> <byte> <byte> <byte>
+<byte> ::= <zerof> <zerof> " "
+<bytes> ::= <byte> | <byte> <bytes>
+<zerof> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | "B" | "C" | "D" | "E" | "F"'''
+
+        inp = DerivationTree.from_parse_tree(
+            next(
+                EarleyParser(parse_bnf(grammar)).parse("00 00 00 00 00 00 00 00 00 00 ")
+            )
+        )
+
+        abstracted_trees = list(
+            map(str, generate_abstracted_trees(inp, {(), (0, 0, 2), (0, 0, 0)}))
+        )
+
+        expected_repair_1 = "<type>00 00 00 00 00 00 00 00 00 "
+        expected_repair_2 = "00 00 <checksum>00 00 00 00 00 00 "
+        expected_repair_3 = "<type>00 <checksum>00 00 00 00 00 00 "
+
+        print("\n".join(abstracted_trees))
+        self.assertIn(abstracted_trees.index(expected_repair_1), [0, 1])
+        self.assertIn(abstracted_trees.index(expected_repair_2), [0, 1])
+        self.assertEqual(2, abstracted_trees.index(expected_repair_3))
 
     def execute_generation_test(
         self,

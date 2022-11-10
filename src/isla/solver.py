@@ -39,7 +39,6 @@ from typing import (
     cast,
     Callable,
     Iterable,
-    Generator,
 )
 
 import pkg_resources
@@ -497,6 +496,8 @@ class ISLaSolver:
         self.step_cnt: int = 0
         self.last_cost_recomputation: int = 0
 
+        self.regex_cache = {}
+
         self.solutions: List[DerivationTree] = []
 
         # Debugging stuff
@@ -536,7 +537,7 @@ class ISLaSolver:
         grammar_unwinding_threshold: Maybe[int] = Maybe.nothing(),
         initial_tree: Maybe[DerivationTree] = Maybe.nothing(),
     ):
-        return ISLaSolver(
+        result = ISLaSolver(
             grammar=grammar.orelse(lambda: self.grammar).get(),
             formula=formula.orelse(lambda: self.formula).get(),
             max_number_free_instantiations=max_number_free_instantiations.orelse(
@@ -570,6 +571,10 @@ class ISLaSolver:
             ).get(),
             initial_tree=initial_tree,
         )
+
+        result.regex_cache = self.regex_cache
+
+        return result
 
     def check(self, inp: DerivationTree | str) -> bool:
         """
@@ -651,8 +656,11 @@ class ISLaSolver:
 
         inp = self.parse(inp, skip_check=True) if isinstance(inp, str) else inp
 
-        if self.check(inp) or not self.top_constant.is_present():
-            return Maybe(inp)
+        try:
+            if self.check(inp) or not self.top_constant.is_present():
+                return Maybe(inp)
+        except UnknownResultError:
+            pass
 
         formula = self.top_constant.map(
             lambda c: self.formula.substitute_expressions({c: inp})
@@ -727,7 +735,7 @@ class ISLaSolver:
                 if maybe_completed.is_present():
                     return maybe_completed
 
-        raise Maybe.nothing()
+        return Maybe.nothing()
 
     def mutate(
         self,
@@ -2871,8 +2879,10 @@ class ISLaSolver:
             self.graph.reachable,
         )
 
-    @lru_cache(maxsize=None)
     def extract_regular_expression(self, nonterminal: str) -> z3.ReRef:
+        if nonterminal in self.regex_cache:
+            return self.regex_cache[nonterminal]
+
         regex_conv = RegexConverter(
             self.grammar,
             compress_unions=True,
@@ -2932,6 +2942,8 @@ class ISLaSolver:
                         False
                     ), f"Input '{new_inp}' from regex language is not in grammar language."
                 prev.add(new_inp)
+
+        self.regex_cache[nonterminal] = z3_regex
 
         return z3_regex
 
@@ -3329,7 +3341,7 @@ def equivalent(
 
 def generate_abstracted_trees(
     inp: DerivationTree, participating_paths: Set[Path]
-) -> Generator[DerivationTree, None, None]:
+) -> List[DerivationTree]:
     """
     Yields trees that are more and more "abstracted," i.e., pruned, at prefixes of the
     paths specified in `participating_paths`.
@@ -3339,44 +3351,35 @@ def generate_abstracted_trees(
     :return: A generator of more and more abstract trees, beginning with the most
     concrete and ending with the most abstract ones.
     """
-    sub_paths = {
+    parent_paths: Set[ImmutableList[Path]] = {
         tuple(
-            [
-                (len(path) - i, tuple(path[:i]))
-                for i in reversed(range(1, len(path) + 1))
-            ]
+            [tuple(path[:i]) for i in reversed(range(1, len(path) + 1))]
+            if path
+            else [()]
         )
         for path in participating_paths
     }
 
-    already_seen: Set[frozenset[Path]] = set()
-    for l_diffs_and_paths in itertools.islice(
-        sorted(
-            itertools.product(*sub_paths),
-            key=lambda l_diffs_and_paths_: (
-                max(map(lambda t: t[0], l_diffs_and_paths_))
-            ),
-        ),
-        1,
-        None,
-    ):
-        for chosen_paths in [
-            tuple(eliminate_suffixes([c[1] for c in combination]))
-            for k in range(1, len(participating_paths) + 1)
-            for combination in itertools.combinations(l_diffs_and_paths, k)
-        ]:
-            if frozenset(chosen_paths) in already_seen:
-                continue
-            already_seen.add(frozenset(chosen_paths))
+    abstraction_candidate_combinations: Set[ImmutableList[Path]] = {
+        tuple(eliminate_suffixes(combination))
+        for k in range(1, len(participating_paths) + 1)
+        for paths in itertools.product(*parent_paths)
+        for combination in itertools.combinations(paths, k)
+    }
 
-            yield inp.substitute(
-                {
-                    inp.get_subtree(chosen_path): DerivationTree(
-                        inp.get_subtree(chosen_path).value
-                    )
-                    for chosen_path in chosen_paths
-                }
-            )
+    result: Dict[int, DerivationTree] = {}
+    for paths_to_abstract in abstraction_candidate_combinations:
+        abstracted_tree = inp.substitute(
+            {
+                inp.get_subtree(path_to_abstract): DerivationTree(
+                    inp.get_subtree(path_to_abstract).value
+                )
+                for path_to_abstract in paths_to_abstract
+            }
+        )
+        result[abstracted_tree.structural_hash()] = abstracted_tree
+
+    return sorted(result.values(), key=lambda tree: -len(tree))
 
 
 class EvaluatePredicateFormulasTransformer(NoopFormulaTransformer):
