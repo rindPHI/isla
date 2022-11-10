@@ -1330,10 +1330,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
 
         formula_2 = z3_eq(byte_3879.to_smt(), z3.StringVal("\x01"))
 
-        (
-            length_vars,
-            flexible_vars,
-        ) = ISLaSolver.filter_length_variables(
+        (length_vars, flexible_vars,) = ISLaSolver.filter_length_variables(
             {byte_3879, payload_3824, byte_3880}, (formula_1, formula_2)
         )
 
@@ -1345,10 +1342,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
 
         formula_3 = z3_eq(byte_3879.to_smt(), byte_3880.to_smt())
 
-        (
-            length_vars,
-            flexible_vars,
-        ) = ISLaSolver.filter_length_variables(
+        (length_vars, flexible_vars,) = ISLaSolver.filter_length_variables(
             {byte_3879, payload_3824, byte_3880}, (formula_1, formula_2, formula_3)
         )
 
@@ -1360,10 +1354,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
 
         formula_4 = z3_eq(byte_3879.to_smt(), payload_3824.to_smt())
 
-        (
-            length_vars,
-            flexible_vars,
-        ) = ISLaSolver.filter_length_variables(
+        (length_vars, flexible_vars,) = ISLaSolver.filter_length_variables(
             {byte_3879, payload_3824, byte_3880},
             (formula_1, formula_2, formula_4),
         )
@@ -1405,6 +1396,31 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         # Check that parsing works correctly
         parser = PEGParser(payload_grammar)
         parser.parse(str(result))  # No error
+
+    def test_icmp_payload_bytes_count(self):
+        grammar = '''
+<start> ::= <icmp_message>
+<icmp_message> ::= <header> <payload_data>
+<header> ::= <type> <code> <checksum> <header_data>
+<payload_data> ::= <bytes> | ""
+<type> ::= <byte>
+<code> ::= <byte>
+<checksum> ::= <byte> <byte>
+<header_data> ::= <byte> <byte> <byte> <byte>
+<byte> ::= <zerof> <zerof> " "
+<bytes> ::= <byte> | <byte> <bytes>
+<zerof> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | "B" | "C" | "D" | "E" | "F"'''
+
+        constraint = 'count(<payload_data>, "<byte>", "2")'
+
+        self.execute_generation_test(
+            grammar=grammar,
+            formula=constraint,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=1,
+            enforce_unique_trees_in_queue=True,
+            num_solutions=1,
+        )
 
     def execute_generation_test(
         self,
