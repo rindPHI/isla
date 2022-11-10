@@ -5,10 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.9.2] - 2022-11-10
+
 ### Changed
 
-- Improved input repair; results are more local now, performance improvement for
-  more complicated repairs.
+- Improved input repair:
+  + Results are more local now, performance improvement for more complicated repairs
+  + Fixed tree abstraction for the top (empty) path
 
 ## [1.9.1] - 2022-11-08
 

@@ -657,8 +657,11 @@ class ISLaSolver:
 
         inp = self.parse(inp, skip_check=True) if isinstance(inp, str) else inp
 
-        if self.check(inp) or not self.top_constant.is_present():
-            return Maybe(inp)
+        try:
+            if self.check(inp) or not self.top_constant.is_present():
+                return Maybe(inp)
+        except UnknownResultError:
+            pass
 
         formula = self.top_constant.map(
             lambda c: self.formula.substitute_expressions({c: inp})
@@ -733,7 +736,7 @@ class ISLaSolver:
                 if maybe_completed.is_present():
                     return maybe_completed
 
-        raise Maybe.nothing()
+        return Maybe.nothing()
 
     def mutate(
         self,
@@ -3354,7 +3357,7 @@ def generate_abstracted_trees(
             [
                 (len(path) - i, tuple(path[:i]))
                 for i in reversed(range(1, len(path) + 1))
-            ]
+            ] if path else [(0, ())]
         )
         for path in participating_paths
     }
