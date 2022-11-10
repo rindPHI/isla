@@ -3357,7 +3357,9 @@ def generate_abstracted_trees(
             [
                 (len(path) - i, tuple(path[:i]))
                 for i in reversed(range(1, len(path) + 1))
-            ] if path else [(0, ())]
+            ]
+            if path
+            else [(0, ())]
         )
         for path in participating_paths
     }
