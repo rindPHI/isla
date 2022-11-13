@@ -850,11 +850,11 @@ exists <csv-header> header in start:
     def test_parse_grammar_with_escaped_unicode_symbols(self):
         grammar = r'''
 <start> ::= <A>
-<A> ::= "\x01\x02 \x0b\x0c \r ABC"'''
+<A> ::= "\x01\x02 \x0b\x0c \r ABC \xa0"'''
 
         expected = {
             "<start>": ["<A>"],
-            "<A>": ["\x01\x02 \x0b\x0c \r ABC"],
+            "<A>": ["\x01\x02 \x0b\x0c \r ABC \xa0"],
         }
 
         self.assertEqual(expected, parse_bnf(grammar))
@@ -862,12 +862,12 @@ exists <csv-header> header in start:
     def test_unparse_grammar_with_escaped_unicode_symbols(self):
         grammar = {
             "<start>": ["<A>"],
-            "<A>": ["\x01\x02 \x0b\x0c \r ABC"],
+            "<A>": ["\x01\x02 \x0b\x0c \r ABC \xa0"],
         }
 
         expected = r'''
 <start> ::= <A>
-<A> ::= "\x01\x02 \x0b\x0c \r ABC"'''.strip()
+<A> ::= "\x01\x02 \x0b\x0c \r ABC \xa0"'''.strip()
 
         self.assertEqual(expected, unparse_grammar(grammar))
 

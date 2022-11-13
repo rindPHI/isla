@@ -3943,8 +3943,8 @@ def unparse_grammar(grammar: Grammar) -> str:
             "\\": r"\\",
             '"': r"\"",
         } | {
-            chr(i): rf"\x{str(i).rjust(2, '0')}"
-            for i in range(0, 100)
+            chr(i): r"\x" + hex(i)[2:].rjust(2, "0")
+            for i in range(0, 256)
             if chr(i) not in string.printable
         }
 
