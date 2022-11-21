@@ -55,7 +55,7 @@ from isla.language import (
     SemPredEvalResult,
     parse_bnf,
 )
-from isla.parser import EarleyParser, PEGParser
+from isla.parser import EarleyParser, PEGParser, nullable
 from isla.solver import (
     ISLaSolver,
     SolutionState,
@@ -71,6 +71,7 @@ from isla.solver import (
     SemanticError,
     create_fixed_length_tree,
     generate_abstracted_trees,
+    nullable_nonterminals,
 )
 from isla.type_defs import Grammar, ImmutableList
 from isla.z3_helpers import z3_eq, smt_string_val_to_string
@@ -1400,6 +1401,36 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         parser = PEGParser(payload_grammar)
         parser.parse(str(result))  # No error
 
+    def test_get_nullable_nonterminals(self):
+        grammar = canonical(
+            {
+                "<start>": ["<X>"],
+                "<X>": ["x<chars><C>"],
+                "<chars>": ["<char><chars>", "<char>", "<A>"],
+                "<char>": ["a", "b", "c"],
+                "<A>": ["<B>"],
+                "<B>": [""],
+                "<C>": ["<A>", "<B>"],
+            }
+        )
+
+        self.assertEqual(
+            {"<A>", "<B>", "<C>", "<chars>"}, nullable_nonterminals(grammar)
+        )
+
+    def test_create_zero_length_tree_impossible(self):
+        grammar = {
+            "<start>": ["<chars>"],
+            "<chars>": ["<char><chars>", "<char>"],
+            "<char>": ["a", "b", "c"],
+        }
+
+        result = create_fixed_length_tree(
+            "<start>", canonical(grammar), target_length=0
+        )
+
+        self.assertEqual(None, result)
+
     def test_icmp_payload_bytes_count(self):
         # TODO: If bytes is nullable, `count` does not work!
         grammar = '''
@@ -1634,6 +1665,38 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         self.assertIn(abstracted_trees.index(expected_repair_1), [0, 1])
         self.assertIn(abstracted_trees.index(expected_repair_2), [0, 1])
         self.assertEqual(2, abstracted_trees.index(expected_repair_3))
+
+    def test_nonterminating_simple_length_constraint(self):
+        grammar = '''<start> ::= <chars>
+<chars> ::= <char> <chars> | ""
+<char> ::= "A" | "a" | "B" | "b"'''
+
+        constraint = "str.len(<chars>) < 10"
+
+        self.execute_generation_test(
+            constraint,
+            grammar=grammar,
+            max_number_smt_instantiations=10,
+            num_solutions=10,
+        )
+
+    def test_nonterminating_simple_length_constraint_impossible(self):
+        grammar = '''<start> ::= <chars>
+<chars> ::= <char> <chars> | <char>
+<char> ::= "A" | "a" | "B" | "b"'''
+
+        constraint = "str.len(<chars>) = 0"
+
+        try:
+            self.execute_generation_test(
+                constraint,
+                grammar=grammar,
+                max_number_smt_instantiations=10,
+                num_solutions=10,
+            )
+            self.fail("Expected error")
+        except RuntimeError as exc:
+            self.assertIn("Could not create a tree", str(exc))
 
     def execute_generation_test(
         self,
