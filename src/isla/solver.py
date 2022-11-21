@@ -72,7 +72,6 @@ from isla.helpers import (
     delete_unreachable,
     shuffle,
     dict_of_lists_to_list_of_dicts,
-    replace_line_breaks,
     weighted_geometric_mean,
     assertions_activated,
     split_str_with_nonterminals,
