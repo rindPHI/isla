@@ -1451,7 +1451,7 @@ exists <assgn> assgn:
         )
 
         self.assertFalse(stdout)
-        self.assertIn("AssertionError", stderr)
+        self.assertIn("RuntimeError", stderr)
         self.assertIn(
             "Could not create a tree with the start symbol '<start>' of length 2",
             stderr,

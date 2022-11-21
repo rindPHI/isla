@@ -5,6 +5,14 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.9.5] - 2022-11-21
+
+### Changed
+
+- Bug fix in optimized solution of length constraints: (1) Preventing infinite loop for
+  unsolvable constraints (e.g., zero length for non-nullable nonterminal), (2)
+  preventing solver from trying to produce strings with negative lengths.
+
 ## [1.9.4] - 2022-11-13
 
 ### Changed

@@ -86,7 +86,6 @@ from isla.helpers import (
     eliminate_suffixes,
     get_elem_by_equivalence,
     get_expansions,
-    eassert,
 )
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
@@ -2280,6 +2279,14 @@ class ISLaSolver:
             ]
         )
 
+        # Lengths must be positive
+        formulas.extend(
+            [
+                cast(z3.BoolRef, length_var >= z3.IntVal(0))
+                for length_var in replacement_map.values()
+            ]
+        )
+
         for prev_solution in solutions_to_exclude:
             prev_solution_formula = z3_and(
                 [
@@ -2311,6 +2318,24 @@ class ISLaSolver:
 
         assert maybe_model is not None
 
+        def safe_create_fixed_length_tree(var: language.Variable) -> DerivationTree:
+            fixed_length_tree = create_fixed_length_tree(
+                start=var.n_type,
+                canonical_grammar=self.canonical_grammar,
+                target_length=maybe_model[fresh_var_map[var]].as_long(),
+            )
+
+            if fixed_length_tree is None:
+                raise RuntimeError(
+                    f"Could not create a tree with the start symbol '{var.n_type}' "
+                    + f"of length {maybe_model[fresh_var_map[var]].as_long()}; try "
+                    + "to run the solver without optimized Z3 queries or make "
+                    + "sure that lengths are restricted to syntactically valid "
+                    + "ones (according to the grammar).",
+                )
+
+            return fixed_length_tree
+
         result = {
             var: DerivationTree(
                 smt_string_val_to_string(maybe_model[z3.String(var.name)]), ()
@@ -2323,19 +2348,7 @@ class ISLaSolver:
                 )
                 if var in flexible_vars
                 else (
-                    eassert(
-                        create_fixed_length_tree(
-                            start=var.n_type,
-                            canonical_grammar=self.canonical_grammar,
-                            target_length=maybe_model[fresh_var_map[var]].as_long(),
-                        ),
-                        lambda t: t is not None,
-                        f"Could not create a tree with the start symbol '{var.n_type}' "
-                        + f"of length {maybe_model[fresh_var_map[var]].as_long()}; try "
-                        + "to run the solver without optimized Z3 queries or make "
-                        + "sure that lengths are restricted to syntactically valid "
-                        + "ones (according to the grammar).",
-                    )
+                    safe_create_fixed_length_tree(var)
                     if var in length_vars
                     else (
                         self.parse(
@@ -3385,16 +3398,39 @@ class EvaluatePredicateFormulasTransformer(NoopFormulaTransformer):
         )
 
 
+def nullable_nonterminals(canonical_grammar: CanonicalGrammar) -> Set[str]:
+    result = {
+        nonterminal
+        for nonterminal in canonical_grammar
+        if any(not expansion for expansion in canonical_grammar[nonterminal])
+    }
+
+    changed = True
+    while changed:
+        changed = False
+
+        for nonterminal in set(canonical_grammar).difference(result):
+            if any(
+                all(elem in result for elem in expansion)
+                for expansion in canonical_grammar[nonterminal]
+            ):
+                changed = True
+                result.add(nonterminal)
+
+    return result
+
+
 def create_fixed_length_tree(
     start: DerivationTree | str,
     canonical_grammar: CanonicalGrammar,
     target_length: int,
 ) -> Optional[DerivationTree]:
+    nullable = nullable_nonterminals(canonical_grammar)
     start = DerivationTree(start) if isinstance(start, str) else start
     stack: List[
         Tuple[DerivationTree, int, ImmutableList[Tuple[Path, DerivationTree]]]
     ] = [
-        (start, 0, (((), start),)),
+        (start, int(start.value not in nullable), (((), start),)),
     ]
 
     while stack:
@@ -3451,10 +3487,12 @@ def create_fixed_length_tree(
                         + sum(
                             [
                                 len(child.value)
-                                for child in new_children
                                 if child.children == ()
+                                else (1 if child.value not in nullable else 0)
+                                for child in new_children
                             ]
-                        ),
+                        )
+                        - int(leaf.value not in nullable),
                         open_leaves[:idx]
                         + tuple(
                             [
