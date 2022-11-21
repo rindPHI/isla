@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.9.4] - 2022-11-13
+
+### Changed
+
+- Can use Unicode symbols like "\x01" in the nonprintable range in BNF grammars (parsing
+  and unparsing now works for these symbols).
+
 ## [1.9.3] - 2022-11-10
 
 ### Changed

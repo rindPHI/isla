@@ -3931,14 +3931,27 @@ def unparse_isla(formula: Formula) -> str:
 
 
 def unparse_grammar(grammar: Grammar) -> str:
-    def escape(elem: str) -> str:
-        return (
-            elem.replace("\\", r"\\")
-            .replace('"', r"\"")
-            .replace("\n", r"\n")
-            .replace("\r", r"\r")
-            .replace("\t", r"\t")
-        )
+    def escape_char(char: str) -> str:
+        assert len(char) == 1
+
+        subst_map = {
+            "\t": r"\t",
+            "\n": r"\n",
+            "\x0b": r"\x0b",
+            "\x0c": r"\x0c",
+            "\r": r"\r",
+            "\\": r"\\",
+            '"': r"\"",
+        } | {
+            chr(i): r"\x" + hex(i)[2:].rjust(2, "0")
+            for i in range(0, 256)
+            if chr(i) not in string.printable
+        }
+
+        return subst_map.get(char, char)
+
+    def escape_string(elem: str) -> str:
+        return "".join(escape_char(char) for char in elem)
 
     return "\n".join(
         f"{symbol} ::= "
@@ -3946,7 +3959,7 @@ def unparse_grammar(grammar: Grammar) -> str:
             '""'
             if not expansion
             else " ".join(
-                (elem if is_nonterminal(elem) else f'"{escape(elem)}"')
+                (elem if is_nonterminal(elem) else f'"{escape_string(elem)}"')
                 for elem in expansion
             )
             for expansion in expansions

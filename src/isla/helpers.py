@@ -834,12 +834,14 @@ def instantiate_escaped_symbols(text: str) -> str:
     assert backslash_escape_placeholder not in text
 
     repl_map = {
-        "\\b": "\b",
-        "\\t": "\t",
-        "\\n": "\n",
-        "\\r": "\r",
-        '\\"': '"',
-    }
+        r"\b": "\b",
+        r"\t": "\t",
+        r"\n": "\n",
+        r"\r": "\r",
+        r"\"": '"',
+        r"\x0b": "\x0b",
+        r"\x0c": "\x0c",
+    } | {r"\x" + hex(i)[2:].rjust(2, "0"): chr(i) for i in range(0, 256)}
 
     text = text.replace("\\\\", backslash_escape_placeholder)
     for escaped_char in repl_map:

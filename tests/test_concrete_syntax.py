@@ -838,10 +838,7 @@ exists <csv-header> header in start:
         self.assertEqual(constraint, unparse_isla(parsed))
 
     def test_unparse_grammar_with_epsilon(self):
-        grammar = {
-            "<start>": ["<A>"],
-            "<A>": ["a", ""]
-        }
+        grammar = {"<start>": ["<A>"], "<A>": ["a", ""]}
 
         expected = '''
 <start> ::= <A>
@@ -849,6 +846,30 @@ exists <csv-header> header in start:
 
         self.assertEqual(expected, unparse_grammar(grammar))
         self.assertEqual(grammar, parse_bnf(unparse_grammar(grammar)))
+
+    def test_parse_grammar_with_escaped_unicode_symbols(self):
+        grammar = r'''
+<start> ::= <A>
+<A> ::= "\x01\x02 \x0b\x0c \r ABC \xa0"'''
+
+        expected = {
+            "<start>": ["<A>"],
+            "<A>": ["\x01\x02 \x0b\x0c \r ABC \xa0"],
+        }
+
+        self.assertEqual(expected, parse_bnf(grammar))
+
+    def test_unparse_grammar_with_escaped_unicode_symbols(self):
+        grammar = {
+            "<start>": ["<A>"],
+            "<A>": ["\x01\x02 \x0b\x0c \r ABC \xa0"],
+        }
+
+        expected = r'''
+<start> ::= <A>
+<A> ::= "\x01\x02 \x0b\x0c \r ABC \xa0"'''.strip()
+
+        self.assertEqual(expected, unparse_grammar(grammar))
 
 
 if __name__ == "__main__":

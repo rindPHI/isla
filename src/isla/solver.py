@@ -72,7 +72,6 @@ from isla.helpers import (
     delete_unreachable,
     shuffle,
     dict_of_lists_to_list_of_dicts,
-    replace_line_breaks,
     weighted_geometric_mean,
     assertions_activated,
     split_str_with_nonterminals,
@@ -125,14 +124,12 @@ from isla.z3_helpers import (
 )
 
 
+@dataclass(frozen=True)
 class SolutionState:
-    def __init__(
-        self, constraint: language.Formula, tree: DerivationTree, level: int = 0
-    ):
-        self.constraint = constraint
-        self.tree = tree
-        self.level = level
-        self.__hash = None
+    constraint: language.Formula
+    tree: DerivationTree
+    level: int = 0
+    __hash: Optional[int] = None
 
     def formula_satisfied(
         self, grammar: Grammar
@@ -152,49 +149,18 @@ class SolutionState:
         # from the instantiation. Existential, predicate, and SMT formulas have to be
         # eliminated first.
 
-        # return any(
-        #     all(
-        #         not isinstance(conjunct, language.StructuralPredicateFormula)
-        #         and (
-        #             not isinstance(conjunct, language.SMTFormula)
-        #             or conjunct == sc.true()
-        #         )
-        #         and not isinstance(conjunct, language.SemanticPredicateFormula)
-        #         and not isinstance(conjunct, language.ExistsFormula)
-        #         and (
-        #             not isinstance(conjunct, language.ForallFormula)
-        #             or len(conjunct.already_matched) > 0
-        #         )
-        #         for conjunct in split_conjunction(disjunct)
-        #     )
-        #     for disjunct in split_disjunction(self.constraint)
-        # )
-
         return self.constraint == sc.true()
 
-    def variables(self) -> Set[language.Variable]:
-        return set(language.VariablesCollector.collect(self.constraint))
-
-    def __iter__(self):
-        yield self.constraint
-        yield self.tree
-
-    # Numeric comparisons are needed for using solution states in the binary heap queue
+    # Less-than comparisons are needed for usage in the binary heap queue
     def __lt__(self, other: "SolutionState"):
         return hash(self) < hash(other)
 
-    def __le__(self, other: "SolutionState"):
-        return hash(self) <= hash(other)
-
-    def __gt__(self, other: "SolutionState"):
-        return hash(self) > hash(other)
-
-    def __ge__(self, other: "SolutionState"):
-        return hash(self) >= hash(other)
-
     def __hash__(self):
         if self.__hash is None:
-            self.__hash = hash((self.constraint, self.tree))
+            result = hash((self.constraint, self.tree))
+            object.__setattr__(self, "__hash", result)
+            return result
+
         return self.__hash
 
     def __eq__(self, other):
@@ -204,14 +170,8 @@ class SolutionState:
             and self.tree.structurally_equal(other.tree)
         )
 
-    def __repr__(self):
-        return f"SolutionState({repr(self.constraint)}, {repr(self.tree)})"
 
-    def __str__(self):
-        return f"{{{self.constraint}, {replace_line_breaks(str(self.tree))}}}"
-
-
-@dataclass
+@dataclass(frozen=True)
 class CostWeightVector:
     tree_closing_cost: float = (0,)
     constraint_cost: float = (0,)
