@@ -10,7 +10,18 @@ a code { color: unset; }
 
 @media print, screen and (min-width: 1191px) {
   .wrapper { width: 1090px; }
-  header { width: 300px; }
+  header {
+    width: 300px; 
+    height: 100vh;
+  }
+  header > ul {
+    max-height: calc(100% - 500px); /* CSS3 */
+    max-height: -o-calc(100% - 500px); /* opera */
+    max-height: -webkit-calc(100% - 500px); /* google, safari */
+    max-height: -moz-calc(100% - 500px); /* firefox */
+
+    overflow: auto;
+  }
   section { width: 700px; }
 }
 
