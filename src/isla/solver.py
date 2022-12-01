@@ -475,6 +475,7 @@ class ISLaSolver:
             for state in initial_states:
                 self.costs[state] = self.compute_cost(state)
 
+    # TODO: optimize_z3_queries; generally add other params if missing
     def copy_without_queue(
         self,
         grammar: Maybe[Grammar | str] = Maybe.nothing(),
