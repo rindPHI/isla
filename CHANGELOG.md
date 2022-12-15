@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Changed
+
+- Fixed hashing in call to `solver.is_valid_combination`
+- Performance improvements, mainly by avoiding `replace_formula` for top-level formulas
+  (performing shallow replace instead) and re-using the same objects for atomic SMT
+  formulas.
+
 ## [1.9.5] - 2022-11-21
 
 ### Changed

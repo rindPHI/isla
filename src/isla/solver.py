@@ -86,6 +86,7 @@ from isla.helpers import (
     eliminate_suffixes,
     get_elem_by_equivalence,
     get_expansions,
+    list_del,
 )
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
@@ -475,6 +476,7 @@ class ISLaSolver:
             for state in initial_states:
                 self.costs[state] = self.compute_cost(state)
 
+    # TODO: optimize_z3_queries; generally add other params if missing
     def copy_without_queue(
         self,
         grammar: Maybe[Grammar | str] = Maybe.nothing(),
@@ -1510,7 +1512,7 @@ class ISLaSolver:
                     language.replace_formula(
                         result.constraint,
                         semantic_predicate_formula,
-                        language.SMTFormula(z3.BoolVal(evaluation_result.true())),
+                        language.smt_atom(evaluation_result.true()),
                     ),
                     result.tree,
                 )
@@ -1539,52 +1541,26 @@ class ISLaSolver:
     def eliminate_and_match_first_existential_formula(
         self, state: SolutionState
     ) -> Optional[List[SolutionState]]:
-        # We produce up to two groups of output states: One where the first existential formula, if it can be matched,
-        # is matched, and one where the first existential formula is eliminated by tree insertion.
-        existential_formulas = [
-            conjunct
-            for conjunct in split_conjunction(state.constraint)
+        # We produce up to two groups of output states: One where the first existential
+        # formula, if it can be matched, is matched, and one where the first existential
+        # formula is eliminated by tree insertion.
+        maybe_first_existential_formula_with_idx = Maybe.from_iterator(
+            (idx, conjunct)
+            for idx, conjunct in enumerate(split_conjunction(state.constraint))
             if isinstance(conjunct, language.ExistsFormula)
-        ]
-
-        if not existential_formulas:
-            return None
-
-        # 1. Match all existential formulas.
-        # NOTE: Deactivated; seems to be more beneficial to only match the first formula...
-        all_matched = OrderedSet()
-        # stack = [(state, [])]
-        # while stack:
-        #     curr_state, already_matched = stack.pop()
-        #     try:
-        #         next_existential_formula = next(
-        #             conjunct for conjunct in split_conjunction(curr_state.constraint)
-        #             if isinstance(conjunct, language.ExistsFormula) and conjunct not in already_matched)
-        #     except StopIteration:
-        #         all_matched.add(curr_state)
-        #         continue
-        #
-        #     match_result = self.match_existential_formula(next_existential_formula, curr_state)
-        #     if not match_result:
-        #         stack.append((curr_state, already_matched + [next_existential_formula]))
-        #     else:
-        #         stack.extend([(result, list(already_matched)) for result in match_result])
-        #
-        # if all_matched:
-        #     self.logger.debug(
-        #         "Matched all matchable existential formulas, result: [%s]",
-        #         ", ".join([f"{s} (hash={hash(s)})" for s in all_matched])
-        #     )
-        #
-        #     if all(result.complete() for result in all_matched):
-        #         return list(all_matched)
-
-        # 2. Match first existential formula.
-        first_matched = OrderedSet(
-            self.match_existential_formula(existential_formulas[0], state)
         )
 
-        # Tree insertion can be deactivated by setting `self.tree_insertion_methods` to 0.
+        if not maybe_first_existential_formula_with_idx:
+            return None
+
+        first_matched = OrderedSet(
+            self.match_existential_formula(
+                maybe_first_existential_formula_with_idx.get()[0], state
+            )
+        )
+
+        # Tree insertion can be deactivated by setting `self.tree_insertion_methods`
+        # to 0.
         if not self.tree_insertion_methods:
             return list(first_matched)
 
@@ -1599,7 +1575,9 @@ class ISLaSolver:
 
         # 3. Eliminate first existential formula by tree insertion.
         elimination_result = OrderedSet(
-            self.eliminate_existential_formula(existential_formulas[0], state)
+            self.eliminate_existential_formula(
+                maybe_first_existential_formula_with_idx.get()[0], state
+            )
         )
         elimination_result = OrderedSet(
             [
@@ -1610,29 +1588,27 @@ class ISLaSolver:
                     and self.propositionally_unsatisfiable(
                         result.constraint & -other_result.constraint
                     )
-                    for other_result in all_matched | first_matched
+                    for other_result in first_matched
                 )
             ]
         )
 
-        if not elimination_result and not first_matched and not all_matched:
+        if not elimination_result and not first_matched:
             self.logger.warning(
                 "Existential qfr elimination: Could not eliminate existential formula %s "
                 "by matching or tree insertion",
-                existential_formulas[0],
+                maybe_first_existential_formula_with_idx.get()[1],
             )
 
         if elimination_result:
             self.logger.debug(
                 "Eliminated existential formula %s by tree insertion, %d successors",
-                existential_formulas[0],
+                maybe_first_existential_formula_with_idx.get()[1],
                 len(elimination_result),
             )
 
         return [
-            result
-            for result in all_matched | first_matched | elimination_result
-            if result != state
+            result for result in first_matched | elimination_result if result != state
         ]
 
     def match_all_universal_formulas(
@@ -1647,7 +1623,7 @@ class ISLaSolver:
         if not universal_formulas:
             return Maybe.nothing()
 
-        result = self.match_universal_formulas(universal_formulas, state)
+        result = self.match_universal_formulas(state)
         if result:
             self.logger.debug(
                 "Matched universal formulas [%s]", lazyjoin(", ", universal_formulas)
@@ -1744,13 +1720,14 @@ class ISLaSolver:
         assert not limit or len(result) <= limit
         return result
 
-    def match_universal_formulas(
-        self, universal_formulas: List[language.ForallFormula], state: SolutionState
-    ) -> List[SolutionState]:
-        number_matches = 0
-        context_formula = state.constraint
+    def match_universal_formulas(self, state: SolutionState) -> List[SolutionState]:
+        instantiated_formulas: List[language.Formula] = []
+        conjuncts = split_conjunction(state.constraint)
 
-        for universal_formula in universal_formulas:
+        for idx, universal_formula in enumerate(conjuncts):
+            if not isinstance(universal_formula, language.ForallFormula):
+                continue
+
             matches: List[Dict[language.Variable, Tuple[Path, DerivationTree]]] = [
                 match
                 for match in matches_for_quantified_formula(
@@ -1766,8 +1743,6 @@ class ISLaSolver:
             )
 
             for match in matches:
-                number_matches += 1
-
                 inst_formula = (
                     universal_formula_with_matches.inner_formula.substitute_expressions(
                         {
@@ -1777,19 +1752,30 @@ class ISLaSolver:
                     )
                 )
 
-                context_formula = inst_formula & language.replace_formula(
-                    context_formula, universal_formula, universal_formula_with_matches
-                )
+                instantiated_formulas.append(inst_formula)
+                conjuncts[idx] = universal_formula_with_matches
 
-        if number_matches:
-            return [SolutionState(context_formula, state.tree)]
+        if instantiated_formulas:
+            return [
+                SolutionState(
+                    sc.conjunction(*instantiated_formulas) & sc.conjunction(*conjuncts),
+                    state.tree,
+                )
+            ]
         else:
             return []
 
     def match_existential_formula(
-        self, existential_formula: language.ExistsFormula, state: SolutionState
+        self, existential_formula_idx: int, state: SolutionState
     ) -> List[SolutionState]:
         result: List[SolutionState] = []
+
+        conjuncts: ImmutableList[language.Formula] = tuple(
+            split_conjunction(state.constraint)
+        )
+        existential_formula = cast(
+            language.ExistsFormula, conjuncts[existential_formula_idx]
+        )
 
         matches: List[
             Dict[language.Variable, Tuple[Path, DerivationTree]]
@@ -1799,16 +1785,23 @@ class ISLaSolver:
             inst_formula = existential_formula.inner_formula.substitute_expressions(
                 {variable: match_tree for variable, (_, match_tree) in match.items()}
             )
-            constraint = inst_formula & language.replace_formula(
-                state.constraint, existential_formula, sc.true()
+            constraint = inst_formula & sc.conjunction(
+                *list_del(conjuncts, existential_formula_idx)
             )
             result.append(SolutionState(constraint, state.tree))
 
         return result
 
     def eliminate_existential_formula(
-        self, existential_formula: language.ExistsFormula, state: SolutionState
+        self, existential_formula_idx: int, state: SolutionState
     ) -> List[SolutionState]:
+        conjuncts: ImmutableList[language.Formula] = tuple(
+            split_conjunction(state.constraint)
+        )
+        existential_formula = cast(
+            language.ExistsFormula, conjuncts[existential_formula_idx]
+        )
+
         inserted_trees_and_bind_paths = (
             [(DerivationTree(existential_formula.bound_variable.n_type, None), {})]
             if existential_formula.bind_expression is None
@@ -1849,7 +1842,6 @@ class ISLaSolver:
             ]
 
             for insertion_result in insertion_results:
-                # actual_inserted_tree = insertion_result.get_subtree(insertion_result.find_node(inserted_tree))
                 replaced_path = state.tree.find_node(existential_formula.in_variable)
                 resulting_tree = state.tree.replace_path(
                     replaced_path, insertion_result
@@ -1868,13 +1860,6 @@ class ISLaSolver:
                         tree_substitution[original_tree] = resulting_tree.get_subtree(
                             original_path
                         )
-
-                # tree_substitution: Dict[DerivationTree, DerivationTree] = {
-                #     original_tree: resulting_tree.get_subtree(original_path)
-                #     for original_path, original_tree in state.tree.paths()
-                #     if (resulting_tree.is_valid_path(original_path) and
-                #         original_tree.value == resulting_tree.get_subtree(original_path).value
-                #         and resulting_tree.get_subtree(original_path) != original_tree)}
 
                 assert insertion_result.find_node(inserted_tree) is not None
                 variable_substitutions = {
@@ -1915,8 +1900,8 @@ class ISLaSolver:
                     ).substitute_expressions(tree_substitution)
                 )
 
-                instantiated_original_constraint = language.replace_formula(
-                    state.constraint, existential_formula, sc.true()
+                instantiated_original_constraint = sc.conjunction(
+                    *list_del(conjuncts, existential_formula_idx)
                 ).substitute_expressions(tree_substitution)
 
                 new_tree = resulting_tree.substitute(tree_substitution)
@@ -1924,7 +1909,7 @@ class ISLaSolver:
                 new_formula = (
                     instantiated_formula
                     & self.formula.substitute_expressions(
-                        {self.top_constant.a: new_tree}
+                        {self.top_constant.get(): new_tree}
                     )
                     & instantiated_original_constraint
                 )
@@ -2788,55 +2773,64 @@ class ISLaSolver:
     def remove_nonmatching_universal_quantifiers(
         self, state: SolutionState
     ) -> SolutionState:
-        result = state
-        for universal_formula in [
-            conjunct
-            for conjunct in get_conjuncts(state.constraint)
-            if isinstance(conjunct, language.ForallFormula)
-        ]:
+        conjuncts = [conjunct for conjunct in get_conjuncts(state.constraint)]
+        deleted = False
+
+        for idx, universal_formula in reversed(list(enumerate(conjuncts))):
+            if not isinstance(universal_formula, language.ForallFormula):
+                continue
+
             if (
                 universal_formula.in_variable.is_complete()
                 and not matches_for_quantified_formula(universal_formula, self.grammar)
             ):
-                result = SolutionState(
-                    language.replace_formula(
-                        result.constraint, universal_formula, sc.true()
-                    ),
-                    result.tree,
-                )
+                deleted = True
+                del conjuncts[idx]
 
-        return result
+        if not deleted:
+            return state
+
+        return SolutionState(sc.conjunction(*conjuncts), state.tree)
 
     def remove_infeasible_universal_quantifiers(
         self, state: SolutionState
     ) -> SolutionState:
-        result = state
-        for universal_formula in get_conjuncts(state.constraint):
+        conjuncts = get_conjuncts(state.constraint)
+        one_removed = False
+
+        for idx, universal_formula in reversed(list(enumerate(conjuncts))):
             if not isinstance(universal_formula, language.ForallFormula):
                 continue
 
-            if all(
-                not self.quantified_formula_might_match(
-                    universal_formula, leaf_path, universal_formula.in_variable
-                )
-                for leaf_path, leaf_node in universal_formula.in_variable.open_leaves()
-            ) and not [
-                match
-                for match in matches_for_quantified_formula(
-                    universal_formula, self.grammar
-                )
-                if not universal_formula.is_already_matched(
+            matches = matches_for_quantified_formula(universal_formula, self.grammar)
+
+            all_matches_matched = all(
+                universal_formula.is_already_matched(
                     match[universal_formula.bound_variable][1]
                 )
-            ]:
-                result = SolutionState(
-                    language.replace_formula(
-                        result.constraint, universal_formula, sc.true()
-                    ),
-                    result.tree,
+                for match in matches
+            )
+
+            def some_leaf_might_match() -> bool:
+                return any(
+                    self.quantified_formula_might_match(
+                        universal_formula, leaf_path, universal_formula.in_variable
+                    )
+                    for leaf_path, _ in universal_formula.in_variable.open_leaves()
                 )
 
-        return result
+            if all_matches_matched and not some_leaf_might_match():
+                one_removed = True
+                del conjuncts[idx]
+
+        return (
+            state
+            if not one_removed
+            else SolutionState(
+                reduce(lambda a, b: a & b, conjuncts, sc.true()),
+                state.tree,
+            )
+        )
 
     def quantified_formula_might_match(
         self,

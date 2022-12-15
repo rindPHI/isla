@@ -569,7 +569,8 @@ class DerivationTree:
         )
 
     def is_potential_prefix(self, other: "DerivationTree") -> bool:
-        # It's a potential prefix if for all common paths of the two trees, the leaves are equal.
+        # It's a potential prefix if for all common paths of the two trees, the leaves
+        # are equal.
         common_paths = {path for path, _ in other.paths()}.intersection(
             {path for path, _ in self.paths()}
         )

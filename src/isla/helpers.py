@@ -597,9 +597,11 @@ def nth_occ(haystack: Sequence[T], needle: T, n: int) -> Optional[int]:
 
 
 def list_set(ilist: ImmutableList[T], repl_idx: int, new_elem: T) -> ImmutableList[T]:
-    return tuple(
-        [new_elem if idx == repl_idx else elem for idx, elem in enumerate(ilist)]
-    )
+    return ilist[:repl_idx] + (new_elem,) + ilist[repl_idx + 1 :]
+
+
+def list_del(ilist: Sequence[T], del_idx: int) -> Sequence[T]:
+    return ilist[:del_idx] + ilist[del_idx + 1 :]
 
 
 @dataclass(frozen=True)
