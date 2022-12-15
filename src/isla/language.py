@@ -770,7 +770,7 @@ class Formula(ABC):
             return self
 
         if isinstance(self, NegatedFormula) and self.args[0] == other:
-            return true()
+            return false()
 
         if isinstance(other, NegatedFormula) and other.args[0] == self:
             return false()
@@ -797,7 +797,7 @@ class Formula(ABC):
             return true()
 
         if isinstance(other, NegatedFormula) and other.args[0] == self:
-            return true(True)
+            return true()
 
         return DisjunctiveFormula(self, other)
 
