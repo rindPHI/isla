@@ -15,7 +15,8 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with ISLa.  If not, see <http://www.gnu.org/licenses/>.
-
+import functools
+from functools import cache
 from typing import Union
 
 import z3
@@ -80,13 +81,23 @@ def before(
     return StructuralPredicateFormula(BEFORE_PREDICATE, var, before_var)
 
 
+@cache
 def true():
     return SMTFormula(z3.BoolVal(True))
 
 
+@cache
 def false():
     return SMTFormula(z3.BoolVal(False))
 
 
 def smt_for(formula: z3.BoolRef, *free_variables: Variable) -> SMTFormula:
     return SMTFormula(formula, *free_variables)
+
+
+def conjunction(*formulas: Formula) -> Formula:
+    return functools.reduce(lambda a, b: a & b, formulas, true())
+
+
+def disjunction(*formulas: Formula) -> Formula:
+    return functools.reduce(lambda a, b: a | b, formulas, false())

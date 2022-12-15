@@ -27,7 +27,7 @@ import re
 import string
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from functools import reduce, lru_cache
+from functools import reduce, lru_cache, cache
 from typing import (
     Union,
     List,
@@ -708,12 +708,6 @@ class NoopFormulaTransformer(FormulaTransformer):
 
 
 class Formula(ABC):
-    # def __getstate__(self):
-    #     return {f: pickle.dumps(v) for f, v in self.__dict__.items()} | {"cls": type(self).__name__}
-    #
-    # def __setstate__(self, state):
-    #     pass
-
     @abstractmethod
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         """Non-recursive: Only non-empty for quantified formulas"""
@@ -776,10 +770,10 @@ class Formula(ABC):
             return self
 
         if isinstance(self, NegatedFormula) and self.args[0] == other:
-            return SMTFormula(z3.BoolVal(False))
+            return true()
 
         if isinstance(other, NegatedFormula) and other.args[0] == self:
-            return SMTFormula(z3.BoolVal(False))
+            return false()
 
         return ConjunctiveFormula(self, other)
 
@@ -800,10 +794,10 @@ class Formula(ABC):
             return self
 
         if isinstance(self, NegatedFormula) and self.args[0] == other:
-            return SMTFormula(z3.BoolVal(True))
+            return true()
 
         if isinstance(other, NegatedFormula) and other.args[0] == self:
-            return SMTFormula(z3.BoolVal(True))
+            return true(True)
 
         return DisjunctiveFormula(self, other)
 
@@ -1357,6 +1351,21 @@ class DisjunctiveFormula(PropositionalCombinator):
         return f"({' ∨ '.join(map(str, self.args))})"
 
 
+@cache
+def smt_atom(val: bool) -> "SMTFormula":
+    return SMTFormula(z3.BoolVal(val))
+
+
+@cache
+def true() -> "SMTFormula":
+    return SMTFormula(z3.BoolVal(True))
+
+
+@cache
+def false() -> "SMTFormula":
+    return SMTFormula(z3.BoolVal(False))
+
+
 class SMTFormula(Formula):
     def __init__(
         self,
@@ -1389,11 +1398,11 @@ class SMTFormula(Formula):
                 + f"actual number of symbols {len(actual_symbols)} in formula '{formula}'"
             )
 
-        # When substituting expressions, the formula is automatically evaluated if this flag
-        # is set to True and all substituted expressions are closed trees, i.e., the formula
-        # is ground. Deactivate only for special purposes, e.g., vacuity checking.
+        # When substituting expressions, the formula is automatically evaluated if this
+        # flag is set to True and all substituted expressions are closed trees, i.e.,
+        # the formula is ground. Deactivate only for special purposes, e.g., vacuity
+        # checking.
         self.auto_eval = auto_eval
-        # self.auto_eval = False
 
         self.auto_subst = auto_subst
 
@@ -1520,7 +1529,7 @@ class SMTFormula(Formula):
             and len(new_free_variables) + len(new_instantiated_variables) == 0
         ):
             # Formula is ground, we can evaluate it!
-            return SMTFormula(z3.BoolVal(is_valid(new_smt_formula).to_bool()))
+            return smt_atom(is_valid(new_smt_formula).to_bool())
 
         return SMTFormula(
             cast(z3.BoolRef, new_smt_formula),
@@ -2217,10 +2226,10 @@ def replace_formula(  # noqa: C901
     elif isinstance(in_formula, NegatedFormula):
         child_result = replace_formula(in_formula.args[0], to_replace, replace_with)
 
-        if child_result == SMTFormula(z3.BoolVal(False)):
-            return SMTFormula(z3.BoolVal(True))
-        elif child_result == SMTFormula(z3.BoolVal(True)):
-            return SMTFormula(z3.BoolVal(False))
+        if child_result == false():
+            return true()
+        elif child_result == true():
+            return false()
 
         return NegatedFormula(child_result)
     elif isinstance(in_formula, ForallFormula):
@@ -2434,17 +2443,17 @@ def convert_to_dnf(formula: Formula) -> Formula:
                 reduce(
                     lambda a, b: a & b,
                     OrderedSet(split_conjunction(left & right)),
-                    SMTFormula(z3.BoolVal(True)),
+                    true(),
                 )
                 for left, right in itertools.product(*disjuncts_list)
             ],
-            SMTFormula(z3.BoolVal(False)),
+            false(),
         )
     elif isinstance(formula, DisjunctiveFormula):
         return reduce(
             lambda a, b: a | b,
             [convert_to_dnf(subformula) for subformula in formula.args],
-            SMTFormula(z3.BoolVal(False)),
+            false(),
         )
     elif isinstance(formula, ForallFormula):
         return ForallFormula(
@@ -4081,13 +4090,14 @@ def flatten_bound_elements(
             bound_elements.append(bound_element)
 
         def to_name_unaware(var: BoundVariable) -> BoundVariable:
-            if not isinstance(var, DummyVariable):
-                return var
-
-            return NameUnawareDummyVariable(var.n_type)
+            return (
+                var
+                if not isinstance(var, DummyVariable)
+                else NameUnawareDummyVariable(var.n_type)
+            )
 
         if is_valid_combination(
-                tuple(map(to_name_unaware, bound_elements)), grammar, in_nonterminal
+            tuple(map(to_name_unaware, bound_elements)), grammar, in_nonterminal
         ):
             bound_elements_combinations += (tuple(bound_elements),)
 

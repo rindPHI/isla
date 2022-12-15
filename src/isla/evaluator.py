@@ -62,6 +62,7 @@ from isla.language import (
     split_disjunction,
     parse_bnf,
     unparse_isla,
+    smt_atom,
 )
 from isla.three_valued_truth import ThreeValuedTruth
 from isla.trie import SubtreesTrie
@@ -76,14 +77,15 @@ from isla.z3_helpers import (
     replace_in_z3_expr,
     z3_subst,
 )
+import isla.isla_shortcuts as sc
 
 logger = logging.getLogger("evaluator")
 
 
 def propositionally_unsatisfiable(formula: Formula) -> bool:
-    if formula == SMTFormula(z3.BoolVal(True)):
+    if formula == sc.true():
         return False
-    if formula == SMTFormula(z3.BoolVal(False)):
+    if formula == sc.false():
         return True
 
     z3_formula = approximate_isla_to_smt_formula(
@@ -167,7 +169,7 @@ def evaluate(
         assumptions_instantiated = qfr_free
         for assumption in qfr_free_assumptions:
             assumptions_instantiated = replace_formula(
-                assumptions_instantiated, assumption, SMTFormula(z3.BoolVal(True))
+                assumptions_instantiated, assumption, sc.true()
             )
 
         # Evaluate predicates
@@ -192,9 +194,7 @@ def evaluate(
             return ThreeValuedTruth.unknown()
         elif smt_result.is_false():
             if not propositionally_unsatisfiable(
-                reduce(
-                    Formula.__and__, qfr_free_assumptions, SMTFormula(z3.BoolVal(True))
-                )
+                reduce(Formula.__and__, qfr_free_assumptions, sc.true())
             ):
                 return ThreeValuedTruth.false()
         else:
@@ -225,7 +225,7 @@ def evaluate_predicates_action(
     formula: Formula, reference_tree: DerivationTree, graph: gg.GrammarGraph
 ) -> bool | Formula:
     if isinstance(formula, StructuralPredicateFormula):
-        return SMTFormula(z3.BoolVal(formula.evaluate(reference_tree)))
+        return smt_atom(formula.evaluate(reference_tree))
 
     if isinstance(formula, SemanticPredicateFormula):
         eval_result = formula.evaluate(graph)
@@ -234,9 +234,9 @@ def evaluate_predicates_action(
             return False
 
         if eval_result.true():
-            return SMTFormula(z3.BoolVal(True))
+            return sc.true()
         elif eval_result.false():
-            return SMTFormula(z3.BoolVal(False))
+            return sc.false()
 
         substs: Dict[Variable | DerivationTree, DerivationTree] = eval_result.result
         assert isinstance(substs, dict)
@@ -1092,7 +1092,7 @@ def eliminate_quantifiers_in_numeric_quantified_formula(
                 )
                 for constant in numeric_constants
             ],
-            SMTFormula(z3.BoolVal(False)),
+            sc.false(),
         )
     elif isinstance(quantified_formula, ForallIntFormula):
         context_formula = replace_formula(
@@ -1163,7 +1163,7 @@ def eliminate_quantifiers_in_quantified_formula(
         return replace_formula(
             context_formula,
             quantified_formula,
-            SMTFormula(z3.BoolVal(isinstance(quantified_formula, ForallFormula))),
+            smt_atom(isinstance(quantified_formula, ForallFormula)),
         )
 
     return context_formula
