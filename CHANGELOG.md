@@ -5,6 +5,10 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Changed
+
+- Fixed hashing in call to `solver.is_valid_combination`
+
 ## [1.9.5] - 2022-11-21
 
 ### Changed

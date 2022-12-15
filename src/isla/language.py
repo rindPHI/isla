@@ -178,6 +178,17 @@ class DummyVariable(BoundVariable):
         return self.n_type
 
 
+class NameUnawareDummyVariable(DummyVariable):
+    def __init__(self, n_type: str):
+        super().__init__(n_type)
+
+    def __eq__(self, other):
+        return isinstance(other, DummyVariable) and self.n_type == other.n_type
+
+    def __hash__(self):
+        return hash(self.n_type)
+
+
 class BindExpression:
     def __init__(self, *bound_elements: Union[str, BoundVariable, List[str]]):
         self.bound_elements: List[BoundVariable | List[BoundVariable]] = []
@@ -4069,7 +4080,15 @@ def flatten_bound_elements(
 
             bound_elements.append(bound_element)
 
-        if is_valid_combination(tuple(bound_elements), grammar, in_nonterminal):
+        def to_name_unaware(var: BoundVariable) -> BoundVariable:
+            if not isinstance(var, DummyVariable):
+                return var
+
+            return NameUnawareDummyVariable(var.n_type)
+
+        if is_valid_combination(
+                tuple(map(to_name_unaware, bound_elements)), grammar, in_nonterminal
+        ):
             bound_elements_combinations += (tuple(bound_elements),)
 
     return bound_elements_combinations
