@@ -226,11 +226,6 @@ STD_COST_SETTINGS = CostSettings(
 
 
 @dataclass(frozen=True)
-class SolverTimeout(Exception):
-    seconds_elapsed: int
-
-
-@dataclass(frozen=True)
 class UnknownResultError(Exception):
     pass
 
@@ -737,7 +732,7 @@ class ISLaSolver:
         Attempts to compute a solution to the given ISLa formula. Returns that solution,
         if any. This function can be called repeatedly to obtain more solutions until
         one of two exception types is raised: A `StopIteration` indicates that no more
-        solution can be found; a `SolverTimeout` is raised if a timeout occurred.
+        solution can be found; a `TimeoutError` is raised if a timeout occurred.
         After that, an exception will be raised every time.
 
         The timeout can be controlled by the `timeout_seconds` constructor parameter.
@@ -2758,7 +2753,7 @@ class ISLaSolver:
         # return solver.check() == z3.unsat
 
     def establish_invariant(self, state: SolutionState) -> List[SolutionState]:
-        formula = convert_to_dnf(convert_to_nnf(state.constraint))
+        formula = convert_to_dnf(convert_to_nnf(state.constraint), deep=False)
         return [
             SolutionState(disjunct, state.tree)
             for disjunct in split_disjunction(formula)
@@ -3380,7 +3375,7 @@ class EvaluatePredicateFormulasTransformer(NoopFormulaTransformer):
         set_smt_auto_subst(instantiated_formula, True)
         set_smt_auto_eval(instantiated_formula, True)
         instantiated_formula = instantiated_formula.substitute_expressions(
-            sub_formula.substitutions
+            sub_formula.substitutions, force=True
         )
 
         assert instantiated_formula in {sc.true(), sc.false()}

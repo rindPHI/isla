@@ -5,6 +5,16 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.9.7] - 2022-12-16
+
+### Changed
+
+- Fix in performance evaluator; improves output, where an error (w/o consequences) was
+  shown in case of an intentional timeout. Now, the solvers terminate silently after
+  the set timeout.
+- Small performance improvements in establishing normal form, computing potential
+  matches, and performing substitutions in SMT formulas.
+
 ## [1.9.6] - 2022-12-15
 
 ### Changed

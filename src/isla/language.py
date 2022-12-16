@@ -1457,8 +1457,13 @@ class SMTFormula(Formula):
         )
 
     def substitute_expressions(
-        self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]
+        self,
+        subst_map: Dict[Union[Variable, DerivationTree], DerivationTree],
+        force: bool = False,
     ) -> "SMTFormula":
+        if not force and not self.auto_eval and not subst_map_relevant(self, subst_map):
+            return self
+
         tree_subst_map = {
             k: v
             for k, v in subst_map.items()
@@ -1564,10 +1569,11 @@ class SMTFormula(Formula):
             )
         )
 
-    # NOTE: Combining SMT formulas with and/or is not that easy due to tree substitutions, see
-    #       function "eliminate_semantic_formula" in solver.py. Problems: Name collisions, plus
-    #       impedes clustering which improves solver efficiency. The conjunction and disjunction
-    #       functions contain assertions preventing name collisions.
+    # NOTE: Combining SMT formulas with and/or is not that easy due to tree
+    #       substitutions, see function "eliminate_semantic_formula" in solver.py.
+    #       Problems: Name collisions, plus impedes clustering which improves solver
+    #       efficiency. The conjunction and disjunction functions contain assertions
+    #       preventing name collisions.
     def disjunction(self, other: "SMTFormula") -> "SMTFormula":
         assert self.free_variables().isdisjoint(other.free_variables()) or not any(
             (var in self.substitutions and var not in other.substitutions)
@@ -1651,6 +1657,18 @@ class SMTFormula(Formula):
         return hash(
             (type(self).__name__, self.formula, tuple(self.substitutions.items()))
         )
+
+
+def subst_map_relevant(
+    formula: Formula,
+    subst_map: Dict[Union[Variable, DerivationTree], DerivationTree],
+) -> bool:
+    return formula.free_variables().intersection(subst_map.keys()) or any(
+        tree_arg.find_node(subst_tree) is not None
+        for tree_arg in formula.tree_arguments()
+        for subst_tree in subst_map
+        if isinstance(subst_tree, DerivationTree)
+    )
 
 
 class NumericQuantifiedFormula(Formula, ABC):
@@ -2428,7 +2446,7 @@ def convert_quantified_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[F
         )
 
 
-def convert_to_dnf(formula: Formula) -> Formula:
+def convert_to_dnf(formula: Formula, deep: bool = True) -> Formula:
     assert not isinstance(formula, NegatedFormula) or not isinstance(
         formula.args[0], PropositionalCombinator
     ), "Convert to NNF before converting to DNF"
@@ -2437,6 +2455,10 @@ def convert_to_dnf(formula: Formula) -> Formula:
         disjuncts_list = [
             split_disjunction(convert_to_dnf(arg)) for arg in formula.args
         ]
+
+        if all(len(elem) == 1 for elem in disjuncts_list):
+            return formula
+
         return reduce(
             lambda a, b: a | b,
             [
@@ -2455,7 +2477,7 @@ def convert_to_dnf(formula: Formula) -> Formula:
             [convert_to_dnf(subformula) for subformula in formula.args],
             false(),
         )
-    elif isinstance(formula, ForallFormula):
+    elif deep and isinstance(formula, ForallFormula):
         return ForallFormula(
             formula.bound_variable,
             formula.in_variable,
@@ -2463,7 +2485,7 @@ def convert_to_dnf(formula: Formula) -> Formula:
             formula.bind_expression,
             formula.already_matched,
         )
-    elif isinstance(formula, ExistsFormula):
+    elif deep and isinstance(formula, ExistsFormula):
         return ExistsFormula(
             formula.bound_variable,
             formula.in_variable,

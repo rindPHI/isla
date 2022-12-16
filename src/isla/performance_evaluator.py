@@ -723,9 +723,14 @@ def make_input_generator(
 ) -> Generator[isla.derivation_tree.DerivationTree, None, None]:
     if isinstance(generator, ISLaSolver):
 
-        def generator():
+        def gen():
             while True:
-                yield generator.solve()
+                try:
+                    yield generator.solve()
+                except TimeoutError | StopIteration:
+                    return
+
+        return gen()
 
     elif isinstance(generator, dict):
         # grammar
@@ -738,7 +743,7 @@ def make_input_generator(
                     isla.derivation_tree.DerivationTree("<start>", None)
                 )
 
-        generator = gen()
+        return gen()
 
     return generator
 

@@ -571,13 +571,39 @@ class DerivationTree:
     def is_potential_prefix(self, other: "DerivationTree") -> bool:
         # It's a potential prefix if for all common paths of the two trees, the leaves
         # are equal.
-        common_paths = {path for path, _ in other.paths()}.intersection(
-            {path for path, _ in self.paths()}
-        )
-        return all(
-            self.get_subtree(path).value == other.get_subtree(path).value
-            for path in common_paths
-        )
+        if self.value != other.value:
+            return False
+
+        # Perform a parallel BFS traversal
+        queue: List[Tuple[Path, DerivationTree, DerivationTree]] = [((), self, other)]
+
+        while queue:
+            p, v_1, v_2 = queue.pop(0)
+
+            if v_1.children and v_2.children and len(v_1.children) != len(v_2.children):
+                return False
+
+            for child_idx, (child_1, child_2) in enumerate(
+                zip(v_1.children or [], v_2.children or [])
+            ):
+                if child_1.value != child_2.value:
+                    return False
+                child_path = p + (child_idx,)
+                queue.append((child_path, child_1, child_2))
+
+        return True
+
+        # The above implementation is a more efficient version of the equivalent
+        # code below:
+        #
+        # common_paths = {path for path, _ in other.paths()}.intersection(
+        #     {path for path, _ in self.paths()}
+        # )
+        #
+        # return all(
+        #     self.get_subtree(path).value == other.get_subtree(path).value
+        #     for path in common_paths
+        # )
 
     @staticmethod
     def from_parse_tree(tree: ParseTree):
