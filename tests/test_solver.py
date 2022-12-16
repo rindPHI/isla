@@ -55,7 +55,7 @@ from isla.language import (
     SemPredEvalResult,
     parse_bnf,
 )
-from isla.parser import EarleyParser, PEGParser, nullable
+from isla.parser import EarleyParser, PEGParser
 from isla.solver import (
     ISLaSolver,
     SolutionState,
@@ -66,7 +66,6 @@ from isla.solver import (
     GrammarBasedBlackboxCostComputer,
     implies,
     equivalent,
-    SolverTimeout,
     UnknownResultError,
     SemanticError,
     create_fixed_length_tree,
@@ -1785,7 +1784,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         for idx in range(num_solutions):
             try:
                 assignment = solver.solve()
-            except SolverTimeout:
+            except TimeoutError:
                 logger.info("TIMEOUT")
                 break
             except StopIteration:
