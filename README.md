@@ -3,7 +3,7 @@ ISLa: Input Specification Language
 
 [![Python](https://img.shields.io/pypi/pyversions/isla-solver.svg)](https://pypi.python.org/pypi/isla-solver/)
 [![Version](http://img.shields.io/pypi/v/isla-solver.svg)](https://pypi.python.org/pypi/isla-solver)
-[![Build Status](https://img.shields.io/github/workflow/status/rindPHI/isla/Test%20ISLa)](https://github.com/rindPHI/isla/actions/workflows/test-isla.yml)
+[![BuildStatus](https://img.shields.io/github/actions/workflow/status/rindPHI/isla/test-isla.yml?branch=main)](https://img.shields.io/github/actions/workflow/status/rindPHI/isla/test-isla.yml?branch=main)
 [![Coverage Status](https://coveralls.io/repos/github/rindPHI/isla/badge.svg?branch=main)](https://coveralls.io/github/rindPHI/isla?branch=main)
 [![Dependencies](https://img.shields.io/librariesio/release/github/rindphi/isla)](https://libraries.io/github/rindPHI/isla)
 [![DOI](https://zenodo.org/badge/428626626.svg)](https://zenodo.org/badge/latestdoi/428626626)
