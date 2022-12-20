@@ -5,6 +5,14 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.9.8] - 2022-12-20
+
+### Changed
+
+- Fixed "build" shield in README.md
+- Changed computation of symbol costs in solver; now computed statically from grammar
+  graph, not using fuzzer.
+
 ## [1.9.7] - 2022-12-16
 
 ### Changed
