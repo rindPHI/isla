@@ -3761,7 +3761,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         if self.mgr.var_declared(var_id):
             raise SyntaxError(
                 f"Variable {var_id} already declared "
-                f"(line {ctx.varId.symbol.line}, column {ctx.varId.symbol.column})"
+                f"(line {ctx.ID().symbol.line}, column {ctx.ID().symbol.column})"
             )
 
         self.formulas[ctx] = ExistsIntFormula(

@@ -90,7 +90,7 @@ class ThreeValuedTruth:
         if self.is_unknown():
             return self
 
-        return ThreeValuedTruth(bool(self))
+        return ThreeValuedTruth(not bool(self))
 
     def __and__(self, other: "ThreeValuedTruth") -> "ThreeValuedTruth":
         if self.is_unknown() or other.is_unknown():

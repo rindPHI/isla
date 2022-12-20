@@ -26,6 +26,7 @@ import z3
 from grammar_graph import gg
 from orderedset import OrderedSet
 
+import isla.isla_shortcuts as sc
 from isla import language
 from isla.derivation_tree import DerivationTree
 from isla.helpers import is_nonterminal, Maybe, chain_functions, is_prefix
@@ -77,7 +78,6 @@ from isla.z3_helpers import (
     replace_in_z3_expr,
     z3_subst,
 )
-import isla.isla_shortcuts as sc
 
 logger = logging.getLogger("evaluator")
 
@@ -329,7 +329,7 @@ def well_formed(
         )
 
     def raise_not_implemented_error(
-        formula: Formula,
+        formula: Formula, _1, _2, _3, _4
     ) -> Maybe[Tuple[bool, str]]:
         raise NotImplementedError(f"Unsupported formula type {type(formula).__name__}")
 
@@ -350,7 +350,7 @@ def well_formed(
                 wellformed_quantified_formula,
                 wellformed_smt_formula,
                 wellformed_propositional_formula,
-                wellformed_structural_predicate_formula,
+                wellformed_predicate_formula,
                 raise_not_implemented_error,
             ],
         ),
@@ -568,14 +568,16 @@ def wellformed_propositional_formula(
         return Maybe((True, ""))
 
 
-def wellformed_structural_predicate_formula(
+def wellformed_predicate_formula(
     formula: Formula,
     _1,
     bound_vars: OrderedSet[BoundVariable],
     _2,
     _3,
 ) -> Maybe[Tuple[bool, str]]:
-    if not isinstance(formula, StructuralPredicateFormula):
+    if not isinstance(formula, StructuralPredicateFormula) and not isinstance(
+        formula, SemanticPredicateFormula
+    ):
         return Maybe.nothing()
 
     unbound_variables = [
