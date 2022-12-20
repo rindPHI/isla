@@ -18,7 +18,7 @@
 "--smt-instantiations" = 10
 "--unique-trees" = false
 "--unwinding-depth" = 4
-"--weight-vector" = "7,1,4,2,19"
+"--weight-vector" = "6.5,1,4,2,19"
 "-k" = 3
 
 [[defaults.fuzz]]
