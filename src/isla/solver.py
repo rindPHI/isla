@@ -215,7 +215,7 @@ class CostSettings:
 
 STD_COST_SETTINGS = CostSettings(
     CostWeightVector(
-        tree_closing_cost=7,
+        tree_closing_cost=6.5,
         constraint_cost=1,
         derivation_depth_penalty=4,
         low_k_coverage_penalty=2,
@@ -3181,33 +3181,54 @@ def get_quantifier_chains(
     ]
 
 
+def shortest_derivations(graph: gg.GrammarGraph) -> Dict[str, int]:
+    def avg(it) -> int:
+        elems = [elem for elem in it if elem is not None]
+        return math.ceil(math.prod(elems) ** (1 / len(elems)))
+
+    parent_relation = {node: set() for node in graph.all_nodes}
+    for parent, child in graph.all_edges:
+        parent_relation[child].add(parent)
+
+    shortest_node_derivations: Dict[gg.Node, int] = {}
+    stack: List[gg.Node] = graph.filter(lambda node: isinstance(node, gg.TerminalNode))
+    while stack:
+        node = stack.pop()
+
+        old_min = shortest_node_derivations.get(node, None)
+
+        if isinstance(node, gg.TerminalNode):
+            shortest_node_derivations[node] = 0
+        elif isinstance(node, gg.ChoiceNode):
+            shortest_node_derivations[node] = max(
+                shortest_node_derivations.get(child, 0) for child in node.children
+            )
+        elif isinstance(node, gg.NonterminalNode):
+            assert not isinstance(node, gg.ChoiceNode)
+
+            shortest_node_derivations[node] = (
+                avg(
+                    shortest_node_derivations.get(child, None)
+                    for child in node.children
+                )
+                + 1
+            )
+
+        if (old_min or sys.maxsize) > shortest_node_derivations[node]:
+            stack.extend(parent_relation[node])
+
+    return {
+        nonterminal: shortest_node_derivations[graph.get_node(nonterminal)]
+        for nonterminal in graph.grammar
+    }
+
+
 @lru_cache()
 def compute_symbol_costs(graph: GrammarGraph) -> Dict[str, int]:
     grammar = graph.to_grammar()
     canonical_grammar = canonical(grammar)
 
-    result: Dict[str, int] = {}
-
-    for nonterminal in grammar:
-        fuzzer = GrammarFuzzer(grammar)
-        tree = fuzzer.expand_tree_with_strategy(
-            DerivationTree(nonterminal, None), fuzzer.expand_node_max_cost, 1
-        )
-        tree = fuzzer.expand_tree_with_strategy(tree, fuzzer.expand_node_min_cost)
-
-        result[nonterminal] = sum(
-            [
-                len(
-                    [
-                        expansion
-                        for expansion in canonical_grammar[tree.value]
-                        if any(is_nonterminal(symbol) for symbol in expansion)
-                    ]
-                )
-                for _, tree in tree.paths()
-                if is_nonterminal(tree.value)
-            ]
-        )
+    result: Dict[str, int] = shortest_derivations(graph)
 
     nonterminal_parents = [
         nonterminal

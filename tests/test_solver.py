@@ -241,7 +241,7 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
             cost_computer=GrammarBasedBlackboxCostComputer(
                 CostSettings(
                     CostWeightVector(
-                        tree_closing_cost=10,
+                        tree_closing_cost=9.5,
                         constraint_cost=0,
                         derivation_depth_penalty=6,
                         low_k_coverage_penalty=0,
@@ -359,7 +359,7 @@ exists <assgn> assgn:
             cost_computer=GrammarBasedBlackboxCostComputer(
                 CostSettings(
                     CostWeightVector(
-                        tree_closing_cost=7,
+                        tree_closing_cost=6,
                         constraint_cost=3.25,
                         derivation_depth_penalty=15,
                         low_k_coverage_penalty=21.5,
@@ -577,7 +577,7 @@ forall int colno:
             cost_computer=GrammarBasedBlackboxCostComputer(
                 CostSettings(
                     CostWeightVector(
-                        tree_closing_cost=5,
+                        tree_closing_cost=5.5,
                         constraint_cost=2,
                         derivation_depth_penalty=6,
                         low_k_coverage_penalty=2,

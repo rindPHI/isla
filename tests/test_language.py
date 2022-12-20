@@ -178,6 +178,50 @@ class TestLanguage(unittest.TestCase):
 
         self.assertFalse(well_formed(bad_formula_7, LANG_GRAMMAR)[0])
 
+    def test_wellformed_exists_int(self):
+        formula = parse_isla(
+            'exists int i: count(<start>, "<assgn>", i)',
+            LANG_GRAMMAR,
+            semantic_predicates={COUNT_PREDICATE},
+        )
+
+        self.assertTrue(well_formed(formula, LANG_GRAMMAR)[0])
+
+        formula = language.ForallFormula(
+            BoundVariable("start", "<start>"),
+            Constant("start", "<start>"),
+            language.ExistsIntFormula(
+                BoundVariable("i", "NUM"),
+                language.ExistsIntFormula(
+                    BoundVariable("i", "NUM"),
+                    language.SemanticPredicateFormula(
+                        COUNT_PREDICATE,
+                        BoundVariable("start", "<start>"),
+                        "<assgn>",
+                        BoundVariable("i", "NUM"),
+                    ),
+                ),
+            ),
+        )
+
+        self.assertFalse(well_formed(formula, LANG_GRAMMAR)[0])
+
+        formula = language.ForallFormula(
+            BoundVariable("start", "<start>"),
+            Constant("start", "<start>"),
+            language.ExistsIntFormula(
+                BoundVariable("i", "NUM"),
+                language.SemanticPredicateFormula(
+                    COUNT_PREDICATE,
+                    BoundVariable("start", "<start>"),
+                    "<assgn>",
+                    BoundVariable("k", "NUM"),
+                ),
+            ),
+        )
+
+        self.assertFalse(well_formed(formula, LANG_GRAMMAR)[0])
+
     def test_free_variables(self):
         # TODO: Remove if not refined, trivial that way
         formula: ExistsFormula = parse_isla(
