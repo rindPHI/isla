@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.9.9] - 2022-12-22
+
+### Changed
+
+- Improved `DerivationTree.to_dot()`: Now, nodes at same levels appear at the same
+  levels, and the horizontal order of child nodes is retained.
+
 ## [1.9.8] - 2022-12-20
 
 ### Changed

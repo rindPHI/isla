@@ -32,6 +32,7 @@ from typing import (
     Generator,
 )
 
+import graphviz
 import ijson
 from grammar_graph import gg
 from graphviz import Digraph
@@ -814,8 +815,9 @@ class DerivationTree:
     def to_dot(self) -> str:
         dot = Digraph(comment="Derivation Tree")
         dot.attr("node", shape="plain")
+        levels: Dict[int, List[DerivationTree]] = {}
 
-        def action(_, t: DerivationTree):
+        def action(path: Path, t: DerivationTree):
             dot.node(
                 repr(t.id),
                 "<" + html.escape(t.value) + f' <FONT COLOR="gray">({t.id})</FONT>>',
@@ -823,6 +825,24 @@ class DerivationTree:
             for child in t.children or []:
                 dot.edge(repr(t.id), repr(child.id))
 
+            levels.setdefault(len(path), []).append(t)
+
         self.traverse(action)
+
+        # Ensure that nodes at the same levels actually appear at the same levels,
+        # and in the right orders.
+        for nodes in levels.values():
+            if len(nodes) < 2:
+                continue
+
+            child_graph = graphviz.Digraph()
+            child_graph.attr(rank="same")
+
+            for idx in range(len(nodes) - 1):
+                child_graph.edge(
+                    repr(nodes[idx].id), repr(nodes[idx + 1].id), style="invis"
+                )
+
+            dot.subgraph(child_graph)
 
         return dot.source

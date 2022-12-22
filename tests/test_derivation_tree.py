@@ -362,6 +362,19 @@ digraph {
     2 [label=<&lt;/ <FONT COLOR="gray">(2)</FONT>>]
     1 [label=<&lt;id&gt; <FONT COLOR="gray">(1)</FONT>>]
     0 [label=<&gt; <FONT COLOR="gray">(0)</FONT>>]
+    {
+        rank=same
+        8 -> 4 [style=invis]
+        4 -> 3 [style=invis]
+    }
+    {
+        rank=same
+        7 -> 6 [style=invis]
+        6 -> 5 [style=invis]
+        5 -> 2 [style=invis]
+        2 -> 1 [style=invis]
+        1 -> 0 [style=invis]
+    }
 }
 '''.replace('    ', '\t')
 
