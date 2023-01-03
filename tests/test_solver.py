@@ -1697,6 +1697,35 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         except RuntimeError as exc:
             self.assertIn("Could not create a tree", str(exc))
 
+    def test_issue_36(self):
+        # https://github.com/rindPHI/isla/issues/36
+        grammar = {
+            "<start>": ["<sequence>"],
+            "<value>": ["<sequence>", "<atom>"],
+            "<sequence>": ["S<sequence-length><value>"],
+            "<atom>": ["A<atom-length><atom-value>"],
+            "<atom-value>": ["T", "F"],  # <-- New
+            "<sequence-length>": ["<length>"],
+            "<atom-length>": ["<length>"],
+            "<length>": crange("\x00", "\x05"),
+            # "<length>": [chr(5)]
+        }
+
+        constraint = """
+str.to_code(<atom>.<atom-length>) = 1
+and
+str.to_code(<sequence>.<sequence-length>) = str.len(<sequence>.<value>)
+"""
+
+        self.execute_generation_test(
+            constraint,
+            grammar=grammar,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=1,
+            num_solutions=3,
+            enable_optimized_z3_queries=False,
+        )
+
     def execute_generation_test(
         self,
         formula: language.Formula | str = "true",
@@ -1727,6 +1756,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         ] = lambda grammar: GrammarCoverageFuzzer(grammar),
         tree_insertion_methods=DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION,
         activate_unsat_support: bool = False,
+        enable_optimized_z3_queries=True,
     ):
         logger = logging.getLogger(type(self).__name__)
 
@@ -1749,6 +1779,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
             fuzzer_factory=fuzzer_factory,
             tree_insertion_methods=tree_insertion_methods,
             activate_unsat_support=activate_unsat_support,
+            enable_optimized_z3_queries=enable_optimized_z3_queries,
         )
 
         if debug:
