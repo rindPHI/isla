@@ -1697,6 +1697,28 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         except RuntimeError as exc:
             self.assertIn("Could not create a tree", str(exc))
 
+    def test_issue_39(self):
+        # https://github.com/rindPHI/isla/issues/39
+        grammar = """
+<start> ::= <sequences>
+<sequences> ::= <sequence> <sequences> | ""
+<sequence> ::= "X"
+"""
+        constraint = """
+exists int seqs: (
+    count(<start>, "<sequence>", seqs) and
+    str.to.int(seqs) >= 3
+    )
+"""
+        self.execute_generation_test(
+            constraint,
+            grammar=grammar,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=3,
+            num_solutions=3,
+            enforce_unique_trees_in_queue=False,
+        )
+
     def execute_generation_test(
         self,
         formula: language.Formula | str = "true",
