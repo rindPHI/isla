@@ -39,6 +39,7 @@ from typing import (
     cast,
     Callable,
     Iterable,
+    Sequence,
 )
 
 import pkg_resources
@@ -1976,10 +1977,11 @@ class ISLaSolver:
         max_instantiations: Optional[int] = None,
     ) -> Optional[List[SolutionState]]:
         """
-        Solves a semantic formula and, for each solution, substitutes the solution for the respective
-        constant in each assignment of the state. Also instantiates all "free" constants in the given
-        tree. The SMT solver is passed a regular expression approximating the language of the nonterminal
-        of each considered constant. Returns an empty list for unsolvable constraints.
+        Solves a semantic formula and, for each solution, substitutes the solution for
+        the respective constant in each assignment of the state. Also instantiates all
+        "free" constants in the given tree. The SMT solver is passed a regular
+        expression approximating the language of the nonterminal of each considered
+        constant. Returns an empty list for unsolvable constraints.
 
         :param semantic_formula: The semantic (i.e., only containing logical connectors and SMT Formulas)
         formula to solve.
@@ -1993,10 +1995,10 @@ class ISLaSolver:
             for conjunct in get_conjuncts(semantic_formula)
         )
 
-        # NODE: We need to cluster SMT formulas by tree substitutions. If there are two formulas
-        # with a variable $var which is instantiated to different trees, we need two separate
-        # solutions. If, however, $var is instantiated with the *same* tree, we need one solution
-        # to both formulas together.
+        # NODE: We need to cluster SMT formulas by tree substitutions. If there are two
+        # formulas with a variable $var which is instantiated to different trees, we
+        # need two separate solutions. If, however, $var is instantiated with the
+        # *same* tree, we need one solution to both formulas together.
 
         smt_formulas = self.rename_instantiated_variables_in_smt_formulas(
             [
@@ -2006,10 +2008,11 @@ class ISLaSolver:
             ]
         )
 
-        # Now, we also cluster formulas by common variables (and instantiated subtrees: One formula
-        # might yield an instantiation of a subtree of the instantiation of another formula. They
-        # need to appear in the same cluster). The solver can better handle smaller constraints,
-        # and those which do not have variables in common can be handled independently.
+        # Now, we also cluster formulas by common variables (and instantiated subtrees:
+        # One formula might yield an instantiation of a subtree of the instantiation of
+        # another formula. They need to appear in the same cluster). The solver can
+        # better handle smaller constraints, and those which do not have variables in
+        # common can be handled independently.
 
         def cluster_keys(smt_formula: language.SMTFormula):
             return (
@@ -2126,12 +2129,11 @@ class ISLaSolver:
 
         # If any SMT formula refers to *sub*trees in the instantiations of other SMT
         # formulas, we have to instantiate those first.
+        priority_formulas = smt_formulas_referring_to_subtrees(smt_formulas)
 
-        conflicts = self.get_conflicts(smt_formulas)
-
-        if conflicts:
-            smt_formulas = conflicts
-            assert not self.get_conflicts(smt_formulas)
+        if priority_formulas:
+            smt_formulas = priority_formulas
+            assert not smt_formulas_referring_to_subtrees(smt_formulas)
 
         tree_substitutions = reduce(
             lambda d1, d2: d1 | d2,
@@ -2447,28 +2449,6 @@ class ISLaSolver:
             formulas.append(z3.InRe(z3.String(constant.name), regex))
 
         return formulas
-
-    @staticmethod
-    def get_conflicts(
-        smt_formulas: Iterable[language.SMTFormula],
-    ) -> List[language.SMTFormula]:
-        """
-        Returns a list of *conflicting* SMT formulas which refer to subtrees in the instantiations of other formulas.
-        :param smt_formulas: The formulas to search for conflicts.
-        :return: The list of conflicting formulas that cannot be solved individually.
-        """
-        return [
-            formula
-            for formula_idx, formula in enumerate(smt_formulas)
-            if any(
-                other_subst_tree != subst_tree
-                and other_subst_tree.find_node(subst_tree) is not None
-                for subst_tree in formula.substitutions.values()
-                for other_formula_idx, other_formula in enumerate(smt_formulas)
-                if formula_idx != other_formula_idx
-                for other_subst_tree in other_formula.substitutions.values()
-            )
-        ]
 
     def rename_instantiated_variables_in_smt_formulas(self, smt_formulas):
         old_smt_formulas = smt_formulas
@@ -3161,6 +3141,68 @@ class GrammarBasedBlackboxCostComputer(CostComputer):
     def compute_tree_closing_cost(self, tree: DerivationTree) -> float:
         nonterminals = [leaf.value for _, leaf in tree.open_leaves()]
         return sum([self._symbol_costs()[nonterminal] for nonterminal in nonterminals])
+
+
+def smt_formulas_referring_to_subtrees(
+    smt_formulas: Sequence[language.SMTFormula],
+) -> List[language.SMTFormula]:
+    """
+    Returns a list of SMT formulas whose solutions address subtrees of other SMT
+    formulas, but whose own substitution subtrees are in turn *not* referred by
+    top-level substitution trees of other formulas. Those must be solved first to avoid
+    inconsistencies.
+
+    :param smt_formulas: The formulas to search for references to subtrees.
+    :return: The list of conflicting formulas that must be solved first.
+    """
+
+    def subtree_ids(formula: language.SMTFormula) -> Set[int]:
+        return {
+            subtree.id
+            for tree in formula.substitutions.values()
+            for _, subtree in tree.paths()
+            if subtree.id != tree.id
+        }
+
+    def tree_ids(formula: language.SMTFormula) -> Set[int]:
+        return {tree.id for tree in formula.substitutions.values()}
+
+    subtree_ids_for_formula: Dict[language.SMTFormula, Set[int]] = {
+        formula: subtree_ids(formula) for formula in smt_formulas
+    }
+
+    tree_ids_for_formula: Dict[language.SMTFormula, Set[int]] = {
+        formula: tree_ids(formula) for formula in smt_formulas
+    }
+
+    def independent_from_solutions_of_other_formula(
+        idx: int, formula: language.SMTFormula
+    ) -> bool:
+        return all(
+            not tree_ids_for_formula[other_formula].intersection(
+                subtree_ids_for_formula[formula]
+            )
+            for other_idx, other_formula in enumerate(smt_formulas)
+            if other_idx != idx
+        )
+
+    def refers_to_subtree_of_other_formula(
+        idx: int, formula: language.SMTFormula
+    ) -> bool:
+        return any(
+            tree_ids_for_formula[formula].intersection(
+                subtree_ids_for_formula[other_formula]
+            )
+            for other_idx, other_formula in enumerate(smt_formulas)
+            if other_idx != idx
+        )
+
+    return [
+        formula
+        for idx, formula in enumerate(smt_formulas)
+        if refers_to_subtree_of_other_formula(idx, formula)
+        and independent_from_solutions_of_other_formula(idx, formula)
+    ]
 
 
 def compute_tree_closing_cost(tree: DerivationTree, graph: GrammarGraph) -> float:
