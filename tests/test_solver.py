@@ -1723,7 +1723,7 @@ str.to_code(<sequence>.<sequence-length>) = str.len(<sequence>.<value>)
             grammar=grammar,
             max_number_free_instantiations=1,
             max_number_smt_instantiations=1,
-            num_solutions=30,
+            num_solutions=10,
             enable_optimized_z3_queries=False,
         )
 
