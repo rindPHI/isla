@@ -871,6 +871,21 @@ exists <csv-header> header in start:
 
         self.assertEqual(expected, unparse_grammar(grammar))
 
+    def test_issue_37(self):
+        # https://github.com/rindPHI/isla/issues/37
+        grammar = {
+            "<start>": ["<sequence>"],
+            "<value>": ["<sequence>", "<atom>"],
+            "<sequence>": ["S<sequence-length><value>"],
+            "<atom>": ["A<atom-length>T"],
+            "<sequence-length>": ["<length>"],
+            "<atom-length>": ["<length>"],
+            "<length>": crange("\x00", "\xff"),
+        }
+
+        constraint = "str.to_code(<atom>.<atom-length>) = str.len(<atom>[3])"
+        parse_isla(constraint, grammar)  # No error
+
 
 if __name__ == "__main__":
     unittest.main()
