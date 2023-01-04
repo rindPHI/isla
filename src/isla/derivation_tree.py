@@ -641,8 +641,11 @@ class DerivationTree:
             Dict[Path, List[DerivationTree]]
         ] = dict_of_lists_to_list_of_dicts(nonterminal_expansions)
 
-        if len(possible_expansions) == 1 and not possible_expansions[0]:
-            return []
+        assert (
+            len(possible_expansions) > 1
+            or len(possible_expansions) == 1
+            and possible_expansions[0]
+        )
 
         for possible_expansion in possible_expansions:
             new_expanded_tree = self

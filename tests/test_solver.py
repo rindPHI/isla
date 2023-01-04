@@ -40,8 +40,14 @@ from isla import language
 from isla.derivation_tree import DerivationTree
 from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_ADDITION
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
-from isla.helpers import crange, Exceptional, Maybe, to_id, canonical, \
-    compute_nullable_nonterminals
+from isla.helpers import (
+    crange,
+    Exceptional,
+    Maybe,
+    to_id,
+    canonical,
+    compute_nullable_nonterminals,
+)
 from isla.isla_predicates import (
     BEFORE_PREDICATE,
     COUNT_PREDICATE,
@@ -1832,6 +1838,36 @@ exists int seqs: (
             enforce_unique_trees_in_queue=False,
         )
 
+    def test_issue_39_variant(self):
+        # variant of test_issue_39 to cover remaining parts of new code
+        grammar = """
+<start> ::= <sequences>
+<sequences> ::= <sequence> <sequences> | <X>
+<X> ::= <Y> <X>
+<Y> ::= <sequence>
+<sequence> ::= "X"
+"""
+        constraint = """
+exists int seqs: (
+    count(<start>, "<sequence>", seqs) and
+    str.to.int(seqs) >= 3
+    )
+"""
+
+        solver = ISLaSolver(
+            grammar,
+            constraint,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=5,
+            enforce_unique_trees_in_queue=False,
+        )
+
+        try:
+            solver.solve()
+            self.fail("StopIteration expected")
+        except StopIteration:
+            pass
+
     def execute_generation_test(
         self,
         formula: language.Formula | str = "true",
@@ -1954,7 +1990,7 @@ exists int seqs: (
             if print_solutions:
                 print(str(assignment))
 
-        if not solutions_found:
+        if not solutions_found and num_solutions > 0:
             self.fail("No solution found.")
         if solutions_found < num_solutions:
             self.fail(f"Only found {solutions_found} solutions")
