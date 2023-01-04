@@ -37,9 +37,14 @@ import ijson
 from grammar_graph import gg
 from graphviz import Digraph
 
-from isla.helpers import is_nonterminal, traverse, TRAVERSE_POSTORDER
+from isla.helpers import (
+    is_nonterminal,
+    traverse,
+    TRAVERSE_POSTORDER,
+    dict_of_lists_to_list_of_dicts,
+)
 from isla.trie import SubtreesTrie
-from isla.type_defs import Path, ParseTree
+from isla.type_defs import Path, ParseTree, CanonicalGrammar
 
 
 class DerivationTree:
@@ -605,6 +610,51 @@ class DerivationTree:
         #     self.get_subtree(path).value == other.get_subtree(path).value
         #     for path in common_paths
         # )
+
+    def expand_one_step(
+        self, canonical_grammar: CanonicalGrammar
+    ) -> List["DerivationTree"]:
+        """
+        Expands this tree one step. This may result in multiple expanded trees
+        if the grammar contains multiple alternatives for the symbol of at least one
+        leaf node.
+
+        :param canonical_grammar: The grammar to use for expansion, in canonical form.
+        :return: All single-step expansions.
+        """
+        result = []
+        nonterminal_expansions: Dict[Path, List[List[DerivationTree]]] = {
+            leaf_path: [
+                [
+                    DerivationTree(child, None if is_nonterminal(child) else [])
+                    for child in expansion
+                ]
+                for expansion in canonical_grammar[leaf_node.value]
+            ]
+            for leaf_path, leaf_node in self.open_leaves()
+        }
+
+        if not nonterminal_expansions:
+            return []
+
+        possible_expansions: List[
+            Dict[Path, List[DerivationTree]]
+        ] = dict_of_lists_to_list_of_dicts(nonterminal_expansions)
+
+        if len(possible_expansions) == 1 and not possible_expansions[0]:
+            return []
+
+        for possible_expansion in possible_expansions:
+            new_expanded_tree = self
+            for path, new_children in possible_expansion.items():
+                leaf_node = new_expanded_tree.get_subtree(path)
+                new_expanded_tree = new_expanded_tree.replace_path(
+                    path,
+                    DerivationTree(leaf_node.value, new_children, leaf_node.id),
+                )
+            result.append(new_expanded_tree)
+
+        return result
 
     @staticmethod
     def from_parse_tree(tree: ParseTree):

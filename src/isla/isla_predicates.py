@@ -41,7 +41,7 @@ from isla.language import (
     Variable,
 )
 from isla.parser import EarleyParser
-from isla.type_defs import Grammar, Path, ParseTree
+from isla.type_defs import Grammar, Path, ParseTree, CanonicalGrammar
 
 
 def is_before(_: Optional[DerivationTree], path_1: Path, path_2: Path) -> bool:
@@ -277,8 +277,8 @@ def count(  # noqa: C901
         return SemPredEvalResult(False)
 
     if not more_needles_possible:
-        # TODO: We could also try to insert needle into already closed parts of the tree,
-        #       similar to treatment of existential quantifiers...
+        # TODO: We could also try to insert needle into already closed parts of the
+        #       tree, similar to treatment of existential quantifiers...
         if num_needle_occurrences == target_num_needle_occurrences:
             return SemPredEvalResult(True)
         else:
@@ -313,6 +313,7 @@ def count(  # noqa: C901
         return len(candidate.filter(lambda t: t.value == needle))
 
     canonical_grammar = canonical(graph.to_grammar())
+
     candidates = [
         candidate
         for candidate in insert_tree(
@@ -329,16 +330,31 @@ def count(  # noqa: C901
         candidate = candidates.pop(0)
         candidate_needle_occurrences = num_needles(candidate)
 
-        candidate_more_needles_possible = any(
-            reachable(graph, leaf_nonterminal, needle)
-            for leaf_nonterminal in [node.value for _, node in candidate.open_leaves()]
-        )
+        leaves_reaching_needle = [
+            (leaf_path, leaf_node)
+            for leaf_path, leaf_node in candidate.open_leaves()
+            if reachable(graph, leaf_node.value, needle)
+        ]
 
-        if (
-            not candidate_more_needles_possible
-            and candidate_needle_occurrences == target_num_needle_occurrences
-        ):
-            return SemPredEvalResult({in_tree: candidate})
+        if candidate_needle_occurrences == target_num_needle_occurrences:
+            if not leaves_reaching_needle:
+                return SemPredEvalResult({in_tree: candidate})
+
+            # If we can expand all `leaves_reaching_needle` leaves such that no
+            # needle is reached, we can expand the tree as such and return this
+            # expansion
+            expanded_node = candidate
+            for leaf_path, leaf_node in leaves_reaching_needle:
+                expansion = find_expansion_without_needle(
+                    leaf_node, needle, canonical_grammar, graph
+                )
+
+                if expansion is None:
+                    break
+
+                expanded_node = expanded_node.replace_path(leaf_path, expansion)
+            else:
+                return SemPredEvalResult({in_tree: expanded_node})
 
         if candidate_needle_occurrences < target_num_needle_occurrences:
             new_candidates = [
@@ -362,6 +378,41 @@ def count(  # noqa: C901
             )
 
     return SemPredEvalResult(False)
+
+
+def find_expansion_without_needle(
+    root_node: DerivationTree,
+    needle: str,
+    canonical_grammar: CanonicalGrammar,
+    graph: GrammarGraph,
+) -> Optional[DerivationTree]:
+    """
+    Returns an expansion of `root_node` which does not contain any `needle` node, and
+    from whose leaves also no `needle` node can be reached. If no such expansion exists,
+    `None` is returned.
+
+    :param root_node: The root of the expanded tree.
+    :param needle: The nonterminal to avoid.
+    :param canonical_grammar: The grammar in canonical form.
+    :param graph: The grammar graph for `canonical_grammar`.
+    :return: `None` or a tree rooted in `root_node` not containing any node labeled
+    with `needle` such that `needle` is not reachable from any leaf.
+    """
+    expanded_trees = [root_node]
+    while expanded_trees:
+        for new_tree in expanded_trees.pop().expand_one_step(canonical_grammar):
+            if any(leaf.value == needle for _, leaf in new_tree.leaves()):
+                continue
+
+            if all(
+                not reachable(graph, leaf_node.value, needle)
+                for leaf_path, leaf_node in new_tree.open_leaves()
+            ):
+                return new_tree
+
+            expanded_trees.append(new_tree)
+
+    return None
 
 
 COUNT_PREDICATE = SemanticPredicate("count", 3, count, binds_tree=True)

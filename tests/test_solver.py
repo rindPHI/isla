@@ -40,7 +40,8 @@ from isla import language
 from isla.derivation_tree import DerivationTree
 from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_ADDITION
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
-from isla.helpers import crange, Exceptional, Maybe, to_id, canonical
+from isla.helpers import crange, Exceptional, Maybe, to_id, canonical, \
+    compute_nullable_nonterminals
 from isla.isla_predicates import (
     BEFORE_PREDICATE,
     COUNT_PREDICATE,
@@ -70,7 +71,6 @@ from isla.solver import (
     SemanticError,
     create_fixed_length_tree,
     generate_abstracted_trees,
-    nullable_nonterminals,
     smt_formulas_referring_to_subtrees,
 )
 from isla.type_defs import Grammar, ImmutableList
@@ -1415,7 +1415,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         )
 
         self.assertEqual(
-            {"<A>", "<B>", "<C>", "<chars>"}, nullable_nonterminals(grammar)
+            {"<A>", "<B>", "<C>", "<chars>"}, compute_nullable_nonterminals(grammar)
         )
 
     def test_create_zero_length_tree_impossible(self):
@@ -1827,8 +1827,8 @@ exists int seqs: (
             constraint,
             grammar=grammar,
             max_number_free_instantiations=1,
-            max_number_smt_instantiations=3,
-            num_solutions=3,
+            max_number_smt_instantiations=5,
+            num_solutions=5,
             enforce_unique_trees_in_queue=False,
         )
 
@@ -1862,7 +1862,7 @@ exists int seqs: (
         ] = lambda grammar: GrammarCoverageFuzzer(grammar),
         tree_insertion_methods=DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION,
         activate_unsat_support: bool = False,
-        enable_optimized_z3_queries=False,
+        enable_optimized_z3_queries=True,
     ):
         logger = logging.getLogger(type(self).__name__)
 
