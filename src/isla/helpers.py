@@ -894,3 +894,25 @@ def get_expansions(leaf_value: str, grammar: CanonicalGrammar):
     ]
 
     return terminal_expansions, expansions
+
+
+def compute_nullable_nonterminals(canonical_grammar: CanonicalGrammar) -> Set[str]:
+    result = {
+        nonterminal
+        for nonterminal in canonical_grammar
+        if any(not expansion for expansion in canonical_grammar[nonterminal])
+    }
+
+    changed = True
+    while changed:
+        changed = False
+
+        for nonterminal in set(canonical_grammar).difference(result):
+            if any(
+                all(elem in result for elem in expansion)
+                for expansion in canonical_grammar[nonterminal]
+            ):
+                changed = True
+                result.add(nonterminal)
+
+    return result

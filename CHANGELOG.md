@@ -12,6 +12,11 @@ This file contains the notable changes in the ISLa project since version 0.2a1
   whose solutions change subtrees of substitutions in other SMT formulas. Before,
   we did not check that the chosen "priority" formulas are not themselves influenced
   by other formulas. See test case `test_issue_36` in `test_solver.py`.
+- Resolves [GitHub Issue #39](https://github.com/rindPHI/isla/issues/39). The `count`
+  predicate now better handles grammars with epsilon productions: If the number of
+  "needles" is already reached, it can "finish off" the remaining nonterminals that
+  might be instantiated with needle nonterminals if alternative instantiations are
+  available.
 
 ## [1.9.9] - 2022-12-22
 

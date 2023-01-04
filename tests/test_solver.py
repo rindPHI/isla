@@ -38,10 +38,16 @@ import isla.evaluator
 from isla import isla_shortcuts as sc
 from isla import language
 from isla.derivation_tree import DerivationTree
-from isla.evaluator import well_formed
 from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_ADDITION
 from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
-from isla.helpers import crange, Exceptional, Maybe, to_id, canonical
+from isla.helpers import (
+    crange,
+    Exceptional,
+    Maybe,
+    to_id,
+    canonical,
+    compute_nullable_nonterminals,
+)
 from isla.isla_predicates import (
     BEFORE_PREDICATE,
     COUNT_PREDICATE,
@@ -71,7 +77,6 @@ from isla.solver import (
     SemanticError,
     create_fixed_length_tree,
     generate_abstracted_trees,
-    nullable_nonterminals,
     smt_formulas_referring_to_subtrees,
 )
 from isla.type_defs import Grammar, ImmutableList
@@ -1416,7 +1421,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         )
 
         self.assertEqual(
-            {"<A>", "<B>", "<C>", "<chars>"}, nullable_nonterminals(grammar)
+            {"<A>", "<B>", "<C>", "<chars>"}, compute_nullable_nonterminals(grammar)
         )
 
     def test_create_zero_length_tree_impossible(self):
@@ -1811,6 +1816,58 @@ str.to_code(<sequence>.<sequence-length>) = str.len(<sequence>.<value>)
         # formula_2.
         self.assertEqual(1, len(result))
 
+    def test_issue_39(self):
+        # https://github.com/rindPHI/isla/issues/39
+        grammar = """
+<start> ::= <sequences>
+<sequences> ::= <sequence> <sequences> | ""
+<sequence> ::= "X"
+"""
+        constraint = """
+exists int seqs: (
+    count(<start>, "<sequence>", seqs) and
+    str.to.int(seqs) >= 3
+    )
+"""
+        self.execute_generation_test(
+            constraint,
+            grammar=grammar,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=5,
+            num_solutions=5,
+            enforce_unique_trees_in_queue=False,
+        )
+
+    def test_issue_39_variant(self):
+        # variant of test_issue_39 to cover remaining parts of new code
+        grammar = """
+<start> ::= <sequences>
+<sequences> ::= <sequence> <sequences> | <X>
+<X> ::= <Y> <X>
+<Y> ::= <sequence>
+<sequence> ::= "X"
+"""
+        constraint = """
+exists int seqs: (
+    count(<start>, "<sequence>", seqs) and
+    str.to.int(seqs) >= 3
+    )
+"""
+
+        solver = ISLaSolver(
+            grammar,
+            constraint,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=5,
+            enforce_unique_trees_in_queue=False,
+        )
+
+        try:
+            solver.solve()
+            self.fail("StopIteration expected")
+        except StopIteration:
+            pass
+
     def execute_generation_test(
         self,
         formula: language.Formula | str = "true",
@@ -1933,7 +1990,7 @@ str.to_code(<sequence>.<sequence-length>) = str.len(<sequence>.<value>)
             if print_solutions:
                 print(str(assignment))
 
-        if not solutions_found:
+        if not solutions_found and num_solutions > 0:
             self.fail("No solution found.")
         if solutions_found < num_solutions:
             self.fail(f"Only found {solutions_found} solutions")

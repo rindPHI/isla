@@ -88,6 +88,7 @@ from isla.helpers import (
     get_elem_by_equivalence,
     get_expansions,
     list_del,
+    compute_nullable_nonterminals,
 )
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
@@ -1685,8 +1686,15 @@ class ISLaSolver:
                     curr_expansion[path] = random.choice(expansions)
                 possible_expansions.append(curr_expansion)
 
-        if len(possible_expansions) == 1 and not possible_expansions[0]:
-            return []
+        # This replaces a previous `if` statement with the negated condition as guard,
+        # which seems to be dead code (the guard can never hold true due to the check
+        # of emptiness of `nonterminal_expansions` above). We keep this assertion here
+        # to be sure.
+        assert (
+            len(possible_expansions) > 1
+            or len(possible_expansions) == 1
+            and possible_expansions[0]
+        )
 
         result: List[SolutionState] = []
         for possible_expansion in possible_expansions:
@@ -3450,34 +3458,12 @@ class EvaluatePredicateFormulasTransformer(NoopFormulaTransformer):
         )
 
 
-def nullable_nonterminals(canonical_grammar: CanonicalGrammar) -> Set[str]:
-    result = {
-        nonterminal
-        for nonterminal in canonical_grammar
-        if any(not expansion for expansion in canonical_grammar[nonterminal])
-    }
-
-    changed = True
-    while changed:
-        changed = False
-
-        for nonterminal in set(canonical_grammar).difference(result):
-            if any(
-                all(elem in result for elem in expansion)
-                for expansion in canonical_grammar[nonterminal]
-            ):
-                changed = True
-                result.add(nonterminal)
-
-    return result
-
-
 def create_fixed_length_tree(
     start: DerivationTree | str,
     canonical_grammar: CanonicalGrammar,
     target_length: int,
 ) -> Optional[DerivationTree]:
-    nullable = nullable_nonterminals(canonical_grammar)
+    nullable = compute_nullable_nonterminals(canonical_grammar)
     start = DerivationTree(start) if isinstance(start, str) else start
     stack: List[
         Tuple[DerivationTree, int, ImmutableList[Tuple[Path, DerivationTree]]]
