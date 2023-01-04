@@ -71,6 +71,7 @@ from isla.solver import (
     create_fixed_length_tree,
     generate_abstracted_trees,
     nullable_nonterminals,
+    smt_formulas_referring_to_subtrees,
 )
 from isla.type_defs import Grammar, ImmutableList
 from isla.z3_helpers import z3_eq, smt_string_val_to_string
@@ -1809,7 +1810,6 @@ str.to_code(<sequence>.<sequence-length>) = str.len(<sequence>.<value>)
         # formula_2.
         self.assertEqual(1, len(result))
 
-
     def test_issue_39(self):
         # https://github.com/rindPHI/isla/issues/39
         grammar = """
@@ -1862,6 +1862,7 @@ exists int seqs: (
         ] = lambda grammar: GrammarCoverageFuzzer(grammar),
         tree_insertion_methods=DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION,
         activate_unsat_support: bool = False,
+        enable_optimized_z3_queries=False,
     ):
         logger = logging.getLogger(type(self).__name__)
 
@@ -1884,6 +1885,7 @@ exists int seqs: (
             fuzzer_factory=fuzzer_factory,
             tree_insertion_methods=tree_insertion_methods,
             activate_unsat_support=activate_unsat_support,
+            enable_optimized_z3_queries=enable_optimized_z3_queries,
         )
 
         if debug:
