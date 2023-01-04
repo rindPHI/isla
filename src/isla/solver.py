@@ -89,6 +89,7 @@ from isla.helpers import (
     get_expansions,
     list_del,
     compute_nullable_nonterminals,
+    eassert,
 )
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
@@ -273,6 +274,7 @@ class ISLaSolver:
         grammar_unwinding_threshold: int = 4,
         initial_tree: Maybe[DerivationTree] = Maybe.nothing(),
         enable_optimized_z3_queries: bool = True,
+        start_symbol: Optional[str] = None,
     ):
         """
         Constructs a new ISLaSolver object. Passing a grammar and a formula is mandatory.
@@ -319,6 +321,10 @@ class ISLaSolver:
         numeric problems concerning things like length). This can improve performance
         significantly; however, it might happen that certain problems cannot be solved
         anymore. In that case, this option can/should be deactivated.
+        :param start_symbol: This is an alternative to `initial_tree` for starting with
+        a start symbol different form `<start>`. If `start_symbol` is provided, a tree
+        consisting of a single root node with the value of `start_symbol` is chosen as
+        initial tree.
         """
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -343,6 +349,14 @@ class ISLaSolver:
             self.grammar = parse_bnf(grammar)
         else:
             self.grammar = grammar
+
+        assert (
+            start_symbol is None or not initial_tree.is_present()
+        ), "You have to *either* supply a start symbol *or* an initial tree."
+
+        if start_symbol is not None:
+            self.grammar["<start>"] = [start_symbol]
+            delete_unreachable(self.grammar)
 
         self.graph = GrammarGraph.from_grammar(self.grammar)
         self.canonical_grammar = canonical(self.grammar)
@@ -422,6 +436,9 @@ class ISLaSolver:
         # Initialize Queue
         self.initial_tree = (
             initial_tree
+            + Maybe(start_symbol)
+            .map(lambda s: eassert(s, s in self.grammar))
+            .map(lambda s: DerivationTree(s, None))
             + Maybe(
                 DerivationTree(
                     self.top_constant.map(lambda c: c.n_type)

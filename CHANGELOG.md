@@ -17,6 +17,9 @@ This file contains the notable changes in the ISLa project since version 0.2a1
   "needles" is already reached, it can "finish off" the remaining nonterminals that
   might be instantiated with needle nonterminals if alternative instantiations are
   available.
+- Adds the feature requested in [GitHub Issue #38](https://github.com/rindPHI/isla/issues/38):
+  one can now pass a start symbol (parameter `start_symbol`) to the ISLaSolver
+  constructor as alternative to the (also optional) initial derivation tree.
 
 ## [1.9.9] - 2022-12-22
 

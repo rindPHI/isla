@@ -1868,6 +1868,28 @@ exists int seqs: (
         except StopIteration:
             pass
 
+    def test_start_symol(self):
+        # See https://github.com/rindPHI/isla/issues/38
+        solver = ISLaSolver(
+            LANG_GRAMMAR,
+            '<assgn>.<var> = "x"',
+            start_symbol="<assgn>",
+            max_number_free_instantiations=5,
+            max_number_smt_instantiations=1,
+        )
+
+        for _ in range(5):
+            solution = str(solver.solve())
+            self.assertEqual(6, len(solution))
+            self.assertEqual("x", solution[0])
+            self.assertEqual(" := ", solution[1:5])
+
+        try:
+            solver.solve()
+            self.fail("StopIteration expected")
+        except StopIteration:
+            pass
+
     def execute_generation_test(
         self,
         formula: language.Formula | str = "true",
