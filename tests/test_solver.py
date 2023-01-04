@@ -1697,6 +1697,119 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         except RuntimeError as exc:
             self.assertIn("Could not create a tree", str(exc))
 
+    def test_issue_36(self):
+        # https://github.com/rindPHI/isla/issues/36
+        grammar = {
+            "<start>": ["<sequence>"],
+            "<value>": ["<sequence>", "<atom>"],
+            "<sequence>": ["S<sequence-length><value>"],
+            "<atom>": ["A<atom-length><atom-value>"],
+            "<atom-value>": ["T", "F"],  # <-- New
+            "<sequence-length>": ["<length>"],
+            "<atom-length>": ["<length>"],
+            "<length>": crange("\x00", "\xff"),
+        }
+
+        constraint = """
+str.to_code(<atom>.<atom-length>) = 1
+and
+str.to_code(<sequence>.<sequence-length>) = str.len(<sequence>.<value>)
+"""
+
+        self.execute_generation_test(
+            constraint,
+            grammar=grammar,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=1,
+            num_solutions=10,
+            enable_optimized_z3_queries=False,
+        )
+
+    def test_smt_formulas_referring_to_subtrees(self):
+        # Sub test case for `test_issue_36`
+        atom_length_926 = language.BoundVariable("<atom-length>_926", "<atom-length>")
+        sequence_length_777 = language.BoundVariable(
+            "<sequence-length>_777", "<sequence-length>"
+        )
+        value_778 = language.BoundVariable("<value>_778", "<value>")
+        sequence_length_446 = language.BoundVariable(
+            "<sequence-length>_446", "<sequence-length>"
+        )
+        value_447 = language.BoundVariable("<value>_447", "<value>")
+
+        atom_length_926_tree = DerivationTree("<atom-length>", None, id=926)
+
+        value_778_tree = DerivationTree(
+            "<value>",
+            (
+                DerivationTree(
+                    "<atom>",
+                    (
+                        DerivationTree("A", (), id=925),
+                        atom_length_926_tree,  # <-- Solution of formula_1
+                        DerivationTree("<atom-value>", None, id=927),
+                    ),
+                    id=852,
+                ),
+            ),
+            id=778,
+        )
+
+        formula_1 = language.SMTFormula(
+            z3_eq(z3.StrToCode(atom_length_926.to_smt()), z3.IntVal(1)),
+            instantiated_variables=OrderedSet({atom_length_926}),
+            substitutions={atom_length_926: atom_length_926_tree},
+        )
+
+        formula_2 = language.SMTFormula(
+            z3_eq(
+                z3.StrToCode(sequence_length_777.to_smt()),
+                z3.Length(value_778.to_smt()),
+            ),
+            instantiated_variables=OrderedSet({sequence_length_777, value_778}),
+            substitutions={
+                sequence_length_777: DerivationTree("<sequence-length>", None, id=777),
+                value_778: value_778_tree,
+            },
+        )
+
+        formula_3 = language.SMTFormula(
+            z3_eq(
+                z3.StrToCode(sequence_length_446.to_smt()),
+                z3.Length(value_447.to_smt()),
+            ),
+            instantiated_variables=OrderedSet({sequence_length_446, value_447}),
+            substitutions={
+                sequence_length_446: DerivationTree("<sequence-length>", None, id=446),
+                value_447: DerivationTree(
+                    "<value>",
+                    (
+                        DerivationTree(
+                            "<sequence>",
+                            (
+                                DerivationTree("S", (), id=776),
+                                DerivationTree("<sequence-length>", None, id=777),
+                                value_778_tree,  # <-- Solution of formula_2, but
+                                # that solution is in turn influenced by formula_1
+                            ),
+                        ),
+                    ),
+                ),
+            },
+        )
+
+        result = smt_formulas_referring_to_subtrees([formula_1, formula_2, formula_3])
+
+        # formula_1 should be in the result since it needs to be instantiated for the
+        # other two formulas.
+        self.assertIn(formula_1, result)
+
+        # No other formula should be in the result set. For example, formula_2 should
+        # not be a result since the solution of formula_1 changes the substitutions of
+        # formula_2.
+        self.assertEqual(1, len(result))
+
+
     def test_issue_39(self):
         # https://github.com/rindPHI/isla/issues/39
         grammar = """
