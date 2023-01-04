@@ -1686,8 +1686,15 @@ class ISLaSolver:
                     curr_expansion[path] = random.choice(expansions)
                 possible_expansions.append(curr_expansion)
 
-        if len(possible_expansions) == 1 and not possible_expansions[0]:
-            return []
+        # This replaces a previous `if` statement with the negated condition as guard,
+        # which seems to be dead code (the guard can never hold true due to the check
+        # of emptiness of `nonterminal_expansions` above). We keep this assertion here
+        # to be sure.
+        assert (
+            len(possible_expansions) > 1
+            or len(possible_expansions) == 1
+            and possible_expansions[0]
+        )
 
         result: List[SolutionState] = []
         for possible_expansion in possible_expansions:
