@@ -20,6 +20,10 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 - Adds the feature requested in [GitHub Issue #38](https://github.com/rindPHI/isla/issues/38):
   one can now pass a start symbol (parameter `start_symbol`) to the ISLaSolver
   constructor as alternative to the (also optional) initial derivation tree.
+- Resolves [GitHub Issue #40](https://github.com/rindPHI/isla/issues/40). The default
+  value for `formula` in `ISLaSolver` is now `None` and no longer `"true"`, with the
+  same semantics. This means that you can still pass `Formula` objects and strings,
+  but additionally `None` for the trivially valid constraint.
 
 ## [1.9.9] - 2022-12-22
 
