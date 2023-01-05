@@ -5,6 +5,8 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.10.0] - 2022-01-05
+
 ### Changed
 
 - Resolves [GitHub Issue #36](https://github.com/rindPHI/isla/issues/36), which in
