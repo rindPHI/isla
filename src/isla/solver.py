@@ -248,7 +248,7 @@ class ISLaSolver:
     def __init__(
         self,
         grammar: Grammar | str,
-        formula: language.Formula | str = "true",
+        formula: Optional[language.Formula | str] = None,
         structural_predicates: Set[
             language.StructuralPredicate
         ] = STANDARD_STRUCTURAL_PREDICATES,
@@ -280,7 +280,10 @@ class ISLaSolver:
         Constructs a new ISLaSolver object. Passing a grammar and a formula is mandatory.
 
         :param grammar: The underlying grammar; either, as a "Fuzzing Book" dictionary or in BNF syntax.
-        :param formula: The formula to solve; either a string or a readily parsed formula.
+        :param formula: The formula to solve; either a string or a readily parsed
+        formula. If no formula is given, a default `true` constraint is assumed, and
+        the solver falls back to a grammar fuzzer. The number of produced solutions will
+        then be bound by `max_number_free_instantiations`.
         :param structural_predicates: Structural predicates to use when parsing a formula.
         :param semantic_predicates: Semantic predicates to use when parsing a formula.
         :param max_number_free_instantiations: Number of times that nonterminals that are not bound by any formula
@@ -397,10 +400,17 @@ class ISLaSolver:
             else GrammarBasedBlackboxCostComputer(STD_COST_SETTINGS, self.graph)
         )
 
-        if isinstance(formula, str):
-            formula = parse_isla(
-                formula, self.grammar, structural_predicates, semantic_predicates
+        formula = (
+            sc.true()
+            if formula is None
+            else (
+                parse_isla(
+                    formula, self.grammar, structural_predicates, semantic_predicates
+                )
+                if isinstance(formula, str)
+                else formula
             )
+        )
 
         self.formula = ensure_unique_bound_variables(formula)
 

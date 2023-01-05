@@ -1890,6 +1890,21 @@ exists int seqs: (
         except StopIteration:
             pass
 
+    def test_no_constraint(self):
+        # See https://github.com/rindPHI/isla/issues/40
+        solver = ISLaSolver(LANG_GRAMMAR, max_number_free_instantiations=10)
+
+        for _ in range(10):
+            solution = str(solver.solve())
+            self.assertLessEqual(6, len(solution))
+            self.assertEqual(" := ", solution[1:5])
+
+        try:
+            solver.solve()
+            self.fail("StopIteration expected")
+        except StopIteration:
+            pass
+
     def execute_generation_test(
         self,
         formula: language.Formula | str = "true",
