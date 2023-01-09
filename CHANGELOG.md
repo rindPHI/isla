@@ -5,6 +5,10 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Changed
+
+- Deterministic hashing of structural predicates.
+
 ## [1.10.0] - 2022-01-05
 
 ### Changed
