@@ -52,6 +52,8 @@ from isla.language import (
     ExistsFormula,
     match,
     unparse_isla,
+    start_constant,
+    true,
 )
 from isla.parser import EarleyParser
 from isla.z3_helpers import z3_eq
@@ -921,6 +923,46 @@ forall <xml-tree> tree="<<id>><inner-xml-tree></<id>>" in start:
         inp: DerivationTree = parse("a := b ; c := d").get_subtree((0, 2))
         result = match(inp, mexpr_tree, mexpr_var_paths)
         self.assertEqual(None, result)
+
+    def test_subsitute_in_existential_formula(self):
+        def parse(inp: str, start_symbol: str = "<start>") -> DerivationTree:
+            if start_symbol != "<start>":
+                grammar = copy.deepcopy(LANG_GRAMMAR)
+                grammar["<start>"] = [start_symbol]
+                delete_unreachable(grammar)
+            else:
+                grammar = LANG_GRAMMAR
+
+            return DerivationTree.from_parse_tree(
+                next(EarleyParser(grammar).parse(inp))
+            )
+
+        inp = parse("x := y")
+        digit = BoundVariable("digit", "<digit>")
+
+        formula = ExistsFormula(
+            digit,
+            inp,
+            SMTFormula(z3_eq(digit.to_smt(), z3.StringVal("0")), digit),
+        )
+
+        result = formula.substitute_expressions({digit: parse("0", "<digit>")})
+
+        # Although the inner formula is "true," the bound variable does no longer
+        # occur in the quantifier's core, and there's no match expression, the
+        # formula should *not* simplify to "true" since the demanded structure
+        # element `<digit>` does not exist in the input. In fact, we *could* simplify
+        # the formula to "false" here, which we, however, don't, to not disturb the
+        # solver, which might attempt to insert a tree establishing truth of the
+        # formula. The mentioned simplification used to be a (wrong!) part of the
+        # implementation.
+        expected = ExistsFormula(
+            digit,
+            inp,
+            true(),
+        )
+
+        self.assertEqual(expected, result)
 
 
 if __name__ == "__main__":

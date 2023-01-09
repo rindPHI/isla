@@ -8,6 +8,8 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 ### Changed
 
 - Deterministic hashing of structural predicates.
+- Fixed too aggressive simplification of existential quantifiers (see test 
+  `test_subsitute_in_existential_formula` in `test_language.py`).
 
 ## [1.10.0] - 2022-01-05
 
