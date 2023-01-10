@@ -2249,7 +2249,17 @@ class ISLaSolver:
         # After solving the constraint, we parse `var'` into a string and reverse
         # the substitution for the final solution.
 
-        if self.enable_optimized_z3_queries:
+        # We disable optimized Z3 queries if the SMT formulas contain "too concrete"
+        # substitutions, that is, substitutions with a tree that is not merely an
+        # open leaf. Example: we have a constrained `str.len(<chars>) < 10` and a
+        # tree `<char><char>`; only the concrete length "10" is possible then. In fact,
+        # we could simply finish of the tree and check the constraint, or restrict the
+        # custom tree generation to admissible lengths, but we stay general here. The
+        # SMT solution is more robust.
+
+        if self.enable_optimized_z3_queries and not any(
+            substitution.children for substitution in tree_substitutions.values()
+        ):
             length_vars, flexible_vars = self.filter_length_variables(
                 variables, smt_formulas
             )

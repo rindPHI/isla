@@ -1132,12 +1132,14 @@ def eliminate_quantifiers_in_quantified_formula(
         graph.reachable(leaf.value, quantified_formula.bound_variable.n_type)
         for _, leaf in quantified_formula.in_variable.open_leaves()
     )
+
     matches = [
         {var: tree for var, (_, tree) in match.items()}
         for match in matches_for_quantified_formula(
             quantified_formula, grammar, quantified_formula.in_variable
         )
     ]
+
     instantiations = [
         eliminate_quantifiers(
             quantified_formula.inner_formula.substitute_expressions(match),
@@ -1148,6 +1150,7 @@ def eliminate_quantifiers_in_quantified_formula(
         )
         for match in matches
     ]
+
     reduce_op = (
         Formula.__and__
         if isinstance(quantified_formula, ForallFormula)
@@ -1364,37 +1367,46 @@ def quantified_formula_might_match(
 ) -> bool:
     """
     This function returns `True` if in order to match the `qfd_formula`, the given path
-    has to be expanded. It will return `False` if expanding that path makes no difference,
-    either because there is a match already or because the expansion will not contribute
-    to a future match. The purpose is to check, e.g., if a nonterminal shall be expanded
-     or "freely" instantiated; or to check if a quantifier can be removed, because it won't
-      match any expansion (in addition of not already matchine!).
+    has to be expanded. It will return `False` if expanding that path makes no
+    difference, either because there is a match already or because the expansion will
+    not contribute to a future match. The purpose is to check, e.g., if a nonterminal
+    shall be expanded or "freely" instantiated; or to check if a quantifier can be
+    removed, because it won't match any expansion (in addition of not already
+    matching!).
 
-    :param qfd_formula: The quantified formula for which to check if the given tree path might become a match.
+    :param qfd_formula: The quantified formula for which to check if the given tree
+    path might become a match.
     :param path_to_nonterminal: The path in the tree to check.
     :param tree: The context tree.
     :param grammar: The reference grammar.
     :param reachable: A reachability function in the grammar.
-    :return: `True` iff some expansion of this path matches the formula, and the formula does not already match.
+    :return: `True` iff some expansion of this path matches the formula, and the
+    formula does not already match.
     """
     if reachable is None:
         reachable = gg.GrammarGraph.from_grammar(grammar).reachable
 
     node = tree.get_subtree(path_to_nonterminal)
-    assert not node.children, "quantified_formula_might_match only works for leaf nodes"
+    assert (
+        node.children is None
+    ), "quantified_formula_might_match only works for open leaf nodes"
 
     if qfd_formula.in_variable.find_node(node) is None:
         return False
 
+    qfd_nonterminal = qfd_formula.bound_variable.n_type
+
     if qfd_formula.is_already_matched(node):
-        # This formula won't match node IFF there is no subtree in node that matches.
-        return any(
+        # This formula will only match `node` IFF (1) there is a subtree in `node` that
+        # might match or (2) the quantified nonterminal is reachable from (the *open*)
+        # `node`.
+        return (
+            node.children is None and reachable(node.value, qfd_nonterminal)
+        ) or any(
             quantified_formula_might_match(qfd_formula, path, node, grammar, reachable)
             for path, _ in node.paths()
             if path
         )
-
-    qfd_nonterminal = qfd_formula.bound_variable.n_type
 
     if qfd_nonterminal == node.value:
         return qfd_formula.bind_expression is not None

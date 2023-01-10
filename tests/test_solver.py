@@ -53,6 +53,7 @@ from isla.isla_predicates import (
     COUNT_PREDICATE,
     STANDARD_SEMANTIC_PREDICATES,
     STANDARD_STRUCTURAL_PREDICATES,
+    IN_TREE_PREDICATE,
 )
 from isla.language import (
     VariablesCollector,
@@ -61,6 +62,7 @@ from isla.language import (
     SemanticPredicate,
     SemPredEvalResult,
     parse_bnf,
+    unparse_isla,
 )
 from isla.parser import EarleyParser, PEGParser
 from isla.solver import (
@@ -1149,9 +1151,8 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
   exists <assgn> assgn_2="{<var> lhs} := <rhs>" in start:
     (before(assgn_2, assgn_1) and (= lhs rhs))"""
 
-        inp = DerivationTree.from_parse_tree(
-            next(EarleyParser(LANG_GRAMMAR).parse("x := 1 ; y := x"))
-        )
+        parser = EarleyParser(LANG_GRAMMAR)
+        inp = DerivationTree.from_parse_tree(next(parser.parse("x := 1 ; y := x")))
 
         solver = ISLaSolver(LANG_GRAMMAR, formula)
         graph = gg.GrammarGraph.from_grammar(LANG_GRAMMAR)
@@ -1682,8 +1683,8 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         self.execute_generation_test(
             constraint,
             grammar=grammar,
-            max_number_smt_instantiations=10,
-            num_solutions=10,
+            max_number_smt_instantiations=2,
+            num_solutions=50,
         )
 
     def test_nonterminating_simple_length_constraint_impossible(self):
@@ -1699,6 +1700,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
                 grammar=grammar,
                 max_number_smt_instantiations=10,
                 num_solutions=10,
+                activate_unsat_support=True,  # required
             )
             self.fail("Expected error")
         except RuntimeError as exc:
@@ -1904,6 +1906,66 @@ exists int seqs: (
             self.fail("StopIteration expected")
         except StopIteration:
             pass
+
+    def Xtest_negated_constraint(self):
+        # TODO This test does not finish; tree insertion generates longer and longer
+        #      inputs, matching alone is also not effective (but at least results in
+        #      *some* generated inputs). We have to work on this, probably on tree
+        #      insertion. It might be a good idea to rework all of tree insertion.
+        grammar = {
+            "<start>": ["<E>$"],
+            "<E>": ["<T><EE>"],
+            "<EE>": ["+<T><EE>", ""],
+            "<T>": ["<F><TT>"],
+            "<TT>": ["*<F><TT>", ""],
+            "<F>": ["(<E>)", "a", "b", "c", "d", "e", "f", "g"],
+        }
+
+        inside_test = """
+forall <F> f2 in start:
+  exists <F> f1="({<E> e})" in start:
+    (not (= f2 "a") or not inside(f2, e))"""
+
+        solver = ISLaSolver(
+            grammar, inside_test, structural_predicates={IN_TREE_PREDICATE}
+        )
+
+        # Here are some examples of passing and failing inputs
+        # print(solver.parse("(e)$").to_parse_tree())  # Passes
+        # print(solver.parse("(e)+(a)$").to_parse_tree())  # Passes
+        # print(solver.parse("(a)+(a)$").to_parse_tree())  # Passes
+        # print(solver.parse("(a)$").to_parse_tree())  # Fails
+
+        for _ in range(10):
+            print(solver.solve())
+
+        self.execute_generation_test(inside_test, grammar=grammar)
+
+    def test_remove_infeasible_universal_quantifiers_1(self):
+        grammar = {"<start>": ["<A>"], "<A>": ["a<A>", "a"]}
+
+        tree = DerivationTree("<start>", (DerivationTree("<A>", None),))
+
+        var_a = language.BoundVariable("a", "<A>")
+        constraint = language.ForallFormula(
+            var_a,
+            tree,
+            language.SMTFormula(z3_eq(var_a.to_smt(), z3.StringVal("a")), var_a),
+        )
+
+        solver = ISLaSolver(grammar, constraint)
+
+        # Even if the constraint was already matched, we must *not* remove the universal
+        # quantifier. This is because there might be another `<A>` in a subtree of the
+        # matched tree. That situation occurs if we have a forall-exists combination
+        # where the variable bound by the universal quantifier has a recursive type:
+        # we mark the quantifier as already matched and add the existential quantifier,
+        # but we have to keep the universal quantifier in case another variable of the
+        # bound type occurs again.
+        constraint_matched = constraint.add_already_matched(tree.get_subtree((0,)))
+
+        state = SolutionState(constraint_matched, tree)
+        self.assertEqual(state, solver.remove_infeasible_universal_quantifiers(state))
 
     def execute_generation_test(
         self,

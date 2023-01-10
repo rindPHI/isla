@@ -57,7 +57,8 @@ def insert_tree(
                 add_to_result(t)
             return
 
-        # The following alternative avoids prefixes, but is quite expensive if there are many results.
+        # The following alternative avoids prefixes, but is quite expensive if there are
+        # many results.
         # if (new_tree.structural_hash() not in result_hashes
         #         and not any(existing.is_prefix(new_tree) for existing in result)):
 
@@ -78,9 +79,9 @@ def insert_tree(
     current_path = ()
 
     while current_path is not None:
-        # Note: This can produce max_num_solutions * (number of insertion strategies) many solutions,
-        # but, we do not divide the solution "slots" since different solutions are interesting for
-        # different problems.
+        # Note: This can produce max_num_solutions * (number of insertion strategies)
+        # many solutions, but, we do not divide the solution "slots" since different
+        # solutions are interesting for different problems.
         num_solutions = (
             None
             if max_num_solutions is None
@@ -100,13 +101,15 @@ def insert_tree(
                 )
             )
 
-        # NOTE: "Context addition" has been deactivated, since it leads to a loss of subtrees:
-        #       a compatible subtree is replaced, and the lost trees shall be re-inserted into
-        #       the arising tree. This re-insertion failed (see, e.g., test case test_insert_lang_3),
-        #       i.e., it produced an output not containing the root of the tree that should be
-        #       re-inserted. We could try to fix this behavior, or simply remove the context addition
-        #       part. Insertion by embedding is, in any case, non-destructive.
-        # NOTE: Context addition is needed for XML and possibly other "nested" languages.
+        # NOTE: "Context addition" has been deactivated, since it leads to a loss of
+        #       subtrees: a compatible subtree is replaced, and the lost trees shall be
+        #       re-inserted into the arising tree. This re-insertion failed (see, e.g.,
+        #       test case test_insert_lang_3), i.e., it produced an output not
+        #       containing the root of the tree that should be re-inserted. We could
+        #       try to fix this behavior, or simply remove the context addition part.
+        #       Insertion by embedding is, in any case, non-destructive.
+        # NOTE: Context addition is needed for XML and possibly other "nested"
+        #       languages.
         if methods & CONTEXT_ADDITION:
             add_to_result(
                 compute_context_additions(
