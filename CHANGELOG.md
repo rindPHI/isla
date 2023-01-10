@@ -5,6 +5,21 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.10.1] - 2022-01-10
+
+### Changed
+
+- Deterministic hashing of structural predicates.
+- Fixed too aggressive simplification of existential quantifiers (see test 
+  `test_subsitute_in_existential_formula` in `test_language.py`).
+- Fixed too aggressive simplification of universal quantifiers for recursive grammars:
+  even if a quantifier already matched a tree node, we cannot simplify it away in the
+  absence of other *current* matches if the quantified nonterminal can still be reached
+  from the already mached tree.
+- Deactivated custom solver for `str.len` in presence of "too concrete" tree
+  substitutions, e.g., a `str.len(<chars>) < 10` constraint with a `<char><char>` tree,
+  where 2 is the only possible instantiation of `str.len`.
+
 ## [1.10.0] - 2022-01-05
 
 ### Changed

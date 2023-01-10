@@ -881,6 +881,9 @@ class StructuralPredicate:
     def __str__(self):
         return self.name
 
+    def __hash__(self):
+        return hash((self.name, self.arity))
+
 
 class StructuralPredicateFormula(Formula):
     def __init__(
@@ -2029,17 +2032,6 @@ class ExistsFormula(QuantifiedFormula):
             new_in_variable = subst_map[new_in_variable]
         elif isinstance(new_in_variable, DerivationTree):
             new_in_variable = new_in_variable.substitute(subst_map)
-
-        new_inner_formula = self.inner_formula.substitute_expressions(subst_map)
-
-        if self.bound_variable not in new_inner_formula.free_variables() and (
-            self.bind_expression is None
-            or not any(
-                bv in new_inner_formula.free_variables()
-                for bv in self.bind_expression.bound_variables()
-            )
-        ):
-            return new_inner_formula
 
         return ExistsFormula(
             self.bound_variable,
