@@ -1,5 +1,7 @@
 # TODOs and Open Issues
 
+- Test with newer Z3 versions (>= 4.12.1.0), e.g., the heartbleed examples. I experienced
+  problems with these during a demo preparation.
 - Unicode symbols in BNF syntax (e.g., \u0001)
 - Add CLI option for `enable-optimized-z3-queries`.
 - XPath: Formula `exists <assgn> assgn: assgn..<digit> = "7"` cannot be parsed
