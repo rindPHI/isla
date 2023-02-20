@@ -51,7 +51,8 @@ def expansion_key(
     symbol: str, expansion: Expansion | DerivationTree | Iterable[DerivationTree]
 ) -> str:
     """Convert (symbol, `expansion`) into a key "SYMBOL -> EXPRESSION".
-    `expansion` can be an expansion string, a derivation tree, or a list of derivation trees."""
+    `expansion` can be an expansion string, a derivation tree, or a list of derivation trees.
+    """
 
     if isinstance(expansion, DerivationTree):
         expansion = expansion.value
@@ -506,7 +507,7 @@ class GrammarCoverageFuzzer(GrammarFuzzer):
         self, children: List[DerivationTree], max_depth: int | float
     ) -> Set[str]:
         new_cov: Set[str] = set()
-        for (c_symbol, _) in children:
+        for c_symbol, _ in children:
             if c_symbol in self.grammar:
                 new_cov |= self.max_expansion_coverage(c_symbol, max_depth)
 
