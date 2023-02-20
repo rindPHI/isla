@@ -1191,16 +1191,13 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         )
 
     def test_heartbeat_constraint(self):
-        heartbeat_request_grammar = {
-            "<start>": ["<heartbeat-request>"],
-            "<heartbeat-request>": ["\x01<payload-length><payload><padding>"],
-            "<payload-length>": ["<byte><byte>"],
-            "<payload>": ["<bytes>"],
-            "<padding>": ["<bytes>"],
-            "<bytes>": ["<byte><bytes>", "<byte>"],
-            "<byte>": [chr(i) for i in range(256)],
-        }
-
+        # TODO: Check this with `z3-solver==4.12.1.0`; I experienced some problems here
+        #       while preparing a demo. CLI error message was
+        #       ```
+        #       ERROR:ISLaSolver:Error parsing "\u{0}" starting with "<byte>"
+        #       isla solve: error: An exception (SyntaxError) occurred during constraint
+        #       solving, message: `at 'u{0}'`
+        #       ```
         heartbeat_request_grammar = {
             "<start>": ["<heartbeat-request>"],
             "<heartbeat-request>": ["\x01<payload-length><payload><padding>"],
