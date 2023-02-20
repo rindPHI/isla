@@ -34,6 +34,7 @@ from isla.cli import (
     get_default,
     derivation_tree_to_json,
 )
+from isla.derivation_tree import DerivationTree
 from isla.helpers import Maybe, get_isla_resource_file_content
 from isla.language import unparse_grammar
 from isla.parser import EarleyParser
@@ -1469,11 +1470,54 @@ exists <assgn> assgn:
     "<byte>": [chr(i) for i in range(256)],
 }"""
 
-        grammar_file = write_python_grammar_file(grammar_str)
+        constraint_str = r"""    256 * str.to_code(<payload-length>.<byte>[1])
+  + str.to_code(<payload-length>.<byte>[2])
+  = str.len(<payload>)
+and str.len(<padding>) >= 16
+and str.len(<payload>) > 0"""
 
-        stdout, stderr, code = run_isla("solve", grammar_file.name)
-        print(stdout)
-        print(stderr)
+        grammar_file = write_python_grammar_file(grammar_str)
+        constraint_file = write_constraint_file(constraint_str)
+
+        stdout, stderr, code = run_isla(
+            "solve",
+            grammar_file.name,
+            constraint_file.name,
+            "--constraint",
+            "str.len(<padding>) = 20",
+            "--constraint",
+            "str.len(<payload>) = 10",
+            "--tree",
+        )
+
+        self.assertFalse(stderr)
+
+        tree = DerivationTree.from_parse_tree(json.loads(stdout))
+
+        payload = str(
+            tree.filter(lambda node: node.value == "<payload>", enforce_unique=True)[0][
+                1
+            ]
+        )
+
+        self.assertEqual(10, len(payload))
+
+        padding = str(
+            tree.filter(lambda node: node.value == "<padding>", enforce_unique=True)[0][
+                1
+            ]
+        )
+
+        self.assertEqual(20, len(padding))
+
+        length = tree.filter(
+            lambda node: node.value == "<payload-length>", enforce_unique=True
+        )[0][1]
+
+        length_1 = ord(str(length.get_subtree((0,))))
+        length_2 = ord(str(length.get_subtree((1,))))
+
+        self.assertEqual(len(payload), 256 * length_1 + length_2)
 
     def test_solve_additional_structural_predicate(self):
         # We rename the "before" predicate to "erofeb" and use it in the formula.
