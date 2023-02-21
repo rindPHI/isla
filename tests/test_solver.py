@@ -1190,6 +1190,79 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
             # print_only=True
         )
 
+    def test_heartbeat_constraint(self):
+        # TODO: Check this with `z3-solver==4.12.1.0`; I experienced some problems here
+        #       while preparing a demo. CLI error message was
+        #       ```
+        #       ERROR:ISLaSolver:Error parsing "\u{0}" starting with "<byte>"
+        #       isla solve: error: An exception (SyntaxError) occurred during constraint
+        #       solving, message: `at 'u{0}'`
+        #       ```
+        heartbeat_request_grammar = {
+            "<start>": ["<heartbeat-request>"],
+            "<heartbeat-request>": ["\x01<payload-length><payload><padding>"],
+            "<payload-length>": ["<byte><byte>"],
+            "<payload>": ["<bytes>"],
+            "<padding>": ["<bytes>"],
+            "<bytes>": ["<byte><bytes>", ""],
+            "<byte>": [chr(i) for i in range(256)],
+        }
+
+        length_constraint = """
+256 * str.to_code(<payload-length>.<byte>[1])
+  + str.to_code(<payload-length>.<byte>[2])
+  = str.len(<payload>)
+and str.len(<padding>) >= 16
+and str.len(<payload>) > 0
+and str.len(<padding>) = 20
+and str.len(<payload>) = 10
+        """
+
+        def custom_test_func(tree: DerivationTree) -> Optional[str | bool]:
+            payload = str(
+                tree.filter(
+                    lambda node: node.value == "<payload>", enforce_unique=True
+                )[0][1]
+            )
+
+            if len(payload) != 10:
+                return f"Wrong payload length: Expected 10, got {len(payload)}"
+
+            padding = str(
+                tree.filter(
+                    lambda node: node.value == "<padding>", enforce_unique=True
+                )[0][1]
+            )
+
+            if len(padding) != 20:
+                return f"Wrong padding length: Expected 20, got {len(payload)}"
+
+            length = tree.filter(
+                lambda node: node.value == "<payload-length>", enforce_unique=True
+            )[0][1]
+
+            length_1 = ord(str(length.get_subtree((0,))))
+            length_2 = ord(str(length.get_subtree((1,))))
+
+            if len(payload) != 256 * length_1 + length_2:
+                return (
+                    f"Length field diverges from actual payload length: "
+                    f"Expected {256 * length_1 + length_2}, got {len(payload)}"
+                )
+
+            return True
+
+        self.execute_generation_test(
+            grammar=heartbeat_request_grammar,
+            formula=length_constraint,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=1,
+            enforce_unique_trees_in_queue=True,
+            num_solutions=1,
+            custom_test_func=custom_test_func
+            # print_only=True
+        )
+
     def test_solve_complex_quantifier_free_numeric_formula_heartbeat(self):
         heartbeat_request_grammar = {
             "<start>": ["<heartbeat-request>"],
