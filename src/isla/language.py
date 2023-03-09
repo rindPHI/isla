@@ -3838,7 +3838,6 @@ class BnfEmitter(bnfListener.bnfListener):
             assert isinstance(expansion, list)
             assert all(isinstance(alternative, str) for alternative in expansion)
 
-            alternative: str
             self.result[nonterminal] = [
                 alternative.replace(
                     f"<{self.langle_placeholder}>", free_langle_nonterminal
