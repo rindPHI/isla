@@ -74,6 +74,7 @@ from isla.helpers import (
     eassert,
     Exceptional,
     instantiate_escaped_symbols,
+    unreachable_nonterminals,
 )
 from isla.helpers import (
     replace_line_breaks,
@@ -3845,8 +3846,10 @@ class BnfEmitter(bnfListener.bnfListener):
                 for alternative in expansion
             ]
 
-        self.result[free_langle_nonterminal] = ["<"]
-        delete_unreachable(self.result)
+        if free_langle_nonterminal not in unreachable_nonterminals(
+            self.result | {free_langle_nonterminal: ["<"]}
+        ):
+            self.result[free_langle_nonterminal] = ["<"]
 
     def exitDerivation_rule(self, ctx: bnfParser.Derivation_ruleContext):
         self.partial_results[ctx] = (

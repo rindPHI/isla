@@ -142,6 +142,7 @@ exists <assgn> assgn:
             4,
         )
 
+        print(stderr)
         self.assertFalse(code)
         self.assertFalse(stderr)
         self.assertTrue(stdout)
