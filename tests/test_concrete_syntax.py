@@ -15,7 +15,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with ISLa.  If not, see <http://www.gnu.org/licenses/>.
-
+import copy
 import string
 import unittest
 from typing import cast
@@ -26,7 +26,7 @@ from orderedset import OrderedSet
 
 import isla.isla_shortcuts as sc
 from isla import language
-from isla.helpers import strip_ws, srange, crange
+from isla.helpers import strip_ws, srange, crange, is_nonterminal, canonical
 from isla.isla_predicates import (
     BEFORE_PREDICATE,
     LEVEL_PREDICATE,
@@ -44,6 +44,7 @@ from isla.language import (
     unparse_grammar,
     ISLaEmitter,
 )
+from isla.parser import non_canonical
 from isla.z3_helpers import z3_eq
 from isla_formalizations import scriptsizec
 from isla_formalizations.csv import CSV_HEADERBODY_GRAMMAR
@@ -629,6 +630,34 @@ forall <number> number_1:
 
         self.assertEqual(expected, parse_bnf(grammar_str))
 
+    def test_parse_bnf_xmllike(self):
+        grammar_str = rf'''
+<start> ::= "<a>" <x> "</a>"
+<x> ::= "qwerty"'''
+
+        expected = {
+            "<start>": ["<langle>a><x><langle>/a>"],
+            "<x>": ["qwerty"],
+            "<langle>": ["<"],
+        }
+
+        self.assertEqual(expected, parse_bnf(grammar_str))
+
+    def test_parse_bnf_xmllike_langle_used(self):
+        grammar_str = rf'''
+<start> ::= "<a>" <langle> "</a>"
+<langle> ::= <langle_0>
+<langle_0> ::= "qwerty"'''
+
+        expected = {
+            "<start>": ["<langle_1>a><langle><langle_1>/a>"],
+            "<langle>": ["<langle_0>"],
+            "<langle_0>": ["qwerty"],
+            "<langle_1>": ["<"],
+        }
+
+        self.assertEqual(expected, parse_bnf(grammar_str))
+
     def test_simple_xml_descendant_axis(self):
         result = parse_isla(
             'forall <xml-open-tag> optag="<{<id> id}>" in start: id..<id-char> = "a"',
@@ -796,7 +825,21 @@ forall <assgn> assgn="<var> := {<rhs> rhs}" in start:
     def test_unparse_parse_rest_bnf(self):
         unparsed = unparse_grammar(REST_GRAMMAR)
         parsed = parse_bnf(unparsed)
-        self.assertEqual(unparsed, unparse_grammar(parsed))
+
+        expected = {
+            nonterminal: [
+                [
+                    elem if is_nonterminal(elem) else elem.replace("<", "<langle>")
+                    for elem in alternative
+                ]
+                for alternative in expansion
+            ]
+            for nonterminal, expansion in canonical(REST_GRAMMAR).items()
+        } | {"<langle>": [["<"]]}
+
+        self.assertEqual(
+            unparse_grammar(non_canonical(expected)), unparse_grammar(parsed)
+        )
 
     def test_parse_match_expression_with_escape_char(self):
         isla_emitter = ISLaEmitter(None)

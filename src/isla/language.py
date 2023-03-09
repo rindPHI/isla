@@ -23,6 +23,7 @@ import itertools
 import logging
 import operator
 import pickle
+import random
 import re
 import string
 from abc import ABC, abstractmethod
@@ -73,6 +74,7 @@ from isla.helpers import (
     eassert,
     Exceptional,
     instantiate_escaped_symbols,
+    unreachable_nonterminals,
 )
 from isla.helpers import (
     replace_line_breaks,
@@ -3807,16 +3809,47 @@ class BnfEmitter(bnfListener.bnfListener):
         self.result: Optional[Grammar] = None
         self.partial_results = {}
 
+        # We replace "<" in terminals by a fresh nonterminal `<langle>` that
+        # expands to "<". In the first run, we use a placeholder symbol that
+        # we later instantiate by the first of `<langle>`, `<langle_0>`, etc.
+        # that is free in the grammar.
+        self.langle_placeholder = "".join(
+            [random.choice(string.ascii_letters) for _ in range(30)]
+        )
+
     def exitBnf_grammar(self, ctx: bnfParser.Bnf_grammarContext):
+        all_defined_nonterminals = [
+            self.partial_results[rule_ctx][0] for rule_ctx in ctx.derivation_rule()
+        ]
+
+        free_langle_nonterminal = "<langle>"
+        i = 0
+        while free_langle_nonterminal in all_defined_nonterminals:
+            free_langle_nonterminal = (
+                free_langle_nonterminal[: max([free_langle_nonterminal.rfind("_"), -1])]
+                + f"_{i}>"
+            )
+            i += 1
+
         self.result = {}
         for derivation_rule_ctx in ctx.derivation_rule():
-            derivation_rule = self.partial_results[derivation_rule_ctx]
-            assert isinstance(derivation_rule[0], str)
-            assert isinstance(derivation_rule[1], list)
-            assert all(
-                isinstance(alternative, str) for alternative in derivation_rule[1]
-            )
-            self.result[derivation_rule[0]] = derivation_rule[1]
+            nonterminal, expansion = self.partial_results[derivation_rule_ctx]
+
+            assert isinstance(nonterminal, str)
+            assert isinstance(expansion, list)
+            assert all(isinstance(alternative, str) for alternative in expansion)
+
+            self.result[nonterminal] = [
+                alternative.replace(
+                    f"<{self.langle_placeholder}>", free_langle_nonterminal
+                )
+                for alternative in expansion
+            ]
+
+        if free_langle_nonterminal not in unreachable_nonterminals(
+            self.result | {free_langle_nonterminal: ["<"]}
+        ):
+            self.result[free_langle_nonterminal] = ["<"]
 
     def exitDerivation_rule(self, ctx: bnfParser.Derivation_ruleContext):
         self.partial_results[ctx] = (
@@ -3832,7 +3865,11 @@ class BnfEmitter(bnfListener.bnfListener):
                 assert child_text[-1] == '"'
                 child_text = child_text[1:-1]
 
+            if child.symbol.type == bnfLexer.STRING:
+                child_text = child_text.replace("<", f"<{self.langle_placeholder}>")
+
             elems.append(instantiate_escaped_symbols(child_text))
+
         self.partial_results[ctx] = "".join(elems)
 
 
