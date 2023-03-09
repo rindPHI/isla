@@ -1325,6 +1325,15 @@ and str.len(<payload>) = 10
                 2 * len(str(solution[payload_tree])),
             )
 
+    def test_solve_bnf_xmllike(self):
+        grammar_str = rf'''
+<start> ::= "<a>" <x> "</a>"
+<x> ::= "qwerty"'''
+
+        solver = ISLaSolver(grammar_str)
+        self.assertEqual("<a>qwerty</a>", str(solver.solve()))
+
+
     def test_multiple_solutions_heartbeat(self):
         heartbeat_request_grammar = {
             "<start>": ["<heartbeat-request>"],

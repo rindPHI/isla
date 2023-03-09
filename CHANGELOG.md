@@ -5,6 +5,16 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.10.2] - 2023-03-09
+
+### Changed
+
+- The BNF parser now handles XML-like terminals (e.g., "&lt;a>") that are no longer
+  treated as nonterminal symbols. We introduce a fresh nonterminal "&lt;langle>"
+  ("&lt;langle_i>" for smallest possible i if the other alternative(s) are not free)
+  expanding to "&lt;" and replace "&lt;" in terminals with that nonterminal in the
+  resulting Python grammar.
+
 ## [1.10.1] - 2022-01-10
 
 ### Changed

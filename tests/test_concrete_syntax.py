@@ -629,6 +629,34 @@ forall <number> number_1:
 
         self.assertEqual(expected, parse_bnf(grammar_str))
 
+    def test_parse_bnf_xmllike(self):
+        grammar_str = rf'''
+<start> ::= "<a>" <x> "</a>"
+<x> ::= "qwerty"'''
+
+        expected = {
+            "<start>": ["<langle>a><x><langle>/a>"],
+            "<x>": ["qwerty"],
+            "<langle>": ["<"],
+        }
+
+        self.assertEqual(expected, parse_bnf(grammar_str))
+
+    def test_parse_bnf_xmllike_langle_used(self):
+        grammar_str = rf'''
+<start> ::= "<a>" <langle> "</a>"
+<langle> ::= <langle_0>
+<langle_0> ::= "qwerty"'''
+
+        expected = {
+            "<start>": ["<langle_1>a><langle><langle_1>/a>"],
+            "<langle>": ["<langle_0>"],
+            "<langle_0>": ["qwerty"],
+            "<langle_1>": ["<"],
+        }
+
+        self.assertEqual(expected, parse_bnf(grammar_str))
+
     def test_simple_xml_descendant_axis(self):
         result = parse_isla(
             'forall <xml-open-tag> optag="<{<id> id}>" in start: id..<id-char> = "a"',
