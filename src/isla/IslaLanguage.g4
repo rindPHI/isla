@@ -125,7 +125,7 @@ MOD: 'mod' ;
 ABS: 'abs' ;
 
 STRING: '"' (ESC|.) *? '"';
-ID: ID_LETTER (ID_LETTER | DIGIT) * ;
+ID: INIT_ID_LETTER (ID_LETTER | DIGIT) * ;
 INT : DIGIT+ ;
 ESC : '\\' [btnr"\\] ;
 
@@ -145,6 +145,7 @@ LT: '<' ;
 WS : [ \t\n\r]+ -> skip ;
 LINE_COMMENT : '#' .*? '\n' -> skip ;
 
+fragment INIT_ID_LETTER : 'a'..'z'|'A'..'Z' | '_' ;
 fragment ID_LETTER : 'a'..'z'|'A'..'Z' | [_\-.^] ;
 fragment DIGIT : '0'..'9' ;
 
