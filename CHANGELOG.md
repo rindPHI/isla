@@ -5,6 +5,11 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+### Changed
+
+- Solved parser problem: Arithmetic differences (`a = b - c`) not parsed correctly
+  before.
+
 ## [1.10.3] - 2023-03-09
 
 ### Changed

@@ -436,7 +436,11 @@ class TestHelpers(unittest.TestCase):
 
 def parse(inp: str, grammar: Grammar, start_symbol: Optional[str] = None) -> ParseTree:
     if start_symbol is None:
-        return next(EarleyParser(grammar).parse(inp))
+        try:
+            return next(EarleyParser(grammar).parse(inp))
+        except SyntaxError as err:
+            print(f"Syntax error; input: '{inp}', grammar:\n{grammar}")
+            raise err
     else:
         grammar = copy.deepcopy(grammar)
         grammar["<start>"] = [start_symbol]
