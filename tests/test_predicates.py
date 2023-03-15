@@ -156,7 +156,7 @@ class TestPredicates(unittest.TestCase):
     def test_embed_tree_2(self):
         grammar = dict(tar.TAR_GRAMMAR)
         grammar["<start>"] = ["<file_size>"]
-        delete_unreachable(grammar)
+        grammar = delete_unreachable(grammar)
         parser = EarleyParser(grammar)
 
         orig_tree = DerivationTree.from_parse_tree(next(parser.parse("032251413 ")))
@@ -185,7 +185,7 @@ class TestPredicates(unittest.TestCase):
     def test_embed_tree_3(self):
         grammar = dict(tar.TAR_GRAMMAR)
         grammar["<start>"] = ["<file_size>"]
-        delete_unreachable(grammar)
+        grammar = delete_unreachable(grammar)
         parser = EarleyParser(grammar)
 
         orig_tree = DerivationTree.from_parse_tree(next(parser.parse("0111111 ")))
@@ -315,12 +315,12 @@ class TestPredicates(unittest.TestCase):
     def test_octal_to_decimal_fuzz(self):
         decimal_grammar = copy.deepcopy(octal_conv_grammar)
         decimal_grammar["<start>"] = ["<decimal_digits>"]
-        delete_unreachable(decimal_grammar)
+        decimal_grammar = delete_unreachable(decimal_grammar)
         decimal_fuzzer = GrammarCoverageFuzzer(decimal_grammar)
 
         octal_grammar = copy.deepcopy(octal_conv_grammar)
         octal_grammar["<start>"] = ["<octal_digits>"]
-        delete_unreachable(octal_grammar)
+        octal_grammar = delete_unreachable(octal_grammar)
         octal_fuzzer = GrammarCoverageFuzzer(octal_grammar)
 
         def decimal_value():
@@ -538,7 +538,7 @@ count(start, "<assgn>", "5")""",
             _grammar = copy.deepcopy(grammar)
             if start_symbol != "<start>":
                 _grammar["<start>"] = [start_symbol]
-                delete_unreachable(_grammar)
+                _grammar = delete_unreachable(_grammar)
             return lambda inp: list(EarleyParser(_grammar).parse(inp))
 
         inp = DerivationTree.from_parse_tree(parse("abcdefghijkl", grammar))

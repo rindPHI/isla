@@ -92,9 +92,12 @@ def path_iterator(
             yield from path_iterator(child, path + (i,))
 
 
-def delete_unreachable(grammar: Grammar) -> None:
-    for unreachable in unreachable_nonterminals(grammar):
-        del grammar[unreachable]
+def delete_unreachable(grammar: Grammar) -> Grammar:
+    return {
+        nonterminal: expansions
+        for nonterminal, expansions in grammar.items()
+        if nonterminal not in unreachable_nonterminals(grammar)
+    }
 
 
 def is_prefix(path_1: Path, path_2: Path) -> bool:
@@ -473,7 +476,7 @@ def def_used_nonterminals(
     for defined_nonterminal in grammar:
         defined_nonterminals.add(defined_nonterminal)
         expansions = grammar[defined_nonterminal]
-        if not isinstance(expansions, list):
+        if not isinstance(expansions, list) and not isinstance(expansions, tuple):
             print(
                 repr(defined_nonterminal) + ": expansion is not a list", file=sys.stderr
             )
@@ -484,8 +487,8 @@ def def_used_nonterminals(
             return None, None
 
         for expansion in expansions:
-            if isinstance(expansion, tuple):
-                expansion = expansion[0]
+            # if isinstance(expansion, tuple):
+            #     expansion = expansion[0]
             if not isinstance(expansion, str):
                 print(
                     repr(defined_nonterminal)

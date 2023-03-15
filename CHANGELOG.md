@@ -5,10 +5,17 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.10.4] - 2023-03-15
+
 ### Changed
 
 - Solved parser problem: Arithmetic differences (`a = b - c`) not parsed correctly
   before.
+- Eliminated bug in solver: If an explicit start symbol was given, the given grammar
+  was mutated. Solver invocations (including the constructor) should, however, not
+  have such side effects. In fact, that problem rendered the test suite flaky.
+- `delete_unreachable` (which deletes unreachable nonterminal keys in a grammar) no
+  longer mutates grammars, but instead returns a new grammar.
 
 ## [1.10.3] - 2023-03-09
 

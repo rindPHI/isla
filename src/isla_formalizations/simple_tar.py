@@ -74,7 +74,7 @@ def tar_checksum(
     checksum_grammar["<checksum>"] = [
         "<SPACE><SPACE><SPACE><SPACE><SPACE><SPACE><SPACE><SPACE>"
     ]
-    delete_unreachable(checksum_grammar)
+    checksum_grammar = delete_unreachable(checksum_grammar)
     checksum_parser = EarleyParser(checksum_grammar)
 
     space_checksum = isla.derivation_tree.DerivationTree.from_parse_tree(
@@ -88,7 +88,7 @@ def tar_checksum(
 
     checksum_grammar = copy.deepcopy(SIMPLE_TAR_GRAMMAR)
     checksum_grammar["<start>"] = ["<checksum>"]
-    delete_unreachable(checksum_grammar)
+    checksum_grammar = delete_unreachable(checksum_grammar)
     checksum_parser = EarleyParser(checksum_grammar)
 
     new_checksum_tree = isla.derivation_tree.DerivationTree.from_parse_tree(

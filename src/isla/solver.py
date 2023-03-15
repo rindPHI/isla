@@ -351,15 +351,15 @@ class ISLaSolver:
         if isinstance(grammar, str):
             self.grammar = parse_bnf(grammar)
         else:
-            self.grammar = grammar
+            self.grammar = copy.deepcopy(grammar)
 
         assert (
             start_symbol is None or not initial_tree.is_present()
         ), "You have to *either* supply a start symbol *or* an initial tree."
 
         if start_symbol is not None:
-            self.grammar["<start>"] = [start_symbol]
-            delete_unreachable(self.grammar)
+            self.grammar |= {"<start>": [start_symbol]}
+            self.grammar = delete_unreachable(self.grammar)
 
         self.graph = GrammarGraph.from_grammar(self.grammar)
         self.canonical_grammar = canonical(self.grammar)
@@ -605,8 +605,8 @@ class ISLaSolver:
         """
         grammar = copy.deepcopy(self.grammar)
         if nonterminal != "<start>":
-            grammar["<start>"] = [nonterminal]
-            delete_unreachable(grammar)
+            grammar |= {"<start>": [nonterminal]}
+            grammar = delete_unreachable(grammar)
 
         parser = EarleyParser(grammar)
         try:

@@ -510,7 +510,7 @@ class TestLanguage(unittest.TestCase):
 
         attr_grammar = copy.deepcopy(XML_GRAMMAR)
         attr_grammar["<start>"] = ["<xml-attribute>"]
-        delete_unreachable(attr_grammar)
+        attr_grammar = delete_unreachable(attr_grammar)
 
         tree = DerivationTree.from_parse_tree(
             next(EarleyParser(attr_grammar).parse('a="..." b="..."'))[1][0]
@@ -929,7 +929,7 @@ forall <xml-tree> tree="<<id>><inner-xml-tree></<id>>" in start:
             if start_symbol != "<start>":
                 grammar = copy.deepcopy(LANG_GRAMMAR)
                 grammar["<start>"] = [start_symbol]
-                delete_unreachable(grammar)
+                grammar = delete_unreachable(grammar)
             else:
                 grammar = LANG_GRAMMAR
 
