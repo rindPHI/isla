@@ -4169,7 +4169,7 @@ def is_valid_combination(
         if nonterminal == "<start>":
             specialized_grammar = grammar
         else:
-            specialized_grammar = copy.deepcopy(grammar) | {"<start>" : [nonterminal]}
+            specialized_grammar = copy.deepcopy(grammar) | {"<start>": [nonterminal]}
             specialized_grammar = delete_unreachable(specialized_grammar)
 
         parser = EarleyParser(specialized_grammar)
