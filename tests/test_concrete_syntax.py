@@ -841,6 +841,16 @@ forall <assgn> assgn="<var> := {<rhs> rhs}" in start:
             unparse_grammar(non_canonical(expected)), unparse_grammar(parsed)
         )
 
+    def test_parse_arith_difference(self):
+        constraint = "str.to.int(<a>) = str.to.int(<b>) - str.to.int(<c>)"
+        self.assertEqual(
+            "∀ c ∈ start: ("
+            + "∀ b ∈ start: ("
+            + "∀ a ∈ start: ("
+            + "StrToInt(a) == StrToInt(b) - StrToInt(c))))",
+            str(parse_isla(constraint)),
+        )
+
     def test_parse_match_expression_with_escape_char(self):
         isla_emitter = ISLaEmitter(None)
 

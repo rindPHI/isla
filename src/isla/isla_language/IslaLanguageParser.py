@@ -10,7 +10,7 @@ else:
 
 def serializedATN():
     return [
-        4,1,44,193,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,1,0,3,
+        4,1,45,193,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,1,0,3,
         0,14,8,0,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,2,1,2,1,2,1,2,3,2,28,
         8,2,1,2,1,2,1,2,3,2,33,8,2,3,2,35,8,2,1,2,1,2,1,2,1,2,1,2,3,2,42,
         8,2,1,2,1,2,1,2,3,2,47,8,2,3,2,49,8,2,1,2,1,2,1,2,1,2,1,2,3,2,56,
@@ -24,8 +24,8 @@ def serializedATN():
         156,9,3,3,3,158,8,3,1,3,1,3,1,3,1,3,4,3,164,8,3,11,3,12,3,165,1,
         3,1,3,3,3,170,8,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,
         3,5,3,184,8,3,10,3,12,3,187,9,3,1,4,1,4,1,5,1,5,1,5,0,2,4,6,6,0,
-        2,4,6,8,10,0,5,2,0,25,26,36,36,1,0,37,38,2,0,7,7,39,42,2,0,23,24,
-        28,30,6,0,7,7,15,16,18,19,21,21,25,26,36,42,231,0,13,1,0,0,0,2,17,
+        2,4,6,8,10,0,5,2,0,25,26,36,36,1,0,37,38,2,0,7,7,40,43,2,0,23,24,
+        28,30,6,0,7,7,15,16,18,19,21,21,25,26,36,43,231,0,13,1,0,0,0,2,17,
         1,0,0,0,4,113,1,0,0,0,6,169,1,0,0,0,8,188,1,0,0,0,10,190,1,0,0,0,
         12,14,3,2,1,0,13,12,1,0,0,0,13,14,1,0,0,0,14,15,1,0,0,0,15,16,3,
         4,2,0,16,1,1,0,0,0,17,18,5,1,0,0,18,19,5,29,0,0,19,20,5,2,0,0,20,
@@ -100,8 +100,8 @@ class IslaLanguageParser ( Parser ):
                      "'xor'", "'=>'", "'implies'", "<INVALID>", "<INVALID>", 
                      "<INVALID>", "<INVALID>", "'div'", "'mod'", "'abs'", 
                      "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
-                     "'.'", "'..'", "'['", "']'", "'*'", "'+'", "'-'", "'>='", 
-                     "'<='", "'>'", "'<'" ]
+                     "'.'", "'..'", "'['", "']'", "'*'", "'+'", "'-'", "'^'", 
+                     "'>='", "'<='", "'>'", "'<'" ]
 
     symbolicNames = [ "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
                       "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
@@ -111,7 +111,7 @@ class IslaLanguageParser ( Parser ):
                       "SMT_NONBINARY_OP", "XPATHEXPR", "VAR_TYPE", "DIV", 
                       "MOD", "ABS", "STRING", "ID", "INT", "ESC", "DOT", 
                       "TWODOTS", "BROP", "BRCL", "MUL", "PLUS", "MINUS", 
-                      "GEQ", "LEQ", "GT", "LT", "WS", "LINE_COMMENT" ]
+                      "EXP", "GEQ", "LEQ", "GT", "LT", "WS", "LINE_COMMENT" ]
 
     RULE_start = 0
     RULE_constDecl = 1
@@ -162,12 +162,13 @@ class IslaLanguageParser ( Parser ):
     MUL=36
     PLUS=37
     MINUS=38
-    GEQ=39
-    LEQ=40
-    GT=41
-    LT=42
-    WS=43
-    LINE_COMMENT=44
+    EXP=39
+    GEQ=40
+    LEQ=41
+    GT=42
+    LT=43
+    WS=44
+    LINE_COMMENT=45
 
     def __init__(self, input:TokenStream, output:TextIO = sys.stdout):
         super().__init__(input, output)
@@ -1464,7 +1465,7 @@ class IslaLanguageParser ( Parser ):
                     self.state = 143
                     self.match(IslaLanguageParser.SMT_NONBINARY_OP)
                     pass
-                elif token in [7, 15, 16, 18, 19, 21, 25, 26, 36, 37, 38, 39, 40, 41, 42]:
+                elif token in [7, 15, 16, 18, 19, 21, 25, 26, 36, 37, 38, 39, 40, 41, 42, 43]:
                     self.state = 144
                     self.smt_binary_op()
                     pass
@@ -1484,7 +1485,7 @@ class IslaLanguageParser ( Parser ):
                 self.state = 157
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if (((_la) & ~0x3f) == 0 and ((1 << _la) & 8729385624704) != 0):
+                if (((_la) & ~0x3f) == 0 and ((1 << _la) & 17525478646912) != 0):
                     self.state = 149
                     self.sexpr(0)
                     self.state = 154
@@ -1522,7 +1523,7 @@ class IslaLanguageParser ( Parser ):
                     self.state = 165 
                     self._errHandler.sync(self)
                     _la = self._input.LA(1)
-                    if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & 8729385624704) != 0)):
+                    if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & 17525478646912) != 0)):
                         break
 
                 self.state = 167
@@ -1603,7 +1604,7 @@ class IslaLanguageParser ( Parser ):
                         self.state = 181
                         localctx.op = self._input.LT(1)
                         _la = self._input.LA(1)
-                        if not((((_la) & ~0x3f) == 0 and ((1 << _la) & 8246337208448) != 0)):
+                        if not((((_la) & ~0x3f) == 0 and ((1 << _la) & 16492674416768) != 0)):
                             localctx.op = self._errHandler.recoverInline(self)
                         else:
                             self._errHandler.reportMatch(self)
@@ -1719,6 +1720,9 @@ class IslaLanguageParser ( Parser ):
         def MINUS(self):
             return self.getToken(IslaLanguageParser.MINUS, 0)
 
+        def EXP(self):
+            return self.getToken(IslaLanguageParser.EXP, 0)
+
         def SMT_INFIX_RE_STR(self):
             return self.getToken(IslaLanguageParser.SMT_INFIX_RE_STR, 0)
 
@@ -1757,7 +1761,7 @@ class IslaLanguageParser ( Parser ):
             self.enterOuterAlt(localctx, 1)
             self.state = 190
             _la = self._input.LA(1)
-            if not((((_la) & ~0x3f) == 0 and ((1 << _la) & 8727477190784) != 0)):
+            if not((((_la) & ~0x3f) == 0 and ((1 << _la) & 17523570212992) != 0)):
                 self._errHandler.recoverInline(self)
             else:
                 self._errHandler.reportMatch(self)

@@ -191,7 +191,7 @@ octal_conv_grammar.update(
         "<decimal_digit>": srange(string.digits),
     }
 )
-delete_unreachable(octal_conv_grammar)
+octal_conv_grammar = delete_unreachable(octal_conv_grammar)
 
 octal_conv_graph = gg.GrammarGraph.from_grammar(octal_conv_grammar)
 

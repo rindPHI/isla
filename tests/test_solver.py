@@ -62,7 +62,6 @@ from isla.language import (
     SemanticPredicate,
     SemPredEvalResult,
     parse_bnf,
-    unparse_isla,
 )
 from isla.parser import EarleyParser, PEGParser
 from isla.solver import (
@@ -1332,6 +1331,28 @@ and str.len(<payload>) = 10
 
         solver = ISLaSolver(grammar_str)
         self.assertEqual("<a>qwerty</a>", str(solver.solve()))
+
+    def test_solve_arith_difference(self):
+        grammar = r'''
+<start> ::= <a> "=" <b> "-" <c>
+<a> ::= <int>
+<b> ::= <int>
+<c> ::= <int>
+<int> ::= <num> | "-" <num>
+<num> ::= <digit> | <digit> <num>
+<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"'''
+
+        constraint = "str.to.int(<a>) = str.to.int(<b>) - str.to.int(<c>)"
+
+        solver = ISLaSolver(grammar, constraint, max_number_smt_instantiations=20)
+        for _ in range(20):
+            solution = solver.solve()
+
+            a = str(solution.filter(lambda t: t.value == "<a>", True)[0][1])
+            b = str(solution.filter(lambda t: t.value == "<b>", True)[0][1])
+            c = str(solution.filter(lambda t: t.value == "<c>", True)[0][1])
+
+            self.assertTrue(int(a) == int(b) - int(c))
 
 
     def test_multiple_solutions_heartbeat(self):

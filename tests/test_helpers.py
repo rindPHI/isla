@@ -393,12 +393,12 @@ class TestHelpers(unittest.TestCase):
     def test_delete_unreachable(self):
         grammar = {"<start>": ["<b>"], "<a>": ["a"], "<b>": ["b"]}
         expected = {"<start>": ["<b>"], "<b>": ["b"]}
-        delete_unreachable(grammar)
+        grammar = delete_unreachable(grammar)
         self.assertEqual(expected, grammar)
 
         grammar = {"<start>": ["<a><b>"], "<a>": ["a"], "<b>": ["b"]}
         expected = {"<start>": ["<a><b>"], "<a>": ["a"], "<b>": ["b"]}
-        delete_unreachable(grammar)
+        grammar = delete_unreachable(grammar)
         self.assertEqual(expected, grammar)
 
     def test_exceptional_reraise(self):
@@ -436,11 +436,14 @@ class TestHelpers(unittest.TestCase):
 
 def parse(inp: str, grammar: Grammar, start_symbol: Optional[str] = None) -> ParseTree:
     if start_symbol is None:
-        return next(EarleyParser(grammar).parse(inp))
+        try:
+            return next(EarleyParser(grammar).parse(inp))
+        except SyntaxError as err:
+            print(f"Syntax error; input: '{inp}', grammar:\n{grammar}")
+            raise err
     else:
-        grammar = copy.deepcopy(grammar)
-        grammar["<start>"] = [start_symbol]
-        delete_unreachable(grammar)
+        grammar = copy.deepcopy(grammar) | {"<start>": [start_symbol]}
+        grammar = delete_unreachable(grammar)
         return next(EarleyParser(grammar).parse(inp))[1][0]
 
 

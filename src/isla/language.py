@@ -530,8 +530,8 @@ def grammar_to_match_expr_grammar(
 ) -> Grammar:
     new_grammar = grammar_to_mutable(grammar)
     if start_symbol != "<start>":
-        new_grammar["<start>"] = [start_symbol]
-        delete_unreachable(new_grammar)
+        new_grammar |= {"<start>": [start_symbol]}
+        new_grammar = delete_unreachable(new_grammar)
 
     def fresh_nonterminal(suggestion: str) -> str:
         if suggestion[1:-1] not in new_grammar:
@@ -4169,9 +4169,8 @@ def is_valid_combination(
         if nonterminal == "<start>":
             specialized_grammar = grammar
         else:
-            specialized_grammar = copy.deepcopy(grammar)
-            specialized_grammar["<start>"] = [nonterminal]
-            delete_unreachable(specialized_grammar)
+            specialized_grammar = copy.deepcopy(grammar) | {"<start>": [nonterminal]}
+            specialized_grammar = delete_unreachable(specialized_grammar)
 
         parser = EarleyParser(specialized_grammar)
 

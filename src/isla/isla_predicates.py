@@ -560,9 +560,8 @@ def just(
 
 def mk_parser(grammar: Grammar):
     def Parser(start: str) -> Callable[[str], List[ParseTree]]:
-        specialized_grammar = copy.deepcopy(grammar)
-        specialized_grammar["<start>"] = [start]
-        delete_unreachable(specialized_grammar)
+        specialized_grammar = copy.deepcopy(grammar) | {"<start>": [start]}
+        specialized_grammar = delete_unreachable(specialized_grammar)
         parser = EarleyParser(specialized_grammar)
 
         def result(inp: str) -> List[ParseTree]:

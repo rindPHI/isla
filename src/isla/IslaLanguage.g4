@@ -68,7 +68,7 @@ IMPLIES_SMT: '=>' ;
 IMPLIES_ISLA: 'implies' ;
 
 smt_binary_op:
-  '=' | GEQ | LEQ | GT | LT | MUL | DIV | MOD | PLUS | MINUS | SMT_INFIX_RE_STR | AND | OR | IMPLIES_SMT | XOR;
+  '=' | GEQ | LEQ | GT | LT | MUL | DIV | MOD | PLUS | MINUS | EXP | SMT_INFIX_RE_STR | AND | OR | IMPLIES_SMT | XOR;
 
 SMT_INFIX_RE_STR:
       're.++'
@@ -125,7 +125,7 @@ MOD: 'mod' ;
 ABS: 'abs' ;
 
 STRING: '"' (ESC|.) *? '"';
-ID: ID_LETTER (ID_LETTER | DIGIT) * ;
+ID: INIT_ID_LETTER (ID_LETTER | DIGIT) * ;
 INT : DIGIT+ ;
 ESC : '\\' [btnr"\\] ;
 
@@ -137,6 +137,7 @@ BRCL : ']' ;
 MUL: '*' ;
 PLUS: '+' ;
 MINUS: '-' ;
+EXP: '^' ;
 GEQ: '>=' ;
 LEQ: '<=' ;
 GT: '>' ;
@@ -145,6 +146,6 @@ LT: '<' ;
 WS : [ \t\n\r]+ -> skip ;
 LINE_COMMENT : '#' .*? '\n' -> skip ;
 
-fragment ID_LETTER : 'a'..'z'|'A'..'Z' | [_\-.^] ;
+fragment INIT_ID_LETTER : 'a'..'z' | 'A'..'Z' | '_' ;
+fragment ID_LETTER : 'a'..'z' | 'A'..'Z' | [_\-.^] ;
 fragment DIGIT : '0'..'9' ;
-
