@@ -15,7 +15,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with ISLa.  If not, see <http://www.gnu.org/licenses/>.
-
+import copy
 import functools
 import heapq
 import logging
@@ -53,7 +53,7 @@ from isla.isla_predicates import (
     COUNT_PREDICATE,
     STANDARD_SEMANTIC_PREDICATES,
     STANDARD_STRUCTURAL_PREDICATES,
-    IN_TREE_PREDICATE,
+    IN_TREE_PREDICATE, AFTER_PREDICATE,
 )
 from isla.language import (
     VariablesCollector,
@@ -78,7 +78,7 @@ from isla.solver import (
     SemanticError,
     create_fixed_length_tree,
     generate_abstracted_trees,
-    smt_formulas_referring_to_subtrees,
+    smt_formulas_referring_to_subtrees, SolverDefaults,
 )
 from isla.type_defs import Grammar, ImmutableList
 from isla.z3_helpers import z3_eq, smt_string_val_to_string
@@ -96,6 +96,7 @@ from isla_formalizations.xml_lang import (
 from test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR, CONFIG_GRAMMAR
 from test_helpers import parse
 
+_DEFAULTS = SolverDefaults()
 
 class TestSolver(unittest.TestCase):
     def test_atomic_smt_formula(self):
@@ -1973,10 +1974,11 @@ exists int seqs: (
         except StopIteration:
             pass
 
-    def test_start_symol(self):
+    def test_start_symbol(self):
         # See https://github.com/rindPHI/isla/issues/38
+        grammar = copy.deepcopy(LANG_GRAMMAR)
         solver = ISLaSolver(
-            LANG_GRAMMAR,
+            grammar,
             '<assgn>.<var> = "x"',
             start_symbol="<assgn>",
             max_number_free_instantiations=5,
@@ -1995,6 +1997,8 @@ exists int seqs: (
         except StopIteration:
             pass
 
+        self.assertEqual(LANG_GRAMMAR, grammar)  # Addresses a mutability issue
+
     def test_no_constraint(self):
         # See https://github.com/rindPHI/isla/issues/40
         solver = ISLaSolver(LANG_GRAMMAR, max_number_free_instantiations=10)
@@ -2009,6 +2013,31 @@ exists int seqs: (
             self.fail("StopIteration expected")
         except StopIteration:
             pass
+
+    def test_issue_53(self):
+        # https://github.com/rindPHI/isla/issues/53
+        grammar = '''
+        <start> ::= <list> 
+        <list>  ::= <item> | <item> <list>
+        <item> ::= "(" <type> "," <digit> ")"
+        <type> ::= "A"
+        <digit> ::= "1" | "2"
+        '''
+
+        constraint = """
+        forall <item> item="({<type> type},{<digit> digit})" in start:
+          (
+            ((type = "A") implies (digit = "1"))
+          )
+        """
+
+        logging.getLogger("test").info(parse_isla(constraint))
+
+        self.execute_generation_test(
+            constraint,
+            grammar=grammar,
+            num_solutions=5,
+        )
 
     def Xtest_negated_constraint(self):
         # TODO This test does not finish; tree insertion generates longer and longer
@@ -2075,32 +2104,32 @@ forall <F> f2 in start:
         formula: language.Formula | str = "true",
         structural_predicates: Set[
             language.StructuralPredicate
-        ] = STANDARD_STRUCTURAL_PREDICATES,
+        ] = _DEFAULTS.structural_predicates,
         semantic_predicates: Set[
             language.SemanticPredicate
-        ] = STANDARD_SEMANTIC_PREDICATES,
+        ] = _DEFAULTS.semantic_predicates,
         grammar=LANG_GRAMMAR,
         num_solutions=50,
         print_solutions=False,
         max_number_free_instantiations=1,
         max_number_smt_instantiations=1,
-        enforce_unique_trees_in_queue=True,
+        enforce_unique_trees_in_queue=_DEFAULTS.enforce_unique_trees_in_queue,
         debug=False,
         state_tree_out="/tmp/state_tree.xml",
         log_out="/tmp/isla_log.txt",
         custom_test_func: Optional[
             Callable[[isla.derivation_tree.DerivationTree], Union[bool, str]]
         ] = None,
-        cost_computer: Optional[CostComputer] = None,
+        cost_computer: Optional[CostComputer] = _DEFAULTS.cost_computer,
         print_only: bool = False,
         timeout_seconds: Optional[int] = None,
         global_fuzzer: bool = False,
         fuzzer_factory: Callable[
             [Grammar], GrammarFuzzer
-        ] = lambda grammar: GrammarCoverageFuzzer(grammar),
-        tree_insertion_methods=DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION,
-        activate_unsat_support: bool = False,
-        enable_optimized_z3_queries=True,
+        ] = _DEFAULTS.fuzzer_factory,
+        tree_insertion_methods=_DEFAULTS.tree_insertion_methods,
+        activate_unsat_support: bool = _DEFAULTS.activate_unsat_support,
+        enable_optimized_z3_queries=_DEFAULTS.enable_optimized_z3_queries,
     ):
         logger = logging.getLogger(type(self).__name__)
 
