@@ -749,7 +749,7 @@ def is_direct_child(_: Optional[DerivationTree], path_1: Path, path_2: Path) -> 
 
 DIRECT_CHILD_PREDICATE = StructuralPredicate("direct_child", 2, is_direct_child)
 
-STANDARD_STRUCTURAL_PREDICATES = {
+STANDARD_STRUCTURAL_PREDICATES = frozenset({
     AFTER_PREDICATE,
     BEFORE_PREDICATE,
     CONSECUTIVE_PREDICATE,
@@ -759,8 +759,8 @@ STANDARD_STRUCTURAL_PREDICATES = {
     LEVEL_PREDICATE,
     SAME_POSITION_PREDICATE,
     NTH_PREDICATE,
-}
+})
 
-STANDARD_SEMANTIC_PREDICATES = {
+STANDARD_SEMANTIC_PREDICATES = frozenset({
     COUNT_PREDICATE,
-}
+})

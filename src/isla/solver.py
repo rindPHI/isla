@@ -238,6 +238,40 @@ class SemanticError(Exception):
     pass
 
 
+@dataclass(frozen=True)
+class SolverDefaults:
+    formula: Optional[language.Formula | str] = None
+    structural_predicates: frozenset[
+        language.StructuralPredicate
+    ] = STANDARD_STRUCTURAL_PREDICATES
+    semantic_predicates: frozenset[
+        language.SemanticPredicate
+    ] = STANDARD_SEMANTIC_PREDICATES
+    max_number_free_instantiations: int = 10
+    max_number_smt_instantiations: int = 10
+    max_number_tree_insertion_results: int = 5
+    enforce_unique_trees_in_queue: bool = False
+    debug: bool = False
+    cost_computer: Optional["CostComputer"] = None
+    timeout_seconds: Optional[int] = None
+    global_fuzzer: bool = False
+    predicates_unique_in_int_arg: Tuple[language.SemanticPredicate, ...] = (
+        COUNT_PREDICATE,
+    )
+    fuzzer_factory: Callable[
+        [Grammar], GrammarFuzzer
+    ] = lambda grammar: GrammarCoverageFuzzer(grammar)
+    tree_insertion_methods: Optional[int] = None
+    activate_unsat_support: bool = False
+    grammar_unwinding_threshold: int = 4
+    initial_tree: Maybe[DerivationTree] = Maybe.nothing()
+    enable_optimized_z3_queries: bool = True
+    start_symbol: Optional[str] = None
+
+
+_DEFAULTS = SolverDefaults()
+
+
 class ISLaSolver:
     """
     The solver class for ISLa formulas/constraints. Its methods are
@@ -248,33 +282,31 @@ class ISLaSolver:
     def __init__(
         self,
         grammar: Grammar | str,
-        formula: Optional[language.Formula | str] = None,
+        formula: Optional[language.Formula | str] = _DEFAULTS.formula,
         structural_predicates: Set[
             language.StructuralPredicate
-        ] = STANDARD_STRUCTURAL_PREDICATES,
+        ] = _DEFAULTS.structural_predicates,
         semantic_predicates: Set[
             language.SemanticPredicate
-        ] = STANDARD_SEMANTIC_PREDICATES,
-        max_number_free_instantiations: int = 10,
-        max_number_smt_instantiations: int = 10,
-        max_number_tree_insertion_results: int = 5,
-        enforce_unique_trees_in_queue: bool = True,
-        debug: bool = False,
-        cost_computer: Optional["CostComputer"] = None,
-        timeout_seconds: Optional[int] = None,
-        global_fuzzer: bool = False,
-        predicates_unique_in_int_arg: Tuple[language.SemanticPredicate, ...] = (
-            COUNT_PREDICATE,
-        ),
-        fuzzer_factory: Callable[
-            [Grammar], GrammarFuzzer
-        ] = lambda grammar: GrammarCoverageFuzzer(grammar),
-        tree_insertion_methods: Optional[int] = None,
-        activate_unsat_support: bool = False,
-        grammar_unwinding_threshold: int = 4,
-        initial_tree: Maybe[DerivationTree] = Maybe.nothing(),
-        enable_optimized_z3_queries: bool = True,
-        start_symbol: Optional[str] = None,
+        ] = _DEFAULTS.semantic_predicates,
+        max_number_free_instantiations: int = _DEFAULTS.max_number_free_instantiations,
+        max_number_smt_instantiations: int = _DEFAULTS.max_number_smt_instantiations,
+        max_number_tree_insertion_results: int = _DEFAULTS.max_number_tree_insertion_results,
+        enforce_unique_trees_in_queue: bool = _DEFAULTS.enforce_unique_trees_in_queue,
+        debug: bool = _DEFAULTS.debug,
+        cost_computer: Optional["CostComputer"] = _DEFAULTS.cost_computer,
+        timeout_seconds: Optional[int] = _DEFAULTS.timeout_seconds,
+        global_fuzzer: bool = _DEFAULTS.global_fuzzer,
+        predicates_unique_in_int_arg: Tuple[
+            language.SemanticPredicate, ...
+        ] = _DEFAULTS.predicates_unique_in_int_arg,
+        fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = _DEFAULTS.fuzzer_factory,
+        tree_insertion_methods: Optional[int] = _DEFAULTS.tree_insertion_methods,
+        activate_unsat_support: bool = _DEFAULTS.activate_unsat_support,
+        grammar_unwinding_threshold: int = _DEFAULTS.grammar_unwinding_threshold,
+        initial_tree: Maybe[DerivationTree] = _DEFAULTS.initial_tree,
+        enable_optimized_z3_queries: bool = _DEFAULTS.enable_optimized_z3_queries,
+        start_symbol: Optional[str] = _DEFAULTS.start_symbol,
     ):
         """
         Constructs a new ISLaSolver object. Passing a grammar and a formula is mandatory.
@@ -2664,10 +2696,11 @@ class ISLaSolver:
             self.enforce_unique_trees_in_queue
             and state.tree.structural_hash() in self.tree_hashes_in_queue
         ):
-            # Some structures can arise as well from tree insertion (existential quantifier elimination)
-            # and expansion; also, tree insertion can yield different trees that have intersecting
-            # expansions. We drop those to output more diverse solutions (numbers for SMT solutions
-            # and free nonterminals are configurable, so you get more outputs by playing with those!).
+            # Some structures can arise as well from tree insertion (existential
+            # quantifier elimination) and expansion; also, tree insertion can yield
+            # different trees that have intersecting expansions. We drop those to output
+            # more diverse solutions (numbers for SMT solutions and free nonterminals
+            # are configurable, so you get more outputs by playing with those!).
             self.logger.debug("Discarding state %s, tree already in queue", state)
             return False
 
