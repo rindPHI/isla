@@ -7,6 +7,7 @@ ISLa: Input Specification Language
 [![Coverage Status](https://coveralls.io/repos/github/rindPHI/isla/badge.svg?branch=main)](https://coveralls.io/github/rindPHI/isla?branch=main)
 [![Dependencies](https://img.shields.io/librariesio/release/github/rindphi/isla)](https://libraries.io/github/rindPHI/isla)
 [![DOI](https://zenodo.org/badge/428626626.svg)](https://zenodo.org/badge/latestdoi/428626626)
+[![Documentation Status](https://readthedocs.org/projects/isla/badge/?version=latest)](https://isla.readthedocs.io/en/latest/?badge=latest)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 <img src="isla_logo_bright_transparent.png" alt="ISLa Logo" style="margin-left: auto; margin-right: auto; display: block; width: 400px;"/> 
@@ -214,14 +215,17 @@ p := 2 ; p := 1 ; w := p
   published as a part of the Fuzzing Book, provides an easily accessible introduction
   to the specification and generation of custom system inputs using ISLa.
 
-* We published a [**paper on ISLa**](https://publications.cispa.saarland/3596/7/Input%20Invariants.pdf)
+* The [**ISLa Documentation**](http://isla.readthedocs.io/) contains
+  + installation and usage instructions;
+  + further examples;
+  + the **ISLa Language Specification,** which precisely specifies the syntax and
+    semantics of ISLa constraints. It also contains a list of supported default
+    predicates;
+  + and a **Developer's Guide** to get started with ISLa's code.
+
+* We published a [**scientific paper on ISLa**](https://publications.cispa.saarland/3596/7/Input%20Invariants.pdf)
   at ESEC/FSE 2022. The paper describes the ISLa language and solver more formally.
-
-* The [**ISLa Language Specification**](https://rindphi.github.io/isla/islaspec/)
-  precisely specifies the syntax and semantics of ISLa constraints. The specification
-  also contains a list of
-  [supported default predicates](https://rindphi.github.io/isla/islaspec/#structural-predicates).
-
+  
 * In the directory `src/isla_formalizations/`, you find our specifications for the
   subject languages of our experimental evaluation.
   

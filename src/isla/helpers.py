@@ -62,6 +62,19 @@ T = TypeVar("T")
 
 
 def is_path(maybe_path: Any) -> bool:
+    """
+    >>> is_path("str")
+    False
+
+    >>> is_path((1, (), 0))
+    False
+
+    >>> is_path((1, 2, 0))
+    True
+
+    :param maybe_path: Element to check for being a `Path`.
+    :return: Returns `True` if `maybe_path` is a `Path`.
+    """
     return isinstance(maybe_path, tuple) and all(
         isinstance(elem, int) for elem in maybe_path
     )
@@ -261,13 +274,11 @@ def cluster_by_common_elements(
     Clusters elements of l by shared elements. Elements of interest are obtained using f.
     For instance, to cluster a list of lists based on common list elements:
 
-    >>> cluster_by_common_elements([[1,2], [2,3], [3,4], [5,6]], lambda l: {e for e in a_list})
-
-    Gives [[[2, 3], [3, 4], [1, 2]], [[5, 6]]].
+    >>> cluster_by_common_elements([[1,2], [2,3], [3,4], [5,6]], lambda l: {e for e in l})
+    [[[2, 3], [3, 4], [1, 2]], [[5, 6]]]
 
     >>> cluster_by_common_elements([1,2,3,4,5,6,7], lambda e: {e, e+3})
-
-    Outputs [[2, 5], [3, 6], [4, 7, 1]].
+    [[2, 5], [3, 6], [4, 7, 1]]
 
     :param a_list: The list to cluster.
     :param f: The function to determine commonality.

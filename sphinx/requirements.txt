@@ -1,0 +1,2 @@
+isla-solver>=1.11.0
+sphinx-book-theme>=1.0.0

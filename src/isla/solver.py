@@ -274,9 +274,12 @@ _DEFAULTS = SolverDefaults()
 
 class ISLaSolver:
     """
-    The solver class for ISLa formulas/constraints. Its methods are
-    `solve()`, `check(DerivationTree | str)`, `parse(str)`, and
-    `repair(DerivationTree | str)`.
+    The solver class for ISLa formulas/constraints. Its top-level methods are
+    :meth:`~isla.solver.ISLaSolver.solve`,
+    :meth:`~isla.solver.ISLaSolver.check`,
+    :meth:`~isla.solver.ISLaSolver.parse`,
+    :meth:`~isla.solver.ISLaSolver.repair`, and
+    :meth:`~isla.solver.ISLaSolver.mutate`.
     """
 
     def __init__(
@@ -1402,6 +1405,92 @@ class ISLaSolver:
     def infer_satisfying_assignments_for_smt_formula(
         self, smt_formula: language.SMTFormula, constant: language.Constant
     ) -> Set[int | language.Constant]:
+        """
+        This method returns `self.max_number_free_instantiations` many solutions for
+        the given :class:`~isla.language.SMTFormula` if `constant` is the only free
+        variable in `smt_formula`. The given formula must be a numeric formula, i.e.,
+        all free variables must be numeric. If more than one free variables are
+        present, at most one solution is returned (see example below).
+
+        :param smt_formula: The :class:`~isla.language.SMTFormula` to solve. Must
+          only contain numeric free variables.
+        :param constant: One free variable in `smt_formula`.
+        :return: A set of solutions (see explanation above & comment below).
+
+        We create a solver with a dummy grammar (it's not needed for this example),
+        choosing a value of 5 for `max_number_free_instantiations`.
+
+        >>> solver = ISLaSolver(
+        ...     '<start> ::= "x"',  # dummy grammar
+        ...     max_number_free_instantiations=5,
+        ... )
+
+        The formula we're considering is `x > 10`.
+
+        >>> from isla.language import Constant, SMTFormula, Variable, unparse_isla
+        >>> x = Constant("x", Variable.NUMERIC_NTYPE)
+        >>> formula = SMTFormula(z3.StrToInt(x.to_smt()) > z3.IntVal(10), x)
+        >>> unparse_isla(formula)
+        '(< 10 (str.to.int x))'
+
+        We obtain five results (due to our choice of `max_number_free_instantiations`).
+
+        >>> results = solver.infer_satisfying_assignments_for_smt_formula(formula, x)
+        >>> len(results)
+        5
+
+        All results are `int`s...
+
+        >>> all(isinstance(result, int) for result in results)
+        True
+
+        ...and all are strictly greater than 10.
+
+        >>> all(result > 10 for result in results)
+        True
+
+        Now, lets consider `x == y`. This formula contains *two* free variables, `x`
+        and `y`. It is the only type of formula with more than one variable for which
+        this method will return a solution in the current state.
+
+        >>> y = Constant("y", Variable.NUMERIC_NTYPE)
+        >>> formula = SMTFormula(
+        ...     z3_eq(z3.StrToInt(x.to_smt()), z3.StrToInt(y.to_smt())), x, y)
+        >>> unparse_isla(formula)
+        '(= (str.to.int x) (str.to.int y))'
+
+        The solution is the singleton set with the variable `y`, which is an
+        instantiation of the constant `x` solving the equation.
+
+        >>> solver.infer_satisfying_assignments_for_smt_formula(formula, x)
+        {Constant("y", "NUM")}
+
+        If we choose a different type of formula (a greater-than relation), we obtain
+        an empty solution set.
+
+        >>> formula = SMTFormula(
+        ...     z3.StrToInt(x.to_smt()) > z3.StrToInt(y.to_smt()), x, y)
+        >>> unparse_isla(formula)
+        '(> (str.to.int x) (str.to.int y))'
+        >>> solver.infer_satisfying_assignments_for_smt_formula(formula, x)
+        set()
+
+        With a non-numeric formula, we obtain an AssertionError (if assertions are
+        enabled). This method expects to be called only internally, so this should
+        not happen (with or without activated assertions).
+
+        >>> z = Constant("x", "<start>")
+        >>> formula = SMTFormula(z3_eq(z.to_smt(), z3.StringVal("x")), z)
+        >>> print(unparse_isla(formula))
+        const x: <start>;
+        <BLANKLINE>
+        (= x "x")
+        >>> results = solver.infer_satisfying_assignments_for_smt_formula(formula, z)
+        Traceback (most recent call last):
+        ...
+        AssertionError: Expected numeric solution.
+        """
+
         free_variables = smt_formula.free_variables()
         max_instantiations = (
             self.max_number_free_instantiations if len(free_variables) == 1 else 1
@@ -1427,11 +1516,12 @@ class ISLaSolver:
                 return solutions[constant]
             else:
                 assert all(len(solution) == 1 for solution in solutions.values())
-                # In situations with multiple variables, we might have to abstract from concrete values.
-                # Currently, we only support simple equality inference (based on one sample...). Note that
-                # for supporting *more complex* terms (e.g., additions), we would have to extend the whole
-                # infrastructure: Substitutions with complex terms, and complex terms in semantic predicate
-                # arguments, are unsupported as of now.
+                # In situations with multiple variables, we might have to abstract from
+                # concrete values. Currently, we only support simple equality inference
+                # (based on one sample...). Note that for supporting *more complex*
+                # terms (e.g., additions), we would have to extend the whole
+                # infrastructure: Substitutions with complex terms, and complex terms
+                # in semantic predicate arguments, are unsupported as of now.
                 candidates = {
                     c
                     for c in solutions
