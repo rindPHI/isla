@@ -494,7 +494,7 @@ Generalized SMT-LIB syntax
 
 At the core of ISLa are SMT-LIB expressions; quantifiers and predicate formulas
 are constructed around those. In the
-`SMT-LIB language <https://smtlib.cs.uiowa.edu/language.shtml>`_,
+`SMT-LIB language`_,
 all expressions are written in the S-expression format :code:`(op arg1 arg2)` known from languages like
 LISP and Scheme. In addition to this syntax, ISLa supports the prefix notation
 :code:`op(arg1, arg2)` more commonly used in mathematics and programming languages
@@ -835,7 +835,7 @@ Atoms
 The name ISLa has a double meaning: First, it is an acronym for "Input
 specification language;" and second, "isla" is the Spanish word for "island."
 The reason for this second meaning is that ISLa embeds the
-`SMT-LIB language <https://smtlib.cs.uiowa.edu/>`_ as an *island language.* Around this
+`SMT-LIB language`_ as an *island language.* Around this
 embedded language, ISLa essentially adds quantifiers aware of the structure of
 context-free grammars. Thus, SMT-LIB expressions are the heart and the most
 important *atomic* ISLa formulas. Atomic means that they do not contain
@@ -868,8 +868,7 @@ syntax here and instead refer to the
 
 **Free variables.** The set :math:`freeVars(\varphi)` for an SMT-LIB expression
 :math:`\varphi` consists of all symbols not part of the
-`SMT-LIB language <https://smtlib.cs.uiowa.edu/papers/smt-lib-reference-v2.6-r2021-05-12.pdf>`_
-and not contained in one of the (built-in)
+`SMT-LIB language`_ and not contained in one of the (built-in)
 `SMT-LIB theories <https://smtlib.cs.uiowa.edu/theories.shtml>`_, in particular the
 `integer <https://smtlib.cs.uiowa.edu/theories-UnicodeStrings.shtml>`_ and
 `string <https://smtlib.cs.uiowa.edu/theories-UnicodeStrings.shtml>`_ theories.
@@ -1372,3 +1371,5 @@ etc. We define the semantics of quantified integer formulas as follows:
 .. [#f3] In the SMT-LIB standard, this function is called :code:`str.to_int`. ISLa, however, uses the Z3 SMT solver, where the corresponding function has the name :code:`str.to.int`. Obviously, Z3 supported :code:`str.to.int` before :code:`str.to_int` became an official standard (see https://stackoverflow.com/questions/46524843/missing-str-to-int-s-in-z3-4-5-1#answer-46528332).
 .. [#f4] In the ISLa implementation, we distinguish two types (in the sense of object-oriented classes) of variables: *bound variables* (bound by :ref:`quantifiers`) and *constants*. Thus, we can always extract reference trees from variable assignments.
 .. [#f5] In the ISLa system, derivation trees have unique identifiers, such that we can distinguish trees with identical structure.
+
+.. _SMT-LIB Language: https://smtlib.cs.uiowa.edu
