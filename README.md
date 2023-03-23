@@ -7,6 +7,7 @@ ISLa: Input Specification Language
 [![Coverage Status](https://coveralls.io/repos/github/rindPHI/isla/badge.svg?branch=main)](https://coveralls.io/github/rindPHI/isla?branch=main)
 [![Dependencies](https://img.shields.io/librariesio/release/github/rindphi/isla)](https://libraries.io/github/rindPHI/isla)
 [![DOI](https://zenodo.org/badge/428626626.svg)](https://zenodo.org/badge/latestdoi/428626626)
+[![Documentation Status](https://readthedocs.org/projects/isla/badge/?version=latest)](https://isla.readthedocs.io/en/latest/?badge=latest)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 <img src="isla_logo_bright_transparent.png" alt="ISLa Logo" style="margin-left: auto; margin-right: auto; display: block; width: 400px;"/> 
