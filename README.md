@@ -215,14 +215,17 @@ p := 2 ; p := 1 ; w := p
   published as a part of the Fuzzing Book, provides an easily accessible introduction
   to the specification and generation of custom system inputs using ISLa.
 
-* We published a [**paper on ISLa**](https://publications.cispa.saarland/3596/7/Input%20Invariants.pdf)
+* The [**ISLa Documentation**](http://isla.readthedocs.io/) contains
+  + installation and usage instructions;
+  + further examples;
+  + the **ISLa Language Specification,** which precisely specifies the syntax and
+    semantics of ISLa constraints. It also contains a list of supported default
+    predicates;
+  + and a **Developer's Guide** to get started with ISLa's code.
+
+* We published a [**scientific paper on ISLa**](https://publications.cispa.saarland/3596/7/Input%20Invariants.pdf)
   at ESEC/FSE 2022. The paper describes the ISLa language and solver more formally.
-
-* The [**ISLa Language Specification**](https://rindphi.github.io/isla/islaspec/)
-  precisely specifies the syntax and semantics of ISLa constraints. The specification
-  also contains a list of
-  [supported default predicates](https://rindphi.github.io/isla/islaspec/#structural-predicates).
-
+  
 * In the directory `src/isla_formalizations/`, you find our specifications for the
   subject languages of our experimental evaluation.
   
