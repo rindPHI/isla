@@ -1,5 +1,5 @@
-ISLa Documentation
-==================
+ISLa: *Inputs on Demand!*
+=========================
 
 .. toctree::
    :maxdepth: 2
