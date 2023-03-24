@@ -53,7 +53,8 @@ from isla.isla_predicates import (
     COUNT_PREDICATE,
     STANDARD_SEMANTIC_PREDICATES,
     STANDARD_STRUCTURAL_PREDICATES,
-    IN_TREE_PREDICATE, AFTER_PREDICATE,
+    IN_TREE_PREDICATE,
+    AFTER_PREDICATE,
 )
 from isla.language import (
     VariablesCollector,
@@ -78,7 +79,8 @@ from isla.solver import (
     SemanticError,
     create_fixed_length_tree,
     generate_abstracted_trees,
-    smt_formulas_referring_to_subtrees, SolverDefaults,
+    smt_formulas_referring_to_subtrees,
+    SolverDefaults,
 )
 from isla.type_defs import Grammar, ImmutableList
 from isla.z3_helpers import z3_eq, smt_string_val_to_string
@@ -97,6 +99,7 @@ from test_data import LANG_GRAMMAR, SIMPLE_CSV_GRAMMAR, CONFIG_GRAMMAR
 from test_helpers import parse
 
 _DEFAULTS = SolverDefaults()
+
 
 class TestSolver(unittest.TestCase):
     def test_atomic_smt_formula(self):
@@ -1355,7 +1358,6 @@ and str.len(<payload>) = 10
 
             self.assertTrue(int(a) == int(b) - int(c))
 
-
     def test_multiple_solutions_heartbeat(self):
         heartbeat_request_grammar = {
             "<start>": ["<heartbeat-request>"],
@@ -2016,13 +2018,13 @@ exists int seqs: (
 
     def test_issue_53(self):
         # https://github.com/rindPHI/isla/issues/53
-        grammar = '''
+        grammar = """
         <start> ::= <list> 
         <list>  ::= <item> | <item> <list>
         <item> ::= "(" <type> "," <digit> ")"
         <type> ::= "A"
         <digit> ::= "1" | "2"
-        '''
+        """
 
         constraint = """
         forall <item> item="({<type> type},{<digit> digit})" in start:
@@ -2124,9 +2126,7 @@ forall <F> f2 in start:
         print_only: bool = False,
         timeout_seconds: Optional[int] = None,
         global_fuzzer: bool = False,
-        fuzzer_factory: Callable[
-            [Grammar], GrammarFuzzer
-        ] = _DEFAULTS.fuzzer_factory,
+        fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = _DEFAULTS.fuzzer_factory,
         tree_insertion_methods=_DEFAULTS.tree_insertion_methods,
         activate_unsat_support: bool = _DEFAULTS.activate_unsat_support,
         enable_optimized_z3_queries=_DEFAULTS.enable_optimized_z3_queries,
