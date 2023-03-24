@@ -1447,9 +1447,9 @@ and str.len(<payload>) = 10
 
         formula_2 = z3_eq(byte_3879.to_smt(), z3.StringVal("\x01"))
 
-        (length_vars, flexible_vars,) = ISLaSolver.filter_length_variables(
+        (length_vars, int_vars, flexible_vars,) = ISLaSolver.infer_variable_contexts(
             {byte_3879, payload_3824, byte_3880}, (formula_1, formula_2)
-        )
+        ).values()
 
         self.assertEqual({payload_3824}, length_vars)
         self.assertEqual({byte_3879, byte_3880}, flexible_vars)
@@ -1459,9 +1459,9 @@ and str.len(<payload>) = 10
 
         formula_3 = z3_eq(byte_3879.to_smt(), byte_3880.to_smt())
 
-        (length_vars, flexible_vars,) = ISLaSolver.filter_length_variables(
+        (length_vars, int_vars, flexible_vars,) = ISLaSolver.infer_variable_contexts(
             {byte_3879, payload_3824, byte_3880}, (formula_1, formula_2, formula_3)
-        )
+        ).values()
 
         self.assertEqual({payload_3824}, length_vars)
         self.assertEqual({byte_3879, byte_3880}, flexible_vars)
@@ -1471,10 +1471,10 @@ and str.len(<payload>) = 10
 
         formula_4 = z3_eq(byte_3879.to_smt(), payload_3824.to_smt())
 
-        (length_vars, flexible_vars,) = ISLaSolver.filter_length_variables(
+        (length_vars, int_vars, flexible_vars,) = ISLaSolver.infer_variable_contexts(
             {byte_3879, payload_3824, byte_3880},
             (formula_1, formula_2, formula_4),
-        )
+        ).values()
 
         self.assertEqual({byte_3879, byte_3880, payload_3824}, flexible_vars)
 

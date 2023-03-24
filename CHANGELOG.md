@@ -5,6 +5,15 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.11.1] - 2023-03-24
+
+### Changed
+
+- New optimization in SMT formula solving: Variables exclusively occurring in 
+  `str.to.int` contexts are passed to Z3 as integers and later converted to strings,
+  which reduces the solver's load.
+- Cleaned up / improved code corresponding to SMT formula solving optimizations.
+
 ## [1.11.0] - 2023-03-22
 
 ### Changed

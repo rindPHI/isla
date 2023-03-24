@@ -930,3 +930,25 @@ def compute_nullable_nonterminals(canonical_grammar: CanonicalGrammar) -> Set[st
                 result.add(nonterminal)
 
     return result
+
+
+def merge_dict_of_sets(
+    dict_1: Dict[T, Set[S]], dict_2: Dict[T, Set[S]]
+) -> Dict[T, Set[S]]:
+    """
+    Merges the given dictionaries.
+
+    >>> dict_1 = {1: {2}, 2: {3}, 3: set()}
+    >>> dict_2 = {1: {42}, 3: {17}, 4: {5, 6}}
+    >>> merge_dict_of_sets(dict_1, dict_2)
+    {1: {2, 42}, 2: {3}, 3: {17}, 4: {5, 6}}
+
+    :param dict_1: First dict to merge.
+    :param dict_2: Second dict to merge.
+    :return: The merged dictionary.
+    """
+    result = {**dict_1, **dict_2}
+    for key in result:
+        if key in dict_1 and key in dict_2:
+            result[key] = dict_1[key] | dict_2[key]
+    return result

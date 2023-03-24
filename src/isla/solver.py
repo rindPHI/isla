@@ -90,6 +90,7 @@ from isla.helpers import (
     list_del,
     compute_nullable_nonterminals,
     eassert,
+    merge_dict_of_sets,
 )
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
@@ -122,8 +123,8 @@ from isla.z3_helpers import (
     z3_eq,
     z3_and,
     visit_z3_expr,
-    is_z3_var,
     smt_string_val_to_string,
+    parent_relationships_in_z3_expr,
 )
 
 
@@ -2365,12 +2366,6 @@ class ISLaSolver:
         tree_substitutions: Dict[language.Variable, DerivationTree],
         solutions_to_exclude: List[Dict[language.Variable, z3.StringVal]],
     ) -> Tuple[z3.CheckSatResult, Dict[language.Variable, DerivationTree]]:
-        # We substitute all expressions `str.to_code(var)` by `var'` if `var`
-        # only occurs inside `str.to_code(...)` expressions, such that `var'`
-        # is an integer variable constraint to the interval [0, 65535] (two bytes).
-        # After solving the constraint, we parse `var'` into a string and reverse
-        # the substitution for the final solution.
-
         # We disable optimized Z3 queries if the SMT formulas contain "too concrete"
         # substitutions, that is, substitutions with a tree that is not merely an
         # open leaf. Example: we have a constrained `str.len(<chars>) < 10` and a
@@ -2382,11 +2377,13 @@ class ISLaSolver:
         if self.enable_optimized_z3_queries and not any(
             substitution.children for substitution in tree_substitutions.values()
         ):
-            length_vars, flexible_vars = self.filter_length_variables(
-                variables, smt_formulas
-            )
+            vars_in_context = self.infer_variable_contexts(variables, smt_formulas)
+            length_vars = vars_in_context["length"]
+            int_vars = vars_in_context["int"]
+            flexible_vars = vars_in_context["flexible"]
         else:
-            length_vars = set([])
+            length_vars = set()
+            int_vars = set()
             flexible_vars = set(variables)
 
         # Add language constraints for "flexible" variables
@@ -2394,10 +2391,10 @@ class ISLaSolver:
             flexible_vars, tree_substitutions
         )
 
-        # Create fresh variables for `str.len` variables.
+        # Create fresh variables for `str.len` and `str.to.int` variables.
         all_variables = set(variables)
         fresh_var_map: Dict[language.Variable, z3.ExprRef] = {}
-        for var in length_vars:
+        for var in length_vars | int_vars:
             fresh = fresh_constant(
                 all_variables,
                 language.Constant(var.name, "NOT-NEEDED"),
@@ -2410,14 +2407,14 @@ class ISLaSolver:
             expr: fresh_var_map[
                 get_elem_by_equivalence(
                     expr.children()[0],
-                    length_vars,
+                    length_vars | int_vars,
                     lambda e1, e2: e1 == e2.to_smt(),
                 )
             ]
             for formula in smt_formulas
             for expr in visit_z3_expr(formula)
-            if expr.decl().kind() == z3.Z3_OP_SEQ_LENGTH
-            and expr.children()[0] in {var.to_smt() for var in length_vars}
+            if expr.decl().kind() in {z3.Z3_OP_SEQ_LENGTH, z3.Z3_OP_STR_TO_INT}
+            and expr.children()[0] in {var.to_smt() for var in length_vars | int_vars}
         }
 
         # Perform substitution, add formulas
@@ -2439,20 +2436,8 @@ class ISLaSolver:
         for prev_solution in solutions_to_exclude:
             prev_solution_formula = z3_and(
                 [
-                    z3_eq(
-                        z3.StrToInt(var.to_smt()),
-                        z3.IntVal(int(smt_string_val_to_string(string_val))),
-                    )
-                    if var.is_numeric()
-                    else (
-                        z3_eq(
-                            fresh_var_map[var],
-                            z3.IntVal(len(smt_string_val_to_string(string_val))),
-                        )
-                        if var in length_vars
-                        # "str.to_int(constant) == 42" has been shown to be more
-                        # efficiently solvable than "x == '17'"---fewer timeouts!
-                        else (z3_eq(var.to_smt(), string_val))
+                    self.previous_solution_formula(
+                        var, string_val, fresh_var_map, length_vars, int_vars
                     )
                     for var, string_val in prev_solution.items()
                 ]
@@ -2467,57 +2452,337 @@ class ISLaSolver:
 
         assert maybe_model is not None
 
-        def safe_create_fixed_length_tree(var: language.Variable) -> DerivationTree:
-            fixed_length_tree = create_fixed_length_tree(
-                start=var.n_type,
-                canonical_grammar=self.canonical_grammar,
-                target_length=maybe_model[fresh_var_map[var]].as_long(),
-            )
-
-            if fixed_length_tree is None:
-                raise RuntimeError(
-                    f"Could not create a tree with the start symbol '{var.n_type}' "
-                    + f"of length {maybe_model[fresh_var_map[var]].as_long()}; try "
-                    + "to run the solver without optimized Z3 queries or make "
-                    + "sure that lengths are restricted to syntactically valid "
-                    + "ones (according to the grammar).",
-                )
-
-            return fixed_length_tree
-
-        result = {
-            var: DerivationTree(
-                smt_string_val_to_string(maybe_model[z3.String(var.name)]), ()
-            )
-            if var.is_numeric()
-            else (
-                self.parse(
-                    smt_string_val_to_string(maybe_model[z3.String(var.name)]),
-                    var.n_type,
-                )
-                if var in flexible_vars
-                else (
-                    safe_create_fixed_length_tree(var)
-                    if var in length_vars
-                    else (
-                        self.parse(
-                            chr(maybe_model[fresh_var_map[var]].as_long()), var.n_type
-                        )
-                    )
-                )
+        return sat_result, {
+            var: self.extract_model_value(
+                var, maybe_model, fresh_var_map, length_vars, int_vars
             )
             for var in variables
         }
 
-        return sat_result, result
+    @staticmethod
+    def previous_solution_formula(
+        var: language.Variable,
+        string_val: z3.StringVal,
+        fresh_var_map: Dict[language.Variable, z3.ExprRef],
+        length_vars: Set[language.Variable],
+        int_vars: Set[language.Variable],
+    ) -> z3.BoolRef:
+        """
+        Computes a formula describing the previously found solution
+        :code:`var == string_val` for an :class:`~isla.language.SMTFormula`.
+        Considers the special cases that :code:`var` is a "length" or "int"
+        variable, i.e., occurred only in these contexts in the formula this
+        solution is about.
+
+        >>> x = language.Variable("x", "<X>")
+        >>> ISLaSolver.previous_solution_formula(
+        ...     x, z3.StringVal("val"), {}, set(), set())
+        x == "val"
+
+        >>> ISLaSolver.previous_solution_formula(
+        ...     x, z3.StringVal("val"), {x: z3.Int("x_0")}, {x}, set())
+        x_0 == 3
+
+        >>> ISLaSolver.previous_solution_formula(
+        ...     x, z3.StringVal("10"), {x: z3.Int("x_0")}, set(), {x})
+        x_0 == 10
+
+        >>> x = language.Variable("x", language.Variable.NUMERIC_NTYPE)
+        >>> ISLaSolver.previous_solution_formula(
+        ...     x, z3.StringVal("10"), {x: z3.Int("x_0")}, set(), {x})
+        x_0 == 10
+
+        A "numeric" variable (of "NUM" type) is expected to always be an int variable,
+        which also needs to be reflected in its inclusion in :code:`fresh_var_map`.
+
+        >>> x = language.Variable("x", language.Variable.NUMERIC_NTYPE)
+        >>> ISLaSolver.previous_solution_formula(
+        ...     x, z3.StringVal("10"), {}, set(), set())
+        Traceback (most recent call last):
+        ...
+        AssertionError
+
+        :param var: The variable the solution is for.
+        :param string_val: The solution for :code:`var`.
+        :param fresh_var_map: A map from variables to fresh variables for "length" or
+                              "int" variables.
+        :param length_vars: The "length" variables.
+        :param int_vars: The "int" variables.
+        :return: An equation describing the previous solution.
+        """
+        if var in int_vars:
+            return z3_eq(
+                fresh_var_map[var],
+                z3.IntVal(int(smt_string_val_to_string(string_val))),
+            )
+        elif var in length_vars:
+            return z3_eq(
+                fresh_var_map[var],
+                z3.IntVal(len(smt_string_val_to_string(string_val))),
+            )
+        else:
+            assert not var.is_numeric()
+            return z3_eq(var.to_smt(), string_val)
+
+    def safe_create_fixed_length_tree(
+        self,
+        var: language.Variable,
+        model: z3.ModelRef,
+        fresh_var_map: Dict[language.Variable, z3.ExprRef],
+    ) -> DerivationTree:
+        """
+        Creates a :class:`~isla.derivation_tree.DerivationTree` for :code:`var` such
+        that the type of the tree fits to :code:`var` and the length of its string
+        representation fits to the length in :code:`model` for the fresh variable in
+        :code:`fresh_var_map`. For example:
+
+        >>> grammar = {
+        ...     "<start>": ["<X>"],
+        ...     "<X>": ["x", "x<X>"],
+        ... }
+        >>> x = language.Variable("x", "<X>")
+        >>> x_0 = z3.Int("x_0")
+        >>> f = z3_eq(x_0, z3.IntVal(5))
+        >>> z3_solver = z3.Solver()
+        >>> z3_solver.add(f)
+        >>> z3_solver.check()
+        sat
+        >>> model = z3_solver.model()
+        >>> solver = ISLaSolver(grammar)
+        >>> tree = solver.safe_create_fixed_length_tree(x, model, {x: x_0})
+        >>> tree.value
+        '<X>'
+        >>> str(tree)
+        'xxxxx'
+
+        :param var: The variable to create a
+                    :class:`~isla.derivation_tree.DerivationTree` object for.
+        :param model: The Z3 model to extract a solution to the length constraint.
+        :param fresh_var_map: A map including a mapping :code:`var` -> :code:`var_0`,
+                              where :code:`var_0` is an integer-valued variale included
+                              in :code:`model`.
+        :return: A tree of the type of :code:`var` and length as specified in
+                :code:`model`.
+        """
+
+        assert var in fresh_var_map
+        assert fresh_var_map[var].decl() in model.decls()
+
+        fixed_length_tree = create_fixed_length_tree(
+            start=var.n_type,
+            canonical_grammar=self.canonical_grammar,
+            target_length=model[fresh_var_map[var]].as_long(),
+        )
+
+        if fixed_length_tree is None:
+            raise RuntimeError(
+                f"Could not create a tree with the start symbol '{var.n_type}' "
+                + f"of length {model[fresh_var_map[var]].as_long()}; try "
+                + "to run the solver without optimized Z3 queries or make "
+                + "sure that lengths are restricted to syntactically valid "
+                + "ones (according to the grammar).",
+            )
+
+        return fixed_length_tree
+
+    def extract_model_value(
+        self,
+        var: language.Variable,
+        model: z3.ModelRef,
+        fresh_var_map: Dict[language.Variable, z3.ExprRef],
+        length_vars: Set[language.Variable],
+        int_vars: Set[language.Variable],
+    ) -> DerivationTree:
+        """
+        Extracts a value for :code:`var` from :code:`model`. Considers the following
+        special cases:
+
+        Numeric Variables
+            Returns a closed derivation tree of one node with a string representation
+            of the numeric solution.
+
+        "Length" Variables
+            Returns a string of the length corresponding to the model and
+            :code:`fresh_var_map`, see also
+            :meth:`~isla.solver.ISLaSolver.safe_create_fixed_length_tree()`.
+
+        "Int" Variables
+            Tries to parse the numeric solution from the model (obtained via
+            :code:`fresh_var_map`) into the type of :code:`var` and returns the
+            corresponding derivation tree.
+
+        >>> grammar = {
+        ...     "<start>": ["<A>"],
+        ...     "<A>": ["<X><Y>"],
+        ...     "<X>": ["x", "x<X>"],
+        ...     "<Y>": ["<digit>", "<digit><Y>"],
+        ...     "<digit>": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+        ... }
+        >>> solver = ISLaSolver(grammar)
+
+        **Numeric Variables:**
+
+        >>> n = language.Variable("n", language.Variable.NUMERIC_NTYPE)
+        >>> f = z3_eq(z3.StrToInt(n.to_smt()), z3.IntVal(15))
+        >>> z3_solver = z3.Solver()
+        >>> z3_solver.add(f)
+        >>> z3_solver.check()
+        sat
+        >>> model = z3_solver.model()
+        >>> DerivationTree.next_id = 1
+        >>> solver.extract_model_value(n, model, {}, set(), set())
+        DerivationTree('15', (), id=1)
+
+        **"Length" Variables:**
+
+        >>> x = language.Variable("x", "<X>")
+        >>> x_0 = z3.Int("x_0")
+        >>> f = z3_eq(x_0, z3.IntVal(3))
+        >>> z3_solver = z3.Solver()
+        >>> z3_solver.add(f)
+        >>> z3_solver.check()
+        sat
+        >>> model = z3_solver.model()
+        >>> result = solver.extract_model_value(x, model, {x: x_0}, {x}, set())
+        >>> result.value
+        '<X>'
+        >>> str(result)
+        'xxx'
+
+        **"Int" Variables:**
+
+        >>> y = language.Variable("y", "<Y>")
+        >>> y_0 = z3.Int("y_0")
+        >>> f = z3_eq(y_0, z3.IntVal(5))
+        >>> z3_solver = z3.Solver()
+        >>> z3_solver.add(f)
+        >>> z3_solver.check()
+        sat
+        >>> model = z3_solver.model()
+        >>> DerivationTree.next_id = 1
+        >>> solver.extract_model_value(y, model, {y: y_0}, set(), {y})
+        DerivationTree('<Y>', (DerivationTree('<digit>', (DerivationTree('5', (), id=1),), id=2),), id=3)
+
+        **"Flexible" Variables:**
+
+        >>> f = z3_eq(x.to_smt(), z3.StringVal("xxxxx"))
+        >>> z3_solver = z3.Solver()
+        >>> z3_solver.add(f)
+        >>> z3_solver.check()
+        sat
+        >>> model = z3_solver.model()
+        >>> result = solver.extract_model_value(x, model, {}, set(), set())
+        >>> result.value
+        '<X>'
+        >>> str(result)
+        'xxxxx'
+
+        :param var: The variable for which to extract a solution from the model.
+        :param model: The model containing the solution.
+        :param fresh_var_map: A map from variables to fresh symbols for "length" and
+                              "int" variables.
+        :param length_vars: The set of "length" variables.
+        :param int_vars: The set of "int" variables.
+        :return: A :class:`~isla.derivation_tree.DerivationTree` object corresponding
+                 to the solution in :code:`model`.
+        """
+
+        if var.is_numeric():
+            z3_var = z3.String(var.name)
+            if z3_var.decl() in model.decls():
+                model_value = model[z3_var]
+            else:
+                assert var in int_vars
+                assert var in fresh_var_map
+
+                model_value = model[fresh_var_map[var]]
+
+            string_value = smt_string_val_to_string(model_value)
+            assert string_value
+            assert (
+                string_value.isnumeric()
+                or string_value[0] == "-"
+                and string_value[1:].isnumeric()
+            )
+
+            return DerivationTree(string_value, ())
+        elif var in length_vars:
+            return self.safe_create_fixed_length_tree(var, model, fresh_var_map)
+        elif var in int_vars:
+            return self.parse(
+                model[fresh_var_map[var]].as_string(),
+                var.n_type,
+            )
+        else:
+            # A "flexible" variable.
+            return self.parse(
+                smt_string_val_to_string(model[z3.String(var.name)]),
+                var.n_type,
+            )
 
     @staticmethod
-    def filter_length_variables(
+    def infer_variable_contexts(
         variables: Set[language.Variable], smt_formulas: ImmutableList[z3.BoolRef]
-    ) -> Tuple[Set[language.Variable], Set[language.Variable]]:
+    ) -> Dict[str, Set[language.Variable]]:
         """
-        Divides the given constants into (1) those that occur only in `length(...)`
-        contexts, and (2) "flexible" constants occurring in other contexts.
+        Divides the given variables into
+
+        1. those that occur only in :code:`length(...)` contexts,
+        2. those that occur only in :code:`str.to.int(...)` contexts, and
+        3. "flexible" constants occurring in other/various contexts.
+
+        >>> x = language.Variable("x", "<X>")
+        >>> y = language.Variable("y", "<Y>")
+
+        Two variables in an arbitrary context.
+
+        >>> f = z3_eq(x.to_smt(), y.to_smt())
+        >>> contexts = ISLaSolver.infer_variable_contexts({x, y}, (f,))
+        >>> contexts["length"]
+        set()
+        >>> contexts["int"]
+        set()
+        >>> contexts["flexible"] == {language.Variable("x", "<X>"), language.Variable("y", "<Y>")}
+        True
+
+        Variable x occurs in a length context, variable y in an arbitrary one.
+
+        >>> f = z3.And(
+        ...     z3.Length(x.to_smt()) > z3.IntVal(10),
+        ...     z3_eq(y.to_smt(), z3.StringVal("y")))
+        >>> ISLaSolver.infer_variable_contexts({x, y}, (f,))
+        {'length': {Variable("x", "<X>")}, 'int': set(), 'flexible': {Variable("y", "<Y>")}}
+
+        Variable x occurs in a length context, y does not occur.
+
+        >>> f = z3.Length(x.to_smt()) > z3.IntVal(10)
+        >>> ISLaSolver.infer_variable_contexts({x, y}, (f,))
+        {'length': {Variable("x", "<X>")}, 'int': set(), 'flexible': {Variable("y", "<Y>")}}
+
+        Variables x and y both occur in a length context.
+
+        >>> f = z3.Length(x.to_smt()) > z3.Length(y.to_smt())
+        >>> contexts = ISLaSolver.infer_variable_contexts({x, y}, (f,))
+        >>> contexts["length"] == {language.Variable("x", "<X>"), language.Variable("y", "<Y>")}
+        True
+        >>> contexts["int"]
+        set()
+        >>> contexts["flexible"]
+        set()
+
+        Variable x occurs in a :code:`str.to.int` context.
+
+        >>> f = z3.StrToInt(x.to_smt()) > z3.IntVal(17)
+        >>> ISLaSolver.infer_variable_contexts({x}, (f,))
+        {'length': set(), 'int': {Variable("x", "<X>")}, 'flexible': set()}
+
+        Now, x also occurs in a different context; it's "flexible" now.
+
+        >>> f = z3.And(
+        ...     z3.StrToInt(x.to_smt()) > z3.IntVal(17),
+        ...     z3_eq(x.to_smt(), z3.StringVal("17")))
+        >>> ISLaSolver.infer_variable_contexts({x}, (f,))
+        {'length': set(), 'int': set(), 'flexible': {Variable("x", "<X>")}}
 
         :param variables: The constants to divide/filter from.
         :param smt_formulas: The SMT formulas to consider in the filtering.
@@ -2526,65 +2791,41 @@ class ISLaSolver:
         are disjoint.
         """
 
-        # A context is a pair `(decl, args)` where args is a tuple of (1) variables,
-        # (2) Z3 literals, or (3) `None`, where the latter value indicates that the
-        # argument was a complex term.
-        Context = Tuple[
-            z3.FuncDeclRef, Tuple[Optional[z3.ExprRef | language.Variable], ...]
-        ]
+        parent_relationships = reduce(
+            merge_dict_of_sets,
+            [parent_relationships_in_z3_expr(formula) for formula in smt_formulas],
+            {},
+        )
 
-        contexts: Set[Context] = {
-            (
-                expr.decl(),
-                tuple(
-                    [
-                        get_elem_by_equivalence(
-                            child, variables, lambda e1, e2: e2.to_smt() == e1
-                        )
-                        if is_z3_var(child)
-                        else (
-                            child
-                            if z3.is_string_value(child) or z3.is_int_value(child)
-                            else None
-                        )
-                        for child in expr.children()
-                    ]
-                ),
-            )
-            for formula in smt_formulas
-            for expr in visit_z3_expr(formula)
-            if any(is_z3_var(child) for child in expr.children())
-        }
-
-        def contexts_for(var: language.Variable) -> Set[Context]:
-            return {
-                context
-                for context in contexts
-                for context_elem in context[1]
-                if var is context_elem
+        contexts: Dict[language.Variable, Set[int]] = {
+            var: {
+                expr.decl().kind()
+                for expr in parent_relationships.get(var.to_smt(), set())
             }
+            or {-1}
+            for var in variables
+        }
 
         # The set `length_vars` consists of all variables that only occur in
         # `str.len(...)` context.
         length_vars: Set[language.Variable] = {
             var
             for var in variables
-            if (
-                all(
-                    context[0].kind() == z3.Z3_OP_SEQ_LENGTH
-                    for context in contexts_for(var)
-                )
-            )
+            if all(context == z3.Z3_OP_SEQ_LENGTH for context in contexts[var])
         }
 
-        flexible_vars = variables.difference(length_vars)
+        # The set `int_vars` consists of all variables that only occur in
+        # `str.to.int(...)` context.
+        int_vars: Set[language.Variable] = {
+            var
+            for var in variables
+            if all(context == z3.Z3_OP_STR_TO_INT for context in contexts[var])
+        }
 
-        # Trivial in the current implementation; but we might add further optimizations
-        # eventually.
-        assert not length_vars.intersection(flexible_vars)
-        assert set(variables) == set(flexible_vars.union(length_vars))
+        # "Flexible" variables are the remaining ones.
+        flexible_vars = variables.difference(length_vars).difference(int_vars)
 
-        return length_vars, flexible_vars
+        return {"length": length_vars, "int": int_vars, "flexible": flexible_vars}
 
     def generate_language_constraints(
         self,
