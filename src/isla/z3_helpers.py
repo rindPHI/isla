@@ -26,7 +26,7 @@ from typing import Callable, Tuple, cast, List, Optional, Dict, Union, Generator
 import z3
 from z3.z3 import _coerce_exprs
 
-from isla.helpers import Maybe, chain_functions
+from isla.helpers import Maybe, chain_functions, merge_dict_of_sets
 from isla.three_valued_truth import ThreeValuedTruth
 
 Z3EvalResult = Tuple[
@@ -824,3 +824,46 @@ def smt_string_val_to_string(smt_val: z3.StringVal) -> str:
     """
 
     return smt_val.as_string().replace(r"\u{}", "\x00")
+
+
+def parent_relationships_in_z3_expr(
+    expr: z3.ExprRef, parent: Optional[z3.ExprRef] = None
+) -> Dict[z3.ExprRef, Set[z3.ExprRef]]:
+    """
+    Returns a dictionary in which each expression in :code:`expr` points to the set of
+    parent operators in which it occurs.
+
+    >>> x, y = z3.Strings("x y")
+    >>> expr = z3.And(z3_eq(z3.StrToInt(x), z3.IntVal(17)), x > y)
+    >>> result = parent_relationships_in_z3_expr(expr)
+
+    >>> result[x]
+    {str.<(y, x), StrToInt(x)}
+    >>> result[y]
+    {str.<(y, x)}
+    >>> all(
+    ...     child is expr
+    ...     or child in parent_relationships_in_z3_expr(expr)
+    ...     for child in visit_z3_expr(expr))
+    True
+
+    :param expr: The expression from which to extract the parent relationship.
+    :param parent: The parent of :code:`expr`.
+    :return: A dictionary mapping from all child expressions in :code:`expr` to the set
+             of their direct parent expression inside which they occur.
+    """
+    children_results = reduce(
+        merge_dict_of_sets,
+        [
+            parent_relationships_in_z3_expr(child, expr)
+            for child in expr.children()
+            if child is not expr
+        ],
+        {},
+    )
+
+    return (
+        merge_dict_of_sets(children_results, {expr: {parent}})
+        if parent is not None
+        else children_results
+    )
