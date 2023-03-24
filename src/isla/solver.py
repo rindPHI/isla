@@ -276,11 +276,21 @@ _DEFAULTS = SolverDefaults()
 class ISLaSolver:
     """
     The solver class for ISLa formulas/constraints. Its top-level methods are
-    :meth:`~isla.solver.ISLaSolver.solve`,
-    :meth:`~isla.solver.ISLaSolver.check`,
-    :meth:`~isla.solver.ISLaSolver.parse`,
-    :meth:`~isla.solver.ISLaSolver.repair`, and
-    :meth:`~isla.solver.ISLaSolver.mutate`.
+
+    :meth:`~isla.solver.ISLaSolver.solve`
+      Use to generate solutions for an ISLa constraint.
+
+    :meth:`~isla.solver.ISLaSolver.check`
+      Use to check if an ISLa constraint is satisfied for a given input.
+
+    :meth:`~isla.solver.ISLaSolver.parse`
+      Use to parse and validate an input.
+
+    :meth:`~isla.solver.ISLaSolver.repair`
+      Use to repair an input such that it satisfies a constraint.
+
+    :meth:`~isla.solver.ISLaSolver.mutate`
+      Use to mutate an input such that the result satisfies a constraint.
     """
 
     def __init__(
@@ -313,57 +323,97 @@ class ISLaSolver:
         start_symbol: Optional[str] = _DEFAULTS.start_symbol,
     ):
         """
-        Constructs a new ISLaSolver object. Passing a grammar and a formula is mandatory.
+        The constructor of :class:`~isla.solver.ISLaSolver` accepts a large number of
+        parameters. However, all but the first one, :code:`grammar`, are *optional.*
 
-        :param grammar: The underlying grammar; either, as a "Fuzzing Book" dictionary or in BNF syntax.
+        The simplest way to construct an ISLa solver is by only providing it with a
+        grammar only; it then works like a grammar fuzzer.
+
+        >>> import random
+        >>> random.seed(1)
+
+        >>> import string
+        >>> LANG_GRAMMAR = {
+        ...     "<start>":
+        ...         ["<stmt>"],
+        ...     "<stmt>":
+        ...         ["<assgn> ; <stmt>", "<assgn>"],
+        ...     "<assgn>":
+        ...         ["<var> := <rhs>"],
+        ...     "<rhs>":
+        ...         ["<var>", "<digit>"],
+        ...     "<var>": list(string.ascii_lowercase),
+        ...     "<digit>": list(string.digits)
+        ... }
+        >>>
+        >>> from isla.solver import ISLaSolver
+        >>> solver = ISLaSolver(LANG_GRAMMAR)
+        >>>
+        >>> str(solver.solve())
+        'd := 9'
+        >>> str(solver.solve())
+        'v := n ; s := r'
+
+        :param grammar: The underlying grammar; either, as a "Fuzzing Book" dictionary
+          or in BNF syntax.
         :param formula: The formula to solve; either a string or a readily parsed
-        formula. If no formula is given, a default `true` constraint is assumed, and
-        the solver falls back to a grammar fuzzer. The number of produced solutions will
-        then be bound by `max_number_free_instantiations`.
-        :param structural_predicates: Structural predicates to use when parsing a formula.
+          formula. If no formula is given, a default `true` constraint is assumed, and
+          the solver falls back to a grammar fuzzer. The number of produced solutions
+          will then be bound by `max_number_free_instantiations`.
+        :param structural_predicates: Structural predicates to use when parsing a
+          formula.
         :param semantic_predicates: Semantic predicates to use when parsing a formula.
-        :param max_number_free_instantiations: Number of times that nonterminals that are not bound by any formula
-        should be expanded by a coverage-based fuzzer.
-        :param max_number_smt_instantiations: Number of solutions of SMT formulas that should be produced.
-        :param max_number_tree_insertion_results: The maximum number of results when solving existential quantifiers
-        by tree insertion.
-        :param enforce_unique_trees_in_queue: If true, states with the same tree as an already existing tree in the
-        queue are discarded, irrespectively of the constraint.
-        :param debug: If true, debug information about the evolution of states is collected, notably in the
-        field state_tree. The root of the tree is in the field state_tree_root. The field costs stores the computed
-        cost values for all new nodes.
-        :param cost_computer: The `CostComputer` class for computing the cost relevant to placing states
-        in ISLa's queue.
+        :param max_number_free_instantiations: Number of times that nonterminals that
+          are not bound by any formula should be expanded by a coverage-based fuzzer.
+        :param max_number_smt_instantiations: Number of solutions of SMT formulas that
+          should be produced.
+        :param max_number_tree_insertion_results: The maximum number of results when
+          solving existential quantifiers by tree insertion.
+        :param enforce_unique_trees_in_queue: If true, states with the same tree as an
+          already existing tree in the queue are discarded, irrespectively of the
+          constraint.
+        :param debug: If true, debug information about the evolution of states is
+          collected, notably in the field state_tree. The root of the tree is in the
+          field state_tree_root. The field costs stores the computed cost values for
+          all new nodes.
+        :param cost_computer: The `CostComputer` class for computing the cost relevant
+          to placing states in ISLa's queue.
         :param timeout_seconds: Number of seconds after which the solver will terminate.
-        :param global_fuzzer: If set to True, only one coverage-guided grammar fuzzer object is used to finish
-        off unconstrained open derivation trees throughout the whole generation time. This may be beneficial for
-        some targets; e.g., we experienced that CSV works significantly faster. However, the achieved k-path coverage
-        can be lower with that setting.
-        :param predicates_unique_in_int_arg: This is needed in certain cases for instantiating universal
-        integer quantifiers. The supplied predicates should have exactly one integer argument, and hold
-        for exactly one integer value once all other parameters are fixed.
-        :param fuzzer_factory: Constructor of the fuzzer to use for instantiating "free" nonterminals.
-        :param tree_insertion_methods: Combination of methods to use for existential quantifier elimination by
-        tree insertion. Full selection: `DIRECT_EMBEDDING & SELF_EMBEDDING & CONTEXT_ADDITION`.
-        :param activate_unsat_support: Set to True if you assume that a formula might be unsatisfiable. This
-        triggers additional tests for unsatisfiability that reduce input generation performance, but might
-        ensure termination (with a negative solver result) for unsatisfiable problems for which the solver
-        could otherwise diverge.
-        :param grammar_unwinding_threshold: When querying the SMT solver, ISLa passes a regular expression for
-        the syntax of the involved nonterminals. If this syntax is not regular, we unwind the respective part
-        in the reference grammar up to a depth of `grammar_unwinding_threshold`. If this is too shallow, it can
-        happen that an equation etc. cannot be solved; if it is too deep, it can negatively impact performance
-        (and quite tremendously so).
+        :param global_fuzzer: If set to True, only one coverage-guided grammar fuzzer
+          object is used to finish off unconstrained open derivation trees throughout
+          the whole generation time. This may be beneficial for some targets; e.g., we
+          experienced that CSV works significantly faster. However, the achieved k-path
+          coverage can be lower with that setting.
+        :param predicates_unique_in_int_arg: This is needed in certain cases for
+          instantiating universal integer quantifiers. The supplied predicates should
+          have exactly one integer argument, and hold for exactly one integer value
+          once all other parameters are fixed.
+        :param fuzzer_factory: Constructor of the fuzzer to use for instantiating
+          "free" nonterminals.
+        :param tree_insertion_methods: Combination of methods to use for existential
+          quantifier elimination by tree insertion. Full selection: `DIRECT_EMBEDDING &
+          SELF_EMBEDDING & CONTEXT_ADDITION`.
+        :param activate_unsat_support: Set to True if you assume that a formula might
+          be unsatisfiable. This triggers additional tests for unsatisfiability that
+          reduce input generation performance, but might ensure termination (with a
+          negative solver result) for unsatisfiable problems for which the solver could
+          otherwise diverge.
+        :param grammar_unwinding_threshold: When querying the SMT solver, ISLa passes a
+          regular expression for the syntax of the involved nonterminals. If this
+          syntax is not regular, we unwind the respective part in the reference grammar
+          up to a depth of `grammar_unwinding_threshold`. If this is too shallow, it can
+          happen that an equation etc. cannot be solved; if it is too deep, it can
+          negatively impact performance (and quite tremendously so).
         :param initial_tree: An initial input tree for the queue, if the solver shall
-        not start from the tree `(<start>, None)`.
+          not start from the tree `(<start>, None)`.
         :param enable_optimized_z3_queries: Enables preprocessing of Z3 queries (mainly
-        numeric problems concerning things like length). This can improve performance
-        significantly; however, it might happen that certain problems cannot be solved
-        anymore. In that case, this option can/should be deactivated.
+          numeric problems concerning things like length). This can improve performance
+          significantly; however, it might happen that certain problems cannot be solved
+          anymore. In that case, this option can/should be deactivated.
         :param start_symbol: This is an alternative to `initial_tree` for starting with
-        a start symbol different form `<start>`. If `start_symbol` is provided, a tree
-        consisting of a single root node with the value of `start_symbol` is chosen as
-        initial tree.
+          a start symbol different form `<start>`. If `start_symbol` is provided, a tree
+          consisting of a single root node with the value of `start_symbol` is chosen as
+          initial tree.
         """
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -391,7 +441,7 @@ class ISLaSolver:
 
         assert (
             start_symbol is None or not initial_tree.is_present()
-        ), "You have to *either* supply a start symbol *or* an initial tree."
+        ), "You cannot supply a start symbol *and* an initial tree."
 
         if start_symbol is not None:
             self.grammar |= {"<start>": [start_symbol]}
@@ -536,66 +586,104 @@ class ISLaSolver:
             for state in initial_states:
                 self.costs[state] = self.compute_cost(state)
 
-    # TODO: optimize_z3_queries; generally add other params if missing
-    def copy_without_queue(
-        self,
-        grammar: Maybe[Grammar | str] = Maybe.nothing(),
-        formula: Maybe[language.Formula | str] = Maybe.nothing(),
-        max_number_free_instantiations: Maybe[int] = Maybe.nothing(),
-        max_number_smt_instantiations: Maybe[int] = Maybe.nothing(),
-        max_number_tree_insertion_results: Maybe[int] = Maybe.nothing(),
-        enforce_unique_trees_in_queue: Maybe[bool] = Maybe.nothing(),
-        debug: Maybe[bool] = Maybe.nothing(),
-        cost_computer: Maybe["CostComputer"] = Maybe.nothing(),
-        timeout_seconds: Maybe[int] = Maybe.nothing(),
-        global_fuzzer: Maybe[bool] = Maybe.nothing(),
-        predicates_unique_in_int_arg: Maybe[
-            Tuple[language.SemanticPredicate, ...]
-        ] = Maybe.nothing(),
-        fuzzer_factory: Maybe[Callable[[Grammar], GrammarFuzzer]] = Maybe.nothing(),
-        tree_insertion_methods: Maybe[int] = Maybe.nothing(),
-        activate_unsat_support: Maybe[bool] = Maybe.nothing(),
-        grammar_unwinding_threshold: Maybe[int] = Maybe.nothing(),
-        initial_tree: Maybe[DerivationTree] = Maybe.nothing(),
-    ):
-        result = ISLaSolver(
-            grammar=grammar.orelse(lambda: self.grammar).get(),
-            formula=formula.orelse(lambda: self.formula).get(),
-            max_number_free_instantiations=max_number_free_instantiations.orelse(
-                lambda: self.max_number_free_instantiations
-            ).get(),
-            max_number_smt_instantiations=max_number_smt_instantiations.orelse(
-                lambda: self.max_number_smt_instantiations
-            ).get(),
-            max_number_tree_insertion_results=max_number_tree_insertion_results.orelse(
-                lambda: self.max_number_tree_insertion_results
-            ).get(),
-            enforce_unique_trees_in_queue=enforce_unique_trees_in_queue.orelse(
-                lambda: self.enforce_unique_trees_in_queue
-            ).get(),
-            debug=debug.orelse(lambda: self.debug).get(),
-            cost_computer=cost_computer.orelse(lambda: self.cost_computer).get(),
-            timeout_seconds=timeout_seconds.orelse(lambda: self.timeout_seconds).a,
-            global_fuzzer=global_fuzzer.orelse(lambda: self.global_fuzzer).get(),
-            predicates_unique_in_int_arg=predicates_unique_in_int_arg.orelse(
-                lambda: self.predicates_unique_in_int_arg
-            ).get(),
-            fuzzer_factory=fuzzer_factory.orelse(lambda: self.fuzzer_factory).get(),
-            tree_insertion_methods=tree_insertion_methods.orelse(
-                lambda: self.tree_insertion_methods
-            ).get(),
-            activate_unsat_support=activate_unsat_support.orelse(
-                lambda: self.activate_unsat_support
-            ).get(),
-            grammar_unwinding_threshold=grammar_unwinding_threshold.orelse(
-                lambda: self.grammar_unwinding_threshold
-            ).get(),
-            initial_tree=initial_tree,
-        )
+    def solve(self) -> DerivationTree:
+        """
+        Attempts to compute a solution to the given ISLa formula. Returns that solution,
+        if any. This function can be called repeatedly to obtain more solutions until
+        one of two exception types is raised: A :class:`StopIteration` indicates that
+        no more solution can be found; a :class:`TimeoutError` is raised if a timeout
+        occurred. After that, an exception will be raised every time.
 
-        result.regex_cache = self.regex_cache
+        The timeout can be controlled by the :code:`timeout_seconds`
+        :meth:`constructor <isla.solver.ISLaSolver.__init__>` parameter.
 
-        return result
+        :return: A solution for the ISLa formula passed to the
+          :class:`isla.solver.ISLaSolver`.
+        """
+        if self.timeout_seconds is not None and self.start_time is None:
+            self.start_time = int(time.time())
+
+        while self.queue:
+            self.step_cnt += 1
+
+            # import dill as pickle
+            # state_hash = 9107154106757938105
+            # out_file = "/tmp/saved_debug_state"
+            # if hash(self.queue[0][1]) == state_hash:
+            #     with open(out_file, 'wb') as debug_state_file:
+            #         pickle.dump(self, debug_state_file)
+            #     print(f"Dumping state to {out_file}")
+            #     exit()
+
+            if self.timeout_seconds is not None:
+                if int(time.time()) - self.start_time > self.timeout_seconds:
+                    self.logger.debug("TIMEOUT")
+                    raise TimeoutError(self.timeout_seconds)
+
+            if self.solutions:
+                solution = self.solutions.pop(0)
+                self.logger.debug('Found solution "%s"', solution)
+                return solution
+
+            cost: int
+            state: SolutionState
+            cost, state = heapq.heappop(self.queue)
+
+            self.current_level = state.level
+            self.tree_hashes_in_queue.discard(state.tree.structural_hash())
+            self.state_hashes_in_queue.discard(hash(state))
+
+            if self.debug:
+                self.current_state = state
+                self.state_tree.setdefault(state, [])
+            self.logger.debug(
+                "Polling new state (%s, %s) (hash %d, cost %f)",
+                state.constraint,
+                state.tree.to_string(show_open_leaves=True, show_ids=True),
+                hash(state),
+                cost,
+            )
+            self.logger.debug("Queue length: %s", len(self.queue))
+
+            assert not isinstance(state.constraint, language.DisjunctiveFormula)
+
+            # Instantiate all top-level structural predicate formulas.
+            state = self.instantiate_structural_predicates(state)
+
+            # Apply the first elimination function that is applicable.
+            # The later ones are ignored.
+            monad = chain_functions(
+                [
+                    self.noop_on_false_constraint,
+                    self.eliminate_existential_integer_quantifiers,
+                    self.instantiate_universal_integer_quantifiers,
+                    self.match_all_universal_formulas,
+                    self.expand_to_match_quantifiers,
+                    self.eliminate_all_semantic_formulas,
+                    self.eliminate_all_ready_semantic_predicate_formulas,
+                    self.eliminate_and_match_first_existential_formula_and_expand,
+                    self.assert_remaining_formulas_are_lazy_binding_semantic,
+                    self.finish_unconstrained_trees,
+                    self.expand,
+                ],
+                state,
+            )
+
+            def process_and_extend_solutions(
+                result_states: List[SolutionState],
+            ) -> None:
+                assert result_states is not None
+                self.solutions.extend(self.process_new_states(result_states))
+
+            monad.if_present(process_and_extend_solutions)
+
+        if self.solutions:
+            solution = self.solutions.pop(0)
+            self.logger.debug('Found solution "%s"', solution)
+            return solution
+        else:
+            self.logger.debug("UNSAT")
+            raise StopIteration()
 
     def check(self, inp: DerivationTree | str) -> bool:
         """
@@ -634,8 +722,8 @@ class ISLaSolver:
 
         :param inp: The input to parse.
         :param nonterminal: The nonterminal to start parsing with, if a string
-        corresponding to a sub-grammar shall be parsed. We don't check semantic
-        correctness in that case.
+          corresponding to a sub-grammar shall be parsed. We don't check semantic
+          correctness in that case.
         :param skip_check: If True, the semantic check is left out.
         :return: A parsed `DerivationTree`.
         """
@@ -671,7 +759,7 @@ class ISLaSolver:
 
         :param inp: The input to fix.
         :param fix_timeout_seconds: A timeout used when calling the solver for an
-        abstracted input. Usually, a low timeout suffices.
+          abstracted input. Usually, a low timeout suffices.
         :return: A fixed input (or the original, if it was not broken) or nothing.
         """
 
@@ -772,7 +860,7 @@ class ISLaSolver:
         :param min_mutations: The minimum number of mutation steps to perform.
         :param max_mutations: The maximum number of mutation steps to perform.
         :param fix_timeout_seconds: A timeout used when calling the solver for fixing
-        an abstracted input. Usually, a low timeout suffices.
+          an abstracted input. Usually, a low timeout suffices.
         :return: A mutated input.
         """
 
@@ -792,101 +880,71 @@ class ISLaSolver:
             if maybe_fixed.is_present():
                 return maybe_fixed.get()
 
-    def solve(self) -> DerivationTree:
-        """
-        Attempts to compute a solution to the given ISLa formula. Returns that solution,
-        if any. This function can be called repeatedly to obtain more solutions until
-        one of two exception types is raised: A `StopIteration` indicates that no more
-        solution can be found; a `TimeoutError` is raised if a timeout occurred.
-        After that, an exception will be raised every time.
+    def copy_without_queue(
+        self,
+        grammar: Maybe[Grammar | str] = Maybe.nothing(),
+        formula: Maybe[language.Formula | str] = Maybe.nothing(),
+        max_number_free_instantiations: Maybe[int] = Maybe.nothing(),
+        max_number_smt_instantiations: Maybe[int] = Maybe.nothing(),
+        max_number_tree_insertion_results: Maybe[int] = Maybe.nothing(),
+        enforce_unique_trees_in_queue: Maybe[bool] = Maybe.nothing(),
+        debug: Maybe[bool] = Maybe.nothing(),
+        cost_computer: Maybe["CostComputer"] = Maybe.nothing(),
+        timeout_seconds: Maybe[int] = Maybe.nothing(),
+        global_fuzzer: Maybe[bool] = Maybe.nothing(),
+        predicates_unique_in_int_arg: Maybe[
+            Tuple[language.SemanticPredicate, ...]
+        ] = Maybe.nothing(),
+        fuzzer_factory: Maybe[Callable[[Grammar], GrammarFuzzer]] = Maybe.nothing(),
+        tree_insertion_methods: Maybe[int] = Maybe.nothing(),
+        activate_unsat_support: Maybe[bool] = Maybe.nothing(),
+        grammar_unwinding_threshold: Maybe[int] = Maybe.nothing(),
+        initial_tree: Maybe[DerivationTree] = Maybe.nothing(),
+        enable_optimized_z3_queries: Maybe[bool] = Maybe.nothing(),
+        start_symbol: Optional[str] = None,
+    ):
+        result = ISLaSolver(
+            grammar=grammar.orelse(lambda: self.grammar).get(),
+            formula=formula.orelse(lambda: self.formula).get(),
+            max_number_free_instantiations=max_number_free_instantiations.orelse(
+                lambda: self.max_number_free_instantiations
+            ).get(),
+            max_number_smt_instantiations=max_number_smt_instantiations.orelse(
+                lambda: self.max_number_smt_instantiations
+            ).get(),
+            max_number_tree_insertion_results=max_number_tree_insertion_results.orelse(
+                lambda: self.max_number_tree_insertion_results
+            ).get(),
+            enforce_unique_trees_in_queue=enforce_unique_trees_in_queue.orelse(
+                lambda: self.enforce_unique_trees_in_queue
+            ).get(),
+            debug=debug.orelse(lambda: self.debug).get(),
+            cost_computer=cost_computer.orelse(lambda: self.cost_computer).get(),
+            timeout_seconds=timeout_seconds.orelse(lambda: self.timeout_seconds).a,
+            global_fuzzer=global_fuzzer.orelse(lambda: self.global_fuzzer).get(),
+            predicates_unique_in_int_arg=predicates_unique_in_int_arg.orelse(
+                lambda: self.predicates_unique_in_int_arg
+            ).get(),
+            fuzzer_factory=fuzzer_factory.orelse(lambda: self.fuzzer_factory).get(),
+            tree_insertion_methods=tree_insertion_methods.orelse(
+                lambda: self.tree_insertion_methods
+            ).get(),
+            activate_unsat_support=activate_unsat_support.orelse(
+                lambda: self.activate_unsat_support
+            ).get(),
+            grammar_unwinding_threshold=grammar_unwinding_threshold.orelse(
+                lambda: self.grammar_unwinding_threshold
+            ).get(),
+            initial_tree=initial_tree,
+            enable_optimized_z3_queries=enable_optimized_z3_queries.orelse(
+                lambda: self.enable_optimized_z3_queries
+            ).get(),
+            start_symbol=start_symbol,
+        )
 
-        The timeout can be controlled by the `timeout_seconds` constructor parameter.
+        result.regex_cache = self.regex_cache
 
-        :return: A solution for the ISLa formula passed to the `ISLaSolver`.
-        """
-        if self.timeout_seconds is not None and self.start_time is None:
-            self.start_time = int(time.time())
-
-        while self.queue:
-            self.step_cnt += 1
-
-            # import dill as pickle
-            # state_hash = 9107154106757938105
-            # out_file = "/tmp/saved_debug_state"
-            # if hash(self.queue[0][1]) == state_hash:
-            #     with open(out_file, 'wb') as debug_state_file:
-            #         pickle.dump(self, debug_state_file)
-            #     print(f"Dumping state to {out_file}")
-            #     exit()
-
-            if self.timeout_seconds is not None:
-                if int(time.time()) - self.start_time > self.timeout_seconds:
-                    self.logger.debug("TIMEOUT")
-                    raise TimeoutError(self.timeout_seconds)
-
-            if self.solutions:
-                solution = self.solutions.pop(0)
-                self.logger.debug('Found solution "%s"', solution)
-                return solution
-
-            cost: int
-            state: SolutionState
-            cost, state = heapq.heappop(self.queue)
-
-            self.current_level = state.level
-            self.tree_hashes_in_queue.discard(state.tree.structural_hash())
-            self.state_hashes_in_queue.discard(hash(state))
-
-            if self.debug:
-                self.current_state = state
-                self.state_tree.setdefault(state, [])
-            self.logger.debug(
-                "Polling new state (%s, %s) (hash %d, cost %f)",
-                state.constraint,
-                state.tree.to_string(show_open_leaves=True, show_ids=True),
-                hash(state),
-                cost,
-            )
-            self.logger.debug("Queue length: %s", len(self.queue))
-
-            assert not isinstance(state.constraint, language.DisjunctiveFormula)
-
-            # Instantiate all top-level structural predicate formulas.
-            state = self.instantiate_structural_predicates(state)
-
-            # Apply the first elimination function that is applicable.
-            # The later ones are ignored.
-            monad = chain_functions(
-                [
-                    self.noop_on_false_constraint,
-                    self.eliminate_existential_integer_quantifiers,
-                    self.instantiate_universal_integer_quantifiers,
-                    self.match_all_universal_formulas,
-                    self.expand_to_match_quantifiers,
-                    self.eliminate_all_semantic_formulas,
-                    self.eliminate_all_ready_semantic_predicate_formulas,
-                    self.eliminate_and_match_first_existential_formula_and_expand,
-                    self.assert_remaining_formulas_are_lazy_binding_semantic,
-                    self.finish_unconstrained_trees,
-                    self.expand,
-                ],
-                state,
-            )
-
-            def process_and_extend_solutions(
-                result_states: List[SolutionState],
-            ) -> None:
-                assert result_states is not None
-                self.solutions.extend(self.process_new_states(result_states))
-
-            monad.if_present(process_and_extend_solutions)
-        if self.solutions:
-            solution = self.solutions.pop(0)
-            self.logger.debug('Found solution "%s"', solution)
-            return solution
-        else:
-            self.logger.debug("UNSAT")
-            raise StopIteration()
+        return result
 
     @staticmethod
     def noop_on_false_constraint(
