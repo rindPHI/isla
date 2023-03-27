@@ -177,13 +177,28 @@ class SolutionState:
 
 @dataclass(frozen=True)
 class CostWeightVector:
-    tree_closing_cost: float = (0,)
-    constraint_cost: float = (0,)
-    derivation_depth_penalty: float = (0,)
-    low_k_coverage_penalty: float = (0,)
+    """
+    Collection of weights for the
+    :class:`~isla.solver.GrammarBasedBlackboxCostComputer`.
+    """
+
+    tree_closing_cost: float = 0
+    constraint_cost: float = 0
+    derivation_depth_penalty: float = 0
+    low_k_coverage_penalty: float = 0
     low_global_k_path_coverage_penalty: float = 0
 
     def __iter__(self):
+        """
+        Use tuple assignment for objects of this type:
+
+        >>> v = CostWeightVector(1, 2, 3, 4, 5)
+        >>> a, b, c, d, e = v
+        >>> (a, b, c, d, e)
+        (1, 2, 3, 4, 5)
+
+        :return: An iterator of the fixed-size list of elements of the weight vector.
+        """
         return iter(
             [
                 self.tree_closing_cost,
@@ -194,7 +209,17 @@ class CostWeightVector:
             ]
         )
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: int) -> float:
+        """
+        Tuple-like access of elements of the vector.
+
+        >>> v = CostWeightVector(1, 2, 3, 4, 5)
+        >>> v[3]
+        4
+
+        :param item: A numeric index.
+        :return: The element at index :code:`item`.
+        """
         assert isinstance(item, int)
         return [
             self.tree_closing_cost,
