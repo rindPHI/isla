@@ -186,7 +186,7 @@ using a backslash character: :code:`\"`. Most notably, this also holds for
 :ref:`SMT-LIB expressions <smt-lib-expressions>`, which is a deviation from the SMT-LIB
 standard where quotes are escaped by doubling them. In standard SMT-LIB, a
 quotation mark inside double quotes is expressed (:code:`""""`), whereas in ISLa, one
-writes :code:`"\""`.
+writes :code:`"\\""`.
 
 .. code-block:: abnf
 
@@ -404,7 +404,7 @@ The parser rules for match expressions are depicted below in the EBNF format.
 .. _simplified-syntax:
 
 Simplified Syntax
-^^^^^^^^^^^^^^^^^
+-----------------
 
 `ISLa 0.3 <https://github.com/rindPHI/isla/blob/v0.3/CHANGELOG.md>`_ added a
 simplified syntax layer allowing to specify ISLa constraints much more concisely
@@ -786,13 +786,13 @@ If :math:`t` is the initial tree and :math:`t_1` and :math:`t_2` are the two
 expansions, then both :math:`t\Rightarrow{}t_1` and :math:`t\Rightarrow{}t_2` hold.
 Now, let :math:`\Rightarrow^\star` be the reflexive and transitive closure of
 :math:`\Rightarrow`. Then, the set of derivation trees :math:`T(G)` represented by a
-CFG :math:`G` is defined as :math:`T(G):=\\{t\,\vert\,t_0\Rightarrow^\star{}t\\}`,
+CFG :math:`G` is defined as :math:`T(G):=\{t\,\vert\,t_0\Rightarrow^\star{}t\}`,
 where :math:`t_0` is a derivation tree consisting only of the grammar's start
 symbol.
 
 Assuming the relation :math:`\models` has been defined, we define the semantics
 :math:`[[\varphi]]` of an ISLa formula :math:`\varphi` as
-:math:`[[\varphi]]:=\\{t\in{}T(G)\,\vert\,t\models\varphi\wedge\mathit{closed}(t)\\}`,
+:math:`[[\varphi]]:=\{t\in{}T(G)\,\vert\,t\models\varphi\wedge\mathit{closed}(t)\}`,
 where :math:`G` is the reference grammar for :math:`\varphi` and
 the predicate :math:`\mathit{closed}` holds for all derivation trees whose leaves
 are labeled with *terminals*.
@@ -823,7 +823,7 @@ constant* using the syntax :code:`const constant_name: <constant_type>;` (cf. th
 present, a constant :code:`start` of type :code:`<start>` will be assumed. Assuming :code:`c` is
 this constant, then :math:`t\models\varphi` is
 
-* *undefined* if :math:`\mathit{freeVars}(\varphi)\neq\\{c\\}`.
+* *undefined* if :math:`\mathit{freeVars}(\varphi)\neq\{c\}`.
 * equivalent to :math:`[c\mapsto{}t]\models\varphi`, where :math:`[c\mapsto{}t]` is a variable
   assignment mapping :math:`c` to :math:`t`.
 

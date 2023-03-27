@@ -6,6 +6,7 @@ Developer's Guide to ISLa
    :caption: Contents:
 
    solver
+   utilities/index
 
 .. note::
    This page is under construction.
