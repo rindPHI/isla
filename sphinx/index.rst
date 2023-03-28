@@ -248,3 +248,4 @@ Indices and tables
    examples
    islaspec
    developing/index
+   todo
