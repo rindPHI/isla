@@ -1,1 +1,2 @@
+git+https://github.com/rindPHI/isla@main#egg=isla-solver
 sphinx-book-theme>=1.0.0
