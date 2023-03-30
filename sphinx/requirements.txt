@@ -1,2 +1,3 @@
-isla-solver>=1.11.0
+git+https://github.com/rindPHI/isla@main#egg=isla-solver
 sphinx-book-theme>=1.0.0
+pydata-sphinx-theme==0.13.1

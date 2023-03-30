@@ -645,6 +645,49 @@ class MonadPlus(Generic[T], Monad[T]):
 
 @dataclass(frozen=True)
 class Maybe(Generic[T], MonadPlus[Optional[T]]):
+    """
+    A monad for working with values that may or may not be present.
+
+    Examples:
+    >>> m = Maybe(1)
+    >>> m
+    Maybe(a=1)
+    >>> m.is_present()
+    True
+    >>> Maybe.nothing().is_present()
+    False
+    >>> Maybe(None) == Maybe.nothing()
+    True
+    >>> Maybe.from_iterator(iter([])).is_present()
+    False
+    >>> m = Maybe.from_iterator(iter([1, 2, 3]))
+    >>> m
+    Maybe(a=1)
+    >>> m.map(lambda x: x * 2).get()
+    2
+    >>> m.bind(lambda x: Maybe(x + 1)).get()
+    2
+    >>> m.orelse(lambda: 0).get()
+    1
+    >>> Maybe.nothing().orelse(lambda: 0).get()
+    0
+    >>> m.if_present(print)
+    1
+    Maybe(a=1)
+    >>> Maybe(None).raise_if_not_present(lambda: ValueError("No value"))
+    Traceback (most recent call last):
+        ...
+    ValueError: No value
+    >>> m.get()
+    1
+    >>> Maybe(None).get_unsafe() is None
+    True
+    >>> m + Maybe(4)
+    Maybe(a=1)
+    >>> Maybe.nothing() + (lambda x: Maybe(x * 2), 2)
+    Maybe(a=4)
+    """
+
     a: Optional[T]
 
     def bind(self, f: Callable[[T], "Maybe[S]"]) -> "Maybe[S]":
