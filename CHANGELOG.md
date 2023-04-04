@@ -5,6 +5,12 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.11.2] - 2023-04-04
+
+### Changed
+
+- Worked on documentation; now available on https://isla.readthedocs.io/.
+
 ## [1.11.1] - 2023-03-24
 
 ### Changed
