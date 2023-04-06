@@ -1700,9 +1700,10 @@ class ISLaSolver:
         semantic_predicate_formulas = sorted(
             semantic_predicate_formulas,
             key=lambda f: (
-                2 * cast(language.SemanticPredicateFormula, f.args[0]).order + 100
+                2 * cast(language.SemanticPredicateFormula, f.args[0]).predicate.order
+                + 100
                 if isinstance(f, language.NegatedFormula)
-                else f.order
+                else f.predicate.order
             ),
         )
 
@@ -1748,23 +1749,22 @@ class ISLaSolver:
                 )
                 continue
 
+            substitution = subtree_solutions(evaluation_result.result)
+
             new_constraint = language.replace_formula(
                 result.constraint,
                 semantic_predicate_formula,
                 sc.false() if negated else sc.true(),
-            ).substitute_expressions(evaluation_result.result)
+            ).substitute_expressions(substitution)
 
             for k in range(idx + 1, len(semantic_predicate_formulas)):
                 semantic_predicate_formulas[k] = cast(
                     language.SemanticPredicateFormula,
-                    semantic_predicate_formulas[k].substitute_expressions(
-                        evaluation_result.result
-                    ),
+                    semantic_predicate_formulas[k].substitute_expressions(substitution),
                 )
 
-            result = SolutionState(
-                new_constraint, result.tree.substitute(evaluation_result.result)
-            )
+            result = SolutionState(new_constraint, result.tree.substitute(substitution))
+            assert self.graph.tree_is_valid(result.tree)
 
         return Maybe([result] if changed else None)
 
@@ -2292,7 +2292,8 @@ class ISLaSolver:
             for cluster in formula_clusters
         ]
 
-        # These solutions are all independent, such that we can combine each solution with all others.
+        # These solutions are all independent, such that we can combine each solution
+        # with all others.
         solutions: List[
             Dict[Union[language.Constant, DerivationTree], DerivationTree]
         ] = [
@@ -2300,37 +2301,9 @@ class ISLaSolver:
             for dicts in itertools.product(*all_solutions)
         ]
 
-        solutions_with_subtrees: List[
-            Dict[Union[language.Constant, DerivationTree], DerivationTree]
-        ] = []
-        for solution in solutions:
-            # We also have to instantiate all subtrees of the substituted element.
-
-            solution_with_subtrees: Dict[
-                Union[language.Constant, DerivationTree], DerivationTree
-            ] = {}
-            for orig, subst in solution.items():
-                if isinstance(orig, language.Constant):
-                    solution_with_subtrees[orig] = subst
-                    continue
-
-                assert isinstance(
-                    orig, DerivationTree
-                ), f"Expected a DerivationTree, given: {type(orig).__name__}"
-
-                for path, tree in [
-                    (p, t) for p, t in orig.paths() if t not in solution_with_subtrees
-                ]:
-                    assert subst.is_valid_path(path), (
-                        f"SMT Solution {subst} does not have "
-                        f"orig path {path} from tree {orig} (state {hash(state)})"
-                    )
-                    solution_with_subtrees[tree] = subst.get_subtree(path)
-
-            solutions_with_subtrees.append(solution_with_subtrees)
-
         results = []
-        for solution in solutions_with_subtrees:
+        # We also have to instantiate all subtrees of the substituted element.
+        for solution in map(subtree_solutions, solutions):
             if solution:
                 new_state = SolutionState(
                     state.constraint.substitute_expressions(solution),
@@ -4056,3 +4029,26 @@ def create_fixed_length_tree(
                 )
 
     return None
+
+
+def subtree_solutions(
+    solution: Dict[language.Constant | DerivationTree, DerivationTree]
+) -> Dict[language.Variable | DerivationTree, DerivationTree]:
+    solution_with_subtrees: Dict[
+        language.Variable | DerivationTree, DerivationTree
+    ] = {}
+    for orig, subst in solution.items():
+        if isinstance(orig, language.Variable):
+            solution_with_subtrees[orig] = subst
+            continue
+
+        assert isinstance(
+            orig, DerivationTree
+        ), f"Expected a DerivationTree, given: {type(orig).__name__}"
+
+        for path, tree in [
+            (p, t) for p, t in orig.paths() if t not in solution_with_subtrees
+        ]:
+            solution_with_subtrees[tree] = subst.get_subtree(path)
+
+    return solution_with_subtrees

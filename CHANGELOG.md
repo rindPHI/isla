@@ -5,6 +5,16 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.13.1] - 2023-04-06
+
+### Changed
+
+- BugFix in `ISLaSolver.eliminate_all_ready_semantic_predicate_formulas`: Subtrees in
+  computed substitutions are now considered (as they were already for SMT formulas).
+- When defining a new semantic predicate, an `order` parameter can be set that
+  specifies when a semantic predicate is evaluated relatively to the other semantic
+  predicates.
+
 ## [1.13.0] - 2023-04-06
 
 ### Changed

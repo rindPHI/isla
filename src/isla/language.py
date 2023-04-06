@@ -1045,22 +1045,26 @@ class SemanticPredicate:
         binds_tree: Optional[
             Callable[[DerivationTree, Tuple[SemPredArg, ...]], bool] | bool
         ] = None,
+        order: int = 0,
     ):
         """
-        :param name:
-        :param arity:
-        :param eval_fun:
+        :param name: The name of this predicate.
+        :param arity: The number of arguments this predicate accepts in a formula.
+        :param eval_fun: An evaluation function/solver for this predicate.
         :param binds_tree: Given a derivation tree and the arguments for the predicate, this function tests whether
-        the tree is bound by the predicate formula. The effect of this is that bound trees cannot be freely expanded,
-        similarly to nonterminals bound by a universal quantifier. A semantic predicate may also not bind any of its
-        arguments; in that case, we can freely instantiate the arguments and then ask the predicate for a "fix" if
-        the instantiation is non-conformant. Most semantic predicates do not bind their arguments. Pass nothing or
-        True for this parameter for predicates binding all trees in all their arguments. Pass False for predicates
-        binding no trees at all. Pass a custom function for anything special.
+          the tree is bound by the predicate formula. The effect of this is that bound trees cannot be freely expanded,
+          similarly to nonterminals bound by a universal quantifier. A semantic predicate may also not bind any of its
+          arguments; in that case, we can freely instantiate the arguments and then ask the predicate for a "fix" if
+          the instantiation is non-conformant. Most semantic predicates do not bind their arguments. Pass nothing or
+          True for this parameter for predicates binding all trees in all their arguments. Pass False for predicates
+          binding no trees at all. Pass a custom function for anything special.
+        :param order: Specifies in which order this predicate is to be evaluated,
+          relative to other semantic predicates in the same formula.
         """
         self.name = name
         self.arity = arity
         self.eval_fun = eval_fun
+        self.order = order
 
         if binds_tree is not None and binds_tree is not True:
             if binds_tree is False:
@@ -1099,11 +1103,10 @@ class SemanticPredicate:
 
 
 class SemanticPredicateFormula(Formula):
-    def __init__(self, predicate: SemanticPredicate, *args: SemPredArg, order: int = 0):
+    def __init__(self, predicate: SemanticPredicate, *args: SemPredArg):
         assert len(args) == predicate.arity
         self.predicate = predicate
         self.args: Tuple[SemPredArg, ...] = args
-        self.order = order
 
     def evaluate(
         self, graph: gg.GrammarGraph, negate: bool = False
@@ -1119,7 +1122,6 @@ class SemanticPredicateFormula(Formula):
         return SemanticPredicateFormula(
             self.predicate,
             *[arg if arg not in subst_map else subst_map[arg] for arg in self.args],
-            order=self.order,
         )
 
     def substitute_expressions(
@@ -1151,7 +1153,7 @@ class SemanticPredicateFormula(Formula):
 
             new_args.append(tree.substitute({k: v for k, v in subst_map.items()}))
 
-        return SemanticPredicateFormula(self.predicate, *new_args, order=self.order)
+        return SemanticPredicateFormula(self.predicate, *new_args)
 
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([])
