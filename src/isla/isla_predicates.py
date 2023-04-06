@@ -17,8 +17,10 @@
 # along with ISLa.  If not, see <http://www.gnu.org/licenses/>.
 
 import copy
+import functools
 import random
 from typing import Union, List, Optional, Dict, Tuple, Callable
+import heapq
 
 from grammar_graph.gg import GrammarGraph
 
@@ -309,26 +311,28 @@ def count(  # noqa: C901
     # Try to add more needles to in_tree, such that no more needles can be obtained
     # in the resulting tree from expanding leaf nonterminals.
 
-    def num_needles(candidate):
+    @functools.lru_cache
+    def num_needles(candidate: DerivationTree) -> int:
         return len(candidate.filter(lambda t: t.value == needle))
 
     canonical_grammar = canonical(graph.to_grammar())
 
-    candidates = [
-        candidate
-        for candidate in insert_tree(
-            canonical_grammar,
-            DerivationTree(needle, None),
-            in_tree,
-            graph=graph,
-            methods=DIRECT_EMBEDDING | SELF_EMBEDDING,
-        )
-        if num_needles(candidate) <= target_num_needle_occurrences
-    ]
-    already_seen = {candidate.structural_hash() for candidate in candidates}
+    candidates: List[Tuple[int, DerivationTree]] = []
+
+    for candidate in insert_tree(
+        canonical_grammar,
+        DerivationTree(needle, None),
+        in_tree,
+        graph=graph,
+        methods=DIRECT_EMBEDDING | SELF_EMBEDDING,
+    ):
+        if num_needles(candidate) <= target_num_needle_occurrences:
+            heapq.heappush(candidates, (-num_needles(candidate), candidate))
+
+    already_seen = {candidate.structural_hash() for _, candidate in candidates}
     while candidates:
-        candidate = candidates.pop(0)
-        candidate_needle_occurrences = num_needles(candidate)
+        candidate_needle_occurrences, candidate = heapq.heappop(candidates)
+        candidate_needle_occurrences *= -1
 
         leaves_reaching_needle = [
             (leaf_path, leaf_node)
@@ -356,32 +360,41 @@ def count(  # noqa: C901
             else:
                 return SemPredEvalResult({in_tree: expanded_node})
 
-        if candidate_needle_occurrences < target_num_needle_occurrences:
-            new_candidates = [
-                new_candidate
-                for new_candidate in insert_tree(
-                    canonical_grammar,
-                    DerivationTree(needle, None),
-                    candidate,
-                    graph=graph,
-                    methods=DIRECT_EMBEDDING | SELF_EMBEDDING,
-                    # Note: We only query for one solution, which is highly beneficial
-                    #       for performance. This worked for our examples so far
-                    #       (CSV, network packets). In cases where some insertions
-                    #       are invalid, we might have to ask for more solutions,
-                    #       though.
-                    max_num_solutions=1,
-                )
-                if (
-                    num_needles(new_candidate) <= target_num_needle_occurrences
-                    and not new_candidate.structural_hash() in already_seen
-                )
-            ]
+            # There's no expansion without a `needle`: This tree is of no use
+            assert expansion is None
+            continue
 
-            candidates.extend(new_candidates)
-            already_seen.update(
-                {new_candidate.structural_hash() for new_candidate in new_candidates}
+        if candidate_needle_occurrences > target_num_needle_occurrences:
+            continue
+
+        assert candidate_needle_occurrences < target_num_needle_occurrences
+
+        for new_candidate in insert_tree(
+            canonical_grammar,
+            DerivationTree(needle, None),
+            candidate,
+            graph=graph,
+            methods=DIRECT_EMBEDDING | SELF_EMBEDDING,
+            # Note: We only query for one solution, which is highly beneficial
+            #       for performance. This worked for our examples so far
+            #       (CSV, network packets). In cases where some insertions
+            #       are invalid, we might have to ask for more solutions,
+            #       though.
+            max_num_solutions=1,
+        ):
+            new_candidate_needle_occurrences = num_needles(new_candidate)
+            if not (
+                target_num_needle_occurrences
+                >= new_candidate_needle_occurrences
+                > candidate_needle_occurrences
+                and not new_candidate.structural_hash() in already_seen,
+            ):
+                continue
+
+            heapq.heappush(
+                candidates, (-new_candidate_needle_occurrences, new_candidate)
             )
+            already_seen.add(new_candidate.structural_hash())
 
     return SemPredEvalResult(False)
 

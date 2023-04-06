@@ -3317,6 +3317,46 @@ class ISLaSolver:
         if nonterminal in self.regex_cache:
             return self.regex_cache[nonterminal]
 
+        # For definitions like `<a> ::= <b>`, we only compute the regular expression
+        # for `<b>`. That way, we might save some calls if `<b>` is used multiple times
+        # (e.g., as in `<byte>`).
+        canonical_expansions = self.canonical_grammar[nonterminal]
+
+        if (
+            len(canonical_expansions) == 1
+            and len(canonical_expansions[0]) == 1
+            and is_nonterminal(canonical_expansions[0][0])
+        ):
+            sub_nonterminal = canonical_expansions[0][0]
+            assert (
+                nonterminal != sub_nonterminal
+            ), f"Expansion {nonterminal} => {sub_nonterminal}: Infinite recursion!"
+            return self.regex_cache.setdefault(
+                nonterminal, self.extract_regular_expression(sub_nonterminal)
+            )
+
+        # Similarly, for definitions like `<a> ::= <b> " x " <c>`, where `<b>` and `<c>`
+        # don't reach `<a>`, we only compute the regular expressions for `<b>` and `<c>`
+        # and return a concatenation. This also saves us expensive conversions (e.g.,
+        # for `<seq> ::= <byte> <byte>`).
+        if (
+            len(canonical_expansions) == 1
+            and any(is_nonterminal(elem) for elem in canonical_expansions[0])
+            and all(
+                not is_nonterminal(elem)
+                or elem != nonterminal
+                and not self.graph.reachable(elem, nonterminal)
+                for elem in canonical_expansions[0]
+            )
+        ):
+            result_elements: List[z3.ReRef] = [
+                z3.Re(elem)
+                if not is_nonterminal(elem)
+                else self.extract_regular_expression(elem)
+                for elem in canonical_expansions[0]
+            ]
+            return self.regex_cache.setdefault(nonterminal, z3.Concat(*result_elements))
+
         regex_conv = RegexConverter(
             self.grammar,
             compress_unions=True,
@@ -3332,22 +3372,10 @@ class ISLaSolver:
             # Check correctness of regular expression
             grammar = self.graph.subgraph(nonterminal).to_grammar()
 
-            # 1. L(grammar) \subseteq L(regex)
-            # NOTE: Removed this check. If unwinding is required, it will fail!
-            # self.logger.debug(
-            #     "Checking L(grammar) \\subseteq L(regex) for nonterminal '%s' and regex '%s'",
-            #     nonterminal,
-            #     regex)
-            # fuzzer = GrammarCoverageFuzzer(grammar)
-            # for _ in range(400):
-            #     inp = fuzzer.fuzz()
-            #     s = z3.Solver()
-            #     s.add(z3.InRe(z3.StringVal(inp), z3_regex))
-            #     assert s.check() == z3.sat, f"Input '{inp}' from grammar language is not in regex language"
-
-            # 2. L(regex) \subseteq L(grammar)
+            # L(regex) \subseteq L(grammar)
             self.logger.debug(
-                "Checking L(regex) \\subseteq L(grammar) for nonterminal '%s' and regex '%s'",
+                "Checking L(regex) \\subseteq L(grammar) for "
+                + "nonterminal '%s' and regex '%s'",
                 nonterminal,
                 regex,
             )

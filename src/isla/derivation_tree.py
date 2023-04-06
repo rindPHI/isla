@@ -520,13 +520,14 @@ class DerivationTree:
     def substitute(
         self, subst_map: Dict["DerivationTree", "DerivationTree"]
     ) -> "DerivationTree":
-        # We perform an iterative reverse post-order depth-first traversal and use a stack
-        # to store intermediate results from lower levels.
+        # We perform an iterative reverse post-order depth-first traversal and use a
+        # stack to store intermediate results from lower levels.
         assert self.has_unique_ids()
 
         # Looking up IDs performs much better for big trees, since we do not necessarily
         # have to compute hashes for all nodes (made necessary by tar case study).
-        # We remove "nested" replacements since removing elements in replacements is not intended.
+        # We remove "nested" replacements since removing elements in replacements is not
+        # intended.
 
         id_subst_map = {
             tree.id: repl
@@ -830,6 +831,22 @@ class DerivationTree:
                 stack.extend(list(zip(t1.children, t2.children)))
 
         return True
+
+    def __lt__(self, other: "DerivationTree") -> bool:
+        """
+        Compares the number of paths in :code:`self` and :code:`other`.
+
+        >>> t_1 = DerivationTree("<a>", None)
+        >>> t_2 = DerivationTree("<a>", [DerivationTree("a"), DerivationTree("b")])
+        >>> t_1 < t_2
+        True
+
+        :param other: The :py:class:`isla.derivation_tree.DerivationTree` object to
+                      compare with.
+        :return: True iff this :py:class:`isla.derivation_tree.DerivationTree` has fewer
+                 paths than :code:`other`.
+        """
+        return len(self) < len(other)
 
     def __repr__(self):
         return (

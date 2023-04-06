@@ -2071,8 +2071,6 @@ exists int seqs: (
           )
         """
 
-        logging.getLogger("test").info(parse_isla(constraint))
-
         self.execute_generation_test(
             constraint,
             grammar=grammar,

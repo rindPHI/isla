@@ -5,6 +5,15 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.13.0] - 2023-04-06
+
+### Changed
+
+- Refactoring & optimization in implementation of `count` semantic predicate. We now
+  select candidates with larger numbers of `<needle>` occurrences first.
+- Optimization in `ISLaSolver.extract_regular_expression`: Better re-use of already
+  computed regexes for frequently re-used nonterminals (such like `<byte>`)
+
 ## [1.12.0] - 2023-04-06
 
 ### Changed
