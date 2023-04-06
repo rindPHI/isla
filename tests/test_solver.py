@@ -1266,6 +1266,44 @@ and str.len(<payload>) = 10
             # print_only=True
         )
 
+    def test_message_length_constraints(self):
+        grammar = {
+            "<start>": ["<msg>"],
+            "<msg>": ["<a><b><len><payload>"],
+            "<a>": ["<byte>"],
+            "<b>": ["<byte>"],
+            "<len>": ["<byte><byte>"],
+            "<payload>": ["<bytes>"],
+            "<bytes>": ["<byte>", "<byte><bytes>"],
+            "<byte>": [chr(i) for i in range(2**8)],
+        }
+
+        constraint = r"""
+            exists int num_bytes: (
+              count(<msg>, "<byte>", num_bytes) and
+              str.to.int(num_bytes) < 100 and
+              256 * str.to_code(<len>.<byte>[1])
+                + str.to_code(<len>.<byte>[2]) = str.to.int(num_bytes)
+            )"""
+
+        solver = ISLaSolver(
+            grammar,
+            constraint,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=10,
+        )
+
+        for _ in range(5):
+            solution = solver.solve()
+            num_bytes = solution.filter(lambda t: t.value == "<byte>")
+            length_field: DerivationTree = solution.filter(
+                lambda t: t.value == "<len>", enforce_unique=True
+            )[0][1]
+            length = 256 * ord(str(length_field.children[0])) + ord(
+                str(length_field.children[1])
+            )
+            self.assertEqual(len(num_bytes), length)
+
     def test_solve_complex_quantifier_free_numeric_formula_heartbeat(self):
         heartbeat_request_grammar = {
             "<start>": ["<heartbeat-request>"],

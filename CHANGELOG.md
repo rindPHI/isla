@@ -5,6 +5,15 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.12.0] - 2023-04-06
+
+### Changed
+
+- Change in the implementation of the `count` predicate: We now only ask for one tree
+  insertion solution. This increases efficiency in our examples (before, we asked for
+  50 insertion solutions). Yet, it is not entirely certain if this step might cause
+  prolems in more complex examples.
+
 ## [1.11.1] - 2023-03-24
 
 ### Changed
