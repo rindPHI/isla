@@ -365,6 +365,12 @@ def count(  # noqa: C901
                     candidate,
                     graph=graph,
                     methods=DIRECT_EMBEDDING | SELF_EMBEDDING,
+                    # Note: We only query for one solution, which is highly beneficial
+                    #       for performance. This worked for our examples so far
+                    #       (CSV, network packets). In cases where some insertions
+                    #       are invalid, we might have to ask for more solutions,
+                    #       though.
+                    max_num_solutions=1,
                 )
                 if (
                     num_needles(new_candidate) <= target_num_needle_occurrences
