@@ -924,6 +924,11 @@ exists <csv-header> header in start:
 
         self.assertEqual(expected, unparse_grammar(grammar))
 
+    def test_unparse_null_byte(self):
+        result = unparse_isla(parse_isla(r'<test> = "\u{0}"'))
+        self.assertEqual(r'''forall <test> test in start:
+  (= test "\u{0}")''', result)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.13.2] - 2023-04-17
+
+### Changed
+
+- Fixed unparsing of null byte unicode literal: Got "\u{}" before (which could not be
+  parsed by Z3!), now obtain the correct "\u{0}".
+
 ## [1.13.1] - 2023-04-06
 
 ### Changed
