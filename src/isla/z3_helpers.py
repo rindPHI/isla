@@ -771,8 +771,7 @@ def smt_expr_to_str(  # noqa: C901
         return qfd_var_stack[idx]
     if z3.is_string_value(f):
         result = '"' + cast(str, f.as_string()).replace('"', r"\"") + '"'
-        if result == r'"\u{}"':
-            return r'"\u{0}"'
+        result = result.replace(r"\u{}", r"\u{0}")
         return result
     if z3.is_int_value(f):
         return str(f.as_long())
