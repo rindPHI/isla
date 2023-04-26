@@ -12,7 +12,6 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 - Fixed bug concerning numeric solutions to SMT formulas with "padded" variables:
   only "01," e.g., is a valid solution, not "1."
 
-
 ## [1.13.3] - 2023-04-17
 
 ### Changed
