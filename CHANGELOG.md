@@ -5,6 +5,14 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.13.6] - 2023-04-26
+
+### Changed
+
+- Bug fix for parsing a formula where two XPath expressions are appended to the same
+  bound variable, and one of the possible expansions that can be chosen cannot be
+  merged.
+
 ## [1.13.5] - 2023-04-26
 
 ### Changed

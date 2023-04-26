@@ -15,7 +15,6 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with ISLa.  If not, see <http://www.gnu.org/licenses/>.
-import copy
 import string
 import unittest
 from typing import cast
@@ -937,6 +936,36 @@ exists <csv-header> header in start:
             r"""forall <test> test in start:
   (= test "\u{0}\u{0}")""",
             result,
+        )
+
+    def test_two_xpaths_for_same_bound_variable(self):
+        grammar = r"""
+<start>              ::= <period>
+<period>             ::= <start-time> <end-time> | <end-time> 
+<start-time>         ::= <time> 
+<end-time>           ::= <time> 
+<time>               ::= <year> "-" <month> "-" <day>
+<time>               ::= <year> "-" <month> "-" <day>
+<year>               ::= <DIGIT> <DIGIT> <DIGIT> <DIGIT>
+<month>              ::= "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12"
+<day>                ::=   "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12" 
+                         | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23" | "24" 
+                         | "25" | "26" | "27" | "28" | "29" | "30" | "31"
+<DIGIT>              ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+        """
+
+        constraint = r"""
+        forall <period> period: (
+          str.to.int(period.<start-time>.<time>.<year>) <= 
+          str.to.int(period.<end-time>.<time>.<year>)
+        )
+        """
+
+        expected = r"""forall <period> period="{<year> year}-<month>-<day>{<year> year_0}-<month>-<day>" in start:
+  (<= (str.to.int year) (str.to.int year_0))"""
+
+        self.assertEqual(
+            expected, unparse_isla(parse_isla(constraint, parse_bnf(grammar)))
         )
 
 

@@ -2906,6 +2906,8 @@ class AddMexprTransformer(NoopFormulaTransformer):
             for mexpr in self.mexprs
         ]
 
+        mexprs = [mexpr for mexpr in mexprs if mexpr is not None]
+
         if not mexprs:
             raise RuntimeError(
                 "Could not merge the match expression of a formula with new match expressions "
@@ -2919,7 +2921,7 @@ class AddMexprTransformer(NoopFormulaTransformer):
         formula: QuantifiedFormula,
         mexpr: BindExpression,
         orig_trees_and_paths: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]],
-    ) -> BindExpression:
+    ) -> Optional[BindExpression]:
         new_trees_and_paths = mexpr.to_tree_prefix(
             formula.bound_variable.n_type, self.grammar
         )
@@ -2981,6 +2983,9 @@ class AddMexprTransformer(NoopFormulaTransformer):
             ]
 
             return BindExpression(*mexpr_elems)
+
+        # Only conflicts; nothing could be added
+        return None
 
     @staticmethod
     def __merge_trees_at_path(
