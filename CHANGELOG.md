@@ -5,6 +5,14 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.13.7] - 2023-04-26
+
+### Changed
+
+- Bug fix: When solving SMT formulas with multiple independent clusters, an exponential
+  number of solutions was pre-computed (many more than asked for), which resulted in
+  a potentially huge performance problem.
+
 ## [1.13.6] - 2023-04-26
 
 ### Changed

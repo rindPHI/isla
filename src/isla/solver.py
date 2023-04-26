@@ -2294,10 +2294,26 @@ class ISLaSolver:
         if remaining_clusters:
             formula_clusters.append(remaining_clusters)
 
+        # Note: We cannot ask for `max_instantiations` solutions for *each cluster;*
+        #       this would imply that we get 10^4 solutions if `max_instantiations`
+        #       is 10 and we have 4 clusters (we combine all these solutions to a
+        #       product). Instead, we want 10 solutions; thus, we compute the
+        #       #numCluster'th root of `max_instantiations` and ceil.
+        #       For example, the ceil of the 4-root of 10 is 2, and 2^10 is 16. This
+        #       is still within an acceptable range.
+
+        solutions_per_cluster = math.ceil(
+            (max_instantiations or self.max_number_smt_instantiations)
+            ** (1 / len(formula_clusters))
+        )
+
         all_solutions: List[
             List[Dict[Union[language.Constant, DerivationTree], DerivationTree]]
         ] = [
-            self.solve_quantifier_free_formula(tuple(cluster), max_instantiations)
+            self.solve_quantifier_free_formula(
+                tuple(cluster),
+                solutions_per_cluster,
+            )
             for cluster in formula_clusters
         ]
 

@@ -42,6 +42,7 @@ from isla import language
 from isla.derivation_tree import DerivationTree
 from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING
 from isla.fuzzer import GrammarFuzzer
+from isla.global_config import GLOBAL_CONFIG
 from isla.helpers import (
     crange,
     Exceptional,
@@ -2179,6 +2180,45 @@ forall <F> f2 in start:
         self.assertGreaterEqual(
             datetime.strptime("2023-04-26", "%Y-%m-%d"),
             datetime.strptime(str(solver.solve()), "%Y-%m-%d"),
+        )
+
+    def test_zugferd_time_and_money(self):
+        GLOBAL_CONFIG.assertions_activated = False
+        grammar = r'''
+<start> ::= <invoice>
+<invoice> ::= <start-time> " to " <end-time> ": " <monetary-summation>
+<start-time> ::= <time>
+<end-time> ::= <time>
+<time> ::= <year> "-" <month> "-" <day>
+<year> ::= <DIGIT> <DIGIT> <DIGIT> <DIGIT>
+<month> ::= "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12"
+<day> ::=   "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12" 
+          | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23" | "24" 
+          | "25" | "26" | "27" | "28" | "29" | "30" | "31" 
+<monetary-summation> ::= <grand-total> " / " <total-prepaid> " / " <due-payable> 
+<grand-total>        ::= <INT> 
+<total-prepaid>      ::= <INT> 
+<due-payable>        ::= <INT>
+<INT>                ::= "-" <DIGITS> | <DIGITS>
+<DIGITS>             ::= <DIGIT> | <DIGIT> <DIGITS>
+<DIGIT>              ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"'''
+
+        constraint = r"""
+    str.to.int(<start-time>.<time>.<year>) > 0
+and str.to.int(<start-time>.<time>.<month>) > 0
+and str.to.int(<start-time>.<time>.<day>) > 0
+and str.to.int(<end-time>.<time>.<year>) > 0
+and str.to.int(<end-time>.<time>.<month>) > 0
+and str.to.int(<end-time>.<time>.<day>) > 0
+and str.to.int(<due-payable>.<INT>) = 
+    str.to.int(<grand-total>.<INT>) - 
+    str.to.int(<total-prepaid>.<INT>)"""
+
+        self.execute_generation_test(
+            constraint,
+            grammar=grammar,
+            num_solutions=10,
+            max_number_smt_instantiations=10,
         )
 
     def execute_generation_test(
