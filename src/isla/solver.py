@@ -2765,10 +2765,31 @@ class ISLaSolver:
         elif var in length_vars:
             return self.safe_create_fixed_length_tree(var, model, fresh_var_map)
         elif var in int_vars:
-            return self.parse(
-                model[fresh_var_map[var]].as_string(),
-                var.n_type,
-            )
+            try:
+                return self.parse(
+                    model[fresh_var_map[var]].as_string(),
+                    var.n_type,
+                )
+            except SyntaxError:
+                # This may happen, e.g, with padded values: Only "01" is a valid
+                # solution, but not "1". We generate a value matching the variable's
+                # regular expression.
+
+                z3_solver = z3.Solver()
+                z3_solver.add(
+                    z3_eq(
+                        z3.StrToInt(var.to_smt()), model[fresh_var_map[var]].as_long()
+                    )
+                )
+                z3_solver.add(
+                    z3.InRe(var.to_smt(), self.extract_regular_expression(var.n_type))
+                )
+
+                assert z3_solver.check() == z3.sat
+                return self.parse(
+                    z3_solver.model()[var.to_smt()].as_string(),
+                    var.n_type,
+                )
         else:
             # A "flexible" variable.
             return self.parse(

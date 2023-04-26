@@ -2137,6 +2137,18 @@ forall <F> f2 in start:
         state = SolutionState(constraint_matched, tree)
         self.assertEqual(state, solver.remove_infeasible_universal_quantifiers(state))
 
+    def test_str_to_int_bug(self):
+        grammar = r"""
+            <start> ::= <number>
+            <number> ::= <digit> <digit>
+            <digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+        """
+
+        constraint = "str.to.int(<number>) = 1"
+
+        solver = ISLaSolver(grammar, constraint)
+        self.assertEqual("01", str(solver.solve()))
+
     def execute_generation_test(
         self,
         formula: language.Formula | str = "true",
