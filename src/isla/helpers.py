@@ -47,6 +47,7 @@ from typing import (
     Type,
 )
 
+from isla.global_config import GLOBAL_CONFIG
 from isla.type_defs import (
     Path,
     Grammar,
@@ -252,6 +253,17 @@ def nested_list_to_tuple(
 
 
 def assertions_activated() -> bool:
+    """
+    Checks if assertions are activated. Returns False if the
+    :code:`ASSERTIONS_ACTIVATED` variable in :module:`isla.global_config` is False.
+    Otherwise, returns True if, and only if, assertions are globally active, i.e.,
+    an :code:`assert False` would raise an exception.
+
+    :return: True iff assertions are active.
+    """
+    if not GLOBAL_CONFIG.assertions_activated:
+        return False
+
     result = False
 
     def set_result_to_true() -> bool:

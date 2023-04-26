@@ -5,6 +5,17 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.13.5] - 2023-04-26
+
+### Changed
+
+- Introducing a global configuration module `global_config.py`. Currently, this contains
+  a flag for disabling assertions guarded by `assertions_activated()`, which are many
+  of the more costly assertions. This flag is an opportunity to programmatically turn
+  off at least some assertions if setting the global `-O` flag is not an option.
+- Suppressing potentially meaningless error messages issued during the procedure
+  implemented in 1.13.4.
+
 ## [1.13.4] - 2023-04-26
 
 ### Changed

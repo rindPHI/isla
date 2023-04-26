@@ -737,7 +737,11 @@ class ISLaSolver:
             return bool(result)
 
     def parse(
-        self, inp: str, nonterminal: str = "<start>", skip_check: bool = False
+        self,
+        inp: str,
+        nonterminal: str = "<start>",
+        skip_check: bool = False,
+        silent: bool = False,
     ) -> DerivationTree:
         """
         Parses the given input `inp`. Raises a `SyntaxError` if the input does not
@@ -750,6 +754,8 @@ class ISLaSolver:
           corresponding to a sub-grammar shall be parsed. We don't check semantic
           correctness in that case.
         :param skip_check: If True, the semantic check is left out.
+        :param silent: If True, no error is sent to the log stream in case of a
+            failed parse.
         :return: A parsed `DerivationTree`.
         """
         grammar = copy.deepcopy(self.grammar)
@@ -764,7 +770,10 @@ class ISLaSolver:
                 parse_tree = parse_tree[1][0]
             tree = DerivationTree.from_parse_tree(parse_tree)
         except SyntaxError as err:
-            self.logger.error(f'Error parsing "{inp}" starting with "{nonterminal}"')
+            if not silent:
+                self.logger.error(
+                    f'Error parsing "{inp}" starting with "{nonterminal}"'
+                )
             raise err
 
         if not skip_check and nonterminal == "<start>" and not self.check(tree):
@@ -2634,7 +2643,7 @@ class ISLaSolver:
             raise RuntimeError(
                 f"Could not create a tree with the start symbol '{var.n_type}' "
                 + f"of length {model[fresh_var_map[var]].as_long()}; try "
-                + "to run the solver without optimized Z3 queries or make "
+                + "running the solver without optimized Z3 queries or make "
                 + "sure that lengths are restricted to syntactically valid "
                 + "ones (according to the grammar).",
             )
@@ -2769,6 +2778,7 @@ class ISLaSolver:
                 return self.parse(
                     model[fresh_var_map[var]].as_string(),
                     var.n_type,
+                    silent=True,
                 )
             except SyntaxError:
                 # This may happen, e.g, with padded values: Only "01" is a valid
@@ -2776,6 +2786,8 @@ class ISLaSolver:
                 # regular expression.
 
                 z3_solver = z3.Solver()
+                z3_solver.set("timeout", 100)
+
                 z3_solver.add(
                     z3_eq(
                         z3.StrToInt(var.to_smt()), model[fresh_var_map[var]].as_long()
@@ -2785,7 +2797,16 @@ class ISLaSolver:
                     z3.InRe(var.to_smt(), self.extract_regular_expression(var.n_type))
                 )
 
-                assert z3_solver.check() == z3.sat
+                if z3_solver.check() != z3.sat:
+                    raise RuntimeError(
+                        f"Could not parse a numeric solution "
+                        + f"({model[fresh_var_map[var]].as_long()}) for variable "
+                        + f"{var} of type '{var.n_type}'; try "
+                        + "running the solver without optimized Z3 queries or make "
+                        + "sure that ranges are restricted to syntactically valid "
+                        + "ones (according to the grammar).",
+                    )
+
                 return self.parse(
                     z3_solver.model()[var.to_smt()].as_string(),
                     var.n_type,

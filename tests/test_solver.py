@@ -24,6 +24,7 @@ import random
 import string
 import sys
 import unittest
+from datetime import datetime
 from typing import cast, Optional, Dict, List, Callable, Union, Set
 from xml.dom import minidom
 from xml.sax.saxutils import escape
@@ -35,11 +36,12 @@ from orderedset import OrderedSet
 
 import isla.derivation_tree
 import isla.evaluator
+import isla.global_config
 from isla import isla_shortcuts as sc
 from isla import language
 from isla.derivation_tree import DerivationTree
-from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_ADDITION
-from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
+from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING
+from isla.fuzzer import GrammarFuzzer
 from isla.helpers import (
     crange,
     Exceptional,
@@ -51,10 +53,7 @@ from isla.helpers import (
 from isla.isla_predicates import (
     BEFORE_PREDICATE,
     COUNT_PREDICATE,
-    STANDARD_SEMANTIC_PREDICATES,
-    STANDARD_STRUCTURAL_PREDICATES,
     IN_TREE_PREDICATE,
-    AFTER_PREDICATE,
 )
 from isla.language import (
     VariablesCollector,
@@ -2148,6 +2147,39 @@ forall <F> f2 in start:
 
         solver = ISLaSolver(grammar, constraint)
         self.assertEqual("01", str(solver.solve()))
+
+    def test_date_constraint(self):
+        grammar = r"""
+        <start> ::= <time>
+        <time> ::= <year> "-" <month> "-" <day>
+        <year> ::= <DIGIT> <DIGIT> <DIGIT> <DIGIT>
+        <month> ::= "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12"
+        <day> ::=   "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12" 
+                  | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23" | "24" 
+                  | "25" | "26" | "27" | "28" | "29" | "30" | "31" 
+        <DIGIT> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+        """
+
+        # The `> 0` constraints on year, month, and day are required due to the
+        # optimized handling of SMT queries. Still, we need them because a "0"
+        # year yields a `datetime` exception. Thus, we consider it acceptable
+        # after all to require this constraint.
+
+        constraint = r"""
+                str.to.int(<time>.<year>) <= 2023
+            and str.to.int(<time>.<year>) > 0
+            and str.to.int(<time>.<month>) > 0
+            and str.to.int(<time>.<day>) > 0
+            and (str.to.int(<time>.<year>) = 2023 implies str.to.int(<time>.<month>) <= 4)
+            and ((str.to.int(<time>.<year>) = 2023 and str.to.int(<time>.<month>) = 4) implies str.to.int(<time>.<day>) <= 26)
+        """
+
+        solver = ISLaSolver(grammar, constraint)
+
+        self.assertGreaterEqual(
+            datetime.strptime("2023-04-26", "%Y-%m-%d"),
+            datetime.strptime(str(solver.solve()), "%Y-%m-%d"),
+        )
 
     def execute_generation_test(
         self,
