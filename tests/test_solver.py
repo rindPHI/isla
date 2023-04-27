@@ -102,6 +102,16 @@ _DEFAULTS = SolverDefaults()
 
 
 class TestSolver(unittest.TestCase):
+    def test_no_solution_for_literal_false_constraint(self):
+        # Yes, this happened
+        solver = ISLaSolver(LANG_GRAMMAR, "false")
+
+        try:
+            solver.solve()
+            self.fail("There should be no solution here")
+        except StopIteration:
+            pass
+
     def test_atomic_smt_formula(self):
         assgn = language.Constant("$assgn", "<assgn>")
         formula = language.SMTFormula(

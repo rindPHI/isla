@@ -574,7 +574,7 @@ class ISLaSolver:
             self.top_constant.map(
                 lambda c: self.formula.substitute_expressions({c: self.initial_tree})
             )
-            .orelse(lambda: true())
+            .orelse(lambda: self.formula)
             .get()
         )
         initial_state = SolutionState(initial_formula, self.initial_tree)

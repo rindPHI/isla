@@ -5,6 +5,12 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.13.9] - 2023-04-27
+
+### Changed
+
+- Bug fix to HUGE unsoundness: Solver returned a solution for "false" constraint.
+
 ## [1.13.8] - 2023-04-27
 
 ### Changed
