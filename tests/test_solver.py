@@ -2159,6 +2159,18 @@ forall <F> f2 in start:
         solver = ISLaSolver(grammar, constraint)
         self.assertEqual("01", str(solver.solve()))
 
+    def test_int_constraint_padding(self):
+        grammar = r"""
+<start> ::= <four-digit-number>
+<four-digit-number> ::= <digit> <digit> <digit> <digit>
+<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+"""
+
+        constraint = "str.to.int(<four-digit-number>) = 123"
+
+        solver = ISLaSolver(grammar, constraint)
+        self.assertEqual("0123", str(solver.solve()))
+
     def test_date_constraint(self):
         grammar = r"""
         <start> ::= <time>

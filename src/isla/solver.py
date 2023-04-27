@@ -2801,7 +2801,7 @@ class ISLaSolver:
                 # regular expression.
 
                 z3_solver = z3.Solver()
-                z3_solver.set("timeout", 100)
+                z3_solver.set("timeout", 300)
 
                 z3_solver.add(
                     z3_eq(
