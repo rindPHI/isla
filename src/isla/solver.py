@@ -97,7 +97,6 @@ from isla.isla_predicates import (
     STANDARD_SEMANTIC_PREDICATES,
     COUNT_PREDICATE,
 )
-from isla.isla_shortcuts import true
 from isla.language import (
     VariablesCollector,
     split_conjunction,
@@ -2815,7 +2814,7 @@ class ISLaSolver:
 
                 if z3_solver.check() != z3.sat:
                     raise RuntimeError(
-                        f"Could not parse a numeric solution "
+                        "Could not parse a numeric solution "
                         + f"({model[fresh_var_map[var]].as_long()}) for variable "
                         + f"{var} of type '{var.n_type}'; try "
                         + "running the solver without optimized Z3 queries or make "
