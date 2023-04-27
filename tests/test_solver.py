@@ -24,6 +24,7 @@ import random
 import string
 import sys
 import unittest
+from datetime import datetime
 from typing import cast, Optional, Dict, List, Callable, Union, Set
 from xml.dom import minidom
 from xml.sax.saxutils import escape
@@ -35,11 +36,13 @@ from orderedset import OrderedSet
 
 import isla.derivation_tree
 import isla.evaluator
+import isla.global_config
 from isla import isla_shortcuts as sc
 from isla import language
 from isla.derivation_tree import DerivationTree
-from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING, CONTEXT_ADDITION
-from isla.fuzzer import GrammarFuzzer, GrammarCoverageFuzzer
+from isla.existential_helpers import DIRECT_EMBEDDING, SELF_EMBEDDING
+from isla.fuzzer import GrammarFuzzer
+from isla.global_config import GLOBAL_CONFIG
 from isla.helpers import (
     crange,
     Exceptional,
@@ -51,10 +54,7 @@ from isla.helpers import (
 from isla.isla_predicates import (
     BEFORE_PREDICATE,
     COUNT_PREDICATE,
-    STANDARD_SEMANTIC_PREDICATES,
-    STANDARD_STRUCTURAL_PREDICATES,
     IN_TREE_PREDICATE,
-    AFTER_PREDICATE,
 )
 from isla.language import (
     VariablesCollector,
@@ -102,6 +102,16 @@ _DEFAULTS = SolverDefaults()
 
 
 class TestSolver(unittest.TestCase):
+    def test_no_solution_for_literal_false_constraint(self):
+        # Yes, this happened
+        solver = ISLaSolver(LANG_GRAMMAR, "false")
+
+        try:
+            solver.solve()
+            self.fail("There should be no solution here")
+        except StopIteration:
+            pass
+
     def test_atomic_smt_formula(self):
         assgn = language.Constant("$assgn", "<assgn>")
         formula = language.SMTFormula(
@@ -2071,8 +2081,6 @@ exists int seqs: (
           )
         """
 
-        logging.getLogger("test").info(parse_isla(constraint))
-
         self.execute_generation_test(
             constraint,
             grammar=grammar,
@@ -2138,6 +2146,102 @@ forall <F> f2 in start:
 
         state = SolutionState(constraint_matched, tree)
         self.assertEqual(state, solver.remove_infeasible_universal_quantifiers(state))
+
+    def test_str_to_int_bug(self):
+        grammar = r"""
+            <start> ::= <number>
+            <number> ::= <digit> <digit>
+            <digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+        """
+
+        constraint = "str.to.int(<number>) = 1"
+
+        solver = ISLaSolver(grammar, constraint)
+        self.assertEqual("01", str(solver.solve()))
+
+    def test_int_constraint_padding(self):
+        grammar = r"""
+<start> ::= <four-digit-number>
+<four-digit-number> ::= <digit> <digit> <digit> <digit>
+<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+"""
+
+        constraint = "str.to.int(<four-digit-number>) = 123"
+
+        solver = ISLaSolver(grammar, constraint)
+        self.assertEqual("0123", str(solver.solve()))
+
+    def test_date_constraint(self):
+        grammar = r"""
+        <start> ::= <time>
+        <time> ::= <year> "-" <month> "-" <day>
+        <year> ::= <DIGIT> <DIGIT> <DIGIT> <DIGIT>
+        <month> ::= "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12"
+        <day> ::=   "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12" 
+                  | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23" | "24" 
+                  | "25" | "26" | "27" | "28" | "29" | "30" | "31" 
+        <DIGIT> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+        """
+
+        # The `> 0` constraints on year, month, and day are required due to the
+        # optimized handling of SMT queries. Still, we need them because a "0"
+        # year yields a `datetime` exception. Thus, we consider it acceptable
+        # after all to require this constraint.
+
+        constraint = r"""
+                str.to.int(<time>.<year>) <= 2023
+            and str.to.int(<time>.<year>) > 0
+            and str.to.int(<time>.<month>) > 0
+            and str.to.int(<time>.<day>) > 0
+            and (str.to.int(<time>.<year>) = 2023 implies str.to.int(<time>.<month>) <= 4)
+            and ((str.to.int(<time>.<year>) = 2023 and str.to.int(<time>.<month>) = 4) implies str.to.int(<time>.<day>) <= 26)
+        """
+
+        solver = ISLaSolver(grammar, constraint)
+
+        self.assertGreaterEqual(
+            datetime.strptime("2023-04-26", "%Y-%m-%d"),
+            datetime.strptime(str(solver.solve()), "%Y-%m-%d"),
+        )
+
+    def test_zugferd_time_and_money(self):
+        GLOBAL_CONFIG.assertions_activated = False
+        grammar = r'''
+<start> ::= <invoice>
+<invoice> ::= <start-time> " to " <end-time> ": " <monetary-summation>
+<start-time> ::= <time>
+<end-time> ::= <time>
+<time> ::= <year> "-" <month> "-" <day>
+<year> ::= <DIGIT> <DIGIT> <DIGIT> <DIGIT>
+<month> ::= "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12"
+<day> ::=   "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12" 
+          | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23" | "24" 
+          | "25" | "26" | "27" | "28" | "29" | "30" | "31" 
+<monetary-summation> ::= <grand-total> " / " <total-prepaid> " / " <due-payable> 
+<grand-total>        ::= <INT> 
+<total-prepaid>      ::= <INT> 
+<due-payable>        ::= <INT>
+<INT>                ::= "-" <DIGITS> | <DIGITS>
+<DIGITS>             ::= <DIGIT> | <DIGIT> <DIGITS>
+<DIGIT>              ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"'''
+
+        constraint = r"""
+    str.to.int(<start-time>.<time>.<year>) > 0
+and str.to.int(<start-time>.<time>.<month>) > 0
+and str.to.int(<start-time>.<time>.<day>) > 0
+and str.to.int(<end-time>.<time>.<year>) > 0
+and str.to.int(<end-time>.<time>.<month>) > 0
+and str.to.int(<end-time>.<time>.<day>) > 0
+and str.to.int(<due-payable>.<INT>) = 
+    str.to.int(<grand-total>.<INT>) - 
+    str.to.int(<total-prepaid>.<INT>)"""
+
+        self.execute_generation_test(
+            constraint,
+            grammar=grammar,
+            num_solutions=10,
+            max_number_smt_instantiations=10,
+        )
 
     def execute_generation_test(
         self,

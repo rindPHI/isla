@@ -5,6 +5,89 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.13.9] - 2023-04-27
+
+### Changed
+
+- Bug fix to HUGE unsoundness: Solver returned a solution for "false" constraint.
+
+## [1.13.8] - 2023-04-27
+
+### Changed
+
+- Fixed a parser bug occurring when a conjunctive formula contains two independent sets
+  of XPath expressions. Previously, the produced quantifiers were nested, which is
+  incorrect. Now, they're "pushed in" as expected.
+- Fixed a bug in `isla.solver.subtree_solutions` surfacing for the reST example when
+  a subtree gets substituted by a smaller subtree produced by a semantic predicate
+  (in that case, `extend_crop`).
+
+## [1.13.7] - 2023-04-26
+
+### Changed
+
+- Bug fix: When solving SMT formulas with multiple independent clusters, an exponential
+  number of solutions was pre-computed (many more than asked for), which resulted in
+  a potentially huge performance problem.
+
+## [1.13.6] - 2023-04-26
+
+### Changed
+
+- Bug fix for parsing a formula where two XPath expressions are appended to the same
+  bound variable, and one of the possible expansions that can be chosen cannot be
+  merged.
+
+## [1.13.5] - 2023-04-26
+
+### Changed
+
+- Introducing a global configuration module `global_config.py`. Currently, this contains
+  a flag for disabling assertions guarded by `assertions_activated()`, which are many
+  of the more costly assertions. This flag is an opportunity to programmatically turn
+  off at least some assertions if setting the global `-O` flag is not an option.
+- Suppressing potentially meaningless error messages issued during the procedure
+  implemented in 1.13.4.
+
+## [1.13.4] - 2023-04-26
+
+### Changed
+
+- Fixed bug concerning numeric solutions to SMT formulas with "padded" variables:
+  only "01," e.g., is a valid solution, not "1."
+
+## [1.13.3] - 2023-04-17
+
+### Changed
+
+- Fix to partial last bug fix.
+
+## [1.13.2] - 2023-04-17
+
+### Changed
+
+- Fixed unparsing of null byte unicode literal: Got "\u{}" before (which could not be
+  parsed by Z3!), now obtain the correct "\u{0}".
+
+## [1.13.1] - 2023-04-06
+
+### Changed
+
+- BugFix in `ISLaSolver.eliminate_all_ready_semantic_predicate_formulas`: Subtrees in
+  computed substitutions are now considered (as they were already for SMT formulas).
+- When defining a new semantic predicate, an `order` parameter can be set that
+  specifies when a semantic predicate is evaluated relatively to the other semantic
+  predicates.
+
+## [1.13.0] - 2023-04-06
+
+### Changed
+
+- Refactoring & optimization in implementation of `count` semantic predicate. We now
+  select candidates with larger numbers of `<needle>` occurrences first.
+- Optimization in `ISLaSolver.extract_regular_expression`: Better re-use of already
+  computed regexes for frequently re-used nonterminals (such like `<byte>`)
+
 ## [1.12.0] - 2023-04-06
 
 ### Changed

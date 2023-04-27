@@ -1,4 +1,4 @@
-# Copyright © 2022 CISPA Helmholtz Center for Information Security.
+# Copyright © 2023 CISPA Helmholtz Center for Information Security.
 # Author: Dominic Steinhöfel.
 #
 # This file is part of ISLa.
@@ -15,5 +15,14 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with ISLa.  If not, see <http://www.gnu.org/licenses/>.
+from dataclasses import dataclass
 
-__version__ = "1.13.9"
+
+@dataclass
+class GlobalConfig:
+    # If set to False, all assertions guarded by `isla.helpers.assertions_activated`
+    # will not be executed.
+    assertions_activated: bool = True
+
+
+GLOBAL_CONFIG = GlobalConfig()

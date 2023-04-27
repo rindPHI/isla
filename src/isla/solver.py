@@ -97,7 +97,6 @@ from isla.isla_predicates import (
     STANDARD_SEMANTIC_PREDICATES,
     COUNT_PREDICATE,
 )
-from isla.isla_shortcuts import true
 from isla.language import (
     VariablesCollector,
     split_conjunction,
@@ -574,7 +573,7 @@ class ISLaSolver:
             self.top_constant.map(
                 lambda c: self.formula.substitute_expressions({c: self.initial_tree})
             )
-            .orelse(lambda: true())
+            .orelse(lambda: self.formula)
             .get()
         )
         initial_state = SolutionState(initial_formula, self.initial_tree)
@@ -737,7 +736,11 @@ class ISLaSolver:
             return bool(result)
 
     def parse(
-        self, inp: str, nonterminal: str = "<start>", skip_check: bool = False
+        self,
+        inp: str,
+        nonterminal: str = "<start>",
+        skip_check: bool = False,
+        silent: bool = False,
     ) -> DerivationTree:
         """
         Parses the given input `inp`. Raises a `SyntaxError` if the input does not
@@ -750,6 +753,8 @@ class ISLaSolver:
           corresponding to a sub-grammar shall be parsed. We don't check semantic
           correctness in that case.
         :param skip_check: If True, the semantic check is left out.
+        :param silent: If True, no error is sent to the log stream in case of a
+            failed parse.
         :return: A parsed `DerivationTree`.
         """
         grammar = copy.deepcopy(self.grammar)
@@ -764,7 +769,10 @@ class ISLaSolver:
                 parse_tree = parse_tree[1][0]
             tree = DerivationTree.from_parse_tree(parse_tree)
         except SyntaxError as err:
-            self.logger.error(f'Error parsing "{inp}" starting with "{nonterminal}"')
+            if not silent:
+                self.logger.error(
+                    f'Error parsing "{inp}" starting with "{nonterminal}"'
+                )
             raise err
 
         if not skip_check and nonterminal == "<start>" and not self.check(tree):
@@ -1700,9 +1708,10 @@ class ISLaSolver:
         semantic_predicate_formulas = sorted(
             semantic_predicate_formulas,
             key=lambda f: (
-                2 * cast(language.SemanticPredicateFormula, f.args[0]).order + 100
+                2 * cast(language.SemanticPredicateFormula, f.args[0]).predicate.order
+                + 100
                 if isinstance(f, language.NegatedFormula)
-                else f.order
+                else f.predicate.order
             ),
         )
 
@@ -1748,23 +1757,22 @@ class ISLaSolver:
                 )
                 continue
 
+            substitution = subtree_solutions(evaluation_result.result)
+
             new_constraint = language.replace_formula(
                 result.constraint,
                 semantic_predicate_formula,
                 sc.false() if negated else sc.true(),
-            ).substitute_expressions(evaluation_result.result)
+            ).substitute_expressions(substitution)
 
             for k in range(idx + 1, len(semantic_predicate_formulas)):
                 semantic_predicate_formulas[k] = cast(
                     language.SemanticPredicateFormula,
-                    semantic_predicate_formulas[k].substitute_expressions(
-                        evaluation_result.result
-                    ),
+                    semantic_predicate_formulas[k].substitute_expressions(substitution),
                 )
 
-            result = SolutionState(
-                new_constraint, result.tree.substitute(evaluation_result.result)
-            )
+            result = SolutionState(new_constraint, result.tree.substitute(substitution))
+            assert self.graph.tree_is_valid(result.tree)
 
         return Maybe([result] if changed else None)
 
@@ -2285,14 +2293,31 @@ class ISLaSolver:
         if remaining_clusters:
             formula_clusters.append(remaining_clusters)
 
+        # Note: We cannot ask for `max_instantiations` solutions for *each cluster;*
+        #       this would imply that we get 10^4 solutions if `max_instantiations`
+        #       is 10 and we have 4 clusters (we combine all these solutions to a
+        #       product). Instead, we want 10 solutions; thus, we compute the
+        #       #numCluster'th root of `max_instantiations` and ceil.
+        #       For example, the ceil of the 4-root of 10 is 2, and 2^10 is 16. This
+        #       is still within an acceptable range.
+
+        solutions_per_cluster = math.ceil(
+            (max_instantiations or self.max_number_smt_instantiations)
+            ** (1 / len(formula_clusters))
+        )
+
         all_solutions: List[
             List[Dict[Union[language.Constant, DerivationTree], DerivationTree]]
         ] = [
-            self.solve_quantifier_free_formula(tuple(cluster), max_instantiations)
+            self.solve_quantifier_free_formula(
+                tuple(cluster),
+                solutions_per_cluster,
+            )
             for cluster in formula_clusters
         ]
 
-        # These solutions are all independent, such that we can combine each solution with all others.
+        # These solutions are all independent, such that we can combine each solution
+        # with all others.
         solutions: List[
             Dict[Union[language.Constant, DerivationTree], DerivationTree]
         ] = [
@@ -2300,37 +2325,9 @@ class ISLaSolver:
             for dicts in itertools.product(*all_solutions)
         ]
 
-        solutions_with_subtrees: List[
-            Dict[Union[language.Constant, DerivationTree], DerivationTree]
-        ] = []
-        for solution in solutions:
-            # We also have to instantiate all subtrees of the substituted element.
-
-            solution_with_subtrees: Dict[
-                Union[language.Constant, DerivationTree], DerivationTree
-            ] = {}
-            for orig, subst in solution.items():
-                if isinstance(orig, language.Constant):
-                    solution_with_subtrees[orig] = subst
-                    continue
-
-                assert isinstance(
-                    orig, DerivationTree
-                ), f"Expected a DerivationTree, given: {type(orig).__name__}"
-
-                for path, tree in [
-                    (p, t) for p, t in orig.paths() if t not in solution_with_subtrees
-                ]:
-                    assert subst.is_valid_path(path), (
-                        f"SMT Solution {subst} does not have "
-                        f"orig path {path} from tree {orig} (state {hash(state)})"
-                    )
-                    solution_with_subtrees[tree] = subst.get_subtree(path)
-
-            solutions_with_subtrees.append(solution_with_subtrees)
-
         results = []
-        for solution in solutions_with_subtrees:
+        # We also have to instantiate all subtrees of the substituted element.
+        for solution in map(subtree_solutions, solutions):
             if solution:
                 new_state = SolutionState(
                     state.constraint.substitute_expressions(solution),
@@ -2661,7 +2658,7 @@ class ISLaSolver:
             raise RuntimeError(
                 f"Could not create a tree with the start symbol '{var.n_type}' "
                 + f"of length {model[fresh_var_map[var]].as_long()}; try "
-                + "to run the solver without optimized Z3 queries or make "
+                + "running the solver without optimized Z3 queries or make "
                 + "sure that lengths are restricted to syntactically valid "
                 + "ones (according to the grammar).",
             )
@@ -2792,10 +2789,43 @@ class ISLaSolver:
         elif var in length_vars:
             return self.safe_create_fixed_length_tree(var, model, fresh_var_map)
         elif var in int_vars:
-            return self.parse(
-                model[fresh_var_map[var]].as_string(),
-                var.n_type,
-            )
+            try:
+                return self.parse(
+                    model[fresh_var_map[var]].as_string(),
+                    var.n_type,
+                    silent=True,
+                )
+            except SyntaxError:
+                # This may happen, e.g, with padded values: Only "01" is a valid
+                # solution, but not "1". We generate a value matching the variable's
+                # regular expression.
+
+                z3_solver = z3.Solver()
+                z3_solver.set("timeout", 300)
+
+                z3_solver.add(
+                    z3_eq(
+                        z3.StrToInt(var.to_smt()), model[fresh_var_map[var]].as_long()
+                    )
+                )
+                z3_solver.add(
+                    z3.InRe(var.to_smt(), self.extract_regular_expression(var.n_type))
+                )
+
+                if z3_solver.check() != z3.sat:
+                    raise RuntimeError(
+                        "Could not parse a numeric solution "
+                        + f"({model[fresh_var_map[var]].as_long()}) for variable "
+                        + f"{var} of type '{var.n_type}'; try "
+                        + "running the solver without optimized Z3 queries or make "
+                        + "sure that ranges are restricted to syntactically valid "
+                        + "ones (according to the grammar).",
+                    )
+
+                return self.parse(
+                    z3_solver.model()[var.to_smt()].as_string(),
+                    var.n_type,
+                )
         else:
             # A "flexible" variable.
             return self.parse(
@@ -3317,6 +3347,46 @@ class ISLaSolver:
         if nonterminal in self.regex_cache:
             return self.regex_cache[nonterminal]
 
+        # For definitions like `<a> ::= <b>`, we only compute the regular expression
+        # for `<b>`. That way, we might save some calls if `<b>` is used multiple times
+        # (e.g., as in `<byte>`).
+        canonical_expansions = self.canonical_grammar[nonterminal]
+
+        if (
+            len(canonical_expansions) == 1
+            and len(canonical_expansions[0]) == 1
+            and is_nonterminal(canonical_expansions[0][0])
+        ):
+            sub_nonterminal = canonical_expansions[0][0]
+            assert (
+                nonterminal != sub_nonterminal
+            ), f"Expansion {nonterminal} => {sub_nonterminal}: Infinite recursion!"
+            return self.regex_cache.setdefault(
+                nonterminal, self.extract_regular_expression(sub_nonterminal)
+            )
+
+        # Similarly, for definitions like `<a> ::= <b> " x " <c>`, where `<b>` and `<c>`
+        # don't reach `<a>`, we only compute the regular expressions for `<b>` and `<c>`
+        # and return a concatenation. This also saves us expensive conversions (e.g.,
+        # for `<seq> ::= <byte> <byte>`).
+        if (
+            len(canonical_expansions) == 1
+            and any(is_nonterminal(elem) for elem in canonical_expansions[0])
+            and all(
+                not is_nonterminal(elem)
+                or elem != nonterminal
+                and not self.graph.reachable(elem, nonterminal)
+                for elem in canonical_expansions[0]
+            )
+        ):
+            result_elements: List[z3.ReRef] = [
+                z3.Re(elem)
+                if not is_nonterminal(elem)
+                else self.extract_regular_expression(elem)
+                for elem in canonical_expansions[0]
+            ]
+            return self.regex_cache.setdefault(nonterminal, z3.Concat(*result_elements))
+
         regex_conv = RegexConverter(
             self.grammar,
             compress_unions=True,
@@ -3332,22 +3402,10 @@ class ISLaSolver:
             # Check correctness of regular expression
             grammar = self.graph.subgraph(nonterminal).to_grammar()
 
-            # 1. L(grammar) \subseteq L(regex)
-            # NOTE: Removed this check. If unwinding is required, it will fail!
-            # self.logger.debug(
-            #     "Checking L(grammar) \\subseteq L(regex) for nonterminal '%s' and regex '%s'",
-            #     nonterminal,
-            #     regex)
-            # fuzzer = GrammarCoverageFuzzer(grammar)
-            # for _ in range(400):
-            #     inp = fuzzer.fuzz()
-            #     s = z3.Solver()
-            #     s.add(z3.InRe(z3.StringVal(inp), z3_regex))
-            #     assert s.check() == z3.sat, f"Input '{inp}' from grammar language is not in regex language"
-
-            # 2. L(regex) \subseteq L(grammar)
+            # L(regex) \subseteq L(grammar)
             self.logger.debug(
-                "Checking L(regex) \\subseteq L(grammar) for nonterminal '%s' and regex '%s'",
+                "Checking L(regex) \\subseteq L(grammar) for "
+                + "nonterminal '%s' and regex '%s'",
                 nonterminal,
                 regex,
             )
@@ -4028,3 +4086,31 @@ def create_fixed_length_tree(
                 )
 
     return None
+
+
+def subtree_solutions(
+    solution: Dict[language.Constant | DerivationTree, DerivationTree]
+) -> Dict[language.Variable | DerivationTree, DerivationTree]:
+    solution_with_subtrees: Dict[
+        language.Variable | DerivationTree, DerivationTree
+    ] = {}
+    for orig, subst in solution.items():
+        if isinstance(orig, language.Variable):
+            solution_with_subtrees[orig] = subst
+            continue
+
+        assert isinstance(
+            orig, DerivationTree
+        ), f"Expected a DerivationTree, given: {type(orig).__name__}"
+
+        # Note: It can happen that a path in the original tree is not valid in the
+        #       substitution, e.g., if we happen to replace a larger with a smaller
+        #       tree.
+        for path, tree in [
+            (p, t)
+            for p, t in orig.paths()
+            if t not in solution_with_subtrees and subst.is_valid_path(p)
+        ]:
+            solution_with_subtrees[tree] = subst.get_subtree(path)
+
+    return solution_with_subtrees

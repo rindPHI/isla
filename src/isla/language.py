@@ -1045,22 +1045,26 @@ class SemanticPredicate:
         binds_tree: Optional[
             Callable[[DerivationTree, Tuple[SemPredArg, ...]], bool] | bool
         ] = None,
+        order: int = 0,
     ):
         """
-        :param name:
-        :param arity:
-        :param eval_fun:
+        :param name: The name of this predicate.
+        :param arity: The number of arguments this predicate accepts in a formula.
+        :param eval_fun: An evaluation function/solver for this predicate.
         :param binds_tree: Given a derivation tree and the arguments for the predicate, this function tests whether
-        the tree is bound by the predicate formula. The effect of this is that bound trees cannot be freely expanded,
-        similarly to nonterminals bound by a universal quantifier. A semantic predicate may also not bind any of its
-        arguments; in that case, we can freely instantiate the arguments and then ask the predicate for a "fix" if
-        the instantiation is non-conformant. Most semantic predicates do not bind their arguments. Pass nothing or
-        True for this parameter for predicates binding all trees in all their arguments. Pass False for predicates
-        binding no trees at all. Pass a custom function for anything special.
+          the tree is bound by the predicate formula. The effect of this is that bound trees cannot be freely expanded,
+          similarly to nonterminals bound by a universal quantifier. A semantic predicate may also not bind any of its
+          arguments; in that case, we can freely instantiate the arguments and then ask the predicate for a "fix" if
+          the instantiation is non-conformant. Most semantic predicates do not bind their arguments. Pass nothing or
+          True for this parameter for predicates binding all trees in all their arguments. Pass False for predicates
+          binding no trees at all. Pass a custom function for anything special.
+        :param order: Specifies in which order this predicate is to be evaluated,
+          relative to other semantic predicates in the same formula.
         """
         self.name = name
         self.arity = arity
         self.eval_fun = eval_fun
+        self.order = order
 
         if binds_tree is not None and binds_tree is not True:
             if binds_tree is False:
@@ -1099,11 +1103,10 @@ class SemanticPredicate:
 
 
 class SemanticPredicateFormula(Formula):
-    def __init__(self, predicate: SemanticPredicate, *args: SemPredArg, order: int = 0):
+    def __init__(self, predicate: SemanticPredicate, *args: SemPredArg):
         assert len(args) == predicate.arity
         self.predicate = predicate
         self.args: Tuple[SemPredArg, ...] = args
-        self.order = order
 
     def evaluate(
         self, graph: gg.GrammarGraph, negate: bool = False
@@ -1119,7 +1122,6 @@ class SemanticPredicateFormula(Formula):
         return SemanticPredicateFormula(
             self.predicate,
             *[arg if arg not in subst_map else subst_map[arg] for arg in self.args],
-            order=self.order,
         )
 
     def substitute_expressions(
@@ -1151,7 +1153,7 @@ class SemanticPredicateFormula(Formula):
 
             new_args.append(tree.substitute({k: v for k, v in subst_map.items()}))
 
-        return SemanticPredicateFormula(self.predicate, *new_args, order=self.order)
+        return SemanticPredicateFormula(self.predicate, *new_args)
 
     def bound_variables(self) -> OrderedSet[BoundVariable]:
         return OrderedSet([])
@@ -2796,23 +2798,69 @@ def univ_close_over_var_push_in(
     qfd_vars: Optional[BoundVariable | Iterable[BoundVariable]] = None,
 ) -> Formula:
     """
-    Adds a universal quantifier over `var` with match expression `mexpr` and "in" variable `in_var`
-    in `formula`, such that, if `formula` is a propositional combination or a universal quantifier,
-    the new quantifier is pushed inside as much as possible.
+    Adds a universal quantifier over `var` with match expression `mexpr` and "in"
+    variable `in_var` in `formula`, such that, if `formula` is a propositional
+    combination or a universal quantifier, the new quantifier is pushed inside as much
+    as possible.
 
     We consider pushing in possible if:
     1. `formula` is a propositional combination and
     1a. it has one argument in which `qfd_var` does not occur, *or*
     1b. `in_var` is bound by a quantifier inside one of the arguments; or
-    2. `formula` is a universal formula that does not use `var` as container ("in") variable.
+    2. `formula` is a universal formula that does not use `var` as container ("in")
+        variable.
+
+    NOTE (DS, 2023-04-27): When does "1b" actually happen?
+
+    Example (1b):
+
+    >>> optag_var = BoundVariable("xml-open-tag", "<xml-open-tag>")
+    >>> start = Constant("start", "<start>")
+    >>> id_char = BoundVariable("id-char", "<id-char>")
+
+    >>> from isla.z3_helpers import z3_eq
+    >>> formula = ConjunctiveFormula(
+    ...     ForallFormula(
+    ...         optag_var,
+    ...         start,
+    ...         SMTFormula(z3_eq(id_char.to_smt(), z3.StringVal("a")), id_char),
+    ...         BindExpression(
+    ...             DummyVariable("<"),
+    ...             BoundVariable("id", "<id>"),
+    ...             DummyVariable(" "),
+    ...             DummyVariable("<xml-attribute>"),
+    ...             DummyVariable(">"))),
+    ...     ForallFormula(
+    ...         optag_var,
+    ...         start,
+    ...         SMTFormula(z3_eq(id_char.to_smt(), z3.StringVal("a")), id_char),
+    ...             BindExpression(
+    ...                 DummyVariable("<"),
+    ...                 BoundVariable("id", "<id>"),
+    ...                 DummyVariable(">"))))
+
+    In this formula, the "in" variable of the new quantifier to add, :code:`id`,
+    is bound by already existing quantifiers in the conjunction. Thus, we must
+    push the new quantifier in; otherwise, the "in" variable will be unbound and
+    the resulting formula thus ill-formed.
+
+    >>> print(unparse_isla(univ_close_over_var_push_in(
+    ...     formula, id_char, BoundVariable("id", "<id>"), qfd_vars={id_char})))
+    (forall <xml-open-tag> xml-open-tag="<{<id> id} <xml-attribute>>" in start:
+       forall <id-char> id-char in id:
+         (= id-char "a") and
+    forall <xml-open-tag> xml-open-tag="<{<id> id}>" in start:
+      forall <id-char> id-char in id:
+        (= id-char "a"))
 
     :param formula: The formula into which to push in a new universal quantifier.
     :param var: The bound variable of the new universal quantifier.
     :param in_var: The container ("in") variable of the new universal quantifier.
     :param mexpr: The match expression of the new universal quantifier.
-    :param qfd_vars: A variable to decide whether pushing in is possible or not. Defaults to `var`.
-    :return: A formula with an added quantifier, or the original formula if `qfd_var` does
-    not occur freely in `formula`.
+    :param qfd_vars: A variable to decide whether pushing in is possible or not.
+        Defaults to `var`.
+    :return: A formula with an added quantifier, or the original formula if `qfd_var`
+        does not occur freely in `formula`.
     """
 
     if qfd_vars is None:
@@ -2829,19 +2877,66 @@ def univ_close_over_var_push_in(
         return formula
 
     if isinstance(formula, PropositionalCombinator):
-        if any(
-            not qfd_vars.intersection(arg.free_variables()) for arg in formula.args
-        ) or any(
-            in_var in BoundVariablesCollector().collect(arg) for arg in formula.args
-        ):
-            return type(formula)(
-                *map(
-                    lambda arg: univ_close_over_var_push_in(
-                        arg, var, in_var, mexpr, qfd_vars
-                    ),
-                    formula.args,
-                )
-            )
+        is_conj = isinstance(formula, ConjunctiveFormula)
+        elements = split_conjunction(formula) if is_conj else split_disjunction(formula)
+
+        # We don't put "independent" sub-formulas under the quantifier scope, i.e.,
+        # those that don't contain any of the bound variables. All others are either
+        # put into the scope of a single quantifier, if `in_var` is not bound by one
+        # of these formulas; or we push in.
+
+        def independent_predicate(f: Formula) -> bool:
+            return not qfd_vars.intersection(f.free_variables())
+
+        def push_in_predicate(f: Formula) -> bool:
+            return in_var in BoundVariablesCollector().collect(f)
+
+        independent_formulas = [
+            elem for elem in elements if independent_predicate(elem)
+        ]
+
+        push_in_formulas = [
+            elem
+            for elem in elements
+            if not independent_predicate(elem) and push_in_predicate(elem)
+        ]
+
+        if independent_formulas or push_in_formulas:
+            other_formulas = [
+                elem
+                for elem in elements
+                if not independent_predicate(elem) and not push_in_predicate(elem)
+            ]
+
+            assert len(independent_formulas) + len(push_in_formulas) + len(
+                other_formulas
+            ) == len(elements)
+
+            # Independent formulas are kept as-is
+            result_elements = independent_formulas
+
+            # For formulas where the in variable is bound, we must push in
+            result_elements += [
+                univ_close_over_var_push_in(elem, var, in_var, mexpr, qfd_vars)
+                for elem in push_in_formulas
+            ]
+
+            # For all other formulas, we add a single quantifier around them as a whole
+            if other_formulas:
+                result_elements += [
+                    univ_close_over_var_push_in(
+                        type(formula)(*other_formulas)
+                        if len(other_formulas) > 1
+                        else other_formulas[0],
+                        var,
+                        in_var,
+                        mexpr,
+                        qfd_vars,
+                    )
+                ]
+
+            assert len(result_elements) > 1
+            return type(formula)(*result_elements)
 
     if isinstance(formula, ForallFormula) and var != formula.in_variable:
         return ForallFormula(
@@ -2904,6 +2999,8 @@ class AddMexprTransformer(NoopFormulaTransformer):
             for mexpr in self.mexprs
         ]
 
+        mexprs = [mexpr for mexpr in mexprs if mexpr is not None]
+
         if not mexprs:
             raise RuntimeError(
                 "Could not merge the match expression of a formula with new match expressions "
@@ -2917,7 +3014,7 @@ class AddMexprTransformer(NoopFormulaTransformer):
         formula: QuantifiedFormula,
         mexpr: BindExpression,
         orig_trees_and_paths: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]],
-    ) -> BindExpression:
+    ) -> Optional[BindExpression]:
         new_trees_and_paths = mexpr.to_tree_prefix(
             formula.bound_variable.n_type, self.grammar
         )
@@ -2979,6 +3076,9 @@ class AddMexprTransformer(NoopFormulaTransformer):
             ]
 
             return BindExpression(*mexpr_elems)
+
+        # Only conflicts; nothing could be added
+        return None
 
     @staticmethod
     def __merge_trees_at_path(
@@ -3156,9 +3256,9 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         )
 
     def close_over_free_nonterminals(self, formula: Formula) -> Formula:
-        # When closing over "free nonterminals", we exclude those (for the simple first run)
-        # who appear as a first element in an XPath expression. Those are quantified over
-        # afterward; else we'd obtain spurious quantifiers.
+        # When closing over "free nonterminals", we exclude those (for the simple first
+        # run) who appear as a first element in an XPath expression. Those are
+        # quantified over afterward; else we'd obtain spurious quantifiers.
         free_nonterminal_vars = [
             var
             for nonterminal, var in self.vars_for_free_nonterminals.items()
@@ -3189,34 +3289,35 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
         # fresh_vars: Dict[str, BoundVariable] = {}
 
-        # for segments, bound_variable in list(self.vars_for_xpath_expressions.items()):
         for first_segment_elem, group in itertools.groupby(
             sorted(tuple(self.vars_for_xpath_expressions.items())), lambda p: p[0][0][0]
         ):
-            if is_nonterminal(first_segment_elem[0]):
-                var_type = first_segment_elem[0]
-                var = fresh_bound_variable(
-                    self.used_variables,
-                    BoundVariable(var_type[1:-1], var_type),
-                    add=False,
+            if not is_nonterminal(first_segment_elem[0]):
+                continue
+
+            var_type = first_segment_elem[0]
+            var = fresh_bound_variable(
+                self.used_variables,
+                BoundVariable(var_type[1:-1], var_type),
+                add=False,
+            )
+            self.used_variables.add(var.name)
+
+            if var_type in free_nonterminal_vars_also_in_xpath_expr:
+                formula = formula.substitute_variables(
+                    {free_nonterminal_vars_also_in_xpath_expr[var_type]: var}
                 )
-                self.used_variables.add(var.name)
 
-                if var_type in free_nonterminal_vars_also_in_xpath_expr:
-                    formula = formula.substitute_variables(
-                        {free_nonterminal_vars_also_in_xpath_expr[var_type]: var}
-                    )
+            group_xpath_exprs = list(group)
+            qfd_vars = {var for _, var in group_xpath_exprs}
+            formula = univ_close_over_var_push_in(formula, var, qfd_vars=qfd_vars)
 
-                group_xpath_exprs = list(group)
-                qfd_vars = {var for _, var in group_xpath_exprs}
-                formula = univ_close_over_var_push_in(formula, var, qfd_vars=qfd_vars)
-
-                for segments, bound_variable in group_xpath_exprs:
-                    new_segments = list_set(
-                        segments, 0, list_set(segments[0], 0, (var.name, 0))
-                    )
-                    del self.vars_for_xpath_expressions[segments]
-                    self.vars_for_xpath_expressions[new_segments] = bound_variable
+            for segments, bound_variable in group_xpath_exprs:
+                new_segments = list_set(
+                    segments, 0, list_set(segments[0], 0, (var.name, 0))
+                )
+                del self.vars_for_xpath_expressions[segments]
+                self.vars_for_xpath_expressions[new_segments] = bound_variable
 
         return formula
 
@@ -3235,20 +3336,22 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             for parsed_xpath_expr in self.vars_for_xpath_expressions
         )
 
-        # We reduce the first XPath expression and proceed recursively until `self.var_for_xpath_expressions`
-        # is empty. Consequently, it's crucial that we update this map as we proceed.
+        # We reduce the first XPath expression and proceed recursively until
+        # `self.var_for_xpath_expressions` is empty. Consequently, it's crucial that
+        # we update this map as we proceed.
 
         xpath_expr: ParsedXPathExpr = next(iter(self.vars_for_xpath_expressions))
         assert xpath_expr
         final_bound_variable = self.vars_for_xpath_expressions[xpath_expr]
         del self.vars_for_xpath_expressions[xpath_expr]
 
-        # Either, the first XPath segment consists of multiple elements, or we have more than one segment.
+        # Either, the first XPath segment consists of multiple elements, or we have
+        # more than one segment.
         assert len(xpath_expr) > 1 or len(xpath_expr[0]) > 1
 
         if len(xpath_expr) > 1 and len(xpath_expr[0]) == 1:
-            # If the first of more than one XPath segments is a variable, we can eliminate
-            # that segment by introducing a quantifier.
+            # If the first of more than one XPath segments is a variable, we can
+            # eliminate that segment by introducing a quantifier.
             in_var_name = xpath_expr[0][0][0]
             assert not is_nonterminal(in_var_name)
             in_var = next(
