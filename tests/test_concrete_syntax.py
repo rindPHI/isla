@@ -42,6 +42,7 @@ from isla.language import (
     parse_bnf,
     unparse_grammar,
     ISLaEmitter,
+    univ_close_over_var_push_in,
 )
 from isla.parser import non_canonical
 from isla.z3_helpers import z3_eq
@@ -280,9 +281,10 @@ forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
         self.assertEqual(expected, result)
 
     def test_free_nonterminal_scope(self):
-        result = parse_isla('(= <var> "x") and (= <expr> "1")')
+        result = parse_isla('(= <expr> "1") and (= <var> "x")')
         expected = parse_isla(
-            'forall <var> var in start: (= var "x") and forall <expr> expr in start: (= expr "1")'
+            'forall <var> var in start: (= var "x") and '
+            + 'forall <expr> expr in start: (= expr "1")'
         )
 
         self.assertEqual(expected, result)
@@ -967,6 +969,149 @@ exists <csv-header> header in start:
         self.assertEqual(
             expected, unparse_isla(parse_isla(constraint, parse_bnf(grammar)))
         )
+
+    def test_independent_xpaths_not_in_nested_quantifiers(self):
+        # For the following constraint, there was a bug putting the second produced
+        # quantifier under the scope of the first, which is utterly wrong, especially
+        # if vacuous satisfaction of the first quantifier is possible. The quantifiers
+        # must be kept separate.
+        constraint = r"""
+                str.to.int(<start-time>.<time>.<year>) > 0
+            and str.to.int(<end-time>.<time>.<year>) > 0
+            and str.to.int(<end-time>.<time>.<month>) > 0
+        """
+
+        grammar = r"""
+<start>       ::= <period>
+<period>      ::= <start-time> <end-time> | <end-time> 
+<start-time>  ::= <time> 
+<end-time>    ::= <time> 
+<time>        ::= <year> "-" <month> "-" <day>
+<time>        ::= <year> "-" <month> "-" <day>
+<year>        ::= <DIGIT> <DIGIT> <DIGIT> <DIGIT>
+<month>       ::= "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12"
+<day>         ::=   "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12" 
+                  | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23" | "24" 
+                  | "25" | "26" | "27" | "28" | "29" | "30" | "31"
+<DIGIT>       ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+        """
+
+        expected = (
+            '(forall <end-time> end-time="{<year> year_0}-{<month> month}-<day>" in '
+            "start:\n"
+            "   ((> (str.to.int year_0) 0) and\n"
+            "   (> (str.to.int month) 0)) and\n"
+            'forall <start-time> start-time="{<year> year}-<month>-<day>" in start:\n'
+            "  (> (str.to.int year) 0))"
+        )
+
+        self.assertEqual(
+            expected, unparse_isla(parse_isla(constraint, parse_bnf(grammar)))
+        )
+
+    def test_isla_emitter_close_over_partially_independent_variables(self):
+        grammar = r"""
+<start>       ::= <period>
+<period>      ::= <start-time> <end-time> | <end-time> 
+<start-time>  ::= <time> 
+<end-time>    ::= <time> 
+<time>        ::= <year> "-" <month> "-" <day>
+<time>        ::= <year> "-" <month> "-" <day>
+<year>        ::= <DIGIT> <DIGIT> <DIGIT> <DIGIT>
+<month>       ::= "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12"
+<day>         ::=   "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12" 
+                  | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23" | "24" 
+                  | "25" | "26" | "27" | "28" | "29" | "30" | "31"
+<DIGIT>       ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+                """
+
+        year = language.BoundVariable("year", "<year>")
+        year_0 = language.BoundVariable("year_0", "<year>")
+        month = language.BoundVariable("month", "<month>")
+
+        formula = language.ConjunctiveFormula(
+            language.ConjunctiveFormula(
+                language.SMTFormula(
+                    z3.StrToInt(year.to_smt()) > z3.IntVal(0),
+                    year,
+                ),
+                language.SMTFormula(
+                    z3.StrToInt(year_0.to_smt()) > z3.IntVal(0),
+                    year_0,
+                ),
+            ),
+            language.SMTFormula(
+                z3.StrToInt(month.to_smt()) > z3.IntVal(0),
+                month,
+            ),
+        )
+
+        emitter = ISLaEmitter(parse_bnf(grammar))
+        emitter.used_variables = OrderedSet(["year_0", "year", "month"])
+        emitter.vars_for_xpath_expressions = {
+            ((("<start-time>", 0), ("<time>", 0), ("<year>", 0)),): year,
+            ((("<end-time>", 0), ("<time>", 0), ("<year>", 0)),): year_0,
+            ((("<end-time>", 0), ("<time>", 0), ("<month>", 0)),): month,
+        }
+
+        result = emitter.close_over_free_nonterminals(formula)
+
+        expected = (
+            "(∀ end-time ∈ start: ((0 < StrToInt(year_0) ∧ 0 < StrToInt(month)))"
+            + " ∧ ∀ start-time ∈ start: (0 < StrToInt(year)))"
+        )
+
+        self.assertEqual(expected, str(result))
+
+    def test_univ_close_over_var_push_in_partially_independent_variables(self):
+        year = language.BoundVariable("year", "<year>")
+        year_0 = language.BoundVariable("year_0", "<year>")
+        month = language.BoundVariable("month", "<month>")
+
+        formula = language.ConjunctiveFormula(
+            language.ConjunctiveFormula(
+                language.SMTFormula(
+                    z3.StrToInt(year.to_smt()) > z3.IntVal(0),
+                    year,
+                ),
+                language.SMTFormula(
+                    z3.StrToInt(year_0.to_smt()) > z3.IntVal(0),
+                    year_0,
+                ),
+            ),
+            language.SMTFormula(
+                z3.StrToInt(month.to_smt()) > z3.IntVal(0),
+                month,
+            ),
+        )
+
+        var = language.BoundVariable("end-time", "<end-time>")
+        qfd_vars = {year_0, month}
+
+        result = univ_close_over_var_push_in(formula, var, qfd_vars=qfd_vars)
+
+        expected = language.ConjunctiveFormula(
+            language.SMTFormula(
+                z3.StrToInt(year.to_smt()) > z3.IntVal(0),
+                year,
+            ),
+            language.ForallFormula(
+                language.BoundVariable("end-time", "<end-time>"),
+                language.Constant("start", "<start>"),
+                language.ConjunctiveFormula(
+                    language.SMTFormula(
+                        z3.StrToInt(year_0.to_smt()) > z3.IntVal(0),
+                        year_0,
+                    ),
+                    language.SMTFormula(
+                        z3.StrToInt(month.to_smt()) > z3.IntVal(0),
+                        month,
+                    ),
+                ),
+            ),
+        )
+
+        self.assertEqual(expected, result)
 
 
 if __name__ == "__main__":

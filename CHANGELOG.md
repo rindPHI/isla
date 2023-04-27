@@ -5,6 +5,17 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.13.8] - 2023-04-27
+
+### Changed
+
+- Fixed a parser bug occurring when a conjunctive formula contains two independent sets
+  of XPath expressions. Previously, the produced quantifiers were nested, which is
+  incorrect. Now, they're "pushed in" as expected.
+- Fixed a bug in `isla.solver.subtree_solutions` surfacing for the reST example when
+  a subtree gets substituted by a smaller subtree produced by a semantic predicate
+  (in that case, `extend_crop`).
+
 ## [1.13.7] - 2023-04-26
 
 ### Changed

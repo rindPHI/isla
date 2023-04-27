@@ -4104,8 +4104,13 @@ def subtree_solutions(
             orig, DerivationTree
         ), f"Expected a DerivationTree, given: {type(orig).__name__}"
 
+        # Note: It can happen that a path in the original tree is not valid in the
+        #       substitution, e.g., if we happen to replace a larger with a smaller
+        #       tree.
         for path, tree in [
-            (p, t) for p, t in orig.paths() if t not in solution_with_subtrees
+            (p, t)
+            for p, t in orig.paths()
+            if t not in solution_with_subtrees and subst.is_valid_path(p)
         ]:
             solution_with_subtrees[tree] = subst.get_subtree(path)
 
