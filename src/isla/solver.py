@@ -2789,33 +2789,61 @@ class ISLaSolver:
         elif var in length_vars:
             return self.safe_create_fixed_length_tree(var, model, fresh_var_map)
         elif var in int_vars:
+            str_model_value = model[fresh_var_map[var]].as_string()
+
+            try:
+                int_model_value = int(str_model_value)
+            except ValueError:
+                raise RuntimeError(f"Value {str_model_value} for {var} is not a number")
+
+            var_type = var.n_type
+
             try:
                 return self.parse(
-                    model[fresh_var_map[var]].as_string(),
-                    var.n_type,
+                    str(int_model_value),
+                    var_type,
                     silent=True,
                 )
             except SyntaxError:
+                # TODO: Update comment
                 # This may happen, e.g, with padded values: Only "01" is a valid
                 # solution, but not "1". We generate a value matching the variable's
                 # regular expression.
+
+                # TODO: Include support for (padded) negative numbers
 
                 z3_solver = z3.Solver()
                 z3_solver.set("timeout", 300)
 
                 z3_solver.add(
-                    z3_eq(
-                        z3.StrToInt(var.to_smt()), model[fresh_var_map[var]].as_long()
-                    )
+                    z3_eq(z3.StrToInt(var.to_smt()), z3.IntVal(int_model_value))
                 )
+
+                maybe_plus_re = z3.Option(z3.Re("+"))
+                zeroes_padding_re = z3.Star(z3.Re("0"))
+
+                # TODO: Ensure symbols are fresh
+                maybe_plus_var = z3.String("__plus")
+                zeroes_padding_var = z3.String("__padding")
+
+                z3_solver.add(z3.InRe(maybe_plus_var, maybe_plus_re))
+                z3_solver.add(z3.InRe(zeroes_padding_var, zeroes_padding_re))
+
                 z3_solver.add(
-                    z3.InRe(var.to_smt(), self.extract_regular_expression(var.n_type))
+                    z3.InRe(
+                        z3.Concat(
+                            maybe_plus_var,
+                            zeroes_padding_var,
+                            z3.StringVal(str_model_value),
+                        ),
+                        self.extract_regular_expression(var.n_type),
+                    )
                 )
 
                 if z3_solver.check() != z3.sat:
                     raise RuntimeError(
                         "Could not parse a numeric solution "
-                        + f"({model[fresh_var_map[var]].as_long()}) for variable "
+                        + f"({str_model_value}) for variable "
                         + f"{var} of type '{var.n_type}'; try "
                         + "running the solver without optimized Z3 queries or make "
                         + "sure that ranges are restricted to syntactically valid "
@@ -2823,7 +2851,9 @@ class ISLaSolver:
                     )
 
                 return self.parse(
-                    z3_solver.model()[var.to_smt()].as_string(),
+                    z3_solver.model()[maybe_plus_var].as_string()
+                    + z3_solver.model()[zeroes_padding_var].as_string()
+                    + str_model_value,
                     var.n_type,
                 )
         else:
