@@ -20,6 +20,7 @@ import copy
 import functools
 import importlib.resources
 import itertools
+import logging
 import math
 import operator
 import random
@@ -27,7 +28,7 @@ import re
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import lru_cache, reduce
 from typing import (
     Set,
     Generator,
@@ -56,6 +57,8 @@ from isla.type_defs import (
     CanonicalGrammar,
     ImmutableList,
 )
+
+HELPERS_LOGGER = logging.getLogger(__name__)
 
 R = TypeVar("R")
 S = TypeVar("S")
@@ -1007,3 +1010,62 @@ def merge_dict_of_sets(
         if key in dict_1 and key in dict_2:
             result[key] = dict_1[key] | dict_2[key]
     return result
+
+
+def merge_intervals(
+    *list_of_maybe_intervals: Maybe[List[Tuple[int, int]]]
+) -> Maybe(List[Tuple[int, int]]):
+    """
+    Merges a sequence of potential lists of intervals. Intervals are sorted, directly
+    neighboring and overlapping ones are merged. If any list is not present, a
+    :code:`Maybe.nothing()` is returned.
+
+    >>> merge_intervals(*[Maybe([(1, 2)]), Maybe([(3, 4), (0, 1)])])
+    Maybe(a=[(0, 4)])
+
+    >>> merge_intervals(*[Maybe([(1, 2)]), Maybe([(4, 5), (0, 1)])])
+    Maybe(a=[(0, 2), (4, 5)])
+
+    >>> merge_intervals(*[Maybe([(1, 2)]), Maybe.nothing(), Maybe([(3, 4), (0, 1)])])
+    Maybe(a=None)
+
+    :param list_of_maybe_intervals: The sequence of potential lists of intervals.
+    :return: A potential list of intervals.
+    """
+    maybe_list_of_intervals: Maybe[List[Tuple[int, int]]] = reduce(
+        lambda acc, maybe_intervals: acc.bind(
+            lambda list_of_intervals: maybe_intervals.bind(
+                lambda other_list_of_intervals: Maybe(
+                    list_of_intervals + other_list_of_intervals
+                )
+            )
+        ),
+        list_of_maybe_intervals,
+    )
+
+    def merge_two_intervals(
+        i1: Tuple[int, int], i2: Tuple[int, int]
+    ) -> List[Tuple[int, int]]:
+        assert i1[0] <= i2[0], "Assumed sorted intervals"
+
+        if i1[1] + 1 < i2[0]:
+            # Separated intervals
+            return [i1, i2]
+
+        # Overlapping intervals:
+        # (1, 4), (5, 7) -> (1, 7)
+        # (1, 4), (2, 5) -> (1, 5)
+        # (1, 4), (2, 3) -> (1, 4)
+        return [(i1[0], max(i1[1], i2[1]))]
+
+    return maybe_list_of_intervals.map(
+        lambda list_of_intervals: reduce(
+            lambda acc, interval: (
+                [interval]
+                if not acc
+                else (acc[:-1] + merge_two_intervals(acc[-1], interval))
+            ),
+            sorted(list_of_intervals, key=lambda interval: interval[0]),
+            [],
+        )
+    )

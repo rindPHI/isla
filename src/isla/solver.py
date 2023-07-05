@@ -124,6 +124,8 @@ from isla.z3_helpers import (
     visit_z3_expr,
     smt_string_val_to_string,
     parent_relationships_in_z3_expr,
+    numeric_intervals_from_regex,
+    z3_or,
 )
 
 
@@ -1521,6 +1523,7 @@ class ISLaSolver:
 
         >>> from isla.language import Constant, SMTFormula, Variable, unparse_isla
         >>> x = Constant("x", Variable.NUMERIC_NTYPE)
+
         >>> formula = SMTFormula(z3.StrToInt(x.to_smt()) > z3.IntVal(10), x)
         >>> unparse_isla(formula)
         '(< 10 (str.to.int x))'
@@ -2508,10 +2511,40 @@ class ISLaSolver:
         # Lengths must be positive
         formulas.extend(
             [
-                cast(z3.BoolRef, length_var >= z3.IntVal(0))
-                for length_var in replacement_map.values()
+                cast(
+                    z3.BoolRef,
+                    replacement_map[z3.Length(length_var.to_smt())] >= z3.IntVal(0),
+                )
+                for length_var in length_vars
             ]
         )
+
+        # Add custom intervals for int variables
+        for int_var in int_vars:
+            if int_var.n_type == language.Variable.NUMERIC_NTYPE:
+                # "NUM" variables range over the full int domain
+                continue
+
+            regex = self.extract_regular_expression(int_var.n_type)
+            maybe_intervals = numeric_intervals_from_regex(regex)
+            repl_var = replacement_map[z3.StrToInt(int_var.to_smt())]
+            maybe_intervals.if_present(
+                lambda intervals: formulas.append(
+                    z3_or(
+                        [
+                            z3.And(
+                                repl_var >= z3.IntVal(interval[0])
+                                if interval[0] > -sys.maxsize
+                                else z3.BoolVal(True),
+                                repl_var <= z3.IntVal(interval[1])
+                                if interval[1] < sys.maxsize
+                                else z3.BoolVal(True),
+                            )
+                            for interval in intervals
+                        ]
+                    )
+                )
+            )
 
         for prev_solution in solutions_to_exclude:
             prev_solution_formula = z3_and(
@@ -2673,7 +2706,7 @@ class ISLaSolver:
         length_vars: Set[language.Variable],
         int_vars: Set[language.Variable],
     ) -> DerivationTree:
-        """
+        r"""
         Extracts a value for :code:`var` from :code:`model`. Considers the following
         special cases:
 
@@ -2712,6 +2745,20 @@ class ISLaSolver:
         >>> DerivationTree.next_id = 1
         >>> solver.extract_model_value(n, model, {}, set(), set())
         DerivationTree('15', (), id=1)
+
+        For a trivially true solution on numeric variables, we return a random number:
+
+        >>> f = z3_eq(n.to_smt(), n.to_smt())
+        >>> z3_solver = z3.Solver()
+        >>> z3_solver.add(f)
+        >>> z3_solver.check()
+        sat
+
+        >>> model = z3_solver.model()
+        >>> DerivationTree.next_id = 1
+        >>> random.seed(0)
+        >>> solver.extract_model_value(n, model, {n: n.to_smt()}, set(), {n})
+        DerivationTree('-2116850434379610162', (), id=1)
 
         **"Length" Variables:**
 
@@ -2757,6 +2804,40 @@ class ISLaSolver:
         >>> str(result)
         'xxxxx'
 
+        **Special Number Formats**
+
+        It may happen that the solver returns, e.g., "1" as a solution for an int
+        variable, but the grammar only recognizes "+001". We support this case, i.e.,
+        an optional "+" and optional 0 padding; an optional 0 padding for negative
+        numbers is also supported.
+
+        >>> grammar = {
+        ...     "<start>": ["<int>"],
+        ...     "<int>": ["<sign>00<leaddigit><digits>"],
+        ...     "<sign>": ["-", "+"],
+        ...     "<digits>": ["", "<digit><digits>"],
+        ...     "<digit>": list("0123456789"),
+        ...     "<leaddigit>": list("123456789"),
+        ... }
+        >>> solver = ISLaSolver(grammar)
+
+        >>> i = language.Variable("i", "<int>")
+        >>> i_0 = z3.Int("i_0")
+        >>> f = z3_eq(i_0, z3.IntVal(5))
+
+        >>> z3_solver = z3.Solver()
+        >>> z3_solver.add(f)
+        >>> z3_solver.check()
+        sat
+
+        The following test works when run from the IDE, but unfortunately not when
+        started from CI/the `test_doctests.py` script. Thus, we only show it as code
+        block (we added a unit test as a replacement)::
+
+            model = z3_solver.model()
+            print(solver.extract_model_value(i, model, {i: i_0}, set(), {i}))
+            # Prints: +005
+
         :param var: The variable for which to extract a solution from the model.
         :param model: The model containing the solution.
         :param fresh_var_map: A map from variables to fresh symbols for "length" and
@@ -2776,6 +2857,15 @@ class ISLaSolver:
                 assert var in fresh_var_map
 
                 model_value = model[fresh_var_map[var]]
+
+                if model_value is None:
+                    # This can happen for universally true formulas, e.g., `x = x`.
+                    # In that case, we return a random integer.
+                    model_value = z3.IntVal(random.randint(-sys.maxsize, sys.maxsize))
+
+            assert (
+                model_value is not None
+            ), f"No solution for variable {var} found in model {model}"
 
             string_value = smt_string_val_to_string(model_value)
             assert string_value
@@ -2805,19 +2895,15 @@ class ISLaSolver:
                     silent=True,
                 )
             except SyntaxError:
-                # TODO: Update comment
                 # This may happen, e.g, with padded values: Only "01" is a valid
-                # solution, but not "1". We generate a value matching the variable's
-                # regular expression.
-
-                # TODO: Include support for (padded) negative numbers
+                # solution, but not "1". Similarly, a grammar may expect "+1", but
+                # "1" is returned by the solver. We support the number format
+                # `[+-]0*<digits>`. Whenever the grammar recognizes at least this
+                # set for the nonterminal in question, we return a derivation tree.
+                # Otherwise, a RuntimeError is raised.
 
                 z3_solver = z3.Solver()
                 z3_solver.set("timeout", 300)
-
-                z3_solver.add(
-                    z3_eq(z3.StrToInt(var.to_smt()), z3.IntVal(int_model_value))
-                )
 
                 maybe_plus_re = z3.Option(z3.Re("+"))
                 zeroes_padding_re = z3.Star(z3.Re("0"))
@@ -2832,9 +2918,15 @@ class ISLaSolver:
                 z3_solver.add(
                     z3.InRe(
                         z3.Concat(
-                            maybe_plus_var,
+                            maybe_plus_var
+                            if int_model_value >= 0
+                            else z3.StringVal("-"),
                             zeroes_padding_var,
-                            z3.StringVal(str_model_value),
+                            z3.StringVal(
+                                str_model_value
+                                if int_model_value >= 0
+                                else str(-int_model_value)
+                            ),
                         ),
                         self.extract_regular_expression(var.n_type),
                     )
@@ -2851,9 +2943,17 @@ class ISLaSolver:
                     )
 
                 return self.parse(
-                    z3_solver.model()[maybe_plus_var].as_string()
+                    (
+                        z3_solver.model()[maybe_plus_var].as_string()
+                        if int_model_value >= 0
+                        else "-"
+                    )
                     + z3_solver.model()[zeroes_padding_var].as_string()
-                    + str_model_value,
+                    + (
+                        str_model_value
+                        if int_model_value >= 0
+                        else str(-int_model_value)
+                    ),
                     var.n_type,
                 )
         else:

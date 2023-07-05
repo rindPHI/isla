@@ -5,6 +5,16 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.14.0] - 2023-07-05
+
+### Changed
+
+- Improved optimized handling of `str.to.int` (when `enable_optimized_z3_queries` is
+  enabled). For variables exclusively appearing in `str.to.int`, we support a wider
+  range of possible solutions, such as negative numbers or languages with an optional
+  `+` or padding of zeroes in front. Furthermore, ISLa tries to infer the domains of
+  these variables automatically, e.g., to exclude "0" or negative values.
+
 ## [1.13.9] - 2023-04-27
 
 ### Changed
