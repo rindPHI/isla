@@ -21,7 +21,7 @@ import operator
 import random
 import re
 import sys
-from functools import lru_cache, reduce
+from functools import lru_cache, reduce, partial
 from typing import Callable, Tuple, cast, List, Optional, Dict, Union, Generator, Set
 
 import z3
@@ -902,6 +902,19 @@ def z3_split_at_operator(expr: z3.ExprRef, op: int) -> List[z3.ExprRef]:
 ONE_DIGIT_REGEX = re.compile(r"[0-9]")
 
 
+def seqref_to_int(seqref: z3.SeqRef) -> Maybe[int]:
+    """
+    TODO
+    :param seqref:
+    :return:
+    """
+    assert isinstance(seqref, z3.SeqRef)
+    try:
+        return Maybe(int(seqref.as_string()))
+    except ValueError:
+        return Maybe.nothing()
+
+
 def numeric_intervals_from_regex(regex: z3.ReRef) -> Maybe[List[Tuple[int, int]]]:
     r"""
     This function transforms regular expressions representing intervals of integers
@@ -1021,13 +1034,52 @@ def numeric_intervals_from_regex(regex: z3.ReRef) -> Maybe[List[Tuple[int, int]]
 
     assert isinstance(regex, z3.ReRef)
 
-    def seqref_to_int(seqref: z3.SeqRef) -> Maybe[int]:
-        assert isinstance(seqref, z3.SeqRef)
-        try:
-            return Maybe(int(seqref.as_string()))
-        except ValueError:
-            return Maybe.nothing()
+    concat = partial(numeric_intervals_from_concat, lambda _: Maybe.nothing())
+    full_range = partial(
+        numeric_intervals_from_full_range,
+        concat,
+    )
+    zeroes = partial(
+        numeric_intervals_from_zeroes,
+        full_range,
+    )
+    union = partial(
+        numeric_intervals_from_union,
+        zeroes,
+    )
+    seq_to_re = partial(
+        numeric_intervals_from_seq_to_re,
+        union,
+    )
+    regex_range = partial(
+        numeric_intervals_from_regex_range,
+        seq_to_re,
+    )
 
+    result: Maybe[List[Tuple[int, int]]] = regex_range(regex)
+
+    if not result.is_present():
+        # Note: This is not a problem if we're in a recursive call from the loop
+        #       removing 0 padding. In that case, the returned `Maybe.nothing()`
+        #       simply signals that there are no more 0s to remove.
+        HELPERS_LOGGER.debug(
+            f"Unsupported expression in `numeric_intervals_from_regex`: {regex}"
+        )
+
+    return result
+
+
+def numeric_intervals_from_regex_range(
+    fallback: Callable[[z3.ReRef], Maybe[List[Tuple[int, int]]]], regex: z3.ReRef
+) -> Maybe[List[Tuple[int, int]]]:
+    """
+    Handles the :code:`z3.Range(a, b)` case from
+    :func:`~isla.z3_helpers.numeric_intervals_from_regex`.
+
+    :param fallback: The function to call if this function is not responsible.
+    :param regex: See :func:`~isla.z3_helpers.numeric_intervals_from_regex`
+    :return: See :func:`~isla.z3_helpers.numeric_intervals_from_regex`
+    """
     if regex.decl().kind() == z3.Z3_OP_RE_RANGE and all(
         ONE_DIGIT_REGEX.match(child.as_string()) for child in regex.children()
     ):
@@ -1042,11 +1094,56 @@ def numeric_intervals_from_regex(regex: z3.ReRef) -> Maybe[List[Tuple[int, int]]
             )
             .map(lambda t: [t])
         )
-    elif regex.decl().kind() == z3.Z3_OP_SEQ_TO_RE:
+    else:
+        return fallback(regex)
+
+
+def numeric_intervals_from_seq_to_re(
+    fallback: Callable[[z3.ReRef], Maybe[List[Tuple[int, int]]]], regex: z3.ReRef
+) -> Maybe[List[Tuple[int, int]]]:
+    """
+    Handles the :code:`z3.Re(c)` case from
+    :func:`~isla.z3_helpers.numeric_intervals_from_regex`.
+
+    :param fallback: The function to call if this function is not responsible.
+    :param regex: See :func:`~isla.z3_helpers.numeric_intervals_from_regex`
+    :return: See :func:`~isla.z3_helpers.numeric_intervals_from_regex`
+    """
+    if regex.decl().kind() == z3.Z3_OP_SEQ_TO_RE:
         return seqref_to_int(regex.children()[0]).map(lambda n: [(n, n)])
-    elif regex.decl().kind() == z3.Z3_OP_RE_UNION:
+    else:
+        return fallback(regex)
+
+
+def numeric_intervals_from_union(
+    fallback: Callable[[z3.ReRef], Maybe[List[Tuple[int, int]]]], regex: z3.ReRef
+) -> Maybe[List[Tuple[int, int]]]:
+    """
+    Handles the :code:`z3.Union(...)` case from
+    :func:`~isla.z3_helpers.numeric_intervals_from_regex`.
+
+    :param fallback: The function to call if this function is not responsible.
+    :param regex: See :func:`~isla.z3_helpers.numeric_intervals_from_regex`
+    :return: See :func:`~isla.z3_helpers.numeric_intervals_from_regex`
+    """
+    if regex.decl().kind() == z3.Z3_OP_RE_UNION:
         return merge_intervals(*map(numeric_intervals_from_regex, regex.children()))
-    elif (
+    else:
+        return fallback(regex)
+
+
+def numeric_intervals_from_zeroes(
+    fallback: Callable[[z3.ReRef], Maybe[List[Tuple[int, int]]]], regex: z3.ReRef
+) -> Maybe[List[Tuple[int, int]]]:
+    """
+    Handles the :code:`z3.Star/Plus(...0...)` case from
+    :func:`~isla.z3_helpers.numeric_intervals_from_regex`.
+
+    :param fallback: The function to call if this function is not responsible.
+    :param regex: See :func:`~isla.z3_helpers.numeric_intervals_from_regex`
+    :return: See :func:`~isla.z3_helpers.numeric_intervals_from_regex`
+    """
+    if (
         regex.decl().kind()
         in [
             z3.Z3_OP_RE_STAR,
@@ -1058,125 +1155,145 @@ def numeric_intervals_from_regex(regex: z3.ReRef) -> Maybe[List[Tuple[int, int]]
         .get()
     ):
         return Maybe([(0, 0)])
-    elif regex.decl().kind() in [
+    else:
+        return fallback(regex)
+
+
+def numeric_intervals_from_full_range(
+    fallback: Callable[[z3.ReRef], Maybe[List[Tuple[int, int]]]], regex: z3.ReRef
+) -> Maybe[List[Tuple[int, int]]]:
+    """
+    Handles the :code:`z3.Star/Plus(z3.Range("0", "9"))` case from
+    :func:`~isla.z3_helpers.numeric_intervals_from_regex`.
+
+    :param fallback: The function to call if this function is not responsible.
+    :param regex: See :func:`~isla.z3_helpers.numeric_intervals_from_regex`
+    :return: See :func:`~isla.z3_helpers.numeric_intervals_from_regex`
+    """
+    if regex.decl().kind() in [
         z3.Z3_OP_RE_STAR,
         z3.Z3_OP_RE_PLUS,
     ] and regex.children()[0] == z3.Range("0", "9"):
         return Maybe([(-sys.maxsize, sys.maxsize)])
-    elif regex.decl().kind() == z3.Z3_OP_RE_CONCAT:
-        children: List[z3.ReRef] = cast(
-            List[z3.ReRef], z3_split_at_operator(regex, z3.Z3_OP_RE_CONCAT)
-        )
+    else:
+        return fallback(regex)
 
-        first_child = children[0]
-        if first_child.decl().kind() == z3.Z3_OP_RE_UNION:
-            return merge_intervals(
-                *map(
-                    lambda option: numeric_intervals_from_regex(
-                        z3.Concat(option, *children[1:])
-                    ),
-                    first_child.children(),
-                )
-            )
-        elif first_child in [z3.Re("+"), z3.Option(z3.Re("+"))]:
-            return numeric_intervals_from_regex(
-                children[1] if len(children) == 2 else z3.Concat(*children[1:])
-            )
-        elif first_child == z3.Re("-"):
-            return numeric_intervals_from_regex(
-                children[1] if len(children) == 2 else z3.Concat(*children[1:])
-            ).map(
-                lambda list_of_intervals: list(
-                    map(
-                        lambda interval: (-interval[1], -interval[0]),
-                        reversed(list_of_intervals),
-                    ),
-                )
-            )
-        elif first_child == z3.Option(z3.Re("-")):
-            return merge_intervals(
-                *map(
-                    lambda option: numeric_intervals_from_regex(
-                        z3.Concat(option, *children[1:])
-                    ),
-                    [z3.Re("+"), z3.Re("-")],
-                )
-            )
-        else:
-            # We support the following cases, always with an optional left-padding of
-            # 0s that can come in different forms (this comprises the padding of a
-            # non-sequence with 0s):
-            #
-            # - [1-9] [0-9]* -> (1, inf)
-            # - [1-9] [0-9]+ -> (10, inf)
-            # - [0-9] [0-9]* -> (0, inf)
-            # - [0-9] [0-9]+ -> (0, inf)
 
-            idx = 0
-            while idx < len(children) and (
-                numeric_intervals_from_regex(children[idx])
-                .map(lambda intervals: intervals == [(0, 0)])
-                .orelse(lambda: False)
-                .get()
-            ):
-                idx += 1
+def numeric_intervals_from_concat(
+    fallback: Callable[[z3.ReRef], Maybe[List[Tuple[int, int]]]], regex: z3.ReRef
+) -> Maybe[List[Tuple[int, int]]]:
+    """
+    Handles the concatenation case from
+    :func:`~isla.z3_helpers.numeric_intervals_from_regex`.
 
-            if idx > 0:
-                children = children[idx:]
-                return (
-                    Maybe([(0, 0)])
-                    if not children
-                    else numeric_intervals_from_regex(
-                        children[0] if len(children) == 1 else z3.Concat(*children)
-                    )
-                )
+    :param fallback: The function to call if this function is not responsible.
+    :param regex: See :func:`~isla.z3_helpers.numeric_intervals_from_regex`
+    :return: See :func:`~isla.z3_helpers.numeric_intervals_from_regex`
+    """
+    if regex.decl().kind() != z3.Z3_OP_RE_CONCAT:
+        return fallback(regex)
 
-            if (
-                len(children) == 2
-                and (
-                    numeric_intervals_from_regex(children[0])
-                    .map(lambda first_intervals: first_intervals == [(1, 9)])
-                    .orelse(lambda: False)
-                    .get()
-                )
-                and children[1].decl().kind() == z3.Z3_OP_RE_STAR
-                and children[1].children()[0] == z3.Range("0", "9")
-            ):
-                # - [1-9] [0-9]* -> (1, inf)
-                return Maybe([(1, sys.maxsize)])
-            elif (
-                len(children) == 2
-                and (
-                    numeric_intervals_from_regex(children[0])
-                    .map(lambda first_intervals: first_intervals == [(1, 9)])
-                    .orelse(lambda: False)
-                    .get()
-                )
-                and children[1].decl().kind() == z3.Z3_OP_RE_PLUS
-                and children[1].children()[0] == z3.Range("0", "9")
-            ):
-                # - [1-9] [0-9]+ -> (10, inf)
-                return Maybe([(10, sys.maxsize)])
-            elif (
-                len(children) == 2
-                and (
-                    numeric_intervals_from_regex(children[0])
-                    .map(lambda first_intervals: first_intervals == [(0, 9)])
-                    .orelse(lambda: False)
-                    .get()
-                )
-                and children[1].decl().kind() in [z3.Z3_OP_RE_PLUS, z3.Z3_OP_RE_STAR]
-                and children[1].children()[0] == z3.Range("0", "9")
-            ):
-                # - [0-9] [0-9]* -> (0, inf)
-                # - [0-9] [0-9]+ -> (0, inf)
-                return Maybe([(0, sys.maxsize)])
-
-    # Note: This is not a problem if we're in a recursive call from the loop
-    #       removing 0 padding. In that case, the returned `Maybe.nothing()`
-    #       simply signals that there are no more 0s to remove.
-    HELPERS_LOGGER.debug(
-        f"Unsupported expression in `numeric_intervals_from_regex`: {regex}"
+    children: List[z3.ReRef] = cast(
+        List[z3.ReRef], z3_split_at_operator(regex, z3.Z3_OP_RE_CONCAT)
     )
 
-    return Maybe.nothing()
+    first_child = children[0]
+    if first_child.decl().kind() == z3.Z3_OP_RE_UNION or first_child == z3.Option(
+        z3.Re("-")
+    ):
+        return merge_intervals(
+            *map(
+                lambda option_or_union: numeric_intervals_from_regex(
+                    z3.Concat(option_or_union, *children[1:])
+                ),
+                first_child.children()
+                if first_child.decl().kind() == z3.Z3_OP_RE_UNION
+                else [z3.Re("+"), z3.Re("-")],
+            )
+        )
+    elif first_child in [z3.Re("+"), z3.Option(z3.Re("+"))]:
+        return numeric_intervals_from_regex(
+            children[1] if len(children) == 2 else z3.Concat(*children[1:])
+        )
+    elif first_child == z3.Re("-"):
+        return numeric_intervals_from_regex(
+            children[1] if len(children) == 2 else z3.Concat(*children[1:])
+        ).map(
+            lambda list_of_intervals: list(
+                map(
+                    lambda interval: (-interval[1], -interval[0]),
+                    reversed(list_of_intervals),
+                ),
+            )
+        )
+
+    # We support the following cases, always with an optional left-padding of
+    # 0s that can come in different forms (this comprises the padding of a
+    # non-sequence with 0s):
+    #
+    # - [1-9] [0-9]* -> (1, inf)
+    # - [1-9] [0-9]+ -> (10, inf)
+    # - [0-9] [0-9]* -> (0, inf)
+    # - [0-9] [0-9]+ -> (0, inf)
+
+    idx = 0
+    while idx < len(children) and (
+        numeric_intervals_from_regex(children[idx])
+        .map(lambda intervals: intervals == [(0, 0)])
+        .orelse(lambda: False)
+        .get()
+    ):
+        idx += 1
+
+    if idx > 0:
+        children = children[idx:]
+        return (
+            Maybe([(0, 0)])
+            if not children
+            else numeric_intervals_from_regex(
+                children[0] if len(children) == 1 else z3.Concat(*children)
+            )
+        )
+
+    if (
+        len(children) == 2
+        and (
+            numeric_intervals_from_regex(children[0])
+            .map(lambda first_intervals: first_intervals == [(1, 9)])
+            .orelse(lambda: False)
+            .get()
+        )
+        and children[1].decl().kind() == z3.Z3_OP_RE_STAR
+        and children[1].children()[0] == z3.Range("0", "9")
+    ):
+        # - [1-9] [0-9]* -> (1, inf)
+        return Maybe([(1, sys.maxsize)])
+    elif (
+        len(children) == 2
+        and (
+            numeric_intervals_from_regex(children[0])
+            .map(lambda first_intervals: first_intervals == [(1, 9)])
+            .orelse(lambda: False)
+            .get()
+        )
+        and children[1].decl().kind() == z3.Z3_OP_RE_PLUS
+        and children[1].children()[0] == z3.Range("0", "9")
+    ):
+        # - [1-9] [0-9]+ -> (10, inf)
+        return Maybe([(10, sys.maxsize)])
+    elif (
+        len(children) == 2
+        and (
+            numeric_intervals_from_regex(children[0])
+            .map(lambda first_intervals: first_intervals == [(0, 9)])
+            .orelse(lambda: False)
+            .get()
+        )
+        and children[1].decl().kind() in [z3.Z3_OP_RE_PLUS, z3.Z3_OP_RE_STAR]
+        and children[1].children()[0] == z3.Range("0", "9")
+    ):
+        # - [0-9] [0-9]* -> (0, inf)
+        # - [0-9] [0-9]+ -> (0, inf)
+        return Maybe([(0, sys.maxsize)])
+    else:
+        return fallback(regex)
