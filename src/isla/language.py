@@ -3895,7 +3895,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
 def parse_isla(
     inp: str,
-    grammar: Optional[Grammar] = None,
+    grammar: Optional[Grammar | str] = None,
     structural_predicates: Optional[Set[StructuralPredicate]] = None,
     semantic_predicates: Optional[Set[SemanticPredicate]] = None,
 ) -> Formula:
