@@ -28,7 +28,7 @@ import sys
 import time
 from abc import ABC
 from dataclasses import dataclass
-from functools import reduce, lru_cache
+from functools import reduce, lru_cache, partial
 from typing import (
     Dict,
     List,
@@ -2848,120 +2848,223 @@ class ISLaSolver:
                  to the solution in :code:`model`.
         """
 
-        if var.is_numeric():
-            z3_var = z3.String(var.name)
-            if z3_var.decl() in model.decls():
-                model_value = model[z3_var]
-            else:
-                assert var in int_vars
-                assert var in fresh_var_map
+        f_flex_vars = self.extract_model_value_flexible_var
+        f_int_vars = partial(self.extract_model_value_int_var, f_flex_vars)
+        f_length_vars = partial(self.extract_model_value_length_var, f_int_vars)
+        f_num_vars = partial(self.extract_model_value_numeric_var, f_length_vars)
 
-                model_value = model[fresh_var_map[var]]
+        return f_num_vars(var, model, fresh_var_map, length_vars, int_vars)
 
-                if model_value is None:
-                    # This can happen for universally true formulas, e.g., `x = x`.
-                    # In that case, we return a random integer.
-                    model_value = z3.IntVal(random.randint(-sys.maxsize, sys.maxsize))
+    ExtractModelValueFallbackType = Callable[
+        [
+            language.Variable,
+            z3.ModelRef,
+            Dict[language.Variable, z3.ExprRef],
+            Set[language.Variable],
+            Set[language.Variable],
+        ],
+        DerivationTree,
+    ]
 
-            assert (
-                model_value is not None
-            ), f"No solution for variable {var} found in model {model}"
+    def extract_model_value_numeric_var(
+        self,
+        fallback: ExtractModelValueFallbackType,
+        var: language.Variable,
+        model: z3.ModelRef,
+        fresh_var_map: Dict[language.Variable, z3.ExprRef],
+        length_vars: Set[language.Variable],
+        int_vars: Set[language.Variable],
+    ) -> DerivationTree:
+        """
+        Addresses the case of numeric variables from
+        :meth:`~isla.solver.ISLaSolver.extract_model_value`.
 
-            string_value = smt_string_val_to_string(model_value)
-            assert string_value
-            assert (
-                string_value.isnumeric()
-                or string_value[0] == "-"
-                and string_value[1:].isnumeric()
+        :param fallback: The function to call if this function is not responsible.
+        :param var: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :param model: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :param fresh_var_map: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :param length_vars: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :param int_vars: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :return: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        """
+        if not var.is_numeric():
+            return fallback(var, model, fresh_var_map, length_vars, int_vars)
+
+        z3_var = z3.String(var.name)
+        if z3_var.decl() in model.decls():
+            model_value = model[z3_var]
+        else:
+            assert var in int_vars
+            assert var in fresh_var_map
+
+            model_value = model[fresh_var_map[var]]
+
+            if model_value is None:
+                # This can happen for universally true formulas, e.g., `x = x`.
+                # In that case, we return a random integer.
+                model_value = z3.IntVal(random.randint(-sys.maxsize, sys.maxsize))
+
+        assert (
+            model_value is not None
+        ), f"No solution for variable {var} found in model {model}"
+
+        string_value = smt_string_val_to_string(model_value)
+        assert string_value
+        assert (
+            string_value.isnumeric()
+            or string_value[0] == "-"
+            and string_value[1:].isnumeric()
+        )
+
+        return DerivationTree(string_value, ())
+
+    def extract_model_value_length_var(
+        self,
+        fallback: ExtractModelValueFallbackType,
+        var: language.Variable,
+        model: z3.ModelRef,
+        fresh_var_map: Dict[language.Variable, z3.ExprRef],
+        length_vars: Set[language.Variable],
+        int_vars: Set[language.Variable],
+    ) -> DerivationTree:
+        """
+        Addresses the case of length variables from
+        :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+
+        :param fallback: The function to call if this function is not responsible.
+        :param var: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :param model: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :param fresh_var_map: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :param length_vars: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :param int_vars: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :return: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        """
+        if var not in length_vars:
+            return fallback(var, model, fresh_var_map, length_vars, int_vars)
+
+        return self.safe_create_fixed_length_tree(var, model, fresh_var_map)
+
+    def extract_model_value_int_var(
+        self,
+        fallback: ExtractModelValueFallbackType,
+        var: language.Variable,
+        model: z3.ModelRef,
+        fresh_var_map: Dict[language.Variable, z3.ExprRef],
+        length_vars: Set[language.Variable],
+        int_vars: Set[language.Variable],
+    ) -> DerivationTree:
+        """
+        Addresses the case of int variables from
+        :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+
+        :param fallback: The function to call if this function is not responsible.
+        :param var: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :param model: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :param fresh_var_map: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :param length_vars: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :param int_vars: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :return: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        """
+        if var not in int_vars:
+            return fallback(var, model, fresh_var_map, length_vars, int_vars)
+
+        str_model_value = model[fresh_var_map[var]].as_string()
+
+        try:
+            int_model_value = int(str_model_value)
+        except ValueError:
+            raise RuntimeError(f"Value {str_model_value} for {var} is not a number")
+
+        var_type = var.n_type
+
+        try:
+            return self.parse(
+                str(int_model_value),
+                var_type,
+                silent=True,
+            )
+        except SyntaxError:
+            # This may happen, e.g, with padded values: Only "01" is a valid
+            # solution, but not "1". Similarly, a grammar may expect "+1", but
+            # "1" is returned by the solver. We support the number format
+            # `[+-]0*<digits>`. Whenever the grammar recognizes at least this
+            # set for the nonterminal in question, we return a derivation tree.
+            # Otherwise, a RuntimeError is raised.
+
+            z3_solver = z3.Solver()
+            z3_solver.set("timeout", 300)
+
+            maybe_plus_re = z3.Option(z3.Re("+"))
+            zeroes_padding_re = z3.Star(z3.Re("0"))
+
+            # TODO: Ensure symbols are fresh
+            maybe_plus_var = z3.String("__plus")
+            zeroes_padding_var = z3.String("__padding")
+
+            z3_solver.add(z3.InRe(maybe_plus_var, maybe_plus_re))
+            z3_solver.add(z3.InRe(zeroes_padding_var, zeroes_padding_re))
+
+            z3_solver.add(
+                z3.InRe(
+                    z3.Concat(
+                        maybe_plus_var if int_model_value >= 0 else z3.StringVal("-"),
+                        zeroes_padding_var,
+                        z3.StringVal(
+                            str_model_value
+                            if int_model_value >= 0
+                            else str(-int_model_value)
+                        ),
+                    ),
+                    self.extract_regular_expression(var.n_type),
+                )
             )
 
-            return DerivationTree(string_value, ())
-        elif var in length_vars:
-            return self.safe_create_fixed_length_tree(var, model, fresh_var_map)
-        elif var in int_vars:
-            str_model_value = model[fresh_var_map[var]].as_string()
-
-            try:
-                int_model_value = int(str_model_value)
-            except ValueError:
-                raise RuntimeError(f"Value {str_model_value} for {var} is not a number")
-
-            var_type = var.n_type
-
-            try:
-                return self.parse(
-                    str(int_model_value),
-                    var_type,
-                    silent=True,
-                )
-            except SyntaxError:
-                # This may happen, e.g, with padded values: Only "01" is a valid
-                # solution, but not "1". Similarly, a grammar may expect "+1", but
-                # "1" is returned by the solver. We support the number format
-                # `[+-]0*<digits>`. Whenever the grammar recognizes at least this
-                # set for the nonterminal in question, we return a derivation tree.
-                # Otherwise, a RuntimeError is raised.
-
-                z3_solver = z3.Solver()
-                z3_solver.set("timeout", 300)
-
-                maybe_plus_re = z3.Option(z3.Re("+"))
-                zeroes_padding_re = z3.Star(z3.Re("0"))
-
-                # TODO: Ensure symbols are fresh
-                maybe_plus_var = z3.String("__plus")
-                zeroes_padding_var = z3.String("__padding")
-
-                z3_solver.add(z3.InRe(maybe_plus_var, maybe_plus_re))
-                z3_solver.add(z3.InRe(zeroes_padding_var, zeroes_padding_re))
-
-                z3_solver.add(
-                    z3.InRe(
-                        z3.Concat(
-                            maybe_plus_var
-                            if int_model_value >= 0
-                            else z3.StringVal("-"),
-                            zeroes_padding_var,
-                            z3.StringVal(
-                                str_model_value
-                                if int_model_value >= 0
-                                else str(-int_model_value)
-                            ),
-                        ),
-                        self.extract_regular_expression(var.n_type),
-                    )
+            if z3_solver.check() != z3.sat:
+                raise RuntimeError(
+                    "Could not parse a numeric solution "
+                    + f"({str_model_value}) for variable "
+                    + f"{var} of type '{var.n_type}'; try "
+                    + "running the solver without optimized Z3 queries or make "
+                    + "sure that ranges are restricted to syntactically valid "
+                    + "ones (according to the grammar).",
                 )
 
-                if z3_solver.check() != z3.sat:
-                    raise RuntimeError(
-                        "Could not parse a numeric solution "
-                        + f"({str_model_value}) for variable "
-                        + f"{var} of type '{var.n_type}'; try "
-                        + "running the solver without optimized Z3 queries or make "
-                        + "sure that ranges are restricted to syntactically valid "
-                        + "ones (according to the grammar).",
-                    )
-
-                return self.parse(
-                    (
-                        z3_solver.model()[maybe_plus_var].as_string()
-                        if int_model_value >= 0
-                        else "-"
-                    )
-                    + z3_solver.model()[zeroes_padding_var].as_string()
-                    + (
-                        str_model_value
-                        if int_model_value >= 0
-                        else str(-int_model_value)
-                    ),
-                    var.n_type,
-                )
-        else:
-            # A "flexible" variable.
             return self.parse(
-                smt_string_val_to_string(model[z3.String(var.name)]),
+                (
+                    z3_solver.model()[maybe_plus_var].as_string()
+                    if int_model_value >= 0
+                    else "-"
+                )
+                + z3_solver.model()[zeroes_padding_var].as_string()
+                + (str_model_value if int_model_value >= 0 else str(-int_model_value)),
                 var.n_type,
             )
+
+    def extract_model_value_flexible_var(
+        self,
+        var: language.Variable,
+        model: z3.ModelRef,
+        fresh_var_map: Dict[language.Variable, z3.ExprRef],
+        length_vars: Set[language.Variable],
+        int_vars: Set[language.Variable],
+    ) -> DerivationTree:
+        """
+        Addresses the case of "flexible" variables from
+        :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+
+        :param fallback: The function to call if this function is not responsible.
+        :param var: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :param model: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :param fresh_var_map: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :param length_vars: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :param int_vars: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        :return: See :meth:`~isla.solver.ISLaSolver.extract_model_value`.
+        """
+
+        return self.parse(
+            smt_string_val_to_string(model[z3.String(var.name)]),
+            var.n_type,
+        )
 
     @staticmethod
     def infer_variable_contexts(
