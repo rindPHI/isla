@@ -1,4 +1,4 @@
-antlr4-python3-runtime>=4.11
+antlr4-python3-runtime>=4.13
 datrie>=0.8.2
 docutils>=0.18.1
 grammar_graph>=0.1.15
