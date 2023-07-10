@@ -126,7 +126,7 @@ ABS: 'abs' ;
 
 STRING: '"' (ESC|.) *? '"';
 ID: INIT_ID_LETTER (ID_LETTER | DIGIT) * ;
-INT : DIGIT+ ;
+INT : '-' ? DIGIT+ ;
 ESC : '\\' [btnr"\\] ;
 
 DOT : '.' ;

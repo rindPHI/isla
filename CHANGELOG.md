@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.14.1] - 2023-07-10
+
+### Changed
+
+- Supporting literal negative numbers in ISLa constraints (concrete syntax), such as in
+  `str.to.int(<int>) < -1`. This raised a `SyntaxError` before.
+
 ## [1.14.0] - 2023-07-05
 
 ### Changed
