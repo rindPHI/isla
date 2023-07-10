@@ -18,6 +18,8 @@
 
 import copy
 import itertools
+import logging
+import sys
 import unittest
 from typing import Optional
 
@@ -42,11 +44,19 @@ from isla.helpers import (
     parent_reflexive,
     parent_or_child,
     Failure,
+    Maybe,
 )
 from isla.isla_predicates import is_before
 from isla.parser import EarleyParser
+from isla.solver import ISLaSolver
 from isla.type_defs import Grammar, ParseTree
-from isla.z3_helpers import evaluate_z3_expression, z3_eq, smt_expr_to_str, DomainError
+from isla.z3_helpers import (
+    evaluate_z3_expression,
+    z3_eq,
+    smt_expr_to_str,
+    DomainError,
+    numeric_intervals_from_regex,
+)
 from test_data import LANG_GRAMMAR
 
 
@@ -432,6 +442,70 @@ class TestHelpers(unittest.TestCase):
             self.fail("Expected exception")
         except DomainError as err:
             self.assertIn("Empty string cannot be converted to int", str(err))
+
+    def test_numeric_intervals_from_regex_grammar_supported(self):
+        doclines = numeric_intervals_from_regex.__doc__.split("\n")
+
+        codeblocks = []
+        current_codeblock = ""
+        in_codeblock = False
+        for line in doclines:
+            if line.startswith("        ") and not in_codeblock:
+                in_codeblock = True
+                current_codeblock = ""
+            elif not line.startswith("        ") and in_codeblock:
+                in_codeblock = False
+                codeblocks.append(current_codeblock)
+
+            if in_codeblock:
+                current_codeblock += line[8:] + "\n"
+
+        re_grammar = codeblocks[0]
+
+        constraint = r"""
+            forall <range> r="z3.Range(\"{ <digit> d1 }\", \"{ <digit> d2 }\")": (
+                str.to.int(d1) <= str.to.int(d2)
+                and str.to.int(d1) >= 0
+                and str.to.int(d1) <= 9
+                and str.to.int(d2) >= 0
+                and str.to.int(d2) <= 9
+            )
+        """
+
+        solver = ISLaSolver(
+            re_grammar,
+            constraint,
+            max_number_smt_instantiations=3,
+            max_number_free_instantiations=1,
+        )
+
+        for _ in range(100):
+            tree = solver.solve()
+
+            try:
+                inp = eval(str(tree))
+            except Exception as exc:
+                self.fail(
+                    f"Regex grammar wrong: Input {tree} could not be evaluated ({exc})"
+                )
+
+            result = numeric_intervals_from_regex(inp)
+            self.assertTrue(
+                result.is_present(), f"Could not extract the interval for {inp}"
+            )
+
+    def test_numeric_intervals_from_regex_padding_and_full_int(self):
+        regex = z3.Concat(
+            z3.Union(z3.Re("0"), z3.Plus(z3.Re("0"))),
+            z3.Concat(
+                z3.Union(z3.Re("-"), z3.Re("+"), z3.Re("0")),
+                z3.Range("0", "9"),
+                z3.Star(z3.Range("0", "9")),
+            ),
+        )
+
+        result = numeric_intervals_from_regex(regex)
+        self.assertEqual(Maybe([(-sys.maxsize, sys.maxsize)]), result)
 
 
 def parse(inp: str, grammar: Grammar, start_symbol: Optional[str] = None) -> ParseTree:

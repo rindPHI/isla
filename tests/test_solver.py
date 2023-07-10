@@ -2243,6 +2243,59 @@ and str.to.int(<due-payable>.<INT>) =
             max_number_smt_instantiations=10,
         )
 
+    def test_negative_str_to_int(self):
+        TRIANGLE_GRAMMAR = {
+            "<start>": ["<triangle>"],
+            "<triangle>": ["<a> <b> <c>"],
+            "<a>": ["<int>"],
+            "<b>": ["<int>"],
+            "<c>": ["<int>"],
+            "<int>": ["<sign>00<leaddigit><digits>"],
+            "<sign>": ["-", "+"],
+            "<digits>": ["", "<digit><digits>"],
+            "<digit>": list("0123456789"),
+            "<leaddigit>": list("123456789"),
+        }
+
+        constraint = "str.to.int(<a>) > str.to.int(<c>)"
+
+        solver = ISLaSolver(
+            TRIANGLE_GRAMMAR,
+            constraint,
+            enable_optimized_z3_queries=True,  # Crucial!
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=10,
+        )
+
+        for _ in range(10):
+            print(solver.solve())
+
+        # No error
+
+    def test_extract_model_value_nonstandard_numeric_language(self):
+        grammar = {
+            "<start>": ["<int>"],
+            "<int>": ["<sign>00<leaddigit><digits>"],
+            "<sign>": ["-", "+"],
+            "<digits>": ["", "<digit><digits>"],
+            "<digit>": list("0123456789"),
+            "<leaddigit>": list("123456789"),
+        }
+
+        i = language.Variable("i", "<int>")
+        i_0 = z3.Int("i_0")
+        f = z3_eq(i_0, z3.IntVal(5))
+
+        z3_solver = z3.Solver()
+        z3_solver.add(f)
+        self.assertEqual(z3.sat, z3_solver.check())
+
+        model = z3_solver.model()
+        solver = ISLaSolver(grammar)
+        self.assertEqual(
+            "+005", str(solver.extract_model_value(i, model, {i: i_0}, set(), {i}))
+        )
+
     def execute_generation_test(
         self,
         formula: language.Formula | str = "true",
