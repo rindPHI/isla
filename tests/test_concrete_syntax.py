@@ -190,7 +190,7 @@ forall <key_value> container="{<key> key} = {<value> value}" in start:
             ),
         )
 
-        self.assertEqual(parse_isla(formula, grammar), expected)
+        self.assertEqual(expected, parse_isla(formula, grammar))
 
     def test_smt_formula_to_sexpr(self):
         formula = """
@@ -1112,6 +1112,24 @@ exists <csv-header> header in start:
         )
 
         self.assertEqual(expected, result)
+
+    def test_negative_numbers_in_formula(self):
+        grammar = {
+            "<start>": ["<numbers>"],
+            "<numbers>": ["<number>, <numbers>", "<number>"],
+            "<number>": ["-<digits>", "<digits>"],
+            "<digits>": ["<digit><digits>", "<digit>"],
+            "<digit>": list(string.digits),
+        }
+
+        result = parse_isla("str.to.int(<number>) < -1", grammar)
+
+        expected = """
+forall <number> number in start:
+  (< (str.to.int number) -1)
+""".strip()
+
+        self.assertEqual(expected, unparse_isla(result))
 
 
 if __name__ == "__main__":
