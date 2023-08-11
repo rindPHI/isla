@@ -19,7 +19,7 @@ from isla import (
     solver,
     trie,
     type_defs,
-    z3_helpers,
+    z3_helpers, solver2,
 )
 
 
@@ -78,6 +78,10 @@ class TestDocstrings(unittest.TestCase):
 
     def test_solver(self):
         doctest_results = doctest.testmod(m=solver)
+        self.assertFalse(doctest_results.failed)
+
+    def test_solver2(self):
+        doctest_results = doctest.testmod(m=solver2)
         self.assertFalse(doctest_results.failed)
 
     def test_three_valued_truth(self):

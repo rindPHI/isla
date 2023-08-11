@@ -5,8 +5,9 @@ from dataclasses import dataclass
 from typing import Tuple
 
 from frozendict import frozendict
-from orderedset import OrderedSet
-from isla.language import true
+from orderedset import FrozenOrderedSet
+from isla.language import true, ConjunctiveFormula, SMTFormula, Constant, \
+    DisjunctiveFormula
 from isla.derivation_tree import DerivationTree
 from isla.helpers import Maybe, is_nonterminal, deep_str
 from isla.language import Formula
@@ -27,7 +28,7 @@ class CDT:
     satisfying the constraints.
     """
 
-    constraints: OrderedSet[Formula]
+    constraints: FrozenOrderedSet[Formula]
     tree: DerivationTree
 
     def __str__(self):
@@ -76,19 +77,19 @@ class StateTree:
 
         >>> dummy_action = ExpandRuleAction((), 0)
         >>> tree_2 = StateTree(
-        ...     CDT(OrderedSet([true()]), DerivationTree("<tree_2>")), (0, 0)
+        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_2>")), (0, 0)
         ... )
         >>> tree_3 = StateTree(
-        ...     CDT(OrderedSet([true()]), DerivationTree("<tree_3>")), (0, 1)
+        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_3>")), (0, 1)
         ... )
         >>> tree_0 = StateTree(
-        ...     CDT(OrderedSet([true()]), DerivationTree("<tree_0>")),
+        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_0>")),
         ...     (0,),
         ...     ((dummy_action, tree_2), (dummy_action, tree_3),),
         ... )
-        >>> tree_1 = StateTree(CDT(OrderedSet([true()]), DerivationTree("<tree_1>")), (1,))
+        >>> tree_1 = StateTree(CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_1>")), (1,))
         >>> stree = StateTree(
-        ...     CDT(OrderedSet([true()]), DerivationTree("<root>")),
+        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<root>")),
         ...     (),
         ...     ((dummy_action, tree_0), (dummy_action, tree_1)),
         ... )
@@ -102,7 +103,7 @@ class StateTree:
             └─ <tree_1>
 
         >>> tree_X = StateTree(
-        ...     CDT(OrderedSet([true()]), DerivationTree("<X>")), (0, 1)
+        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<X>")), (0, 1)
         ... )
         >>> print(stree.replace((0, 1), tree_X))
         StateTree(({True} ▸ <root>), [(Expand((), 0), StateTree(({True} ▸ <tree_0>), [(Expand((), 0), StateTree(({True} ▸ <tree_2>))), (Expand((), 0), StateTree(({True} ▸ <X>)))])), (Expand((), 0), StateTree(({True} ▸ <tree_1>)))])
@@ -152,15 +153,15 @@ class StateTree:
 
         >>> dummy_action = ExpandRuleAction((), 0)
         >>> tree_2 = StateTree(
-        ...     CDT(OrderedSet([true()]), DerivationTree("<tree_2>")), (0, 0)
+        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_2>")), (0, 0)
         ... )
         >>> tree_0 = StateTree(
-        ...     CDT(OrderedSet([true()]), DerivationTree("<tree_0>")),
+        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_0>")),
         ...     (0,),
         ...     ((dummy_action, tree_2),),
         ... )
         >>> stree = StateTree(
-        ...     CDT(OrderedSet([true()]), DerivationTree("<root>")),
+        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<root>")),
         ...     (),
         ...     ((dummy_action, tree_0),),
         ... )
@@ -172,7 +173,7 @@ class StateTree:
 
         And here is the updated one:
 
-        >>> new_cdt = CDT(OrderedSet([true()]), DerivationTree("<tree_1>"))
+        >>> new_cdt = CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_1>"))
         >>> print(stree.add_child(dummy_action, new_cdt))
         StateTree(({True} ▸ <root>), [(Expand((), 0), StateTree(({True} ▸ <tree_0>), [(Expand((), 0), StateTree(({True} ▸ <tree_2>)))])), (Expand((), 0), StateTree(({True} ▸ <tree_1>)))])
 
@@ -228,16 +229,16 @@ class StateTree:
 
         >>> dummy_action = ExpandRuleAction((), 0)
         >>> tree_2 = StateTree(
-        ...     CDT(OrderedSet([true()]), DerivationTree("<tree_2>")), (0, 0)
+        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_2>")), (0, 0)
         ... )
         >>> tree_0 = StateTree(
-        ...     CDT(OrderedSet([true()]), DerivationTree("<tree_0>")),
+        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_0>")),
         ...     (0,),
         ...     ((dummy_action, tree_2),),
         ... )
-        >>> tree_1 = StateTree(CDT(OrderedSet([true()]), DerivationTree("<tree_1>")), (1,))
+        >>> tree_1 = StateTree(CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_1>")), (1,))
         >>> stree = StateTree(
-        ...     CDT(OrderedSet([true()]), DerivationTree("<root>")),
+        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<root>")),
         ...     (),
         ...     ((dummy_action, tree_0), (dummy_action, tree_1)),
         ... )
@@ -288,16 +289,16 @@ class StateTree:
 
         >>> dummy_action = ExpandRuleAction((), 0)
         >>> tree_2 = StateTree(
-        ...     CDT(OrderedSet([true()]), DerivationTree("<tree_2>")), (0, 0)
+        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_2>")), (0, 0)
         ... )
         >>> tree_0 = StateTree(
-        ...     CDT(OrderedSet([true()]), DerivationTree("<tree_0>")),
+        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_0>")),
         ...     (0,),
         ...     ((dummy_action, tree_2),),
         ... )
-        >>> tree_1 = StateTree(CDT(OrderedSet([true()]), DerivationTree("<tree_1>")), (1,))
+        >>> tree_1 = StateTree(CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_1>")), (1,))
         >>> stree = StateTree(
-        ...     CDT(OrderedSet([true()]), DerivationTree("<root>")),
+        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<root>")),
         ...     (),
         ...     ((dummy_action, tree_0), (dummy_action, tree_1)),
         ... )
@@ -423,7 +424,7 @@ class ExpandRule(Rule):
         state tree.
 
         >>> dtree = DerivationTree("<start>", (DerivationTree("<stmt>"),))
-        >>> stree = StateTree(CDT(OrderedSet([true()]), dtree))
+        >>> stree = StateTree(CDT(FrozenOrderedSet([true()]), dtree))
         >>> rule = ExpandRule(grammar)
         >>> action = rule.action(stree)
 
@@ -484,7 +485,7 @@ class ExpandRule(Rule):
         ...     "<digit>": tuple(string.digits)
         ... })
         >>> dtree = DerivationTree("<start>", (DerivationTree("<stmt>"),))
-        >>> stree = StateTree(CDT(OrderedSet([true()]), dtree))
+        >>> stree = StateTree(CDT(FrozenOrderedSet([true()]), dtree))
 
         We expand the open leaf first with the first expansion rule:
 
@@ -498,7 +499,7 @@ class ExpandRule(Rule):
 
         >>> action = ExpandRuleAction((0,), 1)
         >>> print(rule.apply(stree, action))
-       StateTree(({True} ▸ <stmt>), [(Expand((0,), 1), StateTree(({True} ▸ <assgn>)))])
+        StateTree(({True} ▸ <stmt>), [(Expand((0,), 1), StateTree(({True} ▸ <assgn>)))])
 
         :param state_tree: The state tree whose derivation tree we should expand
             according to the specified action.
@@ -521,4 +522,170 @@ class ExpandRule(Rule):
 
         return state_tree.add_child(
             action, CDT(node.constraints, node.tree.replace_path(action.path, new_tree))
+        )
+
+
+@dataclass(frozen=True)
+class SplitAndAction(Action):
+    conjunction: ConjunctiveFormula
+
+    def __str__(self):
+        return f"SplitAnd({self.conjunction})"
+
+
+@dataclass(frozen=True)
+class SplitAndRule(Rule):
+    def action(self, state_tree: StateTree) -> Maybe[SplitAndAction]:
+        """
+        This method returns an action if the constraint set in the provided state tree
+        contains a conjunctive formula.
+
+        Example
+        -------
+
+        >>> conjunction = (
+        ...     SMTFormula("(> (str.to_int x) 0)", Constant("x", "<X>"))
+        ...     & SMTFormula("(< (str.to_int x) 9)", Constant("x", "<X>"))
+        ... )
+        >>> stree = StateTree(
+        ...     CDT(FrozenOrderedSet([conjunction]), DerivationTree("<start>"))
+        ... )
+        >>> print(SplitAndRule().action(stree))
+        Maybe(SplitAnd((StrToInt(x) > 0 ∧ StrToInt(x) < 9)))
+
+        :param state_tree: The input state tree.
+        :return: An action if a conjunction is contained in the state tree or nothing.
+        """
+
+        constraints = state_tree.node.constraints
+        return Maybe.from_iterator(
+            (c for c in constraints if isinstance(c, ConjunctiveFormula))
+        ).map(lambda c: SplitAndAction(c))
+
+    def apply(self, state_tree: StateTree, action: SplitAndAction) -> StateTree:
+        """
+        This method applies a :class:`~isla.solver2.SplitAndAction`.
+
+        Example
+        -------
+
+        >>> conjunction = (
+        ...     SMTFormula("(> (str.to_int x) 0)", Constant("x", "<X>"))
+        ...     & SMTFormula("(< (str.to_int x) 9)", Constant("x", "<X>"))
+        ... )
+        >>> stree = StateTree(
+        ...     CDT(FrozenOrderedSet([conjunction]), DerivationTree("<start>"))
+        ... )
+        >>> action = SplitAndAction(conjunction)
+        >>> print(SplitAndRule().apply(stree, action))
+        StateTree(({(StrToInt(x) > 0 ∧ StrToInt(x) < 9)} ▸ <start>), [(SplitAnd((StrToInt(x) > 0 ∧ StrToInt(x) < 9)), StateTree(({StrToInt(x) > 0, StrToInt(x) < 9} ▸ <start>)))])
+
+
+        :param state_tree: The input state tree.
+        :param action: The action comprising the information about which formula to
+            split.
+        :return: The input state tree augmented with a new child resulting from
+            splitting the conjunction.
+        """
+
+        node = state_tree.node
+        return state_tree.add_child(
+            action,
+            CDT(
+                node.constraints.difference({action.conjunction}).union(
+                    set(action.conjunction.args)
+                ),
+                node.tree,
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class ChooseOrAction(Action):
+    disjunction: DisjunctiveFormula
+    pos: int
+
+    def __str__(self):
+        return f"ChooseOr({self.disjunction}, {self.pos})"
+
+
+@dataclass(frozen=True)
+class ChooseOrRule(Rule):
+    def action(self, state_tree: StateTree) -> Maybe[ChooseOrAction]:
+        """
+        This method returns an action if the constraint set in the provided state tree
+        contains a disjunctive formula.
+
+        Example
+        -------
+
+        >>> disjunction = (
+        ...     SMTFormula("(> (str.to_int x) 0)", Constant("x", "<X>"))
+        ...     | SMTFormula("(< (str.to_int x) 9)", Constant("x", "<X>"))
+        ... )
+        >>> stree = StateTree(
+        ...     CDT(FrozenOrderedSet([disjunction]), DerivationTree("<start>"))
+        ... )
+        >>> str(ChooseOrRule().action(stree)) in [
+        ...     "Maybe(ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 0))",
+        ...     "Maybe(ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 1))"
+        ... ]
+        True
+
+        :param state_tree: The input state tree.
+        :return: An action if a disjunction is contained in the state tree or nothing.
+        """
+
+        # TODO 1: If there is a sibling present, we should choose a different disjunct.
+        # TODO 2: We will have to consider semantic coverage information (choose the
+        #         disjunct whose origin formula has not been chosen for evaluation
+        #         so far).
+
+        constraints = state_tree.node.constraints
+        return Maybe.from_iterator(
+            (c for c in constraints if isinstance(c, DisjunctiveFormula))
+        ).map(lambda c: ChooseOrAction(c, random.choice([0, 1])))
+
+    def apply(self, state_tree: StateTree, action: ChooseOrAction) -> StateTree:
+        """
+        This method applies a :class:`~isla.solver2.ChooseOrAction`.
+        Other than :class:`~isla.solver2.SplitAnd`, only (a random) one disjunct is
+        retained in the result.
+
+        Example
+        -------
+
+        >>> disjunction = (
+        ...     SMTFormula("(> (str.to_int x) 0)", Constant("x", "<X>"))
+        ...     | SMTFormula("(< (str.to_int x) 9)", Constant("x", "<X>"))
+        ... )
+        >>> stree = StateTree(
+        ...     CDT(FrozenOrderedSet([disjunction]), DerivationTree("<start>"))
+        ... )
+
+        >>> action = ChooseOrAction(disjunction, 0)
+        >>> print(ChooseOrRule().apply(stree, action))
+        StateTree(({(StrToInt(x) > 0 ∨ StrToInt(x) < 9)} ▸ <start>), [(ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 0), StateTree(({StrToInt(x) > 0} ▸ <start>)))])
+
+        >>> action = ChooseOrAction(disjunction, 1)
+        >>> print(ChooseOrRule().apply(stree, action))
+        StateTree(({(StrToInt(x) > 0 ∨ StrToInt(x) < 9)} ▸ <start>), [(ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 1), StateTree(({StrToInt(x) < 9} ▸ <start>)))])
+
+
+        :param state_tree: The input state tree.
+        :param action: The action comprising the information about which formula to
+            split.
+        :return: The input state tree augmented with a new child resulting from
+            splitting the conjunction.
+        """
+
+        node = state_tree.node
+        return state_tree.add_child(
+            action,
+            CDT(
+                node.constraints.difference({action.disjunction}).union(
+                    {action.disjunction.args[action.pos]}
+                ),
+                node.tree,
+            ),
         )
