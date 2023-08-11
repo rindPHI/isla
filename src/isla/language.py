@@ -1390,10 +1390,10 @@ class SMTFormula(Formula):
         """
 
         if isinstance(formula, z3.BoolRef):
-            self.formula = formula
+            self.formula: z3.BoolRef = formula
         else:
             assert isinstance(formula, str)
-            self.formula = z3.parse_smt2_string(
+            self.formula: z3.BoolRef = z3.parse_smt2_string(
                 f"(assert {formula})",
                 decls={var.name: var.to_smt() for var in free_variables},
             )[0]
