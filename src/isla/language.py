@@ -229,7 +229,7 @@ class BindExpression:
         self.__flattened_elements: Dict[str, Tuple[Tuple[BoundVariable, ...], ...]] = {}
 
     def __add__(self, other: Union[str, "BoundVariable"]) -> "BindExpression":
-        assert isinstance(other, str) or type(other) is BoundVariable
+        assert isinstance(other, str) or isinstance(other, BoundVariable)
         result = BindExpression(*self.bound_elements)
         result.bound_elements.append(other)
         return result
@@ -294,7 +294,7 @@ class BindExpression:
         flattened_bind_expr_str = "".join(
             map(
                 lambda elem: f"{{{elem.n_type} {elem.name}}}"
-                if type(elem) is BoundVariable
+                if isinstance(elem, BoundVariable)
                 else str(elem),
                 bound_elements,
             )
