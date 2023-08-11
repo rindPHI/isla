@@ -294,7 +294,7 @@ class BindExpression:
         flattened_bind_expr_str = "".join(
             map(
                 lambda elem: f"{{{elem.n_type} {elem.name}}}"
-                if isinstance(elem, BoundVariable)
+                if type(elem) is BoundVariable
                 else str(elem),
                 bound_elements,
             )
