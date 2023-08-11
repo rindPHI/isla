@@ -1,13 +1,13 @@
 import random
-import string
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Tuple
 
-from frozendict import frozendict
 from orderedset import FrozenOrderedSet
-from isla.language import true, ConjunctiveFormula, SMTFormula, Constant, \
-    DisjunctiveFormula
+from isla.language import (
+    ConjunctiveFormula,
+    DisjunctiveFormula,
+)
 from isla.derivation_tree import DerivationTree
 from isla.helpers import Maybe, is_nonterminal, deep_str
 from isla.language import Formula
@@ -75,6 +75,8 @@ class StateTree:
             │  └─ <tree_3>
             └─ <tree_1>
 
+        >>> from isla.language import true
+
         >>> dummy_action = ExpandRuleAction((), 0)
         >>> tree_2 = StateTree(
         ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_2>")), (0, 0)
@@ -111,7 +113,7 @@ class StateTree:
         :param path: The path to replace.
         :param new_node: The new node to insert at the specified path.
         :return: An updated state tree.
-        """
+        """  # noqa: E501
 
         if not path:
             return new_node
@@ -150,6 +152,8 @@ class StateTree:
             ├─ <tree_0>
             │  └─ <tree_2>
             └─ <tree_1>
+
+        >>> from isla.language import true
 
         >>> dummy_action = ExpandRuleAction((), 0)
         >>> tree_2 = StateTree(
@@ -190,7 +194,7 @@ class StateTree:
         :param action: The action leading to the new child.
         :param node: The CDT to add.
         :return: An updated state tree.
-        """
+        """  # noqa: E501
 
         child_at_path = self.get_subtree(path)
 
@@ -226,6 +230,8 @@ class StateTree:
             ├─ <tree_0>
             │  └─ <tree_2>
             └─ <tree_1>
+
+        >>> from isla.language import true
 
         >>> dummy_action = ExpandRuleAction((), 0)
         >>> tree_2 = StateTree(
@@ -287,6 +293,8 @@ class StateTree:
             │  └─ <tree_2>
             └─ <tree_1>
 
+        >>> from isla.language import true
+
         >>> dummy_action = ExpandRuleAction((), 0)
         >>> tree_2 = StateTree(
         ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_2>")), (0, 0)
@@ -333,7 +341,7 @@ class StateTree:
         :param root: The root node of the tree relative to which we look for the parent
             of this tree.
         :return: The parent of this tree relative to the specified root node.
-        """
+        """  # noqa: E501
 
         if not self.path:
             assert self == root
@@ -407,6 +415,10 @@ class ExpandRule(Rule):
 
         Consider the following grammar for our assignment language:
 
+        >>> from frozendict import frozendict
+        >>> import string
+        >>> from isla.language import true
+
         >>> grammar: FrozenCanonicalGrammar = frozendict({
         ...     "<start>":
         ...         ("<stmt>",),
@@ -471,6 +483,10 @@ class ExpandRule(Rule):
         -------
 
         Consider the assignment language grammar:
+
+        >>> from frozendict import frozendict
+        >>> import string
+        >>> from isla.language import true
 
         >>> grammar: FrozenCanonicalGrammar = frozendict({
         ...     "<start>":
@@ -543,6 +559,8 @@ class SplitAndRule(Rule):
         Example
         -------
 
+        >>> from isla.language import Constant, SMTFormula
+
         >>> conjunction = (
         ...     SMTFormula("(> (str.to_int x) 0)", Constant("x", "<X>"))
         ...     & SMTFormula("(< (str.to_int x) 9)", Constant("x", "<X>"))
@@ -569,6 +587,8 @@ class SplitAndRule(Rule):
         Example
         -------
 
+        >>> from isla.language import Constant, SMTFormula
+
         >>> conjunction = (
         ...     SMTFormula("(> (str.to_int x) 0)", Constant("x", "<X>"))
         ...     & SMTFormula("(< (str.to_int x) 9)", Constant("x", "<X>"))
@@ -586,7 +606,7 @@ class SplitAndRule(Rule):
             split.
         :return: The input state tree augmented with a new child resulting from
             splitting the conjunction.
-        """
+        """  # noqa: E501
 
         node = state_tree.node
         return state_tree.add_child(
@@ -618,6 +638,8 @@ class ChooseOrRule(Rule):
 
         Example
         -------
+
+        >>> from isla.language import Constant, SMTFormula
 
         >>> disjunction = (
         ...     SMTFormula("(> (str.to_int x) 0)", Constant("x", "<X>"))
@@ -655,6 +677,8 @@ class ChooseOrRule(Rule):
         Example
         -------
 
+        >>> from isla.language import Constant, SMTFormula
+
         >>> disjunction = (
         ...     SMTFormula("(> (str.to_int x) 0)", Constant("x", "<X>"))
         ...     | SMTFormula("(< (str.to_int x) 9)", Constant("x", "<X>"))
@@ -677,7 +701,7 @@ class ChooseOrRule(Rule):
             split.
         :return: The input state tree augmented with a new child resulting from
             splitting the conjunction.
-        """
+        """  # noqa: E501
 
         node = state_tree.node
         return state_tree.add_child(
