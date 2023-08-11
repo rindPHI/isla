@@ -1655,8 +1655,17 @@ class SMTFormula(Formula):
                 if self.free_variables_
                 else ""
             )
-            + f"instantiated_variables={repr(self.instantiated_variables)}, "
-            + f"substitutions={repr(self.substitutions)})"
+            + (
+                f"instantiated_variables={repr(self.instantiated_variables)}, "
+                if self.instantiated_variables
+                else ""
+            )
+            + (
+                f"substitutions={repr(self.substitutions)}"
+                if self.substitutions
+                else ""
+            )
+            + ")"
         )
 
     def __str__(self):
