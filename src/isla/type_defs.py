@@ -18,6 +18,8 @@
 
 from typing import Tuple, Optional, List, Dict, TypeVar, TypeAlias
 
+from frozendict import frozendict
+
 S = TypeVar("S")
 T = TypeVar("T")
 
@@ -28,3 +30,6 @@ ImmutableGrammar = Tuple[Tuple[str, Tuple[str, ...]], ...]
 CanonicalGrammar = Dict[str, List[List[str]]]
 ImmutableList: TypeAlias = Tuple[T, ...]
 Pair: TypeAlias = Tuple[S, T]
+
+FrozenGrammar = frozendict[str, Tuple[str, ...]]
+FrozenCanonicalGrammar = frozendict[str, Tuple[Tuple[str, ...], ...]]
