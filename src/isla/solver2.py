@@ -1,17 +1,26 @@
+import logging
 import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Tuple, List
 
+from frozendict import frozendict
 from orderedset import FrozenOrderedSet
+
+from isla.derivation_tree import DerivationTree
+from isla.helpers import Maybe, is_nonterminal, deep_str, lazyjoin
 from isla.language import (
     ConjunctiveFormula,
     DisjunctiveFormula,
+    Variable,
+    SMTFormula,
+    BoundVariable,
 )
-from isla.derivation_tree import DerivationTree
-from isla.helpers import Maybe, is_nonterminal, deep_str
 from isla.language import Formula
 from isla.type_defs import FrozenCanonicalGrammar, Path
+from isla.z3_helpers import z3_subst
+
+LOGGER = logging.getLogger(__name__)
 
 
 # BASIC DATA STRUCTURES
@@ -713,3 +722,122 @@ class ChooseOrRule(Rule):
                 node.tree,
             ),
         )
+
+
+@dataclass(frozen=True)
+class SolveSMTAction(Action):
+    result: bool | frozendict[Variable | DerivationTree, DerivationTree]
+
+    def __str__(self):
+        return f"SolveSMT({deep_str(self.result)})"
+
+
+@dataclass(frozen=True)
+class SolveSMTRule(Rule):
+    def action(self, state_tree: StateTree) -> Maybe[Action]:
+        """
+        TODO
+
+        :param state_tree:
+        :return:
+        """
+
+        semantic_formulas = [
+            conjunct
+            for conjunct in state_tree.node.constraints
+            if isinstance(conjunct, SMTFormula)
+        ]
+
+        # other_formulas = [
+        #     conjunct
+        #     for conjunct in state_tree.node.constraints
+        #     if not isinstance(conjunct, SMTFormula)
+        # ]
+
+        if not semantic_formulas:
+            return Maybe.nothing()
+
+        LOGGER.debug(
+            "Eliminating semantic formulas [%s]", lazyjoin(", ", semantic_formulas)
+        )
+
+        raise NotImplementedError
+
+    def apply(self, state_tree: StateTree, action: Action) -> StateTree:
+        """
+        TODO
+
+        :param state_tree:
+        :param action:
+        :return:
+        """
+
+        raise NotImplementedError
+
+
+def rename_instantiated_variables_in_smt_formulas(
+    smt_formulas: List[SMTFormula],
+) -> List[SMTFormula]:
+    """
+    This function renames the already instantiated (substituted) variables in an SMT
+    formula. For any variable v associated to a tree t, the original, logical nam
+    of v is replaced by :code:`"{t.value}_{t.id}"`. Thus, variables instantiated with
+    the same trees will look the same, and variables with the same name, but
+    instantiated with a different tree will look differently.
+
+    Example
+    -------
+
+    In the following example, we twice consider the logical formula :code:`x = y`.
+    However, in the first case, the variables are substituted with identical trees;
+    thus, the formula becomes a tautology. In the second case, they are substituted
+    by different trees, and the variables obtain different names.
+
+    >>> x_1 = BoundVariable("x", "<A>")
+    >>> x_1_t = DerivationTree("<A>", id=0)
+    >>> y = BoundVariable("y", "<A>")
+    >>> y_t = DerivationTree("<A>", id=0)
+    >>> x_2 = BoundVariable("x", "<A>")
+    >>> x_2_t = DerivationTree("<A>", id=1)
+    >>> formulas = [
+    ...     SMTFormula("(= x y)", x_1, y).substitute_expressions({x_1: x_1_t, y: y_t}),
+    ...     SMTFormula("(= x y)", x_2, y).substitute_expressions({x_2: x_2_t, y: y_t}),
+    ... ]
+    >>> print(deep_str(rename_instantiated_variables_in_smt_formulas(formulas)))
+    [(<A>_0 == <A>_0, {'<A>_0': '<A>'}), (<A>_1 == <A>_0, {'<A>_1': '<A>', '<A>_0': '<A>'})]
+
+    :param smt_formulas: The SMT formulas to rename.
+    :return: The renamed formulas.
+    """  # noqa: E501
+
+    result = []
+    for sub_formula in smt_formulas:
+        new_smt_formula = sub_formula.formula
+        new_substitutions = sub_formula.substitutions
+        new_instantiated_variables = sub_formula.instantiated_variables
+
+        for subst_var, subst_tree in sub_formula.substitutions.items():
+            new_name = f"{subst_tree.value}_{subst_tree.id}"
+            new_var = BoundVariable(new_name, subst_var.n_type)
+
+            new_smt_formula = z3_subst(
+                new_smt_formula, {subst_var.to_smt(): new_var.to_smt()}
+            )
+            new_substitutions = {
+                new_var if k == subst_var else k: v
+                for k, v in new_substitutions.items()
+            }
+            new_instantiated_variables = {
+                new_var if v == subst_var else v for v in new_instantiated_variables
+            }
+
+        result.append(
+            SMTFormula(
+                new_smt_formula,
+                *sub_formula.free_variables_,
+                instantiated_variables=new_instantiated_variables,
+                substitutions=new_substitutions,
+            )
+        )
+
+    return result

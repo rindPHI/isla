@@ -48,6 +48,7 @@ from typing import (
     Type,
 )
 
+from frozendict import frozendict
 from orderedset import OrderedSet
 
 from isla.global_config import GLOBAL_CONFIG
@@ -1114,6 +1115,11 @@ def deep_str(obj: Any) -> str:
     >>> deep_str({X(): [X()]})
     "{'An X': ['An X']}"
 
+    ...frozen dictionaries...
+
+    >>> deep_str(frozendict({X(): [X()]}))
+    "{'An X': ['An X']}"
+
     ...sets...
 
     >>> deep_str({(X(),)})
@@ -1136,7 +1142,7 @@ def deep_str(obj: Any) -> str:
         return "[" + ", ".join(map(deep_str, obj)) + "]"
     elif isinstance(obj, set) or isinstance(obj, OrderedSet):
         return "{" + ", ".join(map(deep_str, obj)) + "}"
-    elif isinstance(obj, dict):
+    elif isinstance(obj, dict) or isinstance(obj, frozendict):
         return (
             "{"
             + ", ".join([f"{deep_str(a)}: {deep_str(b)}" for a, b in obj.items()])

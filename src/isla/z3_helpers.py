@@ -22,7 +22,18 @@ import random
 import re
 import sys
 from functools import lru_cache, reduce, partial
-from typing import Callable, Tuple, cast, List, Optional, Dict, Union, Generator, Set
+from typing import (
+    Callable,
+    Tuple,
+    cast,
+    List,
+    Optional,
+    Dict,
+    Union,
+    Generator,
+    Set,
+    TypeVar,
+)
 
 import z3
 from z3.z3 import _coerce_exprs
@@ -695,7 +706,10 @@ def z3_push_in_negations(formula: z3.BoolRef, negate=False) -> z3.BoolRef:
     return z3.simplify(z3.Not(formula) if negate else formula)
 
 
-def z3_subst(inp: z3.ExprRef, subst_map: Dict[z3.ExprRef, z3.ExprRef]) -> z3.ExprRef:
+E = TypeVar("E", bound=z3.ExprRef)
+
+
+def z3_subst(inp: E, subst_map: Dict[z3.ExprRef, z3.ExprRef]) -> E:
     return z3.substitute(inp, *tuple(subst_map.items()))
 
 

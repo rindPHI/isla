@@ -2247,7 +2247,7 @@ class ISLaSolver:
             for conjunct in get_conjuncts(semantic_formula)
         )
 
-        # NODE: We need to cluster SMT formulas by tree substitutions. If there are two
+        # NOTE: We need to cluster SMT formulas by tree substitutions. If there are two
         # formulas with a variable $var which is instantiated to different trees, we
         # need two separate solutions. If, however, $var is instantiated with the
         # *same* tree, we need one solution to both formulas together.
