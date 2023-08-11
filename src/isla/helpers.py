@@ -48,6 +48,8 @@ from typing import (
     Type,
 )
 
+from orderedset import OrderedSet
+
 from isla.global_config import GLOBAL_CONFIG
 from isla.type_defs import (
     Path,
@@ -768,6 +770,9 @@ class Maybe(Generic[T], MonadPlus[Optional[T]]):
     def __bool__(self):
         return self.is_present()
 
+    def __str__(self):
+        return "Nothing" if self.a is None else f"Maybe({deep_str(self.a)})"
+
 
 E = TypeVar("E", bound=Exception)
 
@@ -1069,3 +1074,73 @@ def merge_intervals(
             [],
         )
     )
+
+
+def deep_str(obj: Any) -> str:
+    """
+    This function computes a "deep" string representation of :code:`obj`. This means
+    that it also (recursively) invokes :code:`__str__` on all the elements of a list,
+    tuple, set, OrderedSet, or dict.
+
+    Example:
+    --------
+
+    We constuct a simple class with different :code:`__str__` and :code:`__repr__`
+    implementations:
+
+    >>> class X:
+    ...     def __str__(self):
+    ...         return "'An X'"
+    ...     def __repr__(self):
+    ...         return "X()"
+
+    Invoking :code:`str` returns a "shallow" string representation:
+
+    >>> str((X(), X()))
+    '(X(), X())'
+
+    Invoking :code:`deep_str` also converts the elements of the tuple to a string:
+
+    >>> deep_str((X(), X()))
+    "('An X', 'An X')"
+
+    This also works for nested collections, such as a tuple in a list:
+
+    >>> deep_str([(X(),)])
+    "[('An X',)]"
+
+    It also works for dictionaries...
+
+    >>> deep_str({X(): [X()]})
+    "{'An X': ['An X']}"
+
+    ...sets...
+
+    >>> deep_str({(X(),)})
+    "{('An X',)}"
+
+    ...and ordered sets.
+
+    >>> deep_str(OrderedSet({(X(),)}))
+    "{('An X',)}"
+
+    :param obj: The object to recursively convert into a string.
+    :return: A "deep" string representation of :code:`obj`.
+    """
+
+    if isinstance(obj, tuple):
+        return (
+            "(" + ", ".join(map(deep_str, obj)) + ("," if len(obj) == 1 else "") + ")"
+        )
+    elif isinstance(obj, list):
+        return "[" + ", ".join(map(deep_str, obj)) + "]"
+    elif isinstance(obj, set) or isinstance(obj, OrderedSet):
+        return "{" + ", ".join(map(deep_str, obj)) + "}"
+    elif isinstance(obj, dict):
+        return (
+            "{"
+            + ", ".join([f"{deep_str(a)}: {deep_str(b)}" for a, b in obj.items()])
+            + "}"
+        )
+    else:
+        return str(obj)

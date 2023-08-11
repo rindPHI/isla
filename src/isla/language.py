@@ -1376,7 +1376,7 @@ def false() -> "SMTFormula":
 class SMTFormula(Formula):
     def __init__(
         self,
-        formula: z3.BoolRef,
+        formula: z3.BoolRef | str,
         *free_variables: Variable,
         instantiated_variables: Optional[OrderedSet[Variable]] = None,
         substitutions: Optional[Dict[Variable, DerivationTree]] = None,
@@ -1388,21 +1388,31 @@ class SMTFormula(Formula):
         :param formula: The SMT formula.
         :param free_variables: Free variables in this formula.
         """
-        self.formula = formula
-        self.is_false = z3.is_false(formula)
-        self.is_true = z3.is_true(formula)
+
+        if isinstance(formula, z3.BoolRef):
+            self.formula = formula
+        else:
+            assert isinstance(formula, str)
+            self.formula = z3.parse_smt2_string(
+                f"(assert {formula})",
+                decls={var.name: var.to_smt() for var in free_variables},
+            )[0]
+
+        self.is_false = z3.is_false(self.formula)
+        self.is_true = z3.is_true(self.formula)
 
         self.free_variables_ = OrderedSet(free_variables)
         self.instantiated_variables = instantiated_variables or OrderedSet([])
         self.substitutions: Dict[Variable, DerivationTree] = substitutions or {}
 
         if assertions_activated():
-            actual_symbols = get_symbols(formula)
+            actual_symbols = get_symbols(self.formula)
             assert len(self.free_variables_) + len(self.instantiated_variables) == len(
                 actual_symbols
             ), (
                 f"Supplied number of {len(free_variables)} symbols does not match "
-                + f"actual number of symbols {len(actual_symbols)} in formula '{formula}'"
+                + f"actual number of symbols {len(actual_symbols)}"
+                + f" in formula '{self.formula}'"
             )
 
         # When substituting expressions, the formula is automatically evaluated if this
@@ -1639,9 +1649,14 @@ class SMTFormula(Formula):
 
     def __repr__(self):
         return (
-            f"SMTFormula({repr(self.formula)}, {', '.join(map(repr, self.free_variables_))}, "
-            f"instantiated_variables={repr(self.instantiated_variables)}, "
-            f"substitutions={repr(self.substitutions)})"
+            f"SMTFormula('{self.formula.sexpr()}', "
+            + (
+                (", ".join(map(repr, self.free_variables_)) + ", ")
+                if self.free_variables_
+                else ""
+            )
+            + f"instantiated_variables={repr(self.instantiated_variables)}, "
+            + f"substitutions={repr(self.substitutions)})"
         )
 
     def __str__(self):
