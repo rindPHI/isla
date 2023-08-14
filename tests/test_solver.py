@@ -2193,6 +2193,8 @@ forall <F> f2 in start:
             and str.to.int(<time>.<year>) > 0
             and str.to.int(<time>.<month>) > 0
             and str.to.int(<time>.<day>) > 0
+            and (str.to.int(<time>.<month>) mod 2 = 0 implies str.to.int(<time>.<day>) < 31)
+            and (str.to.int(<time>.<month>) = 2 implies str.to.int(<time>.<day>) < 29)
             and (str.to.int(<time>.<year>) = 2023 implies str.to.int(<time>.<month>) <= 4)
             and ((str.to.int(<time>.<year>) = 2023 and str.to.int(<time>.<month>) = 4) implies str.to.int(<time>.<day>) <= 26)
         """
