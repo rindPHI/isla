@@ -1,14 +1,36 @@
 import logging
 import random
+import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Tuple, List
+from enum import Enum
+from functools import reduce, lru_cache, partial
+from typing import Tuple, List, Set, Dict, Iterable, Callable
 
+import z3
 from frozendict import frozendict
+from grammar_to_regex.cfg2regex import RegexConverter
+from grammar_to_regex.regex import regex_to_z3
+from neo_grammar_graph import NeoGrammarGraph
 from orderedset import FrozenOrderedSet
+from returns.functions import tap
+from returns.maybe import Maybe, Nothing
+from returns.pipeline import flow
+from returns.pointfree import lash
+from returns.result import Result, safe
 
 from isla.derivation_tree import DerivationTree
-from isla.helpers import Maybe, is_nonterminal, deep_str, lazyjoin
+from isla.helpers import (
+    is_nonterminal,
+    deep_str,
+    lazyjoin,
+    merge_dict_of_sets,
+    split_str_with_nonterminals,
+    assertions_activated,
+    delete_unreachable,
+    compute_nullable_nonterminals,
+    get_expansions,
+)
 from isla.language import (
     ConjunctiveFormula,
     DisjunctiveFormula,
@@ -17,8 +39,14 @@ from isla.language import (
     BoundVariable,
 )
 from isla.language import Formula
-from isla.type_defs import FrozenCanonicalGrammar, Path
-from isla.z3_helpers import z3_subst
+from isla.parser import EarleyParser, PEGParser
+from isla.type_defs import FrozenCanonicalGrammar, Path, ImmutableList, Grammar
+from isla.z3_helpers import (
+    z3_subst,
+    parent_relationships_in_z3_expr,
+    smt_string_val_to_string,
+    z3_eq,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -430,15 +458,15 @@ class ExpandRule(Rule):
 
         >>> grammar: FrozenCanonicalGrammar = frozendict({
         ...     "<start>":
-        ...         ("<stmt>",),
+        ...         (("<stmt>",),),
         ...     "<stmt>":
-        ...         ("<assgn> ; <stmt>", "<assgn>"),
+        ...         (("<assgn>", " ; ", "<stmt>"), ("<assgn>",)),
         ...     "<assgn>":
-        ...         ("<var> := <rhs>",),
+        ...         (("<var>", " := ", "<rhs>"),),
         ...     "<rhs>":
-        ...         ("<var>", "<digit>",),
-        ...     "<var>": tuple(string.ascii_lowercase),
-        ...     "<digit>": tuple(string.digits)
+        ...         (("<var>",), ("<digit>",)),
+        ...     "<var>": tuple([(c,) for c in string.ascii_lowercase]),
+        ...     "<digit>": tuple([(c,) for c in string.digits]),
         ... })
 
         We create a derivation tree that permits exactly two expansions and a trivial
@@ -499,15 +527,15 @@ class ExpandRule(Rule):
 
         >>> grammar: FrozenCanonicalGrammar = frozendict({
         ...     "<start>":
-        ...         ("<stmt>",),
+        ...         (("<stmt>",),),
         ...     "<stmt>":
-        ...         ("<assgn> ; <stmt>", "<assgn>"),
+        ...         (("<assgn>", " ; ", "<stmt>"), ("<assgn>",)),
         ...     "<assgn>":
-        ...         ("<var> := <rhs>",),
+        ...         (("<var>", " := ", "<rhs>"),),
         ...     "<rhs>":
-        ...         ("<var>", "<digit>",),
-        ...     "<var>": tuple(string.ascii_lowercase),
-        ...     "<digit>": tuple(string.digits)
+        ...         (("<var>",), ("<digit>",)),
+        ...     "<var>": tuple([(c,) for c in string.ascii_lowercase]),
+        ...     "<digit>": tuple([(c,) for c in string.digits]),
         ... })
         >>> dtree = DerivationTree("<start>", (DerivationTree("<stmt>"),))
         >>> stree = StateTree(CDT(FrozenOrderedSet([true()]), dtree))
@@ -658,10 +686,13 @@ class ChooseOrRule(Rule):
         ...     CDT(FrozenOrderedSet([disjunction]), DerivationTree("<start>"))
         ... )
         >>> str(ChooseOrRule().action(stree)) in [
-        ...     "Maybe(ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 0))",
-        ...     "Maybe(ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 1))"
+        ...     '<Some: ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 0)>',
+        ...     '<Some: ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 1)>'
         ... ]
         True
+
+        >>> ChooseOrRule().action(StateTree(CDT(FrozenOrderedSet({}), DerivationTree("<start>"))))
+        <Nothing>
 
         :param state_tree: The input state tree.
         :return: An action if a disjunction is contained in the state tree or nothing.
@@ -673,9 +704,15 @@ class ChooseOrRule(Rule):
         #         so far).
 
         constraints = state_tree.node.constraints
-        return Maybe.from_iterator(
-            (c for c in constraints if isinstance(c, DisjunctiveFormula))
-        ).map(lambda c: ChooseOrAction(c, random.choice([0, 1])))
+        return (
+            safe(
+                lambda: next(
+                    c for c in constraints if isinstance(c, DisjunctiveFormula)
+                )
+            )()
+            .bind(lambda c: Maybe.from_value(ChooseOrAction(c, random.choice([0, 1]))))
+            .lash(lambda _: Nothing)
+        )
 
     def apply(self, state_tree: StateTree, action: ChooseOrAction) -> StateTree:
         """
@@ -841,3 +878,1222 @@ def rename_instantiated_variables_in_smt_formulas(
         )
 
     return result
+
+
+class VariableContext(Enum):
+    LENGTH = 1
+    INT = 2
+    FLEX = 3
+
+    def __str__(self):
+        return f"{self.name}"
+
+
+def infer_variable_contexts(
+    variables: Set[Variable], smt_formulas: ImmutableList[z3.BoolRef]
+) -> Dict[VariableContext, Set[Variable]]:
+    """
+    Divides the given variables into
+
+    1. those that occur only in :code:`length(...)` contexts,
+    2. those that occur only in :code:`str.to.int(...)` contexts, and
+    3. "flexible" constants occurring in other/various contexts.
+
+    >>> x = Variable("x", "<X>")
+    >>> y = Variable("y", "<Y>")
+
+    Two variables in an arbitrary context.
+
+    >>> from isla.z3_helpers import z3_eq
+    >>> f = z3_eq(x.to_smt(), y.to_smt())
+    >>> contexts = infer_variable_contexts({x, y}, (f,))
+    >>> contexts[VariableContext.LENGTH]
+    set()
+    >>> contexts[VariableContext.INT]
+    set()
+    >>> contexts[VariableContext.FLEX] == {Variable("x", "<X>"), Variable("y", "<Y>")}
+    True
+
+    Variable x occurs in a length context, variable y in an arbitrary one.
+
+    >>> f = z3.And(
+    ...     z3.Length(x.to_smt()) > z3.IntVal(10),
+    ...     z3_eq(y.to_smt(), z3.StringVal("y")))
+    >>> deep_str(infer_variable_contexts({x, y}, (f,)))
+    '{LENGTH: {x}, INT: {}, FLEX: {y}}'
+
+    Variable x occurs in a length context, y does not occur.
+
+    >>> f: z3.BoolRef = z3.Length(x.to_smt()) > z3.IntVal(10)
+    >>> deep_str(infer_variable_contexts({x, y}, (f,)))
+    '{LENGTH: {x}, INT: {}, FLEX: {y}}'
+
+    Variables x and y both occur in a length context.
+
+    >>> f: z3.BoolRef = z3.Length(x.to_smt()) > z3.Length(y.to_smt())
+    >>> contexts = infer_variable_contexts({x, y}, (f,))
+    >>> contexts[VariableContext.LENGTH] == {Variable("x", "<X>"), Variable("y", "<Y>")}
+    True
+    >>> contexts[VariableContext.INT]
+    set()
+    >>> contexts[VariableContext.FLEX]
+    set()
+
+    Variable x occurs in a :code:`str.to.int` context.
+
+    >>> f = z3.StrToInt(x.to_smt()) > z3.IntVal(17)
+    >>> deep_str(infer_variable_contexts({x}, (f,)))
+    '{LENGTH: {}, INT: {x}, FLEX: {}}'
+
+    Now, x also occurs in a different context; it's "flexible" now.
+
+    >>> f = z3.And(
+    ...     z3.StrToInt(x.to_smt()) > z3.IntVal(17),
+    ...     z3_eq(x.to_smt(), z3.StringVal("17")))
+    >>> deep_str(infer_variable_contexts({x}, (f,)))
+    '{LENGTH: {}, INT: {}, FLEX: {x}}'
+
+    :param variables: The constants to divide/filter from.
+    :param smt_formulas: The SMT formulas to consider in the filtering.
+    :return: A pair of constants occurring in `str.len` contexts, and the
+    remaining ones. The union of both sets equals `variables`, and both sets
+    are disjoint.
+    """
+
+    parent_relationships = reduce(
+        merge_dict_of_sets,
+        [parent_relationships_in_z3_expr(formula) for formula in smt_formulas],
+        {},
+    )
+
+    contexts: Dict[Variable, Set[int]] = {
+        var: {
+            expr.decl().kind() for expr in parent_relationships.get(var.to_smt(), set())
+        }
+        or {-1}
+        for var in variables
+    }
+
+    # The set `length_vars` consists of all variables that only occur in
+    # `str.len(...)` context.
+    length_vars: Set[Variable] = {
+        var
+        for var in variables
+        if all(context == z3.Z3_OP_SEQ_LENGTH for context in contexts[var])
+    }
+
+    # The set `int_vars` consists of all variables that only occur in
+    # `str.to.int(...)` context.
+    int_vars: Set[Variable] = {
+        var
+        for var in variables
+        if all(context == z3.Z3_OP_STR_TO_INT for context in contexts[var])
+    }
+
+    # "Flexible" variables are the remaining ones.
+    flexible_vars = variables.difference(length_vars).difference(int_vars)
+
+    return {
+        VariableContext.LENGTH: length_vars,
+        VariableContext.INT: int_vars,
+        VariableContext.FLEX: flexible_vars,
+    }
+
+
+@lru_cache
+def extract_regular_expression(
+    graph: NeoGrammarGraph, nonterminal: str, grammar_unwinding_threshold: int = 4
+) -> z3.ReRef:
+    """
+    This function computes an approximate regular expression for the language of the
+    given nonterminal in the grammar represented by the given graph. The returned
+    regular expression is precise if the language in question is regular. If this is
+    not the case, we unwind the non-regular expansions
+    :code:`grammar_unwinding_threshold` times and return the regular expression for
+    this approximate grammar.
+
+    Example
+    -------
+
+    We extract a (precise) regular expression for the :code:`<stmt>` sub language of
+    the assignment language:
+
+    >>> import string
+    >>> grammar: Grammar = {
+    ...     "<start>":
+    ...         ["<stmt>"],
+    ...     "<stmt>":
+    ...         ["<assgn> ; <stmt>", "<assgn>"],
+    ...     "<assgn>":
+    ...         ["<var> := <rhs>"],
+    ...     "<rhs>":
+    ...         ["<var>", "<digit>"],
+    ...     "<var>": list(string.ascii_lowercase),
+    ...     "<digit>": list(string.digits)
+    ... }
+    >>> graph = NeoGrammarGraph(grammar)
+    >>> extract_regular_expression(graph, "<stmt>")
+    re.++(re.++(re.++(Star(re.++(re.++(re.++(Range("a", "z"),
+                                            Re(" := ")),
+                                       Union(Range("0", "9"),
+                                            Range("a", "z"))),
+                                 Re(" ; "))),
+                      Range("a", "z")),
+                Re(" := ")),
+          Union(Range("0", "9"), Range("a", "z")))
+
+    :param graph: The grammar graph representing the grammar for which we should
+        compute a regular expression.
+    :param nonterminal: The start nonterminal for the sub language for which we should
+        comptues a regular expression.
+    :param grammar_unwinding_threshold: The number of times non-regular grammar
+        expansions should be unwound if necessary for the computation of an
+        approximate regular expression.
+    :return: A (possibly approximate) Z3 regular expression for the given grammar
+        sub-language.
+    """
+
+    # For definitions like `<a> ::= <b>`, we only compute the regular expression
+    # for `<b>`. That way, we might save some calls if `<b>` is used multiple times
+    # (e.g., as in `<byte>`).
+    canonical_expansions = [
+        split_str_with_nonterminals(expansion)
+        for expansion in graph.grammar[nonterminal]
+    ]
+
+    if (
+        len(canonical_expansions) == 1
+        and len(canonical_expansions[0]) == 1
+        and is_nonterminal(canonical_expansions[0][0])
+    ):
+        sub_nonterminal = canonical_expansions[0][0]
+        assert (
+            nonterminal != sub_nonterminal
+        ), f"Expansion {nonterminal} => {sub_nonterminal}: Infinite recursion!"
+        return extract_regular_expression(
+            graph, sub_nonterminal, grammar_unwinding_threshold
+        )
+
+    # Similarly, for definitions like `<a> ::= <b> " x " <c>`, where `<b>` and `<c>`
+    # don't reach `<a>`, we only compute the regular expressions for `<b>` and `<c>`
+    # and return a concatenation. This also saves us expensive conversions (e.g.,
+    # for `<seq> ::= <byte> <byte>`).
+    if (
+        len(canonical_expansions) == 1
+        and any(is_nonterminal(elem) for elem in canonical_expansions[0])
+        and all(
+            not is_nonterminal(elem)
+            or elem != nonterminal
+            and not graph.reachable(elem, nonterminal)
+            for elem in canonical_expansions[0]
+        )
+    ):
+        return z3.Concat(
+            *[
+                z3.Re(elem)
+                if not is_nonterminal(elem)
+                else extract_regular_expression(
+                    graph, elem, grammar_unwinding_threshold
+                )
+                for elem in canonical_expansions[0]
+            ]
+        )
+
+    regex_conv = RegexConverter(
+        graph.grammar,
+        compress_unions=True,
+        max_num_expansions=grammar_unwinding_threshold,
+    )
+
+    regex = regex_conv.to_regex(nonterminal, convert_to_z3=False)
+    LOGGER.debug(f"Computed regular expression for nonterminal {nonterminal}:\n{regex}")
+    z3_regex = regex_to_z3(regex)
+
+    if assertions_activated():
+        # Check correctness of regular expression
+        grammar = graph.subgraph(nonterminal).grammar
+
+        # L(regex) \subseteq L(grammar)
+        LOGGER.debug(
+            "Checking L(regex) \\subseteq L(grammar) for "
+            + "nonterminal '%s' and regex '%s'",
+            nonterminal,
+            regex,
+        )
+        assert_regex_lang_subset_grammar_lang(z3_regex, grammar)
+
+    return z3_regex
+
+
+def assert_regex_lang_subset_grammar_lang(z3_regex: z3.ReRef, grammar: Grammar) -> None:
+    """
+    Generates strings from the given regular expressions and asserts that they are in
+    the language of the grammar by attempting to parse the generated strings. Has not
+    side effects in the case of success; if a string represented by the regular
+    expression is not in the grammar language, an AssertionError is raised.
+
+    :param z3_regex: The regex of the regex-grammar-inclusion-check.
+    :param grammar: The grammar of the regex-grammar-inclusion-check.
+    :return: Nothing.
+    """
+
+    parser = EarleyParser(grammar)
+    c = z3.String("c")
+
+    prev: Set[str] = set()
+    for _ in range(100):
+        s = z3.Solver()
+        s.add(z3.InRe(c, z3_regex))
+        for inp in prev:
+            s.add(z3.Not(c == z3.StringVal(inp)))
+        if s.check() != z3.sat:
+            LOGGER.debug(
+                "Cannot find the %d-th solution for regex %s (timeout).\nThis is "
+                + "*not* a problem if there not that many solutions (for regexes "
+                + "with finite language), or if we are facing a meaningless "
+                + "timeout of the solver.",
+                len(prev) + 1,
+                z3_regex,
+            )
+            break
+
+        new_inp = smt_string_val_to_string(s.model()[c])
+        try:
+            next(parser.parse(new_inp))
+        except SyntaxError:
+            assert (
+                False
+            ), f"Input '{new_inp}' from regex language is not in grammar language."
+
+        prev.add(new_inp)
+
+
+def generate_language_constraints(
+    graph: NeoGrammarGraph,
+    variables: Iterable[Variable],
+    tree_substitutions: Dict[Variable, DerivationTree],
+) -> List[z3.BoolRef]:
+    """
+    This function generates Z3 constraints on the language of the given variables.
+    We distinguish three cases:
+
+    1. The variable is *numeric.* In this case, a regular expression describing the
+       natural numbers (incl. 0) is returned. TODO: Numeric qfrs will be removed in 2.0.
+    2. The variable is in :code:`tree_substitutions`. In this case, we concatenate
+       the regular expressions for the tree leaves.
+    3. Otherwise, we compute the regular expression directly from the grammar.
+
+    Examples
+    --------
+
+    Consider our assignment language:
+
+    >>> import string
+    >>> grammar: Grammar = {
+    ...     "<start>":
+    ...         ["<stmt>"],
+    ...     "<stmt>":
+    ...         ["<assgn> ; <stmt>", "<assgn>"],
+    ...     "<assgn>":
+    ...         ["<var> := <rhs>"],
+    ...     "<rhs>":
+    ...         ["<var>", "<digit>"],
+    ...     "<var>": list(string.ascii_lowercase),
+    ...     "<digit>": list(string.digits)
+    ... }
+    >>> graph = NeoGrammarGraph(grammar)
+
+    When asking for the constraint of an :code:`<assgn>` that is not contained in the
+    substitutions, the full grammar-based regular expression is returned:
+
+    >>> assgn_var = Variable("assngn", "<assgn>")
+    >>> generate_language_constraints(graph, [assgn_var], {})
+    [InRe(assngn,
+         re.++(re.++(Range("a", "z"), Re(" := ")),
+               Union(Range("0", "9"), Range("a", "z"))))]
+
+    However, if :code:`assgn_var` is associated in the substitutions to a derivation
+    tree assigning a :code:`<digit>` to the :code:`<var>`, a more restrictive constraint
+    is returned:
+
+    >>> tree = DerivationTree(
+    ...     "<start>", [
+    ...         DerivationTree(
+    ...             "<stmt>", [
+    ...                 DerivationTree(
+    ...                     "<assgn>", [
+    ...                         DerivationTree("<var>"),
+    ...                         DerivationTree(" := ", ()),
+    ...                         DerivationTree("<rhs>", (DerivationTree("<digit>"),)),
+    ...                     ])])])
+
+    >>> generate_language_constraints(graph, [assgn_var], {assgn_var: tree})
+    [InRe(assngn,
+         re.++(re.++(Range("a", "z"), Re(" := ")),
+               Range("0", "9")))]
+
+    :param graph: The graph representing the grammar of the variables.
+    :param variables: The variables for which language constraints should be
+        generated.
+    :param tree_substitutions: Substitutions from variables to trees specializing
+        the language represented by the variables.
+    :return: A set of language constraints for the given variables.
+    """
+
+    formulas: List[z3.BoolRef] = []
+    for constant in variables:
+        if constant.is_numeric():
+            # TODO: This case will be obsolete after the removal of numeric qfrs
+            regex = z3.Union(
+                z3.Re("0"),
+                z3.Concat(z3.Range("1", "9"), z3.Star(z3.Range("0", "9"))),
+            )
+        elif constant in tree_substitutions:
+            # We have a more concrete shape of the desired instantiation available
+            regexes = [
+                extract_regular_expression(graph, t) if is_nonterminal(t) else z3.Re(t)
+                for t in split_str_with_nonterminals(str(tree_substitutions[constant]))
+            ]
+            assert regexes
+            regex = z3.Concat(*regexes) if len(regexes) > 1 else regexes[0]
+        else:
+            regex = extract_regular_expression(graph, constant.n_type)
+
+        formulas.append(z3.InRe(z3.String(constant.name), regex))
+
+    return formulas
+
+
+def previous_solution_formula(
+    var: Variable,
+    string_val: z3.StringVal,
+    fresh_var_map: Dict[Variable, z3.ExprRef],
+    length_vars: Set[Variable],
+    int_vars: Set[Variable],
+) -> z3.BoolRef:
+    """
+    Computes a formula describing the previously found solution
+    :code:`var == string_val` for an :class:`~isla.language.SMTFormula`.
+    Considers the special cases that :code:`var` is a "length" or "int"
+    variable, i.e., occurred only in these contexts in the formula this
+    solution is about.
+
+    >>> x = Variable("x", "<X>")
+    >>> previous_solution_formula(x, z3.StringVal("val"), {}, set(), set())
+    x == "val"
+
+    >>> previous_solution_formula(
+    ...     x, z3.StringVal("val"), {x: z3.Int("x_0")}, {x}, set())
+    x_0 == 3
+
+    >>> previous_solution_formula(x, z3.StringVal("10"), {x: z3.Int("x_0")}, set(), {x})
+    x_0 == 10
+
+    >>> x = Variable("x", Variable.NUMERIC_NTYPE)
+    >>> previous_solution_formula(x, z3.StringVal("10"), {x: z3.Int("x_0")}, set(), {x})
+    x_0 == 10
+
+    A "numeric" variable (of "NUM" type) is expected to always be an int variable,
+    which also needs to be reflected in its inclusion in :code:`fresh_var_map`.
+
+    >>> x = Variable("x", Variable.NUMERIC_NTYPE)
+    >>> previous_solution_formula(x, z3.StringVal("10"), {}, set(), set())
+    Traceback (most recent call last):
+    ...
+    AssertionError
+
+    :param var: The variable the solution is for.
+    :param string_val: The solution for :code:`var`.
+    :param fresh_var_map: A map from variables to fresh variables for "length" or
+                          "int" variables.
+    :param length_vars: The "length" variables.
+    :param int_vars: The "int" variables.
+    :return: An equation describing the previous solution.
+    """
+
+    if var in int_vars:
+        return z3_eq(
+            fresh_var_map[var],
+            z3.IntVal(int(smt_string_val_to_string(string_val))),
+        )
+    elif var in length_vars:
+        return z3_eq(
+            fresh_var_map[var],
+            z3.IntVal(len(smt_string_val_to_string(string_val))),
+        )
+    else:
+        assert not var.is_numeric()
+        return z3_eq(var.to_smt(), string_val)
+
+
+def extract_model_value(
+    graph: NeoGrammarGraph,
+    var: Variable,
+    model: z3.ModelRef,
+    fresh_var_map: Dict[Variable, z3.ExprRef],
+    length_vars: Set[Variable],
+    int_vars: Set[Variable],
+) -> DerivationTree:
+    r"""
+    Extracts a value for :code:`var` from :code:`model`. Considers the following
+    special cases:
+
+    Numeric Variables
+        Returns a closed derivation tree of one node with a string representation
+        of the numeric solution.
+
+    "Length" Variables
+        Returns a string of the length corresponding to the model and
+        :code:`fresh_var_map`, see also
+        :meth:`~isla.solver2.safe_create_fixed_length_tree()`.
+
+    "Int" Variables
+        Tries to parse the numeric solution from the model (obtained via
+        :code:`fresh_var_map`) into the type of :code:`var` and returns the
+        corresponding derivation tree.
+
+    >>> grammar = {
+    ...     "<start>": ["<A>"],
+    ...     "<A>": ["<X><Y>"],
+    ...     "<X>": ["x", "x<X>"],
+    ...     "<Y>": ["<digit>", "<digit><Y>"],
+    ...     "<digit>": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+    ... }
+    >>> graph = NeoGrammarGraph(grammar)
+
+    **Numeric Variables:**
+
+    >>> n = Variable("n", Variable.NUMERIC_NTYPE)
+    >>> f = z3_eq(z3.StrToInt(n.to_smt()), z3.IntVal(15))
+    >>> z3_solver = z3.Solver()
+    >>> z3_solver.add(f)
+    >>> z3_solver.check()
+    sat
+    >>> model = z3_solver.model()
+    >>> DerivationTree.next_id = 1
+    >>> extract_model_value(graph,n, model, {}, set(), set())
+    DerivationTree('15', (), id=1)
+
+    For a trivially true solution on numeric variables, we return a random number:
+
+    >>> f = z3_eq(n.to_smt(), n.to_smt())
+    >>> z3_solver = z3.Solver()
+    >>> z3_solver.add(f)
+    >>> z3_solver.check()
+    sat
+
+    >>> model = z3_solver.model()
+    >>> DerivationTree.next_id = 1
+    >>> random.seed(0)
+    >>> extract_model_value(graph, n, model, {n: n.to_smt()}, set(), {n})
+    DerivationTree('-2116850434379610162', (), id=1)
+
+    **"Length" Variables:**
+
+    >>> x = Variable("x", "<X>")
+    >>> x_0 = z3.Int("x_0")
+    >>> f = z3_eq(x_0, z3.IntVal(3))
+    >>> z3_solver = z3.Solver()
+    >>> z3_solver.add(f)
+    >>> z3_solver.check()
+    sat
+    >>> model = z3_solver.model()
+    >>> result = extract_model_value(graph, x, model, {x: x_0}, {x}, set())
+    >>> result.value
+    '<X>'
+    >>> str(result)
+    'xxx'
+
+    **"Int" Variables:**
+
+    >>> y = Variable("y", "<Y>")
+    >>> y_0 = z3.Int("y_0")
+    >>> f = z3_eq(y_0, z3.IntVal(5))
+    >>> z3_solver = z3.Solver()
+    >>> z3_solver.add(f)
+    >>> z3_solver.check()
+    sat
+    >>> model = z3_solver.model()
+    >>> DerivationTree.next_id = 1
+    >>> extract_model_value(graph, y, model, {y: y_0}, set(), {y})
+    DerivationTree('<Y>', (DerivationTree('<digit>', (DerivationTree('5', (), id=1),), id=2),), id=3)
+
+    **"Flexible" Variables:**
+
+    >>> f = z3_eq(x.to_smt(), z3.StringVal("xxxxx"))
+    >>> z3_solver = z3.Solver()
+    >>> z3_solver.add(f)
+    >>> z3_solver.check()
+    sat
+    >>> model = z3_solver.model()
+    >>> result = extract_model_value(graph, x, model, {}, set(), set())
+    >>> result.value
+    '<X>'
+    >>> str(result)
+    'xxxxx'
+
+    **Special Number Formats**
+
+    It may happen that the solver returns, e.g., "1" as a solution for an int
+    variable, but the grammar only recognizes "+001". We support this case, i.e.,
+    an optional "+" and optional 0 padding; an optional 0 padding for negative
+    numbers is also supported.
+
+    >>> grammar = {
+    ...     "<start>": ["<int>"],
+    ...     "<int>": ["<sign>00<leaddigit><digits>"],
+    ...     "<sign>": ["-", "+"],
+    ...     "<digits>": ["", "<digit><digits>"],
+    ...     "<digit>": list("0123456789"),
+    ...     "<leaddigit>": list("123456789"),
+    ... }
+    >>> graph = NeoGrammarGraph(grammar)
+
+    >>> i = Variable("i", "<int>")
+    >>> i_0 = z3.Int("i_0")
+    >>> f = z3_eq(i_0, z3.IntVal(5))
+
+    >>> z3_solver = z3.Solver()
+    >>> z3_solver.add(f)
+    >>> z3_solver.check()
+    sat
+
+    The following test works when run from the IDE, but unfortunately not when
+    started from CI/the `test_doctests.py` script. Thus, we only show it as code
+    block (we added a unit test as a replacement) (TODO Add new unit test)::
+
+        model = z3_solver.model()
+        print(solver.extract_model_value(graph, i, model, {i: i_0}, set(), {i}))
+        # Prints: +005
+
+    :param graph: The grammar graph representing the grammar for :code:`var`.
+    :param var: The variable for which to extract a solution from the model.
+    :param model: The model containing the solution.
+    :param fresh_var_map: A map from variables to fresh symbols for "length" and
+                          "int" variables.
+    :param length_vars: The set of "length" variables.
+    :param int_vars: The set of "int" variables.
+    :return: A :class:`~isla.derivation_tree.DerivationTree` object corresponding
+             to the solution in :code:`model`.
+    """  # noqa: E501
+
+    f_flex_vars = extract_model_value_flexible_var
+    f_int_vars = partial(extract_model_value_int_var, f_flex_vars)
+    f_length_vars = partial(extract_model_value_length_var, f_int_vars)
+    f_num_vars = partial(extract_model_value_numeric_var, f_length_vars)
+
+    return f_num_vars(graph, var, model, fresh_var_map, length_vars, int_vars)
+
+
+ExtractModelValueFallbackType = Callable[
+    [
+        NeoGrammarGraph,
+        Variable,
+        z3.ModelRef,
+        Dict[Variable, z3.ExprRef],
+        Set[Variable],
+        Set[Variable],
+    ],
+    DerivationTree,
+]
+
+
+def extract_model_value_numeric_var(
+    fallback: ExtractModelValueFallbackType,
+    graph: NeoGrammarGraph,
+    var: Variable,
+    model: z3.ModelRef,
+    fresh_var_map: Dict[Variable, z3.ExprRef],
+    length_vars: Set[Variable],
+    int_vars: Set[Variable],
+) -> DerivationTree:
+    """
+    Addresses the case of numeric variables from
+    :meth:`~isla.solver2.extract_model_value`.
+
+    :param fallback: The function to call if this function is not responsible.
+    :param graph: The grammar graph representing the grammar for :code:`var`.
+    :param var: See :meth:`~isla.solver2.extract_model_value`.
+    :param model: See :meth:`~isla.solver2.extract_model_value`.
+    :param fresh_var_map: See :meth:`~isla.solver2.extract_model_value`.
+    :param length_vars: See :meth:`~isla.solver2.extract_model_value`.
+    :param int_vars: See :meth:`~isla.solver2.extract_model_value`.
+    :return: See :meth:`~isla.solver2.extract_model_value`.
+    """
+
+    if not var.is_numeric():
+        return fallback(graph, var, model, fresh_var_map, length_vars, int_vars)
+
+    z3_var = z3.String(var.name)
+    if z3_var.decl() in model.decls():
+        model_value = model[z3_var]
+    else:
+        assert var in int_vars
+        assert var in fresh_var_map
+
+        model_value = model[fresh_var_map[var]]
+
+        if model_value is None:
+            # This can happen for universally true formulas, e.g., `x = x`.
+            # In that case, we return a random integer.
+            model_value = z3.IntVal(random.randint(-sys.maxsize, sys.maxsize))
+
+    assert (
+        model_value is not None
+    ), f"No solution for variable {var} found in model {model}"
+
+    string_value = smt_string_val_to_string(model_value)
+    assert string_value
+    assert (
+        string_value.isnumeric()
+        or string_value[0] == "-"
+        and string_value[1:].isnumeric()
+    )
+
+    return DerivationTree(string_value, ())
+
+
+def extract_model_value_length_var(
+    fallback: ExtractModelValueFallbackType,
+    graph: NeoGrammarGraph,
+    var: Variable,
+    model: z3.ModelRef,
+    fresh_var_map: Dict[Variable, z3.ExprRef],
+    length_vars: Set[Variable],
+    int_vars: Set[Variable],
+) -> DerivationTree:
+    """
+    Addresses the case of length variables from
+    :meth:`~isla.solver2.extract_model_value`.
+
+    :param fallback: The function to call if this function is not responsible.
+    :param graph: The grammar graph representing the grammar for :code:`var`.
+    :param var: See :meth:`~isla.solver2.extract_model_value`.
+    :param model: See :meth:`~isla.solver2.extract_model_value`.
+    :param fresh_var_map: See :meth:`~isla.solver2.extract_model_value`.
+    :param length_vars: See :meth:`~isla.solver2.extract_model_value`.
+    :param int_vars: See :meth:`~isla.solver2.extract_model_value`.
+    :return: See :meth:`~isla.solver2.extract_model_value`.
+    """
+    if var not in length_vars:
+        return fallback(graph, var, model, fresh_var_map, length_vars, int_vars)
+
+    return safe_create_fixed_length_tree(var, model, fresh_var_map)
+
+
+def extract_model_value_int_var(
+    fallback: ExtractModelValueFallbackType,
+    graph: NeoGrammarGraph,
+    var: Variable,
+    model: z3.ModelRef,
+    fresh_var_map: Dict[Variable, z3.ExprRef],
+    length_vars: Set[Variable],
+    int_vars: Set[Variable],
+) -> DerivationTree:
+    """
+    Addresses the case of int variables from
+    :meth:`~isla.solver2.extract_model_value`.
+
+    :param fallback: The function to call if this function is not responsible.
+    :param graph: The grammar graph representing the grammar for :code:`var`.
+    :param var: See :meth:`~isla.solver2.extract_model_value`.
+    :param model: See :meth:`~isla.solver2.extract_model_value`.
+    :param fresh_var_map: See :meth:`~isla.solver2.extract_model_value`.
+    :param length_vars: See :meth:`~isla.solver2.extract_model_value`.
+    :param int_vars: See :meth:`~isla.solver2.extract_model_value`.
+    :return: See :meth:`~isla.solver2.extract_model_value`.
+    """
+    if var not in int_vars:
+        return fallback(graph, var, model, fresh_var_map, length_vars, int_vars)
+
+    str_model_value = model[fresh_var_map[var]].as_string()
+
+    try:
+        int_model_value = int(str_model_value)
+    except ValueError:
+        raise RuntimeError(f"Value {str_model_value} for {var} is not a number")
+
+    var_type = var.n_type
+
+    try:
+        return parse(
+            str(int_model_value),
+            graph.grammar,
+            start_nonterminal=var_type,
+        )
+    except SyntaxError:
+        # This may happen, e.g, with padded values: Only "01" is a valid
+        # solution, but not "1". Similarly, a grammar may expect "+1", but
+        # "1" is returned by the solver. We support the number format
+        # `[+-]0*<digits>`. Whenever the grammar recognizes at least this
+        # set for the nonterminal in question, we return a derivation tree.
+        # Otherwise, a RuntimeError is raised.
+
+        z3_solver = z3.Solver()
+        z3_solver.set("timeout", 300)
+
+        maybe_plus_re = z3.Option(z3.Re("+"))
+        zeroes_padding_re = z3.Star(z3.Re("0"))
+
+        # TODO: Ensure symbols are fresh
+        maybe_plus_var = z3.String("__plus")
+        zeroes_padding_var = z3.String("__padding")
+
+        z3_solver.add(z3.InRe(maybe_plus_var, maybe_plus_re))
+        z3_solver.add(z3.InRe(zeroes_padding_var, zeroes_padding_re))
+
+        z3_solver.add(
+            z3.InRe(
+                z3.Concat(
+                    maybe_plus_var if int_model_value >= 0 else z3.StringVal("-"),
+                    zeroes_padding_var,
+                    z3.StringVal(
+                        str_model_value
+                        if int_model_value >= 0
+                        else str(-int_model_value)
+                    ),
+                ),
+                extract_regular_expression(graph, var.n_type),
+            )
+        )
+
+        if z3_solver.check() != z3.sat:
+            raise RuntimeError(
+                "Could not parse a numeric solution "
+                + f"({str_model_value}) for variable "
+                + f"{var} of type '{var.n_type}'; try "
+                + "running the solver without optimized Z3 queries or make "
+                + "sure that ranges are restricted to syntactically valid "
+                + "ones (according to the grammar).",
+            )
+
+        return parse(
+            (
+                z3_solver.model()[maybe_plus_var].as_string()
+                if int_model_value >= 0
+                else "-"
+            )
+            + z3_solver.model()[zeroes_padding_var].as_string()
+            + (str_model_value if int_model_value >= 0 else str(-int_model_value)),
+            graph.grammar,
+            var.n_type,
+        )
+
+
+def extract_model_value_flexible_var(
+    graph: NeoGrammarGraph,
+    var: Variable,
+    model: z3.ModelRef,
+    fresh_var_map: Dict[Variable, z3.ExprRef],
+    length_vars: Set[Variable],
+    int_vars: Set[Variable],
+) -> DerivationTree:
+    """
+    Addresses the case of "flexible" variables from
+    :meth:`~isla.solver2.extract_model_value`.
+
+    :param fallback: The function to call if this function is not responsible.
+    :param graph: The grammar graph representing the grammar for :code:`var`.
+    :param var: See :meth:`~isla.solver2.extract_model_value`.
+    :param model: See :meth:`~isla.solver2.extract_model_value`.
+    :param fresh_var_map: See :meth:`~isla.solver2.extract_model_value`.
+    :param length_vars: See :meth:`~isla.solver2.extract_model_value`.
+    :param int_vars: See :meth:`~isla.solver2.extract_model_value`.
+    :return: See :meth:`~isla.solver2.extract_model_value`.
+    """
+
+    return parse(
+        smt_string_val_to_string(model[z3.String(var.name)]),
+        graph.grammar,
+        start_nonterminal=var.n_type,
+    )
+
+
+@safe
+def parse_peg(
+    inp: str, grammar: Grammar, start_nonterminal: str = "<start>"
+) -> Result[DerivationTree, Exception]:
+    """
+    This function parses :code:`inp` in the given grammar with the specified start
+    nonterminal using a PEG parser.
+
+    See also :func:`~isla.language.parse_match_expression`.
+
+    Example
+    -------
+
+    Consider the following grammar for the assignment language.
+
+    >>> import string
+    >>> grammar: Grammar = {
+    ...     "<start>":
+    ...         ["<stmt>"],
+    ...     "<stmt>":
+    ...         ["<assgn> ; <stmt>", "<assgn>"],
+    ...     "<assgn>":
+    ...         ["<var> := <rhs>"],
+    ...     "<rhs>":
+    ...         ["<var>", "<digit>"],
+    ...     "<var>": list(string.ascii_lowercase),
+    ...     "<digit>": list(string.digits)
+    ... }
+
+    We parse a statement with two assignments; the resulting tree starts with the
+    specified nonterminal :code:`<start>`:
+
+    >>> deep_str(parse_peg("x := 0 ; y := x", grammar).map(lambda t: (t, t.value)))
+    <Success: (x := 0 ; y := x, <start>)>
+
+    >>> deep_str(parse_peg("x := 0 ; y := x", grammar).map(lambda t: (t, t.value)))
+    <Success: (x := 0 ; y := x, <start>)>
+
+    Now, we parse a single assignment with the :code:`<assgn>` start nonterminal:
+
+    >>> deep_str(parse_peg("x := 0", grammar, "<assgn>").map(lambda t: (t, t.value)))
+    <Success: (x := 0, <assgn>)>
+
+    In case of an error, a Failure is returned:
+
+    >>> deep_str(parse_peg("x := 0 FOO", grammar, "<assgn>").alt(
+    ...     lambda e: f'"{type(e).__name__}: {e}"'))
+    <Failure: "SyntaxError: at ' FOO'">
+
+    The grammar above was a grammar that could be interpreted as a PEG grammar. Parsing
+    a statement with the grammar below (changed order of the expansions for statements)
+    can, in general, only be parsed with the EarleyParser:
+
+    >>> grammar: Grammar = {
+    ...     "<start>":
+    ...         ["<stmt>"],
+    ...     "<stmt>":
+    ...         ["<assgn>", "<assgn> ; <stmt>"],
+    ...     "<assgn>":
+    ...         ["<var> := <rhs>"],
+    ...     "<rhs>":
+    ...         ["<var>", "<digit>"],
+    ...     "<var>": list(string.ascii_lowercase),
+    ...     "<digit>": list(string.digits)
+    ... }
+
+    We have seen this example before; this time, the PEG parser will not return a
+    valid result:
+
+    >>> deep_str(parse_peg("x := 0 ; y := x", grammar).alt(
+    ...     lambda e: f'"{type(e).__name__}: {e}"'))
+    <Failure: "SyntaxError: at ' ; y := x'">
+
+    :param inp: The input to parse.
+    :param grammar: The grammar to parse the input in.
+    :param start_nonterminal: The start nonterminal.
+    :return: A derivation tree in the case of success or an Exception (most likely a
+        SyntaxError) in the case of failure when parsing the given input with a PEG
+        parser.
+    """
+
+    if start_nonterminal != "<start>":
+        grammar = grammar | {"<start>": [start_nonterminal]}
+        grammar = delete_unreachable(grammar)
+
+    # Should we address ambiguities and return multiple parse trees?
+    result = DerivationTree.from_parse_tree(PEGParser(grammar).parse(inp)[0])
+    return result if start_nonterminal == "<start>" else result.children[0]
+
+
+@safe
+def parse_earley(
+    inp: str,
+    grammar: Grammar,
+    start_nonterminal: str = "<start>",
+) -> Result[DerivationTree, SyntaxError]:
+    """
+    This function parses :code:`inp` in the given grammar with the specified start
+    nonterminal using an EarleyParser.
+
+    *Attention:* If the Earley parser returns multiple parse trees, we select and return
+    only the first one. Ambiguities are not considered!
+
+    See also :func:`~isla.language.parse_match_expression`.
+
+    Example
+    -------
+
+    Consider the following grammar for the assignment language.
+
+    >>> import string
+    >>> grammar: Grammar = {
+    ...     "<start>":
+    ...         ["<stmt>"],
+    ...     "<stmt>":
+    ...         ["<assgn> ; <stmt>", "<assgn>"],
+    ...     "<assgn>":
+    ...         ["<var> := <rhs>"],
+    ...     "<rhs>":
+    ...         ["<var>", "<digit>"],
+    ...     "<var>": list(string.ascii_lowercase),
+    ...     "<digit>": list(string.digits)
+    ... }
+
+    We parse a statement with two assignments; the resulting tree starts with the
+    specified nonterminal :code:`<start>`:
+
+    >>> deep_str(parse_earley("x := 0 ; y := x", grammar).map(lambda t: (t, t.value)))
+    <Success: (x := 0 ; y := x, <start>)>
+
+    >>> deep_str(parse_earley("x := 0 ; y := x", grammar).map(lambda t: (t, t.value)))
+    <Success: (x := 0 ; y := x, <start>)>
+
+    Now, we parse a single assignment with the :code:`<assgn>` start nonterminal:
+
+    >>> deep_str(parse_earley("x := 0", grammar, "<assgn>").map(lambda t: (t, t.value)))
+    <Success: (x := 0, <assgn>)>
+
+    In case of an error, a Failure is returned:
+
+    >>> deep_str(parse_earley("x := 0 FOO", grammar, "<assgn>").alt(
+    ...     lambda e: f'"{type(e).__name__}: {e}"'))
+    <Failure: "SyntaxError: at ' FOO'">
+
+    The grammar above was a grammar that could be interpreted as a PEG grammar. Parsing
+    a statement with the grammar below (changed order of the expansions for statements)
+    can, in general, only be parsed with the EarleyParser:
+
+    Unlike the PEG parser (:func:`~isla.solver2.parse_peg`), this function can deal
+    with the modified grammar where the order of the alternatives for statements is
+    changed:
+
+    >>> grammar: Grammar = {
+    ...     "<start>":
+    ...         ["<stmt>"],
+    ...     "<stmt>":
+    ...         ["<assgn>", "<assgn> ; <stmt>"],
+    ...     "<assgn>":
+    ...         ["<var> := <rhs>"],
+    ...     "<rhs>":
+    ...         ["<var>", "<digit>"],
+    ...     "<var>": list(string.ascii_lowercase),
+    ...     "<digit>": list(string.digits)
+    ... }
+
+    We get a Success result:
+
+    >>> deep_str(parse_earley("x := 0 ; y := x", grammar).map(lambda t: (t, t.value)))
+    <Success: (x := 0 ; y := x, <start>)>
+
+    :param inp: The input to parse.
+    :param grammar: The grammar to parse the input in.
+    :param start_nonterminal: The start nonterminal.
+    :return: A derivation tree in the case of success or an Exception (most likely a
+        SyntaxError) in the case of failure when parsing the given input with an Earley
+        parser.
+    """
+
+    if start_nonterminal != "<start>":
+        grammar = grammar | {"<start>": [start_nonterminal]}
+        grammar = delete_unreachable(grammar)
+
+    # Should we address ambiguities and return multiple parse trees?
+    result = DerivationTree.from_parse_tree(next(EarleyParser(grammar).parse(inp)))
+    return result if start_nonterminal == "<start>" else result.children[0]
+
+
+def parse(
+    inp: str,
+    grammar: Grammar,
+    start_nonterminal: str = "<start>",
+) -> Result[DerivationTree, Exception]:
+    """
+    This function parses :code:`inp` in the given grammar with the specified start
+    nonterminal. It first tries whether the input can be parsed with a PEG parser;
+    if this fails, it falls back to an Earley parser.
+
+    *Attention:* If the Earley parser returns multiple parse trees, we select and return
+    only the first one. Ambiguities are not considered!
+
+    Example
+    -------
+
+    Consider the following grammar for the assignment language.
+
+    >>> import string
+    >>> grammar: Grammar = {
+    ...     "<start>":
+    ...         ["<stmt>"],
+    ...     "<stmt>":
+    ...         ["<assgn> ; <stmt>", "<assgn>"],
+    ...     "<assgn>":
+    ...         ["<var> := <rhs>"],
+    ...     "<rhs>":
+    ...         ["<var>", "<digit>"],
+    ...     "<var>": list(string.ascii_lowercase),
+    ...     "<digit>": list(string.digits)
+    ... }
+
+    We parse a statement with two assignments; the resulting tree starts with the
+    specified nonterminal :code:`<start>`:
+
+    >>> deep_str(parse("x := 0 ; y := x", grammar).map(lambda t: (t, t.value)))
+    <Success: (x := 0 ; y := x, <start>)>
+
+    Now, we parse a single assignment with the :code:`<assgn>` start nonterminal:
+
+    >>> deep_str(parse("x := 0", grammar, "<assgn>").map(lambda t: (t, t.value)))
+    <Success: (x := 0, <assgn>)>
+
+    In case of an error, a Failure is returned:
+
+    >>> deep_str(parse("x := 0 FOO", grammar, "<assgn>").alt(
+    ...     lambda e: f'"{type(e).__name__}: {e}"'))
+    <Failure: "SyntaxError: at ' FOO'">
+
+    :param inp: The input to parse.
+    :param start_nonterminal: The start nonterminmal.
+    :param grammar: The grammar to parse the input in.
+    :return: A parsed derivation tree or a Nothing nonterminal if parsing was
+        unsuccessful.
+    """
+
+    return flow(
+        parse_peg(inp, grammar, start_nonterminal),
+        tap(
+            lambda _: LOGGER.debug(
+                "Parsing expression %s with EarleyParser",
+                inp,
+            )
+        ),
+        lash(lambda _: parse_earley(inp, grammar, start_nonterminal)),
+    )
+
+
+def create_fixed_length_tree(
+    start: DerivationTree | str,
+    canonical_grammar: FrozenCanonicalGrammar,
+    target_length: int,
+) -> Maybe[DerivationTree]:
+    """
+    This function attempts to create a derivation tree starting in the specified start
+    nonterminal symbol or based on the specified initial derivation tree whose
+    unparsed form (string representation) has the specifeid target length.
+
+    Example
+    -------
+
+    Consider the assignment langugage grammar.
+
+    >>> import string
+    >>> grammar: FrozenCanonicalGrammar = frozendict({
+    ...     "<start>":
+    ...         (("<stmt>",),),
+    ...     "<stmt>":
+    ...         (("<assgn>", " ; ", "<stmt>"), ("<assgn>",)),
+    ...     "<assgn>":
+    ...         (("<var>", " := ", "<rhs>"),),
+    ...     "<rhs>":
+    ...         (("<var>",), ("<digit>",)),
+    ...     "<var>": tuple([(c,) for c in string.ascii_lowercase]),
+    ...     "<digit>": tuple([(c,) for c in string.digits]),
+    ... })
+
+    All assignment language expressions of length 15 consist of two assignments.
+
+    >>> result = create_fixed_length_tree("<stmt>", grammar, 15)
+    >>> result.map(lambda t: len(str(t)))
+    <Some: 15>
+
+    >>> result.map(lambda t: len(t.filter(lambda n: n.value == "<assgn>")))
+    <Some: 2>
+
+    There exists no assignment language expression of length 14.
+
+    >>> create_fixed_length_tree("<stmt>", grammar, 14)
+    <Nothing>
+
+    :param start: The start nonterminal or initial tree for the expression that should
+        be generated.
+    :param canonical_grammar: The grammar for the expression that should be generated,
+        in canonical form.
+    :param target_length: The target length of the expression that should be generated.
+    :return: An expression of the specified length or :code:`None` if no such expression
+        could be found.
+    """
+
+    nullable = compute_nullable_nonterminals(canonical_grammar)
+    start = DerivationTree(start) if isinstance(start, str) else start
+    stack: List[
+        Tuple[DerivationTree, int, ImmutableList[Tuple[Path, DerivationTree]]]
+    ] = [
+        (start, int(start.value not in nullable), (((), start),)),
+    ]
+
+    while stack:
+        tree, curr_len, open_leaves = stack.pop()
+
+        if not open_leaves:
+            if curr_len == target_length:
+                return Maybe.from_value(tree)
+            else:
+                continue
+
+        if curr_len > target_length:
+            continue
+
+        idx: int
+        path: Path
+        leaf: DerivationTree
+        for idx, (path, leaf) in reversed(list(enumerate(open_leaves))):
+            terminal_expansions, expansions = get_expansions(
+                leaf.value, canonical_grammar
+            )
+
+            if terminal_expansions:
+                expansions.append(random.choice(terminal_expansions))
+
+            # Only choose one random terminal expansion; keep all nonterminal expansions
+            expansions = sorted(
+                expansions,
+                key=lambda expansion: len(
+                    [elem for elem in expansion if is_nonterminal(elem)]
+                ),
+            )
+
+            for expansion in reversed(expansions):
+                new_children = tuple(
+                    [
+                        DerivationTree(elem, None if is_nonterminal(elem) else ())
+                        for elem in expansion
+                    ]
+                )
+
+                expanded_tree = tree.replace_path(
+                    path,
+                    DerivationTree(
+                        leaf.value,
+                        new_children,
+                    ),
+                )
+
+                stack.append(
+                    (
+                        expanded_tree,
+                        curr_len
+                        + sum(
+                            [
+                                len(child.value)
+                                if child.children == ()
+                                else (1 if child.value not in nullable else 0)
+                                for child in new_children
+                            ]
+                        )
+                        - int(leaf.value not in nullable),
+                        open_leaves[:idx]
+                        + tuple(
+                            [
+                                (path + (child_idx,), new_child)
+                                for child_idx, new_child in enumerate(new_children)
+                                if is_nonterminal(new_child.value)
+                            ]
+                        )
+                        + open_leaves[idx + 1 :],
+                    )
+                )
+
+    return Nothing

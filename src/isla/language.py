@@ -75,6 +75,8 @@ from isla.helpers import (
     Exceptional,
     instantiate_escaped_symbols,
     unreachable_nonterminals,
+    Success,
+    Failure,
 )
 from isla.helpers import (
     replace_line_breaks,
@@ -300,7 +302,7 @@ class BindExpression:
             )
         )
 
-        maybe_tree = parse(flattened_bind_expr_str, in_nonterminal, immutable_grammar)
+        maybe_tree = parse_match_expression(flattened_bind_expr_str, in_nonterminal, immutable_grammar)
         if not maybe_tree.is_present():
             language_core_logger.warning(
                 'Parsing match expression string "%s" caused a syntax error. If this is'
@@ -4460,48 +4462,153 @@ def match(
     return result
 
 
-def parse_peg(
+def parse_match_expression_peg(
     inp: str, in_nonterminal: str, immutable_grammar: ImmutableGrammar
 ) -> Maybe[DerivationTree]:
+    """
+    This function parses :code:`inp` in the given grammar with the specified start
+    nonterminal using a PEG parser.
+
+    The grammar is converted to a match expression grammar using
+    :func:`~isla.language.grammar_to_match_expr_grammar`. Thus, this function *is
+    not intended for general-purpose parsing.*
+
+    See also :func:`~isla.language.parse_match_expression`.
+
+    :param inp: The input to parse.
+    :param in_nonterminal: The start nonterminmal.
+    :param immutable_grammar: The grammar to parse the input in.
+    :return: A parsed derivation tree or a Nothing nonterminal if parsing was
+        unsuccessful.
+    """
     peg_parser = PEGParser(
         grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar)
     )
-    try:
-        result = DerivationTree.from_parse_tree(peg_parser.parse(inp)[0])
-        return Maybe(result if in_nonterminal == "<start>" else result.children[0])
-    except Exception:
-        return Maybe.nothing()
+
+    match Exceptional.of(
+        lambda: DerivationTree.from_parse_tree(peg_parser.parse(inp)[0])
+    ):
+        case Success(result):
+            return Maybe(result if in_nonterminal == "<start>" else result.children[0])
+        case Failure(_):
+            return Maybe.nothing()
+        case _:
+            assert False
 
 
-def parse_earley(
+def parse_match_expression_earley(
     inp: str, in_nonterminal: str, immutable_grammar: ImmutableGrammar
 ) -> Maybe[DerivationTree]:
+    """
+    This function parses :code:`inp` in the given grammar with the specified start
+    nonterminal using an EarleyParser.
+
+    The grammar is converted to a match expression grammar using
+    :func:`~isla.language.grammar_to_match_expr_grammar`. Thus, this function *is
+    not intended for general-purpose parsing.*
+
+    *Attention:* If the Earley parser returns multiple parse trees, we select and return
+    only the first one. Ambiguities are not considered!
+
+    See also :func:`~isla.language.parse_match_expression`.
+
+    :param inp: The input to parse.
+    :param in_nonterminal: The start nonterminmal.
+    :param immutable_grammar: The grammar to parse the input in.
+    :return: A parsed derivation tree or a Nothing nonterminal if parsing was
+        unsuccessful.
+    """
+
     # Should we address ambiguities and return multiple parse trees?
     earley_parser = EarleyParser(
         grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar)
     )
 
-    try:
-        result = DerivationTree.from_parse_tree(next(earley_parser.parse(inp)))
-        return Maybe(result if in_nonterminal == "<start>" else result.children[0])
-    except SyntaxError:
-        return Maybe.nothing()
+    match Exceptional.of(
+        lambda: DerivationTree.from_parse_tree(next(earley_parser.parse(inp)))
+    ):
+        case Success(result):
+            return Maybe(result if in_nonterminal == "<start>" else result.children[0])
+        case Failure(_):
+            return Maybe.nothing()
+        case _:
+            assert False
 
 
-def parse(
+def parse_match_expression(
     inp: str, in_nonterminal: str, immutable_grammar: ImmutableGrammar
 ) -> Maybe[DerivationTree]:
-    monad = parse_peg(inp, in_nonterminal, immutable_grammar)
+    """
+    This function parses :code:`inp` in the given grammar with the specified start
+    nonterminal. It first tries whether the input can be parsed with a PEG parser;
+    if this fails, it falls back to an Earley parser.
 
-    if not monad.is_present():
+    The grammar is converted to a match expression grammar using
+    :func:`~isla.language.grammar_to_match_expr_grammar`. Thus, this function *is
+    not intended for general-purpose parsing.*
+
+    *Attention:* If the Earley parser returns multiple parse trees, we select and return
+    only the first one. Ambiguities are not considered!
+
+    Example
+    -------
+
+    Consider the following grammar for the assignment language.
+
+    >>> import string
+    >>> grammar: Grammar = {
+    ...     "<start>":
+    ...         ["<stmt>"],
+    ...     "<stmt>":
+    ...         ["<assgn> ; <stmt>", "<assgn>"],
+    ...     "<assgn>":
+    ...         ["<var> := <rhs>"],
+    ...     "<rhs>":
+    ...         ["<var>", "<digit>"],
+    ...     "<var>": list(string.ascii_lowercase),
+    ...     "<digit>": list(string.digits)
+    ... }
+
+    We parse a statement with two assignments; the resulting tree starts with the
+    specified nonterminal :code:`<start>`:
+
+    >>> print(parse_match_expression(
+    ...     "x := 0 ; y := x",
+    ...     "<start>",
+    ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value)))
+    Maybe((x := 0 ; y := x, <start>))
+
+    Now, we parse a single assignment with the :code:`<assgn>` start nonterminal:
+
+    >>> print(parse_match_expression(
+    ...     "x := 0",
+    ...     "<assgn>",
+    ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value)))
+    Maybe((x := 0, <assgn>))
+
+    In case of an error, Nothing is returned:
+
+    >>> print(parse_match_expression(
+    ...     "x := 0 FOO",
+    ...     "<assgn>",
+    ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value)))
+    Nothing
+
+    :param inp: The input to parse.
+    :param in_nonterminal: The start nonterminmal.
+    :param immutable_grammar: The grammar to parse the input in.
+    :return: A parsed derivation tree or a Nothing nonterminal if parsing was
+        unsuccessful.
+    """
+
+    monad = parse_match_expression_peg(inp, in_nonterminal, immutable_grammar)
+
+    def fallback(_) -> Maybe[DerivationTree]:
         language_core_logger.debug(
             "Parsing match expression %s with EarleyParser",
             inp,
         )
 
-    monad += (
-        lambda _inp: parse_earley(inp, in_nonterminal, immutable_grammar),
-        inp,
-    )
+        return parse_match_expression_earley(inp, in_nonterminal, immutable_grammar)
 
-    return monad
+    return monad + (fallback, inp)
