@@ -48,8 +48,10 @@ from typing import (
     Type,
 )
 
+import returns
 from frozendict import frozendict
 from orderedset import OrderedSet
+from returns.result import Result, Success
 
 from isla.global_config import GLOBAL_CONFIG
 from isla.type_defs import (
@@ -823,6 +825,9 @@ class Success(Generic[T], Exceptional[Exception, T]):
     def reraise(self) -> "Success[T]":
         return self
 
+    def __str__(self):
+        return f"Success({deep_str(self.a)})"
+
 
 @dataclass(frozen=True)
 class Failure(Generic[E], Exceptional[E, Any]):
@@ -845,6 +850,9 @@ class Failure(Generic[E], Exceptional[E, Any]):
 
     def reraise(self) -> Exceptional[E, Any]:
         raise self.a
+
+    def __str__(self):
+        return f"Failure({deep_str(self.a)})"
 
 
 def chain_functions(
@@ -1081,7 +1089,8 @@ def deep_str(obj: Any) -> str:
     """
     This function computes a "deep" string representation of :code:`obj`. This means
     that it also (recursively) invokes :code:`__str__` on all the elements of a list,
-    tuple, set, OrderedSet, or dict.
+    tuple, set, OrderedSet, dict, or Success/Failure container (from the returns
+    library).
 
     Example:
     --------
@@ -1130,6 +1139,15 @@ def deep_str(obj: Any) -> str:
     >>> deep_str(OrderedSet({(X(),)}))
     "{('An X',)}"
 
+    As a special gimick, the function also works for the returns library's Success
+    and Failure containers:
+
+    >>> deep_str(returns.result.Success([X(), X()]))
+    <Success: ['An X', 'An X']>
+
+    >>> deep_str(returns.result.Failure([X(), X()]))
+    <Failure: ['An X', 'An X']>
+
     :param obj: The object to recursively convert into a string.
     :return: A "deep" string representation of :code:`obj`.
     """
@@ -1148,5 +1166,11 @@ def deep_str(obj: Any) -> str:
             + ", ".join([f"{deep_str(a)}: {deep_str(b)}" for a, b in obj.items()])
             + "}"
         )
+    elif isinstance(obj, returns.result.Result):
+        match obj:
+            case returns.result.Success(inner):
+                return returns.result.Success(deep_str(inner))
+            case returns.result.Failure(inner):
+                return returns.result.Failure(deep_str(inner))
     else:
         return str(obj)

@@ -2623,6 +2623,7 @@ class ISLaSolver:
         :param int_vars: The "int" variables.
         :return: An equation describing the previous solution.
         """
+
         if var in int_vars:
             return z3_eq(
                 fresh_var_map[var],
