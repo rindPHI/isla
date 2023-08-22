@@ -61,6 +61,7 @@ from isla.type_defs import (
     ImmutableGrammar,
     CanonicalGrammar,
     ImmutableList,
+    FrozenCanonicalGrammar,
 )
 
 HELPERS_LOGGER = logging.getLogger(__name__)
@@ -210,6 +211,47 @@ def canonical(grammar: Grammar) -> CanonicalGrammar:
         k: [split(expression) for expression in alternatives]
         for k, alternatives in grammar.items()
     }
+
+
+def frozen_canonical(grammar: Grammar) -> FrozenCanonicalGrammar:
+    """
+    A "frozen" version of :func:`isla.helpers.canonical`.
+
+    Example
+    -------
+
+    >>> grammar = {
+    ...     "<start>": ["<int>"],
+    ...     "<int>": ["<sign>00<leaddigit><digits>"],
+    ...     "<sign>": ["-", "+"],
+    ...     "<digits>": ["", "<digit><digits>"],
+    ...     "<digit>": list("0123456789"),
+    ...     "<leaddigit>": list("123456789"),
+    ... }
+
+    >>> result = frozen_canonical(grammar)
+
+    >>> type(result).__name__
+    'frozendict'
+    >>> result["<digits>"]
+    ((), ('<digit>', '<digits>'))
+
+    :param grammar: The grammar to convert to frozen canonical form.
+    :return: The frozen canonical grammar.
+    """
+
+    def split(expansion):
+        if isinstance(expansion, tuple):
+            expansion = expansion[0]
+
+        return tuple([token for token in RE_NONTERMINAL.split(expansion) if token])
+
+    return frozendict(
+        {
+            k: tuple([split(expression) for expression in alternatives])
+            for k, alternatives in grammar.items()
+        }
+    )
 
 
 def dict_of_lists_to_list_of_dicts(
@@ -964,7 +1006,7 @@ def get_elem_by_equivalence(
     )
 
 
-def get_expansions(leaf_value: str, grammar: CanonicalGrammar):
+def get_expansions(leaf_value: str, grammar: CanonicalGrammar | FrozenCanonicalGrammar):
     all_expansions = grammar[leaf_value]
 
     terminal_expansions = [
@@ -982,7 +1024,9 @@ def get_expansions(leaf_value: str, grammar: CanonicalGrammar):
     return terminal_expansions, expansions
 
 
-def compute_nullable_nonterminals(canonical_grammar: CanonicalGrammar) -> Set[str]:
+def compute_nullable_nonterminals(
+    canonical_grammar: CanonicalGrammar | FrozenCanonicalGrammar,
+) -> Set[str]:
     result = {
         nonterminal
         for nonterminal in canonical_grammar

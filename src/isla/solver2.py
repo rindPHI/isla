@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from functools import reduce, lru_cache, partial
-from typing import Tuple, List, Set, Dict, Iterable, Callable
+from typing import Tuple, List, Set, Dict, Iterable, Callable, cast
 
 import z3
 from frozendict import frozendict
@@ -14,7 +14,7 @@ from grammar_to_regex.regex import regex_to_z3
 from neo_grammar_graph import NeoGrammarGraph
 from orderedset import FrozenOrderedSet
 from returns.functions import tap
-from returns.maybe import Maybe, Nothing
+from returns.maybe import Maybe, Nothing, Some
 from returns.pipeline import flow
 from returns.pointfree import lash
 from returns.result import Result, safe
@@ -30,6 +30,7 @@ from isla.helpers import (
     delete_unreachable,
     compute_nullable_nonterminals,
     get_expansions,
+    frozen_canonical,
 )
 from isla.language import (
     ConjunctiveFormula,
@@ -279,7 +280,8 @@ class StateTree:
         ...     (0,),
         ...     ((dummy_action, tree_2),),
         ... )
-        >>> tree_1 = StateTree(CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_1>")), (1,))
+        >>> tree_1 = StateTree(
+        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_1>")), (1,))
         >>> stree = StateTree(
         ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<root>")),
         ...     (),
@@ -480,12 +482,10 @@ class ExpandRule(Rule):
         An action is returned for the open leaf, choosing either the first or the
         second expansion alternative for "<stmt>".
 
-        >>> action.is_present()
-        True
         >>> action.map(lambda a: a.path)
-        Maybe(a=(0,))
+        <Some: (0,)>
         >>> action.map(lambda a: a.alternative).map(lambda alt: alt in {0, 1})
-        Maybe(a=True)
+        <Some: True>
 
         :param state_tree: The input state tree.
         :return: An expansion action or nothing.
@@ -506,10 +506,13 @@ class ExpandRule(Rule):
 
         path, leaf = random.choice(open_leaves)
         alternative_id, alternative = random.choice(
-            tuple(enumerate(self.grammar[leaf.value]))
+            cast(
+                Tuple[int, ImmutableList[ImmutableList[str]]],
+                tuple(enumerate(self.grammar[leaf.value])),
+            )
         )
 
-        return Maybe(ExpandRuleAction(path, alternative_id))
+        return Some(ExpandRuleAction(path, alternative_id))
 
     def apply(self, state_tree: StateTree, action: ExpandRuleAction) -> StateTree:
         """
@@ -606,16 +609,23 @@ class SplitAndRule(Rule):
         ...     CDT(FrozenOrderedSet([conjunction]), DerivationTree("<start>"))
         ... )
         >>> print(SplitAndRule().action(stree))
-        Maybe(SplitAnd((StrToInt(x) > 0 ∧ StrToInt(x) < 9)))
+        <Some: SplitAnd((StrToInt(x) > 0 ∧ StrToInt(x) < 9))>
 
         :param state_tree: The input state tree.
         :return: An action if a conjunction is contained in the state tree or nothing.
         """
 
         constraints = state_tree.node.constraints
-        return Maybe.from_iterator(
-            (c for c in constraints if isinstance(c, ConjunctiveFormula))
-        ).map(lambda c: SplitAndAction(c))
+
+        return (
+            safe(
+                lambda: next(
+                    c for c in constraints if isinstance(c, ConjunctiveFormula)
+                )
+            )()
+            .bind(lambda c: Some(SplitAndAction(c)))
+            .lash(lambda _: Nothing)
+        )
 
     def apply(self, state_tree: StateTree, action: SplitAndAction) -> StateTree:
         """
@@ -691,7 +701,8 @@ class ChooseOrRule(Rule):
         ... ]
         True
 
-        >>> ChooseOrRule().action(StateTree(CDT(FrozenOrderedSet({}), DerivationTree("<start>"))))
+        >>> ChooseOrRule().action(
+        ...     StateTree(CDT(FrozenOrderedSet({}), DerivationTree("<start>"))))
         <Nothing>
 
         :param state_tree: The input state tree.
@@ -906,12 +917,13 @@ def infer_variable_contexts(
 
     >>> from isla.z3_helpers import z3_eq
     >>> f = z3_eq(x.to_smt(), y.to_smt())
-    >>> contexts = infer_variable_contexts({x, y}, (f,))
-    >>> contexts[VariableContext.LENGTH]
+    >>> var_contexts = infer_variable_contexts({x, y}, (f,))
+    >>> var_contexts[VariableContext.LENGTH]
     set()
-    >>> contexts[VariableContext.INT]
+    >>> var_contexts[VariableContext.INT]
     set()
-    >>> contexts[VariableContext.FLEX] == {Variable("x", "<X>"), Variable("y", "<Y>")}
+    >>> var_contexts[VariableContext.FLEX] == {
+    ...     Variable("x", "<X>"), Variable("y", "<Y>")}
     True
 
     Variable x occurs in a length context, variable y in an arbitrary one.
@@ -931,12 +943,13 @@ def infer_variable_contexts(
     Variables x and y both occur in a length context.
 
     >>> f: z3.BoolRef = z3.Length(x.to_smt()) > z3.Length(y.to_smt())
-    >>> contexts = infer_variable_contexts({x, y}, (f,))
-    >>> contexts[VariableContext.LENGTH] == {Variable("x", "<X>"), Variable("y", "<Y>")}
+    >>> var_contexts = infer_variable_contexts({x, y}, (f,))
+    >>> var_contexts[VariableContext.LENGTH] == {
+    ...     Variable("x", "<X>"), Variable("y", "<Y>")}
     True
-    >>> contexts[VariableContext.INT]
+    >>> var_contexts[VariableContext.INT]
     set()
-    >>> contexts[VariableContext.FLEX]
+    >>> var_contexts[VariableContext.FLEX]
     set()
 
     Variable x occurs in a :code:`str.to.int` context.
@@ -1575,10 +1588,30 @@ def extract_model_value_length_var(
     :param int_vars: See :meth:`~isla.solver2.extract_model_value`.
     :return: See :meth:`~isla.solver2.extract_model_value`.
     """
+
     if var not in length_vars:
         return fallback(graph, var, model, fresh_var_map, length_vars, int_vars)
 
-    return safe_create_fixed_length_tree(var, model, fresh_var_map)
+    assert var in fresh_var_map
+    assert fresh_var_map[var].decl() in model.decls()
+
+    fixed_length_tree = create_fixed_length_tree(
+        start=var.n_type,
+        canonical_grammar=frozen_canonical(graph.grammar),
+        target_length=model[fresh_var_map[var]].as_long(),
+    )
+
+    match fixed_length_tree:
+        case Some(tree):
+            return tree
+        case Maybe.empty:
+            raise RuntimeError(
+                f"Could not create a tree with the start symbol '{var.n_type}' "
+                + f"of length {model[fresh_var_map[var]].as_long()}; try "
+                + "running the solver without optimized Z3 queries or make "
+                + "sure that lengths are restricted to syntactically valid "
+                + "ones (according to the grammar).",
+            )
 
 
 def extract_model_value_int_var(
@@ -1615,13 +1648,7 @@ def extract_model_value_int_var(
 
     var_type = var.n_type
 
-    try:
-        return parse(
-            str(int_model_value),
-            graph.grammar,
-            start_nonterminal=var_type,
-        )
-    except SyntaxError:
+    def parse_with_extended_format() -> Result[DerivationTree, Exception]:
         # This may happen, e.g, with padded values: Only "01" is a valid
         # solution, but not "1". Similarly, a grammar may expect "+1", but
         # "1" is returned by the solver. We support the number format
@@ -1679,6 +1706,12 @@ def extract_model_value_int_var(
             var.n_type,
         )
 
+    return parse(
+        str(int_model_value),
+        graph.grammar,
+        start_nonterminal=var_type,
+    ).lash(lambda _: parse_with_extended_format()).unwrap()
+
 
 def extract_model_value_flexible_var(
     graph: NeoGrammarGraph,
@@ -1692,7 +1725,6 @@ def extract_model_value_flexible_var(
     Addresses the case of "flexible" variables from
     :meth:`~isla.solver2.extract_model_value`.
 
-    :param fallback: The function to call if this function is not responsible.
     :param graph: The grammar graph representing the grammar for :code:`var`.
     :param var: See :meth:`~isla.solver2.extract_model_value`.
     :param model: See :meth:`~isla.solver2.extract_model_value`.
@@ -1706,7 +1738,7 @@ def extract_model_value_flexible_var(
         smt_string_val_to_string(model[z3.String(var.name)]),
         graph.grammar,
         start_nonterminal=var.n_type,
-    )
+    ).unwrap()
 
 
 @safe
@@ -2037,9 +2069,8 @@ def create_fixed_length_tree(
             continue
 
         idx: int
-        path: Path
         leaf: DerivationTree
-        for idx, (path, leaf) in reversed(list(enumerate(open_leaves))):
+        for idx, (_, leaf) in reversed(list(enumerate(open_leaves))):
             terminal_expansions, expansions = get_expansions(
                 leaf.value, canonical_grammar
             )
@@ -2055,45 +2086,116 @@ def create_fixed_length_tree(
                 ),
             )
 
-            for expansion in reversed(expansions):
-                new_children = tuple(
-                    [
-                        DerivationTree(elem, None if is_nonterminal(elem) else ())
-                        for elem in expansion
-                    ]
-                )
-
-                expanded_tree = tree.replace_path(
-                    path,
-                    DerivationTree(
-                        leaf.value,
-                        new_children,
-                    ),
-                )
-
-                stack.append(
-                    (
-                        expanded_tree,
-                        curr_len
-                        + sum(
-                            [
-                                len(child.value)
-                                if child.children == ()
-                                else (1 if child.value not in nullable else 0)
-                                for child in new_children
-                            ]
-                        )
-                        - int(leaf.value not in nullable),
-                        open_leaves[:idx]
-                        + tuple(
-                            [
-                                (path + (child_idx,), new_child)
-                                for child_idx, new_child in enumerate(new_children)
-                                if is_nonterminal(new_child.value)
-                            ]
-                        )
-                        + open_leaves[idx + 1 :],
+            stack.extend(
+                [
+                    expand_leaf(
+                        tree,
+                        curr_len,
+                        open_leaves,
+                        idx,
+                        expansion,
+                        nullable,
                     )
-                )
+                    for expansion in reversed(expansions)
+                ]
+            )
 
     return Nothing
+
+
+def expand_leaf(
+    tree: DerivationTree,
+    min_unparsed_tree_len: int,
+    open_leaves: ImmutableList[Tuple[Path, DerivationTree]],
+    leaf_idx: int,
+    expansion: ImmutableList[str],
+    nullable_nonterminals: Set[str],
+) -> Tuple[DerivationTree, int, ImmutableList[Tuple[Path, DerivationTree]]]:
+    """
+    This function expands a leaf in :code:`tree` according to the grammar expansion
+    in :code:`expansion` and returns (1) the expanded tree, (2) a lower bound on the
+    length of the resulting unparsed tree, and (3) a list of open leaves in the
+    resulting tree. The leaf to expand is specified by its index :code:`leaf_idx`
+    in the list :code:`open_leaves` of open leaves in :code:`tree`.
+
+    >>> tree = DerivationTree("<stmt>", (DerivationTree("<assgn>"),))
+    >>> min_unparsed_tree_len = 1
+    >>> open_leaves = (((0,), tree.get_subtree((0,))),)
+    >>> leaf_idx = 0
+    >>> expansion = ('<var>', ' := ', '<rhs>')
+    >>> nullable_nonterminals = set()
+
+    >>> print(
+    ...     deep_str(
+    ...         expand_leaf(
+    ...             tree,
+    ...             min_unparsed_tree_len,
+    ...             open_leaves,
+    ...             leaf_idx,
+    ...             expansion,
+    ...             nullable_nonterminals,
+    ...         )
+    ...     )
+    ... )
+    (<var> := <rhs>, 6, (((0, 0), <var>), ((0, 2), <rhs>)))
+
+    :param tree: The derivation tree in which we should expand an open leaf.
+    :param min_unparsed_tree_len: The minimal length of the unparsed input tree.
+    :param open_leaves: The open leaves in the input tree.
+    :param leaf_idx: The index of the leaf to expand in :code:`open_leaves`.
+    :param expansion: The expansion alternative to apply.
+    :param nullable_nonterminals: A set of nullable nonterminals in the reference
+        grammar.
+    :return: A triple of (1) the expanded tree, (2) a lower bound on the length of
+        the unparsed tree, which will be precise for closed trees, and (3) the list
+        of open leaves in the new tree.
+    """
+
+    leaf = open_leaves[leaf_idx][1]
+    path_to_leaf = open_leaves[leaf_idx][0]
+
+    new_children = tuple(
+        [
+            DerivationTree(elem, None if is_nonterminal(elem) else ())
+            for elem in expansion
+        ]
+    )
+
+    expanded_tree = tree.replace_path(
+        path_to_leaf,
+        DerivationTree(
+            leaf.value,
+            new_children,
+        ),
+    )
+
+    next_candidate_len = (
+        min_unparsed_tree_len
+        + sum(
+            [
+                len(child.value)
+                if child.children == ()
+                else (1 if child.value not in nullable_nonterminals else 0)
+                for child in new_children
+            ]
+        )
+        - int(leaf.value not in nullable_nonterminals)
+    )
+
+    next_candidate_open_leaves = (
+        open_leaves[:leaf_idx]
+        + tuple(
+            [
+                (path_to_leaf + (child_idx,), new_child)
+                for child_idx, new_child in enumerate(new_children)
+                if is_nonterminal(new_child.value)
+            ]
+        )
+        + open_leaves[leaf_idx + 1 :]
+    )
+
+    return (
+        expanded_tree,
+        next_candidate_len,
+        next_candidate_open_leaves,
+    )
