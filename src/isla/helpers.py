@@ -1178,6 +1178,11 @@ def deep_str(obj: Any) -> str:
     >>> deep_str({(X(),)})
     "{('An X',)}"
 
+    ...frozen sets...
+
+    >>> deep_str(frozenset({(X(),)}))
+    "{('An X',)}"
+
     ...and ordered sets.
 
     >>> deep_str(OrderedSet({(X(),)}))
@@ -1202,7 +1207,11 @@ def deep_str(obj: Any) -> str:
         )
     elif isinstance(obj, list):
         return "[" + ", ".join(map(deep_str, obj)) + "]"
-    elif isinstance(obj, set) or isinstance(obj, OrderedSet):
+    elif (
+        isinstance(obj, set)
+        or isinstance(obj, OrderedSet)
+        or isinstance(obj, frozenset)
+    ):
         return "{" + ", ".join(map(deep_str, obj)) + "}"
     elif isinstance(obj, dict) or isinstance(obj, frozendict):
         return (
