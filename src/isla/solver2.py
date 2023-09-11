@@ -3,9 +3,8 @@ import random
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import Enum
 from functools import reduce, lru_cache, partial
-from typing import Tuple, List, Set, Dict, Iterable, Callable, cast
+from typing import Tuple, List, Set, Dict, Iterable, Callable, cast, AbstractSet
 
 import z3
 from frozendict import frozendict
@@ -17,7 +16,7 @@ from returns.functions import tap
 from returns.maybe import Maybe, Nothing, Some
 from returns.pipeline import flow
 from returns.pointfree import lash
-from returns.result import Result, safe
+from returns.result import Result, safe, Failure, Success
 
 from isla.derivation_tree import DerivationTree
 from isla.helpers import (
@@ -31,6 +30,7 @@ from isla.helpers import (
     compute_nullable_nonterminals,
     get_expansions,
     frozen_canonical,
+    get_elem_by_equivalence,
 )
 from isla.language import (
     ConjunctiveFormula,
@@ -38,6 +38,8 @@ from isla.language import (
     Variable,
     SMTFormula,
     BoundVariable,
+    fresh_constant,
+    Constant,
 )
 from isla.language import Formula
 from isla.parser import EarleyParser, PEGParser
@@ -47,6 +49,11 @@ from isla.z3_helpers import (
     parent_relationships_in_z3_expr,
     smt_string_val_to_string,
     z3_eq,
+    visit_z3_expr,
+    numeric_intervals_from_regex,
+    z3_or,
+    z3_and,
+    z3_solve,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -823,6 +830,229 @@ class SolveSMTRule(Rule):
         raise NotImplementedError
 
 
+def solve_smt_formulas_with_language_constraints(
+    graph: NeoGrammarGraph,
+    smt_formulas: Iterable[z3.BoolRef],
+    variables: AbstractSet[Variable],
+    tree_substitutions: Maybe[Dict[Variable, DerivationTree]] = Maybe.empty,
+    solutions_to_exclude: Maybe[List[Dict[Variable, z3.StringVal]]] = Maybe.empty,
+    enable_optimized_z3_queries: bool = True,
+) -> Result[Tuple[z3.CheckSatResult, Dict[Variable, DerivationTree]], SyntaxError]:
+    """
+    Computes a solution for the given SMT formulas. All values from the solution
+    assignment satisfy the grammatical types of the variables they are assigned to
+    (the "language constraints").
+
+    Example
+    -------
+
+    Consider our running assignment language example:
+
+    >>> import string
+    >>> grammar: Grammar = {
+    ...     "<start>":
+    ...         ["<stmt>"],
+    ...     "<stmt>":
+    ...         ["<assgn> ; <stmt>", "<assgn>"],
+    ...     "<assgn>":
+    ...         ["<var> := <rhs>"],
+    ...     "<rhs>":
+    ...         ["<var>", "<digit>"],
+    ...     "<var>": list(string.ascii_lowercase),
+    ...     "<digit>": list(string.digits)
+    ... }
+    >>> graph = NeoGrammarGraph(grammar)
+
+    We ask for the solution of :code:`str.to.int(n) != 0`, where "n" is of type
+    :code:`<digit>`. Any solution returned will be such that "n" can be parsed as
+    a :code:`<digit>` in the grammar. Since :code:`enable_optimized_z3_queries` is
+    True by default, the variable is (internally) presented to the SMT solver as an
+    integer.
+
+    >>> n = Variable("n", "<digit>")
+    >>> sat_res, solution = solve_smt_formulas_with_language_constraints(
+    ...     graph,
+    ...     smt_formulas=[z3.Not(z3_eq(z3.StrToInt(n.to_smt()), z3.IntVal(0)))],
+    ...     variables={n}).unwrap()
+
+    >>> sat_res
+    sat
+
+    >>> 0 < int(str(solution[n])) <= 9
+    True
+
+    We can pass an already fixed assignment ofvariables to derivation trees that is
+    considered in constraint solving.
+
+    >>> x, y, z = (
+    ...     Variable("x", "<assgn>"),
+    ...     Variable("y", "<assgn>"),
+    ...     Variable("y", "<assgn>"),
+    ... )
+    >>> constraints = (z3_eq(x.to_smt(), y.to_smt()), z3_eq(y.to_smt(), z.to_smt()))
+    >>> tree_substitutions = {z: parse("a := 7", grammar).unwrap()}
+
+    >>> deep_str(solve_smt_formulas_with_language_constraints(
+    ...     graph, constraints, FrozenOrderedSet([x, y, z]), Some(tree_substitutions)))
+    <Success: (sat, {x: a := 7, y: a := 7})>
+
+    :param graph: The grammar graph representing the grammar from which we obtain the
+        language constraints.
+    :param smt_formulas: The SMT formulas to solve.
+    :param variables: The free variables in all SMT formulas.
+    :param tree_substitutions: Already fixed substitutions of variables to derivation
+        trees. Those variables are effectively not free; we expect these substitutions
+        separately since SMT solvers don't know derivation trees.
+    :param solutions_to_exclude: We exclude the exact combination of assignments in
+        these solutions from the search space by adding
+        :code:`not(x = s1[x] & y = s1[y] & ...) & not(...) & ...` to the SMT query.
+    :param enable_optimized_z3_queries: If this parameter is True, "int" and "length"
+        variables are specially handled. For example, all variables occurring
+        exclusively in :code:`str.to.int(...)` contexts are fed to the SMT solver as
+        integer variables and only later converted to strings/derivation trees. If this
+        parameter is False, all variables are treated equally; their (string) structure
+        if obtained from the grammar.
+    :return: A tuple indicating the status returned from the SMT solver and a
+        (possibly empty) map of solution assignments..
+    """
+
+    # We disable optimized Z3 queries if the SMT formulas contain "too concrete"
+    # substitutions, that is, substitutions with a tree that is not merely an
+    # open leaf. Example: we have a constrained `str.len(<chars>) < 10` and a
+    # tree `<char><char>`; only the concrete length "10" is possible then. In fact,
+    # we could simply finish of the tree and check the constraint, or restrict the
+    # custom tree generation to admissible lengths, but we stay general here. The
+    # SMT solution is more robust.
+
+    if enable_optimized_z3_queries and not any(
+        substitution.children
+        for substitution in tree_substitutions.value_or({}).values()
+    ):
+        vars_in_context = infer_variable_contexts(variables, smt_formulas)
+        length_vars = vars_in_context.length_vars
+        int_vars = vars_in_context.int_vars
+        flexible_vars = vars_in_context.flex_vars
+    else:
+        length_vars = frozenset()
+        int_vars = frozenset()
+        flexible_vars = frozenset(variables)
+
+    # Add language constraints for "flexible" variables
+    formulas: List[z3.BoolRef] = generate_language_constraints(
+        graph, flexible_vars, tree_substitutions.value_or({})
+    )
+
+    # Create fresh variables for `str.len` and `str.to.int` variables.
+    all_variables = set(variables)
+    fresh_var_map: Dict[Variable, z3.ExprRef] = {}
+    for var in length_vars | int_vars:
+        fresh = fresh_constant(
+            all_variables,
+            Constant(var.name, "NOT-NEEDED"),
+        )
+        fresh_var_map[var] = z3.Int(fresh.name)
+
+    # In `smt_formulas`, we replace all `length(...)` terms for "length variables"
+    # with the corresponding fresh variable.
+    replacement_map: Dict[z3.ExprRef, z3.ExprRef] = {
+        expr: fresh_var_map[
+            get_elem_by_equivalence(
+                expr.children()[0],
+                length_vars | int_vars,
+                lambda e1, e2: e1 == e2.to_smt(),
+            )
+        ]
+        for formula in smt_formulas
+        for expr in visit_z3_expr(formula)
+        if expr.decl().kind() in {z3.Z3_OP_SEQ_LENGTH, z3.Z3_OP_STR_TO_INT}
+        and expr.children()[0] in {var.to_smt() for var in length_vars | int_vars}
+    }
+
+    # Perform substitution, add formulas
+    formulas.extend(
+        [
+            cast(z3.BoolRef, z3_subst(formula, replacement_map))
+            for formula in smt_formulas
+        ]
+    )
+
+    # Lengths must be positive
+    formulas.extend(
+        [
+            cast(
+                z3.BoolRef,
+                replacement_map[z3.Length(length_var.to_smt())] >= z3.IntVal(0),
+            )
+            for length_var in length_vars
+        ]
+    )
+
+    # Add custom intervals for int variables
+    for int_var in int_vars:
+        if int_var.n_type == Variable.NUMERIC_NTYPE:
+            # "NUM" variables range over the full int domain
+            continue
+
+        regex = extract_regular_expression(graph, int_var.n_type)
+        maybe_intervals = numeric_intervals_from_regex(regex)
+        repl_var = replacement_map[z3.StrToInt(int_var.to_smt())]
+        formulas.extend(
+            maybe_intervals.map(
+                lambda intervals: [
+                    z3_or(
+                        [
+                            z3.And(
+                                repl_var >= z3.IntVal(interval[0])
+                                if interval[0] > -sys.maxsize
+                                else z3.BoolVal(True),
+                                repl_var <= z3.IntVal(interval[1])
+                                if interval[1] < sys.maxsize
+                                else z3.BoolVal(True),
+                            )
+                            for interval in intervals
+                        ]
+                    )
+                ]
+            ).value_or([])
+        )
+
+    for prev_solution in solutions_to_exclude.value_or([]):
+        prev_solution_formula = z3_and(
+            [
+                previous_solution_formula(
+                    var, string_val, fresh_var_map, length_vars, int_vars
+                )
+                for var, string_val in prev_solution.items()
+            ]
+        )
+
+        formulas.append(z3.Not(prev_solution_formula))
+
+    sat_result, maybe_model = z3_solve(formulas)
+
+    if sat_result != z3.sat:
+        return Success((sat_result, {}))
+
+    assert maybe_model is not None
+
+    return reduce(
+        lambda prev_success_or_failure, variable: prev_success_or_failure.bind(
+            lambda res_and_map: (
+                extract_model_value(
+                    graph, variable, maybe_model, fresh_var_map, length_vars, int_vars
+                ).map(
+                    lambda model_value: (
+                        res_and_map[0],
+                        res_and_map[1] | {variable: model_value},
+                    )
+                )
+            )
+        ),
+        variables,
+        Success((sat_result, {})),
+    )
+
+
 def rename_instantiated_variables_in_smt_formulas(
     smt_formulas: List[SMTFormula],
 ) -> List[SMTFormula]:
@@ -891,18 +1121,29 @@ def rename_instantiated_variables_in_smt_formulas(
     return result
 
 
-class VariableContext(Enum):
-    LENGTH = 1
-    INT = 2
-    FLEX = 3
+@dataclass(frozen=True)
+class VariableContexts:
+    """
+    A result object type for :func:`~isla.solver2.infer_variable_contexts` encapsulating
+    variables appearing in different contexts: Length contexts, numeric contexts,
+    and arbitrary ones.
+    """
+
+    length_vars: frozenset[Variable]
+    int_vars: frozenset[Variable]
+    flex_vars: frozenset[Variable]
 
     def __str__(self):
-        return f"{self.name}"
+        return (
+            f"{{LENGTH: {deep_str(self.length_vars)}, "
+            + f"INT: {deep_str(self.int_vars)}, "
+            + f"FLEX: {deep_str(self.flex_vars)}}}"
+        )
 
 
 def infer_variable_contexts(
-    variables: Set[Variable], smt_formulas: ImmutableList[z3.BoolRef]
-) -> Dict[VariableContext, Set[Variable]]:
+    variables: AbstractSet[Variable], smt_formulas: Iterable[z3.BoolRef]
+) -> VariableContexts:
     """
     Divides the given variables into
 
@@ -918,12 +1159,12 @@ def infer_variable_contexts(
     >>> from isla.z3_helpers import z3_eq
     >>> f = z3_eq(x.to_smt(), y.to_smt())
     >>> var_contexts = infer_variable_contexts({x, y}, (f,))
-    >>> var_contexts[VariableContext.LENGTH]
-    set()
-    >>> var_contexts[VariableContext.INT]
-    set()
-    >>> var_contexts[VariableContext.FLEX] == {
-    ...     Variable("x", "<X>"), Variable("y", "<Y>")}
+    >>> var_contexts.length_vars
+    frozenset()
+    >>> var_contexts.int_vars
+    frozenset()
+    >>> var_contexts.flex_vars == frozenset({
+    ...     Variable("x", "<X>"), Variable("y", "<Y>")})
     True
 
     Variable x occurs in a length context, variable y in an arbitrary one.
@@ -944,13 +1185,13 @@ def infer_variable_contexts(
 
     >>> f: z3.BoolRef = z3.Length(x.to_smt()) > z3.Length(y.to_smt())
     >>> var_contexts = infer_variable_contexts({x, y}, (f,))
-    >>> var_contexts[VariableContext.LENGTH] == {
-    ...     Variable("x", "<X>"), Variable("y", "<Y>")}
+    >>> var_contexts.length_vars == frozenset({
+    ...     Variable("x", "<X>"), Variable("y", "<Y>")})
     True
-    >>> var_contexts[VariableContext.INT]
-    set()
-    >>> var_contexts[VariableContext.FLEX]
-    set()
+    >>> var_contexts.int_vars
+    frozenset()
+    >>> var_contexts.flex_vars
+    frozenset()
 
     Variable x occurs in a :code:`str.to.int` context.
 
@@ -1006,11 +1247,11 @@ def infer_variable_contexts(
     # "Flexible" variables are the remaining ones.
     flexible_vars = variables.difference(length_vars).difference(int_vars)
 
-    return {
-        VariableContext.LENGTH: length_vars,
-        VariableContext.INT: int_vars,
-        VariableContext.FLEX: flexible_vars,
-    }
+    return VariableContexts(
+        length_vars=frozenset(length_vars),
+        int_vars=frozenset(int_vars),
+        flex_vars=frozenset(flexible_vars),
+    )
 
 
 @lru_cache
@@ -1046,25 +1287,15 @@ def extract_regular_expression(
     ... }
     >>> graph = NeoGrammarGraph(grammar)
 
-    (The following test only works when executed individually, not in the CI;
-    thus, it was disabled.)
-
-    .. code-block:: python
-
-        extract_regular_expression(graph, "<stmt>")
-
-    We expect the following output:
-
-    .. code-block:: python
-
-        re.++(re.++(re.++(Star(re.++(re.++(re.++(Range("a", "z"),
-                                                Re(" := ")),
-                                           Union(Range("0", "9"),
-                                                Range("a", "z"))),
-                                     Re(" ; "))),
-                          Range("a", "z")),
-                    Re(" := ")),
-              Union(Range("0", "9"), Range("a", "z")))
+    >>> extract_regular_expression(graph, "<stmt>")
+    re.++(re.++(re.++(Star(re.++(re.++(re.++(Range("a", "z"),
+                                            Re(" := ")),
+                                       Union(Range("0", "9"),
+                                            Range("a", "z"))),
+                                 Re(" ; "))),
+                      Range("a", "z")),
+                Re(" := ")),
+          Union(Range("0", "9"), Range("a", "z")))
 
     :param graph: The grammar graph representing the grammar for which we should
         compute a regular expression.
@@ -1232,7 +1463,6 @@ def generate_language_constraints(
 
     >>> assgn_var = Variable("assngn", "<assgn>")
     >>> generate_language_constraints(graph, [assgn_var], {})
-
     [InRe(assngn,
          re.++(re.++(Range("a", "z"), Re(" := ")),
                Union(Range("0", "9"), Range("a", "z"))))]
@@ -1252,20 +1482,10 @@ def generate_language_constraints(
     ...                         DerivationTree("<rhs>", (DerivationTree("<digit>"),)),
     ...                     ])])])
 
-    (The following test only works when executed individually, not in the CI;
-    thus, it was disabled.)
-
-    .. code-block:: python
-
-        generate_language_constraints(graph, [assgn_var], {assgn_var: tree})
-
-    This should result in:
-
-    .. code-block:: python
-
-        [InRe(assngn,
-             re.++(re.++(Range("a", "z"), Re(" := ")),
-                   Range("0", "9")))]
+    >>> generate_language_constraints(graph, [assgn_var], {assgn_var: tree})
+    [InRe(assngn,
+         re.++(re.++(Range("a", "z"), Re(" := ")),
+               Range("0", "9")))]
 
     :param graph: The graph representing the grammar of the variables.
     :param variables: The variables for which language constraints should be
@@ -1303,8 +1523,8 @@ def previous_solution_formula(
     var: Variable,
     string_val: z3.StringVal,
     fresh_var_map: Dict[Variable, z3.ExprRef],
-    length_vars: Set[Variable],
-    int_vars: Set[Variable],
+    length_vars: AbstractSet[Variable],
+    int_vars: AbstractSet[Variable],
 ) -> z3.BoolRef:
     """
     Computes a formula describing the previously found solution
@@ -1366,9 +1586,9 @@ def extract_model_value(
     var: Variable,
     model: z3.ModelRef,
     fresh_var_map: Dict[Variable, z3.ExprRef],
-    length_vars: Set[Variable],
-    int_vars: Set[Variable],
-) -> DerivationTree:
+    length_vars: AbstractSet[Variable],
+    int_vars: AbstractSet[Variable],
+) -> Result[DerivationTree, SyntaxError]:
     r"""
     Extracts a value for :code:`var` from :code:`model`. Considers the following
     special cases:
@@ -1406,7 +1626,7 @@ def extract_model_value(
     sat
     >>> model = z3_solver.model()
     >>> DerivationTree.next_id = 1
-    >>> extract_model_value(graph,n, model, {}, set(), set())
+    >>> extract_model_value(graph,n, model, {}, set(), set()).unwrap()
     DerivationTree('15', (), id=1)
 
     For a trivially true solution on numeric variables, we return a random number:
@@ -1420,7 +1640,7 @@ def extract_model_value(
     >>> model = z3_solver.model()
     >>> DerivationTree.next_id = 1
     >>> random.seed(0)
-    >>> extract_model_value(graph, n, model, {n: n.to_smt()}, set(), {n})
+    >>> extract_model_value(graph, n, model, {n: n.to_smt()}, set(), {n}).unwrap()
     DerivationTree('-2116850434379610162', (), id=1)
 
     **"Length" Variables:**
@@ -1434,9 +1654,9 @@ def extract_model_value(
     sat
     >>> model = z3_solver.model()
     >>> result = extract_model_value(graph, x, model, {x: x_0}, {x}, set())
-    >>> result.value
+    >>> result.unwrap().value
     '<X>'
-    >>> str(result)
+    >>> str(result.unwrap())
     'xxx'
 
     **"Int" Variables:**
@@ -1450,7 +1670,7 @@ def extract_model_value(
     sat
     >>> model = z3_solver.model()
     >>> DerivationTree.next_id = 1
-    >>> extract_model_value(graph, y, model, {y: y_0}, set(), {y})
+    >>> extract_model_value(graph, y, model, {y: y_0}, set(), {y}).unwrap()
     DerivationTree('<Y>', (DerivationTree('<digit>', (DerivationTree('5', (), id=1),), id=2),), id=3)
 
     **"Flexible" Variables:**
@@ -1462,9 +1682,9 @@ def extract_model_value(
     sat
     >>> model = z3_solver.model()
     >>> result = extract_model_value(graph, x, model, {}, set(), set())
-    >>> result.value
+    >>> result.unwrap().value
     '<X>'
-    >>> str(result)
+    >>> str(result.unwrap())
     'xxxxx'
 
     **Special Number Formats**
@@ -1529,7 +1749,7 @@ ExtractModelValueFallbackType = Callable[
         Set[Variable],
         Set[Variable],
     ],
-    DerivationTree,
+    Result[DerivationTree, SyntaxError],
 ]
 
 
@@ -1541,7 +1761,7 @@ def extract_model_value_numeric_var(
     fresh_var_map: Dict[Variable, z3.ExprRef],
     length_vars: Set[Variable],
     int_vars: Set[Variable],
-) -> DerivationTree:
+) -> Result[DerivationTree, SyntaxError]:
     """
     Addresses the case of numeric variables from
     :meth:`~isla.solver2.extract_model_value`.
@@ -1585,7 +1805,7 @@ def extract_model_value_numeric_var(
         and string_value[1:].isnumeric()
     )
 
-    return DerivationTree(string_value, ())
+    return Success(DerivationTree(string_value, ()))
 
 
 def extract_model_value_length_var(
@@ -1596,7 +1816,7 @@ def extract_model_value_length_var(
     fresh_var_map: Dict[Variable, z3.ExprRef],
     length_vars: Set[Variable],
     int_vars: Set[Variable],
-) -> DerivationTree:
+) -> Result[DerivationTree, SyntaxError]:
     """
     Addresses the case of length variables from
     :meth:`~isla.solver2.extract_model_value`.
@@ -1625,14 +1845,16 @@ def extract_model_value_length_var(
 
     match fixed_length_tree:
         case Some(tree):
-            return tree
+            return Success(tree)
         case Maybe.empty:
-            raise RuntimeError(
-                f"Could not create a tree with the start symbol '{var.n_type}' "
-                + f"of length {model[fresh_var_map[var]].as_long()}; try "
-                + "running the solver without optimized Z3 queries or make "
-                + "sure that lengths are restricted to syntactically valid "
-                + "ones (according to the grammar).",
+            return Failure(
+                SyntaxError(
+                    f"Could not create a tree with the start symbol '{var.n_type}' "
+                    + f"of length {model[fresh_var_map[var]].as_long()}; try "
+                    + "running the solver without optimized Z3 queries or make "
+                    + "sure that lengths are restricted to syntactically valid "
+                    + "ones (according to the grammar).",
+                )
             )
 
 
@@ -1644,7 +1866,7 @@ def extract_model_value_int_var(
     fresh_var_map: Dict[Variable, z3.ExprRef],
     length_vars: Set[Variable],
     int_vars: Set[Variable],
-) -> DerivationTree:
+) -> Result[DerivationTree, SyntaxError]:
     """
     Addresses the case of int variables from
     :meth:`~isla.solver2.extract_model_value`.
@@ -1707,13 +1929,15 @@ def extract_model_value_int_var(
         )
 
         if z3_solver.check() != z3.sat:
-            raise RuntimeError(
-                "Could not parse a numeric solution "
-                + f"({str_model_value}) for variable "
-                + f"{var} of type '{var.n_type}'; try "
-                + "running the solver without optimized Z3 queries or make "
-                + "sure that ranges are restricted to syntactically valid "
-                + "ones (according to the grammar).",
+            return Failure(
+                SyntaxError(
+                    "Could not parse a numeric solution "
+                    + f"({str_model_value}) for variable "
+                    + f"{var} of type '{var.n_type}'; try "
+                    + "running the solver without optimized Z3 queries or make "
+                    + "sure that ranges are restricted to syntactically valid "
+                    + "ones (according to the grammar).",
+                )
             )
 
         return parse(
@@ -1732,7 +1956,7 @@ def extract_model_value_int_var(
         str(int_model_value),
         graph.grammar,
         start_nonterminal=var_type,
-    ).lash(lambda _: parse_with_extended_format()).unwrap()
+    ).lash(lambda _: parse_with_extended_format())
 
 
 def extract_model_value_flexible_var(
@@ -1742,7 +1966,7 @@ def extract_model_value_flexible_var(
     fresh_var_map: Dict[Variable, z3.ExprRef],
     length_vars: Set[Variable],
     int_vars: Set[Variable],
-) -> DerivationTree:
+) -> Result[DerivationTree, SyntaxError]:
     """
     Addresses the case of "flexible" variables from
     :meth:`~isla.solver2.extract_model_value`.
@@ -1760,13 +1984,13 @@ def extract_model_value_flexible_var(
         smt_string_val_to_string(model[z3.String(var.name)]),
         graph.grammar,
         start_nonterminal=var.n_type,
-    ).unwrap()
+    )
 
 
 @safe
 def parse_peg(
     inp: str, grammar: Grammar, start_nonterminal: str = "<start>"
-) -> Result[DerivationTree, Exception]:
+) -> Result[DerivationTree, SyntaxError | RecursionError]:
     """
     This function parses :code:`inp` in the given grammar with the specified start
     nonterminal using a PEG parser.
@@ -1832,9 +2056,19 @@ def parse_peg(
     We have seen this example before; this time, the PEG parser will not return a
     valid result:
 
-    >>> deep_str(parse_peg("x := 0 ; y := x", grammar).alt(
-    ...     lambda e: f'"{type(e).__name__}: {e}"'))
-    <Failure: "SyntaxError: at ' ; y := x'">
+    >>> parse_peg("x := 0 ; y := x", grammar).failure()
+    SyntaxError("at ' ; y := x'")
+
+    The PEG parser raises a :class:`RecursionError` in certain cases (the Earley
+    parser would raise a :class:`SyntaxError` in this example):
+
+    >>> grammar: Grammar = {
+    ...     "<start>": ["<a>"],
+    ...     "<a>": ["<a>"]
+    ... }
+
+    >>> type(parse_peg("a", grammar).failure()).__name__
+    'RecursionError'
 
     :param inp: The input to parse.
     :param grammar: The grammar to parse the input in.
@@ -1954,7 +2188,7 @@ def parse(
     inp: str,
     grammar: Grammar,
     start_nonterminal: str = "<start>",
-) -> Result[DerivationTree, Exception]:
+) -> Result[DerivationTree, SyntaxError]:
     """
     This function parses :code:`inp` in the given grammar with the specified start
     nonterminal. It first tries whether the input can be parsed with a PEG parser;
