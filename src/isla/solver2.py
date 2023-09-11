@@ -903,7 +903,10 @@ def solve_smt_formulas_with_language_constraints(
 
     >>> solve_smt_formulas_with_language_constraints(
     ...     graph,
-    ...     smt_formulas=[z3_eq(z3.StrToInt(x.to_smt()), z3.IntVal(3))],
+    ...     smt_formulas=[
+    ...         z3_eq(z3.StrToInt(x.to_smt()), z3.IntVal(3)),  # not "OK"
+    ...         z3_eq(z.to_smt(), z3.StringVal("a := b"))  # "OK," but doesn't matter
+    ...     ],
     ...     variables={x})
     <Failure: Could not parse a numeric solution (3) for variable x of type '<assgn>'; try running the solver without optimized Z3 queries or make sure that ranges are restricted to syntactically valid ones (according to the grammar).>
 
