@@ -874,10 +874,10 @@ def solve_smt_formulas_with_language_constraints(
     ...     graph,
     ...     smt_formulas=[z3.Not(z3_eq(z3.StrToInt(n.to_smt()), z3.IntVal(0)))],
     ...     variables={n}).unwrap()
-
+    
     >>> sat_res
     sat
-
+    
     >>> 0 < int(str(solution[n])) <= 9
     True
 
@@ -896,6 +896,17 @@ def solve_smt_formulas_with_language_constraints(
     ...     graph, constraints, FrozenOrderedSet([x, y, z]), Some(tree_substitutions)))
     <Success: (sat, {x: a := 7, y: a := 7})>
 
+    If a solution returned by the SMT solver does not fit to the grammar, a
+    :class:`~returns.result.Failure` object is returned. If we ask for the integer
+    representation of an :code:`<assgn>` variable to equal 3, for example, the solver
+    returns "3" as requested; however, this cannot be parsed into an :code:`<assgn>`:
+
+    >>> solve_smt_formulas_with_language_constraints(
+    ...     graph,
+    ...     smt_formulas=[z3_eq(z3.StrToInt(x.to_smt()), z3.IntVal(3))],
+    ...     variables={x})
+    <Failure: Could not parse a numeric solution (3) for variable x of type '<assgn>'; try running the solver without optimized Z3 queries or make sure that ranges are restricted to syntactically valid ones (according to the grammar).>
+
     :param graph: The grammar graph representing the grammar from which we obtain the
         language constraints.
     :param smt_formulas: The SMT formulas to solve.
@@ -912,9 +923,12 @@ def solve_smt_formulas_with_language_constraints(
         integer variables and only later converted to strings/derivation trees. If this
         parameter is False, all variables are treated equally; their (string) structure
         if obtained from the grammar.
-    :return: A tuple indicating the status returned from the SMT solver and a
-        (possibly empty) map of solution assignments..
-    """
+    :return: A :class:`~returns.result.Success` containing a tuple indicating the status
+        returned from the SMT solver and a (possibly empty) map of solution assignments.
+        If the solution returned by the solver is not part of the grammar (this mainly
+        happens if :code:`enable_optimized_z3_queries` is True), a
+        :class:`~returns.result.Failure` with a :class:`SyntaxError` is returned.
+    """  # noqa: E501
 
     # We disable optimized Z3 queries if the SMT formulas contain "too concrete"
     # substitutions, that is, substitutions with a tree that is not merely an

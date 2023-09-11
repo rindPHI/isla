@@ -1255,8 +1255,7 @@ def numeric_intervals_from_concat(
     while idx < len(children) and (
         numeric_intervals_from_regex(children[idx])
         .map(lambda intervals: intervals == [(0, 0)])
-        .orelse(lambda: False)
-        .get()
+        .value_or(False)
     ):
         idx += 1
 
