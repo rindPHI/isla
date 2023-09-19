@@ -1118,9 +1118,7 @@ def numeric_intervals_from_regex_range(
             seqref_to_int(regex.children()[0])
             .bind(
                 lambda low: seqref_to_int(regex.children()[1]).bind(
-                    lambda high: (
-                        Some((low, high)) if low <= high else Maybe.empty
-                    )
+                    lambda high: (Some((low, high)) if low <= high else Maybe.empty)
                 )
             )
             .map(lambda t: [t])
