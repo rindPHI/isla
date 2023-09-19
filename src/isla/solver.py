@@ -3981,12 +3981,14 @@ def smt_formulas_referring_to_subtrees(
             if other_idx != idx
         )
 
-    return [
+    result = [
         formula
         for idx, formula in enumerate(smt_formulas)
         if refers_to_subtree_of_other_formula(idx, formula)
         and independent_from_solutions_of_other_formula(idx, formula)
     ]
+
+    return result
 
 
 def compute_tree_closing_cost(tree: DerivationTree, graph: GrammarGraph) -> float:

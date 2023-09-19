@@ -302,7 +302,9 @@ class BindExpression:
             )
         )
 
-        maybe_tree = parse_match_expression(flattened_bind_expr_str, in_nonterminal, immutable_grammar)
+        maybe_tree = parse_match_expression(
+            flattened_bind_expr_str, in_nonterminal, immutable_grammar
+        )
         if not maybe_tree.is_present():
             language_core_logger.warning(
                 'Parsing match expression string "%s" caused a syntax error. If this is'
@@ -1395,9 +1397,14 @@ class SMTFormula(Formula):
             self.formula: z3.BoolRef = formula
         else:
             assert isinstance(formula, str)
+            declared_symbols = (
+                set(free_variables)
+                | (instantiated_variables or set())
+                | (substitutions or {}).keys()
+            )
             self.formula: z3.BoolRef = z3.parse_smt2_string(
                 f"(assert {formula})",
-                decls={var.name: var.to_smt() for var in free_variables},
+                decls={var.name: var.to_smt() for var in declared_symbols},
             )[0]
 
         self.is_false = z3.is_false(self.formula)
