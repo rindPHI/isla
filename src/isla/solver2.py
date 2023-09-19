@@ -830,6 +830,139 @@ class SolveSMTRule(Rule):
         raise NotImplementedError
 
 
+def smt_formulas_referring_to_subtrees(
+    smt_formulas: Iterable[SMTFormula],
+) -> List[SMTFormula]:
+    """
+    Returns a list of SMT formulas whose solutions address subtrees of other SMT
+    formulas, but whose own substitution subtrees are in turn *not* referred by
+    top-level substitution trees of other formulas. Those must be solved first to avoid
+    inconsistencies.
+
+    Example
+    -------
+
+    Consider our running assignment language example:
+
+    >>> import string
+    >>> grammar: Grammar = {
+    ...     "<start>":
+    ...         ["<stmt>"],
+    ...     "<stmt>":
+    ...         ["<assgn> ; <stmt>", "<assgn>"],
+    ...     "<assgn>":
+    ...         ["<var> := <rhs>"],
+    ...     "<rhs>":
+    ...         ["<var>", "<digit>"],
+    ...     "<var>": list(string.ascii_lowercase),
+    ...     "<digit>": list(string.digits)
+    ... }
+
+    Assume that we want to solve the following two constraints over that grammar:
+
+    1. All digits should be greater or equal than 4.
+    2. The first character in all assignments should be an "x".
+
+    Those constraints cannot be solved simultaneously on the SMT level since SMT solvers
+    are unaware of the inclusion of digits in assignments. We *first* must obtain a
+    solution to constraint (1) and *then* a solution to constraint (2) incorporating
+    the solution to (1).
+
+    More precisely, we have two variables for a digit and an assignment:
+
+    >>> digit = Variable("digit", "<digit>")
+    >>> assgn = Variable("assgn", "<assgn>")
+
+    The ISLa solver routines for grammar expansion and quantifier instantiation already
+    constructed partial solutions (derivation trees) for these variables. Observe how
+    the solution for the assignment references the solution for the digit.
+
+    >>> digit_tree = DerivationTree("<digit>")
+    >>> assgn_tree = DerivationTree(
+    ...     "<assgn>",
+    ...     (
+    ...         DerivationTree("<var>"),
+    ...         DerivationTree(" := ", ()),
+    ...         DerivationTree("<rhs>", (digit_tree,)),
+    ...     ),
+    ... )
+
+    Now, we specify the constraints:
+
+    1. :code:`(>= (str.to.int digit) 4)`, and
+    2. :code:`(= (str.at assgn 0) "x")`.
+
+    >>> from orderedset import OrderedSet
+    >>> digit_constraint = SMTFormula(
+    ...     "(>= (str.to.int digit) 4)",
+    ...     instantiated_variables=OrderedSet({digit}),
+    ...     substitutions={digit: digit_tree},
+    ... )
+    >>> assgn_constraint = SMTFormula(
+    ...     '(= (str.at assgn 0) "x")',
+    ...     instantiated_variables=OrderedSet({assgn}),
+    ...     substitutions={assgn: assgn_tree}
+    ... )
+
+    The function :func:`~isla.solver2.smt_formulas_referring_to_subtrees` detects that
+    the digit constraint must be prioritized over the assignment constraint:
+
+    >>> deep_str(
+    ...     smt_formulas_referring_to_subtrees([digit_constraint, assgn_constraint])
+    ... )
+    "[(StrToInt(digit) >= 4, {'digit': '<digit>'})]"
+
+    :param smt_formulas: The formulas to search for references to subtrees.
+    :return: The list of conflicting formulas that must be solved first.
+    """
+
+    def subtree_ids(formula: SMTFormula) -> Set[int]:
+        return {
+            subtree.id
+            for tree in formula.substitutions.values()
+            for _, subtree in tree.paths()
+            if subtree.id != tree.id
+        }
+
+    def tree_ids(formula: SMTFormula) -> Set[int]:
+        return {tree.id for tree in formula.substitutions.values()}
+
+    subtree_ids_for_formula: Dict[SMTFormula, Set[int]] = {
+        formula: subtree_ids(formula) for formula in smt_formulas
+    }
+
+    tree_ids_for_formula: Dict[SMTFormula, Set[int]] = {
+        formula: tree_ids(formula) for formula in smt_formulas
+    }
+
+    def independent_from_solutions_of_other_formula(
+        idx: int, formula: SMTFormula
+    ) -> bool:
+        return all(
+            not tree_ids_for_formula[other_formula].intersection(
+                subtree_ids_for_formula[formula]
+            )
+            for other_idx, other_formula in enumerate(smt_formulas)
+            if other_idx != idx
+        )
+
+    def refers_to_subtree_of_other_formula(idx: int, formula: SMTFormula) -> bool:
+        return any(
+            tree_ids_for_formula[formula].intersection(
+                subtree_ids_for_formula[other_formula]
+            )
+            for other_idx, other_formula in enumerate(smt_formulas)
+            if other_idx != idx
+        )
+
+    return [
+        formula
+        for idx, formula in enumerate(smt_formulas)
+        if refers_to_subtree_of_other_formula(idx, formula)
+        and independent_from_solutions_of_other_formula(idx, formula)
+    ]
+
+
 def solve_smt_formulas_with_language_constraints(
     graph: NeoGrammarGraph,
     smt_formulas: Iterable[z3.BoolRef],
@@ -874,10 +1007,10 @@ def solve_smt_formulas_with_language_constraints(
     ...     graph,
     ...     smt_formulas=[z3.Not(z3_eq(z3.StrToInt(n.to_smt()), z3.IntVal(0)))],
     ...     variables={n}).unwrap()
-    
+
     >>> sat_res
     sat
-    
+
     >>> 0 < int(str(solution[n])) <= 9
     True
 
@@ -1005,6 +1138,36 @@ def solve_smt_formulas_with_language_constraints(
     )
 
     # Add custom intervals for int variables
+    def intervals_to_formula(
+        repl_var: z3.ExprRef, intervals: List[Tuple[int, int]]
+    ) -> List[z3.BoolRef]:
+        """
+        This function turns a list of intervals :code:`[(x1, y1), ..., (xn, yn)]`
+        into a disjunction :code:`v >= x1 & v <= y1 | ... | v >= xn & v <= yn`.
+        If :code:`xi` is :code:`-sys.maxsize`, then :code:`v >= xi` is omitted.
+        Similarly, :code:`v <= yi` is omitted if :code:`yi` is :code:`sys.maxsize`.
+
+        :param repl_var: The variable :code:`v` encoding the ranges of the intervals.
+        :param intervals: The intervals to express as a formula.
+        :return: A formula that is satisfiable for variables whose value resides in any
+            of the given intervals.
+        """
+        return [
+            z3_or(
+                [
+                    z3.And(
+                        repl_var >= z3.IntVal(interval[0])
+                        if interval[0] > -sys.maxsize
+                        else z3.BoolVal(True),
+                        repl_var <= z3.IntVal(interval[1])
+                        if interval[1] < sys.maxsize
+                        else z3.BoolVal(True),
+                    )
+                    for interval in intervals
+                ]
+            )
+        ]
+
     for int_var in int_vars:
         if int_var.n_type == Variable.NUMERIC_NTYPE:
             # "NUM" variables range over the full int domain
@@ -1014,23 +1177,7 @@ def solve_smt_formulas_with_language_constraints(
         maybe_intervals = numeric_intervals_from_regex(regex)
         repl_var = replacement_map[z3.StrToInt(int_var.to_smt())]
         formulas.extend(
-            maybe_intervals.map(
-                lambda intervals: [
-                    z3_or(
-                        [
-                            z3.And(
-                                repl_var >= z3.IntVal(interval[0])
-                                if interval[0] > -sys.maxsize
-                                else z3.BoolVal(True),
-                                repl_var <= z3.IntVal(interval[1])
-                                if interval[1] < sys.maxsize
-                                else z3.BoolVal(True),
-                            )
-                            for interval in intervals
-                        ]
-                    )
-                ]
-            ).value_or([])
+            maybe_intervals.map(partial(intervals_to_formula, repl_var)).value_or([])
         )
 
     for prev_solution in solutions_to_exclude.value_or([]):
