@@ -50,7 +50,7 @@ import z3
 from antlr4 import InputStream, RuleContext, ParserRuleContext
 from antlr4.Token import CommonToken
 from grammar_graph import gg
-from orderedset import OrderedSet
+from orderedset import FrozenOrderedSet
 from z3 import Z3Exception
 
 import isla.mexpr_parser.MexprParserListener as MexprParserListener
@@ -244,15 +244,15 @@ class BindExpression:
             ]
         )
 
-    def bound_variables(self) -> OrderedSet[BoundVariable]:
+    def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
         # Not isinstance(var, BoundVariable) since we want to exclude dummy variables
-        return OrderedSet(
+        return FrozenOrderedSet(
             [var for var in self.bound_elements if type(var) is BoundVariable]
         )
 
-    def all_bound_variables(self, grammar: Grammar) -> OrderedSet[BoundVariable]:
+    def all_bound_variables(self, grammar: Grammar) -> FrozenOrderedSet[BoundVariable]:
         # Includes dummy variables
-        return OrderedSet(
+        return FrozenOrderedSet(
             [
                 var
                 for alternative in flatten_bound_elements(
@@ -715,17 +715,17 @@ class NoopFormulaTransformer(FormulaTransformer):
 
 class Formula(ABC):
     @abstractmethod
-    def bound_variables(self) -> OrderedSet[BoundVariable]:
+    def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
         """Non-recursive: Only non-empty for quantified formulas"""
         raise NotImplementedError()
 
     @abstractmethod
-    def free_variables(self) -> OrderedSet[Variable]:
+    def free_variables(self) -> FrozenOrderedSet[Variable]:
         """Recursive."""
         raise NotImplementedError()
 
     @abstractmethod
-    def tree_arguments(self) -> OrderedSet[DerivationTree]:
+    def tree_arguments(self) -> FrozenOrderedSet[DerivationTree]:
         """Trees that were substituted for variables."""
         raise NotImplementedError()
 
@@ -951,14 +951,14 @@ class StructuralPredicateFormula(Formula):
 
         return StructuralPredicateFormula(self.predicate, *new_args)
 
-    def bound_variables(self) -> OrderedSet[BoundVariable]:
-        return OrderedSet([])
+    def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
+        return FrozenOrderedSet([])
 
-    def free_variables(self) -> OrderedSet[Variable]:
-        return OrderedSet([arg for arg in self.args if isinstance(arg, Variable)])
+    def free_variables(self) -> FrozenOrderedSet[Variable]:
+        return FrozenOrderedSet([arg for arg in self.args if isinstance(arg, Variable)])
 
-    def tree_arguments(self) -> OrderedSet[DerivationTree]:
-        return OrderedSet([arg for arg in self.args if isinstance(arg, DerivationTree)])
+    def tree_arguments(self) -> FrozenOrderedSet[DerivationTree]:
+        return FrozenOrderedSet([arg for arg in self.args if isinstance(arg, DerivationTree)])
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_predicate_formula(self)
@@ -1159,14 +1159,14 @@ class SemanticPredicateFormula(Formula):
 
         return SemanticPredicateFormula(self.predicate, *new_args)
 
-    def bound_variables(self) -> OrderedSet[BoundVariable]:
-        return OrderedSet([])
+    def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
+        return FrozenOrderedSet([])
 
-    def free_variables(self) -> OrderedSet[Variable]:
-        return OrderedSet([arg for arg in self.args if isinstance(arg, Variable)])
+    def free_variables(self) -> FrozenOrderedSet[Variable]:
+        return FrozenOrderedSet([arg for arg in self.args if isinstance(arg, Variable)])
 
-    def tree_arguments(self) -> OrderedSet[DerivationTree]:
-        return OrderedSet([arg for arg in self.args if isinstance(arg, DerivationTree)])
+    def tree_arguments(self) -> FrozenOrderedSet[DerivationTree]:
+        return FrozenOrderedSet([arg for arg in self.args if isinstance(arg, DerivationTree)])
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_semantic_predicate_formula(self)
@@ -1209,17 +1209,17 @@ class PropositionalCombinator(Formula, ABC):
     def __init__(self, *args: Formula):
         self.args = args
 
-    def bound_variables(self) -> OrderedSet[BoundVariable]:
+    def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
         return reduce(operator.or_, [arg.bound_variables() for arg in self.args])
 
-    def free_variables(self) -> OrderedSet[Variable]:
-        result: OrderedSet[Variable] = OrderedSet([])
+    def free_variables(self) -> FrozenOrderedSet[Variable]:
+        result: FrozenOrderedSet[Variable] = FrozenOrderedSet([])
         for arg in self.args:
             result |= arg.free_variables()
         return result
 
-    def tree_arguments(self) -> OrderedSet[DerivationTree]:
-        result: OrderedSet[DerivationTree] = OrderedSet([])
+    def tree_arguments(self) -> FrozenOrderedSet[DerivationTree]:
+        result: FrozenOrderedSet[DerivationTree] = FrozenOrderedSet([])
         for arg in self.args:
             result |= arg.tree_arguments()
         return result
@@ -1382,7 +1382,7 @@ class SMTFormula(Formula):
         self,
         formula: z3.BoolRef | str,
         *free_variables: Variable,
-        instantiated_variables: Optional[OrderedSet[Variable]] = None,
+        instantiated_variables: Optional[FrozenOrderedSet[Variable]] = None,
         substitutions: Optional[Dict[Variable, DerivationTree]] = None,
         auto_eval: bool = True,
         auto_subst: bool = True,
@@ -1410,8 +1410,8 @@ class SMTFormula(Formula):
         self.is_false = z3.is_false(self.formula)
         self.is_true = z3.is_true(self.formula)
 
-        self.free_variables_ = OrderedSet(free_variables)
-        self.instantiated_variables = instantiated_variables or OrderedSet([])
+        self.free_variables_ = FrozenOrderedSet(free_variables)
+        self.instantiated_variables = instantiated_variables or FrozenOrderedSet([])
         self.substitutions: Dict[Variable, DerivationTree] = substitutions or {}
 
         if assertions_activated():
@@ -1442,8 +1442,8 @@ class SMTFormula(Formula):
 
     def __setstate__(self, state: Dict[str, bytes]) -> None:
         inst = {f: pickle.loads(v) for f, v in state.items() if f != "formula"}
-        free_variables: OrderedSet[Variable] = inst["free_variables_"]
-        instantiated_variables: OrderedSet[Variable] = inst["instantiated_variables"]
+        free_variables: FrozenOrderedSet[Variable] = inst["free_variables_"]
+        instantiated_variables: FrozenOrderedSet[Variable] = inst["instantiated_variables"]
 
         formula = state["formula"].decode("utf-8")
         formula = formula.replace(r"\"", r"\"")
@@ -1527,11 +1527,11 @@ class SMTFormula(Formula):
             set(new_substitutions.keys())
         )
 
-        new_instantiated_variables = OrderedSet(
+        new_instantiated_variables = FrozenOrderedSet(
             [
                 var
                 for var in self.instantiated_variables
-                | OrderedSet(new_substitutions.keys())
+                | FrozenOrderedSet(new_substitutions.keys())
                 if var not in complete_substitutions
             ]
         )
@@ -1547,7 +1547,7 @@ class SMTFormula(Formula):
             ),
         )
 
-        new_free_variables: OrderedSet[Variable] = OrderedSet(
+        new_free_variables: FrozenOrderedSet[Variable] = FrozenOrderedSet(
             [
                 variable
                 for variable in self.free_variables_
@@ -1571,13 +1571,13 @@ class SMTFormula(Formula):
             auto_subst=self.auto_subst,
         )
 
-    def tree_arguments(self) -> OrderedSet[DerivationTree]:
-        return OrderedSet(self.substitutions.values())
+    def tree_arguments(self) -> FrozenOrderedSet[DerivationTree]:
+        return FrozenOrderedSet(self.substitutions.values())
 
-    def bound_variables(self) -> OrderedSet[BoundVariable]:
-        return OrderedSet([])
+    def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
+        return FrozenOrderedSet([])
 
-    def free_variables(self) -> OrderedSet[Variable]:
+    def free_variables(self) -> FrozenOrderedSet[Variable]:
         return self.free_variables_
 
     def accept(self, visitor: FormulaVisitor):
@@ -1716,15 +1716,15 @@ class NumericQuantifiedFormula(Formula, ABC):
         self.bound_variable = bound_variable
         self.inner_formula = inner_formula
 
-    def bound_variables(self) -> OrderedSet[BoundVariable]:
+    def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
         """Non-recursive: Only non-empty for quantified formulas"""
-        return OrderedSet([self.bound_variable])
+        return FrozenOrderedSet([self.bound_variable])
 
-    def free_variables(self) -> OrderedSet[Variable]:
+    def free_variables(self) -> FrozenOrderedSet[Variable]:
         """Recursive."""
         return self.inner_formula.free_variables().difference(self.bound_variables())
 
-    def tree_arguments(self) -> OrderedSet[DerivationTree]:
+    def tree_arguments(self) -> FrozenOrderedSet[DerivationTree]:
         return self.inner_formula.tree_arguments()
 
     def __len__(self):
@@ -1854,23 +1854,23 @@ class QuantifiedFormula(Formula, ABC):
         else:
             self.bind_expression = bind_expression
 
-    def bound_variables(self) -> OrderedSet[BoundVariable]:
-        return OrderedSet([self.bound_variable]) | (
-            OrderedSet([])
+    def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
+        return FrozenOrderedSet([self.bound_variable]) | (
+            FrozenOrderedSet([])
             if self.bind_expression is None
             else self.bind_expression.bound_variables()
         )
 
-    def free_variables(self) -> OrderedSet[Variable]:
+    def free_variables(self) -> FrozenOrderedSet[Variable]:
         return (
-            OrderedSet(
+            FrozenOrderedSet(
                 [self.in_variable] if isinstance(self.in_variable, Variable) else []
             )
             | self.inner_formula.free_variables()
         ) - self.bound_variables()
 
-    def tree_arguments(self) -> OrderedSet[DerivationTree]:
-        result = OrderedSet([])
+    def tree_arguments(self) -> FrozenOrderedSet[DerivationTree]:
+        result = FrozenOrderedSet([])
         if isinstance(self.in_variable, DerivationTree):
             result.add(self.in_variable)
         result.update(self.inner_formula.tree_arguments())
@@ -2103,10 +2103,10 @@ class ExistsFormula(QuantifiedFormula):
 class VariablesCollector(FormulaVisitor):
     def __init__(self):
         super().__init__()
-        self.result: OrderedSet[Variable] = OrderedSet()
+        self.result: FrozenOrderedSet[Variable] = FrozenOrderedSet()
 
     @staticmethod
-    def collect(formula: Formula) -> OrderedSet[Variable]:
+    def collect(formula: Formula) -> FrozenOrderedSet[Variable]:
         c = VariablesCollector()
         formula.accept(c)
         return c.result
@@ -2143,10 +2143,10 @@ class VariablesCollector(FormulaVisitor):
 class BoundVariablesCollector(FormulaVisitor):
     def __init__(self):
         super().__init__()
-        self.result: OrderedSet[BoundVariable] = OrderedSet()
+        self.result: FrozenOrderedSet[BoundVariable] = FrozenOrderedSet()
 
     @staticmethod
-    def collect(formula: Formula) -> OrderedSet[BoundVariable]:
+    def collect(formula: Formula) -> FrozenOrderedSet[BoundVariable]:
         c = BoundVariablesCollector()
         formula.accept(c)
         return c.result
@@ -2394,7 +2394,7 @@ def convert_smt_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]
     free_variables = [
         var for var in formula.free_variables() if var.to_smt() in actual_symbols
     ]
-    instantiated_variables = OrderedSet(
+    instantiated_variables = FrozenOrderedSet(
         [
             var
             for var in formula.instantiated_variables
@@ -2493,7 +2493,7 @@ def convert_to_dnf(formula: Formula, deep: bool = True) -> Formula:
             [
                 reduce(
                     lambda a, b: a & b,
-                    OrderedSet(split_conjunction(left & right)),
+                    FrozenOrderedSet(split_conjunction(left & right)),
                     true(),
                 )
                 for left, right in itertools.product(*disjuncts_list)
@@ -2526,7 +2526,7 @@ def convert_to_dnf(formula: Formula, deep: bool = True) -> Formula:
 
 
 def fresh_vars(
-    orig_vars: OrderedSet[BoundVariable], used_names: Set[str]
+    orig_vars: FrozenOrderedSet[BoundVariable], used_names: Set[str]
 ) -> Dict[BoundVariable, BoundVariable]:
     result: Dict[BoundVariable, BoundVariable] = {}
 
@@ -2755,7 +2755,7 @@ class ConcreteSyntaxMexprUsedVariablesCollector(
     MexprParserListener.MexprParserListener
 ):
     def __init__(self):
-        self.used_variables: OrderedSet[str] = OrderedSet()
+        self.used_variables: FrozenOrderedSet[str] = FrozenOrderedSet()
 
     def enterMatchExprVar(self, ctx: MexprParser.MatchExprVarContext):
         self.used_variables.add(parse_tree_text(ctx.ID()))
@@ -2763,7 +2763,7 @@ class ConcreteSyntaxMexprUsedVariablesCollector(
 
 class ConcreteSyntaxUsedVariablesCollector(IslaLanguageListener.IslaLanguageListener):
     def __init__(self):
-        self.used_variables: OrderedSet[str] = OrderedSet()
+        self.used_variables: FrozenOrderedSet[str] = FrozenOrderedSet()
 
     def collect_used_variables_in_mexpr(self, inp: str) -> None:
         lexer = MexprLexer(InputStream(inp))
@@ -2804,7 +2804,7 @@ class BailPrintErrorStrategy(antlr4.BailErrorStrategy):
 
 def used_variables_in_concrete_syntax(
     inp: str | IslaLanguageParser.StartContext,
-) -> OrderedSet[str]:
+) -> FrozenOrderedSet[str]:
     if isinstance(inp, str):
         lexer = IslaLanguageLexer(InputStream(inp))
         parser = IslaLanguageParser(antlr4.CommonTokenStream(lexer))
@@ -3208,7 +3208,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             self.grammar = None
 
         self.mgr = VariableManager(self.grammar)
-        self.used_variables: Optional[OrderedSet[str]] = None
+        self.used_variables: Optional[FrozenOrderedSet[str]] = None
 
         self.vars_for_free_nonterminals: Dict[str, BoundVariable] = {}
         self.vars_for_xpath_expressions: Dict[ParsedXPathExpr, BoundVariable] = {}
