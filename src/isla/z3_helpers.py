@@ -34,7 +34,7 @@ from typing import (
     Union,
     Generator,
     Set,
-    TypeVar,
+    TypeVar, Iterable, Sequence,
 )
 
 import z3
@@ -572,9 +572,10 @@ def construct_result(
 
 
 def z3_solve(
-    formulas: List[z3.BoolRef], timeout_ms=500
+    formulas: Iterable[z3.BoolRef], timeout_ms=500
 ) -> Tuple[z3.CheckSatResult, Optional[z3.ModelRef]]:
     logger = logging.getLogger("z3_solve")
+    formulas = list(formulas)
 
     result = z3.unknown  # To remove IDE warning
     model: Optional[z3.ModelRef] = None
@@ -660,7 +661,7 @@ def z3_eq(formula_1: z3.ExprRef, formula_2: z3.ExprRef | str | int) -> z3.BoolRe
     )
 
 
-def z3_and(formulas: List[z3.BoolRef]) -> z3.BoolRef:
+def z3_and(formulas: Sequence[z3.BoolRef]) -> z3.BoolRef:
     if not formulas:
         return z3.BoolRef(True)
     if len(formulas) == 1:
@@ -668,7 +669,7 @@ def z3_and(formulas: List[z3.BoolRef]) -> z3.BoolRef:
     return z3.And(*formulas)
 
 
-def z3_or(formulas: List[z3.BoolRef]) -> z3.BoolRef:
+def z3_or(formulas: Sequence[z3.BoolRef]) -> z3.BoolRef:
     if not formulas:
         return z3.BoolRef(False)
     if len(formulas) == 1:

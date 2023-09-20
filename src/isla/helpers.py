@@ -71,6 +71,10 @@ S = TypeVar("S")
 T = TypeVar("T")
 
 
+def star(f: Callable[[Sequence[S]], T]) -> Callable[[S, ...], T]:
+    return lambda x: f(*x)
+
+
 def is_path(maybe_path: Any) -> bool:
     """
     >>> is_path("str")
@@ -1192,10 +1196,18 @@ def deep_str(obj: Any) -> str:
     and Failure containers:
 
     >>> deep_str(returns.result.Success([X(), X()]))
-    <Success: ['An X', 'An X']>
+    "<Success: ['An X', 'An X']>"
 
     >>> deep_str(returns.result.Failure([X(), X()]))
-    <Failure: ['An X', 'An X']>
+    "<Failure: ['An X', 'An X']>"
+
+    If the string representation of an object is empty, its :code:`repr` is returned:
+
+    >>> str(StopIteration())
+    ''
+
+    >>> deep_str(StopIteration())
+    'StopIteration()'
 
     :param obj: The object to recursively convert into a string.
     :return: A "deep" string representation of :code:`obj`.
@@ -1222,8 +1234,10 @@ def deep_str(obj: Any) -> str:
     elif isinstance(obj, returns.result.Result):
         match obj:
             case returns.result.Success(inner):
-                return returns.result.Success(deep_str(inner))
+                return str(returns.result.Success(deep_str(inner)))
             case returns.result.Failure(inner):
-                return returns.result.Failure(deep_str(inner))
+                return str(returns.result.Failure(deep_str(inner)))
+    elif not str(obj):
+        return repr(obj)
     else:
         return str(obj)

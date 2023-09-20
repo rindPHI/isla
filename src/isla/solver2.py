@@ -3,6 +3,7 @@ import random
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 from functools import reduce, lru_cache, partial
 from typing import Tuple, List, Set, Dict, Iterable, Callable, cast, AbstractSet
 
@@ -15,7 +16,7 @@ from orderedset import FrozenOrderedSet
 from returns.functions import tap
 from returns.maybe import Maybe, Nothing, Some
 from returns.pipeline import flow
-from returns.pointfree import lash
+from returns.pointfree import lash, map_
 from returns.result import Result, safe, Failure, Success
 
 from isla.derivation_tree import DerivationTree
@@ -31,6 +32,7 @@ from isla.helpers import (
     get_expansions,
     frozen_canonical,
     get_elem_by_equivalence,
+    star,
 )
 from isla.language import (
     ConjunctiveFormula,
@@ -238,6 +240,8 @@ class StateTree:
 
         :param action: The action leading to the new child.
         :param node: The CDT to add.
+        :param path: The path to the parent of the new child
+            (defaults to the root path, i.e., this state tree object).
         :return: An updated state tree.
         """  # noqa: E501
 
@@ -830,6 +834,293 @@ class SolveSMTRule(Rule):
         raise NotImplementedError
 
 
+def solve_quantifier_free_formula(
+    graph: NeoGrammarGraph,
+    smt_formulas: ImmutableList[SMTFormula],
+    maybe_state_tree: Maybe[StateTree] = Nothing,
+) -> Result[
+    bool | Dict[Variable | DerivationTree, DerivationTree], SyntaxError | StopIteration
+]:
+    """
+    Attempts to solve the given SMT-LIB formulas by calling Z3.
+
+    This function does not unify variables pointing to the same derivation
+    trees. E.g., a solution may be returned for the formula `var_1 = "a" and
+    var_2 = "b"`, though `var_1` and `var_2` point to the same `<var>` tree as
+    defined by their substitutions maps. Unification is performed in
+    :func:`~isla.solver2.eliminate_all_semantic_formulas`. TODO Update link
+
+    Example
+    -------
+
+    Consider our running assignment language example:
+
+    >>> import string
+    >>> grammar: Grammar = {
+    ...     "<start>":
+    ...         ["<stmt>"],
+    ...     "<stmt>":
+    ...         ["<assgn> ; <stmt>", "<assgn>"],
+    ...     "<assgn>":
+    ...         ["<var> := <rhs>"],
+    ...     "<rhs>":
+    ...         ["<var>", "<digit>"],
+    ...     "<var>": list(string.ascii_lowercase),
+    ...     "<digit>": list(string.digits)
+    ... }
+    >>> graph = NeoGrammarGraph(grammar)
+
+    We simultaneously compute solutions for two simple constraints: A :code:`<var>`
+    variable should equal "x," and a :code:`<digit>` variable should attain a value
+    greater 3.
+
+    >>> var = Variable("var", "<var>")
+    >>> var_tree = DerivationTree("<var>")
+    >>> digit = Variable("digit", "<digit>")
+    >>> digit_tree = DerivationTree("<digit>")
+
+    >>> var_eq_x_constraint = SMTFormula(
+    ...     '(= var "x")',
+    ...     instantiated_variables=FrozenOrderedSet([var]),
+    ...     substitutions={var: var_tree},
+    ... )
+
+    >>> digit_greater_3_constraint = SMTFormula(
+    ...     '(> (str.to.int digit) 3)',
+    ...     instantiated_variables=FrozenOrderedSet([digit]),
+    ...     substitutions={digit: digit_tree},
+    ... )
+
+    >>> solution = solve_quantifier_free_formula(
+    ...     graph, (var_eq_x_constraint, digit_greater_3_constraint)
+    ... )
+    >>> deep_str(solution)
+    '<Success: {<var>: x, <digit>: 4}>'
+
+    Let's assume we computed that solution before. It is not part of the state tree,
+    and we want to compute another one. We construct the state tree, starting with
+    the involved derivation trees:
+
+    >>> parent_dtree = DerivationTree(
+    ...     "<start>",
+    ...     (
+    ...         DerivationTree(
+    ...             "<stmt>",
+    ...             (
+    ...                 DerivationTree(
+    ...                     "<assgn>",
+    ...                     (var_tree, DerivationTree(" := ", ()), digit_tree)
+    ...                 ),
+    ...             ),
+    ...         ),
+    ...     ),
+    ... )
+
+    >>> new_var_tree = DerivationTree(
+    ...     "<var>", (solution.unwrap()[var_tree],), var_tree.id
+    ... )
+    >>> new_digit_tree = DerivationTree(
+    ...     "<digit>", (solution.unwrap()[digit_tree],), digit_tree.id
+    ... )
+
+    >>> child_dtree = DerivationTree(
+    ...     "<start>",
+    ...     (
+    ...         DerivationTree(
+    ...             "<stmt>",
+    ...             (
+    ...                 DerivationTree(
+    ...                     "<assgn>",
+    ...                     (new_var_tree, DerivationTree(" := ", ()), new_digit_tree)
+    ...                 ),
+    ...             ),
+    ...         ),
+    ...     ),
+    ... )
+
+    >>> tree = StateTree(
+    ...     CDT(
+    ...         FrozenOrderedSet([var_eq_x_constraint, digit_greater_3_constraint]),
+    ...         parent_dtree,
+    ...     )
+    ... ).add_child(
+    ...     SolveSMTAction(solution.unwrap()), CDT(FrozenOrderedSet([]), child_dtree)
+    ... )
+
+    >>> new_solution = solve_quantifier_free_formula(
+    ...     graph, (var_eq_x_constraint, digit_greater_3_constraint), Some(tree)
+    ... )
+    >>> deep_str(new_solution)
+    '<Success: {<var>: x, <digit>: 5}>'
+
+    We obtain a Boolean value for valid or unsatisfiable formulas or in the case of
+    a timeout.
+
+    >>> deep_str(solve_quantifier_free_formula(
+    ...     graph, (SMTFormula(z3_eq(digit.to_smt(), var.to_smt()), digit, var),)
+    ... ))
+    '<Success: False>'
+
+    >>> deep_str(solve_quantifier_free_formula(
+    ...     graph, (SMTFormula(z3_eq(digit.to_smt(), digit.to_smt()), digit),)
+    ... ))
+    '<Success: True>'
+
+    Once a "True" or "False" solution is contained in the state tree, no more solutions
+    are produced. Instead, we return a Failure object with a StopIteration exception.
+
+    >>> tree = StateTree(
+    ...     CDT(
+    ...         FrozenOrderedSet([
+    ...             SMTFormula(z3_eq(digit.to_smt(), digit.to_smt()), digit)
+    ...         ]),
+    ...         parent_dtree,
+    ...     )
+    ... ).add_child(
+    ...     SolveSMTAction(True), CDT(FrozenOrderedSet([]), parent_dtree)
+    ... )
+
+    >>> deep_str(solve_quantifier_free_formula(
+    ...     graph,
+    ...     (SMTFormula(z3_eq(digit.to_smt(), digit.to_smt()), digit),),
+    ...     Some(tree)
+    ... ))
+    '<Failure: StopIteration()>'
+
+    Finally, if a constraint is used in a wrong way, we obtain a SyntaxError failure.
+    This happens, for example, if we ask for the integer representation of a
+    :code:`<var>`:
+
+    >>> (
+    ...     deep_str(
+    ...         solve_quantifier_free_formula(
+    ...             graph, (SMTFormula("(= (str.to.int var) 3)", var),)
+    ...         )
+    ...     )[:44]
+    ...     + "...>"
+    ... )
+    '<Failure: Could not parse a numeric solution...>'
+
+    :param graph: The grammar graph representing the reference grammar.
+    :param smt_formulas: The SMT-LIB formulas to solve.
+    :param maybe_state_tree: The node in the state tree an SMT solving action should
+        be applied on. This is used to obtain previous solutions and compute a new/
+        different solution. If nothing is passed for this argument, we compute a
+        solution without any exclusion constraints.
+    :return: A (possibly empty) list of solutions or a Boolean value (True if the
+        formulas are universally valid or False for unsatisfiable/timeout) in the
+        case of success. If a computed solution is no valid word in the respected
+        sub grammar, a SyntaxError failure is returned. If another solution for the
+        same state tree node resulted in a Boolean result, a failure with a
+        StopIteration is returned.
+    """
+
+    # We first collect previous solutions. If any solution is a bool value, we
+    # return a Failure. This function should not be called in those cases.
+    def find_variable(dtree: DerivationTree) -> Variable:
+        for formula in smt_formulas:
+            for variable, other_dtree in formula.substitutions.items():
+                if dtree.id == other_dtree.id:
+                    return variable
+
+        raise RuntimeError(
+            "Could not to find a variable corresponding to a derivation tree that was "
+            + "substituted in a previous SMT solution. This is probably a programming "
+            + "error."
+        )
+
+    previous_solutions: List[bool | Dict[Variable, z3.SeqRef]] = maybe_state_tree.map(
+        lambda state_tree: [
+            action.result
+            if isinstance(action.result, bool)
+            else {
+                (
+                    var_or_tree
+                    if isinstance(var_or_tree, Variable)
+                    else find_variable(var_or_tree)
+                ): z3.StringVal(str(val))
+                for var_or_tree, val in action.result.items()
+            }
+            for action, _ in state_tree.children
+            if isinstance(action, SolveSMTAction)
+        ]
+    ).value_or([])
+
+    if any(isinstance(elem, bool) for elem in previous_solutions):
+        # There is no further solution if any previous SMT solving rule application
+        # returned True (universally valid) or False (unsatisfiable/timeout).
+        return Failure(StopIteration())
+
+    assert all(
+        isinstance(previous_solution, dict) for previous_solution in previous_solutions
+    )
+    assert all(
+        isinstance(var, Variable)
+        for previous_solution in previous_solutions
+        for var in previous_solution
+    )
+    assert all(
+        isinstance(val, z3.SeqRef)
+        for previous_solution in previous_solutions
+        for val in previous_solution.values()
+    )
+
+    # If any SMT formula refers to *sub*trees in the instantiations of other SMT
+    # formulas, we have to instantiate those first.
+    priority_formulas = smt_formulas_referring_to_subtrees(smt_formulas)
+
+    if priority_formulas:
+        smt_formulas = priority_formulas
+        assert not smt_formulas_referring_to_subtrees(smt_formulas)
+
+    tree_substitutions = reduce(
+        lambda d1, d2: d1 | d2,
+        [smt_formula.substitutions for smt_formula in smt_formulas],
+        {},
+    )
+
+    variables = reduce(
+        lambda d1, d2: d1 | d2,
+        [
+            smt_formula.free_variables() | smt_formula.instantiated_variables
+            for smt_formula in smt_formulas
+        ],
+        set(),
+    )
+
+    def process_solution(
+        solver_result: SolverResult,
+        maybe_model: Dict[Variable, DerivationTree],
+    ) -> bool | Dict[Variable, DerivationTree]:
+        if solver_result in (SolverResult.INVALID, SolverResult.UNKNOWN):
+            return False
+
+        if solver_result == SolverResult.VALID:
+            return True
+
+        assert variables, (
+            "A satisfiable formula without variables must be logically valid; however, "
+            + "a 'SolverResult.SATISFIABLE' result was returned."
+        )
+        assert maybe_model is not None
+
+        return {
+            tree_substitutions.get(variable, variable): maybe_model[variable]
+            for variable in variables
+        }
+
+    return flow(
+        solve_smt_formulas_with_language_constraints(
+            graph,
+            [smt_formula.formula for smt_formula in smt_formulas],
+            variables,
+            Some(tree_substitutions),
+            Some(previous_solutions),
+        ),
+        map_(star(process_solution)),
+    )
+
+
 def smt_formulas_referring_to_subtrees(
     smt_formulas: Iterable[SMTFormula],
 ) -> List[SMTFormula]:
@@ -963,6 +1254,30 @@ def smt_formulas_referring_to_subtrees(
     ]
 
 
+class SolverResult(Enum):
+    VALID = 0
+    INVALID = 1
+    SATISFIABLE = 2
+    UNKNOWN = 3
+
+    @staticmethod
+    def from_z3_result(z3_result) -> "SolverResult":
+        """
+        Transforms a Z3 result into a :class:`isla.solver2.SolverResult`. This function
+        will not return a "VALID" since this is not communicated by Z3.
+
+        :param z3_result: The Z3 result.
+        :return: The :class:`isla.solver2.SolverResult`.
+        """
+        match z3_result:
+            case z3.unsat:
+                return SolverResult.INVALID
+            case z3.unknown:
+                return SolverResult.UNKNOWN
+            case z3.sat:
+                return SolverResult.SATISFIABLE
+
+
 def solve_smt_formulas_with_language_constraints(
     graph: NeoGrammarGraph,
     smt_formulas: Iterable[z3.BoolRef],
@@ -970,7 +1285,10 @@ def solve_smt_formulas_with_language_constraints(
     tree_substitutions: Maybe[Dict[Variable, DerivationTree]] = Maybe.empty,
     solutions_to_exclude: Maybe[List[Dict[Variable, z3.StringVal]]] = Maybe.empty,
     enable_optimized_z3_queries: bool = True,
-) -> Result[Tuple[z3.CheckSatResult, Dict[Variable, DerivationTree]], SyntaxError]:
+) -> Result[
+    Tuple[SolverResult, Dict[Variable | DerivationTree, DerivationTree]],
+    SyntaxError,
+]:
     """
     Computes a solution for the given SMT formulas. All values from the solution
     assignment satisfy the grammatical types of the variables they are assigned to
@@ -1008,8 +1326,8 @@ def solve_smt_formulas_with_language_constraints(
     ...     smt_formulas=[z3.Not(z3_eq(z3.StrToInt(n.to_smt()), z3.IntVal(0)))],
     ...     variables={n}).unwrap()
 
-    >>> sat_res
-    sat
+    >>> print(sat_res)
+    SolverResult.SATISFIABLE
 
     >>> 0 < int(str(solution[n])) <= 9
     True
@@ -1027,7 +1345,7 @@ def solve_smt_formulas_with_language_constraints(
 
     >>> deep_str(solve_smt_formulas_with_language_constraints(
     ...     graph, constraints, FrozenOrderedSet([x, y, z]), Some(tree_substitutions)))
-    <Success: (sat, {x: a := 7, y: a := 7})>
+    '<Success: (SolverResult.SATISFIABLE, {x: a := 7, y: a := 7})>'
 
     If a solution returned by the SMT solver does not fit to the grammar, a
     :class:`~returns.result.Failure` object is returned. If we ask for the integer
@@ -1059,12 +1377,22 @@ def solve_smt_formulas_with_language_constraints(
         integer variables and only later converted to strings/derivation trees. If this
         parameter is False, all variables are treated equally; their (string) structure
         if obtained from the grammar.
-    :return: A :class:`~returns.result.Success` containing a tuple indicating the status
-        returned from the SMT solver and a (possibly empty) map of solution assignments.
-        If the solution returned by the solver is not part of the grammar (this mainly
-        happens if :code:`enable_optimized_z3_queries` is True), a
+    :return: A :class:`~returns.result.Success` containing a tuple indicating the
+        validity status resulting from the SMT call and a (possibly empty) map of
+        solution assignments. If the solution returned by the solver is not part of the
+        grammar (this mainly happens if :code:`enable_optimized_z3_queries` is True), a
         :class:`~returns.result.Failure` with a :class:`SyntaxError` is returned.
     """  # noqa: E501
+
+    # We first check if the given formulas are valid or unsatisfiable without
+    # additional language constraints.
+    sat_result, _ = z3_solve(smt_formulas)
+    if sat_result == z3.unsat:
+        return Success((SolverResult.INVALID, {}))
+
+    sat_result, _ = z3_solve((z3.Not(z3_and(tuple(smt_formulas))),))
+    if sat_result == z3.unsat:
+        return Success((SolverResult.VALID, {}))
 
     # We disable optimized Z3 queries if the SMT formulas contain "too concrete"
     # substitutions, that is, substitutions with a tree that is not merely an
@@ -1195,9 +1523,10 @@ def solve_smt_formulas_with_language_constraints(
     sat_result, maybe_model = z3_solve(formulas)
 
     if sat_result != z3.sat:
-        return Success((sat_result, {}))
+        return Success((SolverResult.from_z3_result(sat_result), {}))
 
     assert maybe_model is not None
+    assert SolverResult.from_z3_result(sat_result) == SolverResult.SATISFIABLE
 
     return reduce(
         lambda prev_success_or_failure, variable: prev_success_or_failure.bind(
@@ -1213,7 +1542,7 @@ def solve_smt_formulas_with_language_constraints(
             )
         ),
         variables,
-        Success((sat_result, {})),
+        Success((SolverResult.SATISFIABLE, {})),
     )
 
 
@@ -2184,20 +2513,17 @@ def parse_peg(
     specified nonterminal :code:`<start>`:
 
     >>> deep_str(parse_peg("x := 0 ; y := x", grammar).map(lambda t: (t, t.value)))
-    <Success: (x := 0 ; y := x, <start>)>
-
-    >>> deep_str(parse_peg("x := 0 ; y := x", grammar).map(lambda t: (t, t.value)))
-    <Success: (x := 0 ; y := x, <start>)>
+    '<Success: (x := 0 ; y := x, <start>)>'
 
     Now, we parse a single assignment with the :code:`<assgn>` start nonterminal:
 
     >>> deep_str(parse_peg("x := 0", grammar, "<assgn>").map(lambda t: (t, t.value)))
-    <Success: (x := 0, <assgn>)>
+    '<Success: (x := 0, <assgn>)>'
 
     In case of an error, a Failure is returned:
 
-    >>> deep_str(parse_peg("x := 0 FOO", grammar, "<assgn>").alt(
-    ...     lambda e: f'"{type(e).__name__}: {e}"'))
+    >>> print(deep_str(parse_peg("x := 0 FOO", grammar, "<assgn>").alt(
+    ...     lambda e: f'"{type(e).__name__}: {e}"')))
     <Failure: "SyntaxError: at ' FOO'">
 
     The grammar above was a grammar that could be interpreted as a PEG grammar. Parsing
@@ -2289,20 +2615,20 @@ def parse_earley(
     specified nonterminal :code:`<start>`:
 
     >>> deep_str(parse_earley("x := 0 ; y := x", grammar).map(lambda t: (t, t.value)))
-    <Success: (x := 0 ; y := x, <start>)>
+    '<Success: (x := 0 ; y := x, <start>)>'
 
     >>> deep_str(parse_earley("x := 0 ; y := x", grammar).map(lambda t: (t, t.value)))
-    <Success: (x := 0 ; y := x, <start>)>
+    '<Success: (x := 0 ; y := x, <start>)>'
 
     Now, we parse a single assignment with the :code:`<assgn>` start nonterminal:
 
     >>> deep_str(parse_earley("x := 0", grammar, "<assgn>").map(lambda t: (t, t.value)))
-    <Success: (x := 0, <assgn>)>
+    '<Success: (x := 0, <assgn>)>'
 
     In case of an error, a Failure is returned:
 
-    >>> deep_str(parse_earley("x := 0 FOO", grammar, "<assgn>").alt(
-    ...     lambda e: f'"{type(e).__name__}: {e}"'))
+    >>> print(deep_str(parse_earley("x := 0 FOO", grammar, "<assgn>").alt(
+    ...     lambda e: f'"{type(e).__name__}: {e}"')))
     <Failure: "SyntaxError: at ' FOO'">
 
     The grammar above was a grammar that could be interpreted as a PEG grammar. Parsing
@@ -2329,7 +2655,7 @@ def parse_earley(
     We get a Success result:
 
     >>> deep_str(parse_earley("x := 0 ; y := x", grammar).map(lambda t: (t, t.value)))
-    <Success: (x := 0 ; y := x, <start>)>
+    '<Success: (x := 0 ; y := x, <start>)>'
 
     :param inp: The input to parse.
     :param grammar: The grammar to parse the input in.
@@ -2384,17 +2710,17 @@ def parse(
     specified nonterminal :code:`<start>`:
 
     >>> deep_str(parse("x := 0 ; y := x", grammar).map(lambda t: (t, t.value)))
-    <Success: (x := 0 ; y := x, <start>)>
+    '<Success: (x := 0 ; y := x, <start>)>'
 
     Now, we parse a single assignment with the :code:`<assgn>` start nonterminal:
 
     >>> deep_str(parse("x := 0", grammar, "<assgn>").map(lambda t: (t, t.value)))
-    <Success: (x := 0, <assgn>)>
+    '<Success: (x := 0, <assgn>)>'
 
     In case of an error, a Failure is returned:
 
-    >>> deep_str(parse("x := 0 FOO", grammar, "<assgn>").alt(
-    ...     lambda e: f'"{type(e).__name__}: {e}"'))
+    >>> print(deep_str(parse("x := 0 FOO", grammar, "<assgn>").alt(
+    ...     lambda e: f'"{type(e).__name__}: {e}"')))
     <Failure: "SyntaxError: at ' FOO'">
 
     :param inp: The input to parse.
