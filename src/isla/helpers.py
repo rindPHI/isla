@@ -45,7 +45,7 @@ from typing import (
     Optional,
     Generic,
     Iterator,
-    Type,
+    Type, AbstractSet,
 )
 
 import returns
@@ -334,7 +334,7 @@ def split_str_with_nonterminals(expression: str) -> List[str]:
 
 
 def cluster_by_common_elements(
-    a_list: Sequence[T], f: Callable[[T], Set[S]]
+    a_list: Sequence[T], f: Callable[[T], AbstractSet[S]]
 ) -> List[List[T]]:
     """
     Clusters elements of l by shared elements. Elements of interest are obtained using f.

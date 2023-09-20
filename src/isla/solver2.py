@@ -15,7 +15,7 @@ from neo_grammar_graph import NeoGrammarGraph
 from orderedset import FrozenOrderedSet
 from returns.functions import tap
 from returns.maybe import Maybe, Nothing, Some
-from returns.pipeline import flow
+from returns.pipeline import flow, is_successful
 from returns.pointfree import lash, map_
 from returns.result import Result, safe, Failure, Success
 
@@ -33,6 +33,7 @@ from isla.helpers import (
     frozen_canonical,
     get_elem_by_equivalence,
     star,
+    cluster_by_common_elements,
 )
 from isla.language import (
     ConjunctiveFormula,
@@ -834,9 +835,241 @@ class SolveSMTRule(Rule):
         raise NotImplementedError
 
 
-def solve_quantifier_free_formula(
+def unify_smt_formulas_and_solve_first_cluster(
     graph: NeoGrammarGraph,
     smt_formulas: ImmutableList[SMTFormula],
+    maybe_state_tree: Maybe[StateTree] = Nothing,
+) -> Result[
+    bool | Dict[Variable | DerivationTree, DerivationTree], SyntaxError | StopIteration
+]:
+    """
+    This function clusters the given SMT formulas and calls
+    :func:`~isla.solver2.solve_smt_formulas` to solve the *first* cluster.
+    For details of the solving process, see :func:`~isla.solver2.solve_smt_formulas`.
+    Below, we demonstrate how the clustering works.
+
+    Example
+    -------
+
+    Consider our running assignment language example:
+
+    >>> import string
+    >>> grammar: Grammar = {
+    ...     "<start>":
+    ...         ["<stmt>"],
+    ...     "<stmt>":
+    ...         ["<assgn> ; <stmt>", "<assgn>"],
+    ...     "<assgn>":
+    ...         ["<var> := <rhs>"],
+    ...     "<rhs>":
+    ...         ["<var>", "<digit>"],
+    ...     "<var>": list(string.ascii_lowercase),
+    ...     "<digit>": list(string.digits)
+    ... }
+    >>> graph = NeoGrammarGraph(grammar)
+
+    We have a list of three simple constraints: A :code:`<var>` variable should equal
+    "x," and a :code:`<digit>` variable should attain a value greater 3, but smaller
+    than 8.
+
+    >>> var = Variable("var", "<var>")
+    >>> digit = Variable("digit", "<digit>")
+
+    >>> var_eq_x_constraint = SMTFormula('(= var "x")', var)
+    >>> digit_greater_3_constraint = SMTFormula('(> (str.to.int digit) 3)', digit)
+    >>> digit_smaller_8_constraint = SMTFormula('(< (str.to.int digit) 8)', digit)
+
+    Those constraints form two clusters. The constraint on the digit variable must be
+    solved simultaneously since their solutions are not independent; the constraint
+    on the var variable belongs to its own cluster.
+
+    >>> constraints = (
+    ...     var_eq_x_constraint,
+    ...     digit_greater_3_constraint,
+    ...     digit_smaller_8_constraint,
+    ... )
+    >>> deep_str(unify_smt_formulas_and_solve_first_cluster(graph, constraints))
+    '<Success: {var: x}>'
+
+    The call resulted in a solution to "var" only, since the corresponding constraint
+    formed the first cluster. If we reorder the constraints, we obtain a different
+    result:
+
+    >>> constraints = (
+    ...     digit_greater_3_constraint,
+    ...     digit_smaller_8_constraint,
+    ...     var_eq_x_constraint)
+    >>> deep_str(unify_smt_formulas_and_solve_first_cluster(graph, constraints))
+    '<Success: {digit: 4}>'
+
+    The order of the "digit" constraints is irrelevant.
+
+    >>> constraints = (
+    ...     digit_greater_3_constraint,
+    ...     digit_smaller_8_constraint,
+    ... )
+    >>> deep_str(unify_smt_formulas_and_solve_first_cluster(graph, constraints))
+    '<Success: {digit: 4}>'
+
+    >>> constraints = (
+    ...     digit_smaller_8_constraint,
+    ...     digit_greater_3_constraint,
+    ... )
+    >>> deep_str(unify_smt_formulas_and_solve_first_cluster(graph, constraints))
+    '<Success: {digit: 4}>'
+
+    In this case, the clustering works by variable names only. However, we also
+    consider the *substitutions* in SMT formulas when clustering, since two variables
+    with the same name may reference different trees; similarly, two variables with
+    different names may reference the same tree.
+
+    >>> digit_dtree_1 = DerivationTree("<digit>")
+    >>> digit_dtree_2 = DerivationTree("<digit>")
+
+    >>> digit_greater_3_constraint = SMTFormula(
+    ...     "(> (str.to.int digit) 3)",
+    ...     instantiated_variables=FrozenOrderedSet([digit]),
+    ...     substitutions={digit: digit_dtree_1},
+    ... )
+    >>> digit_smaller_8_constraint = SMTFormula(
+    ...     "(< (str.to.int digit) 8)",
+    ...     instantiated_variables=FrozenOrderedSet([digit]),
+    ...     substitutions={digit: digit_dtree_2},
+    ... )
+
+    >>> constraints = (
+    ...     digit_greater_3_constraint,
+    ...     digit_smaller_8_constraint,
+    ... )
+    >>> solution = unify_smt_formulas_and_solve_first_cluster(graph, constraints)
+    >>> deep_str(solution)
+    '<Success: {<digit>: 4}>'
+
+    >>> list(solution.unwrap().keys()) == [digit_dtree_1]
+    True
+
+    Changing the order of the constraints changes the result.
+
+    >>> constraints = (
+    ...     digit_smaller_8_constraint,
+    ...     digit_greater_3_constraint,
+    ... )
+    >>> solution = unify_smt_formulas_and_solve_first_cluster(graph, constraints)
+    >>> deep_str(solution)
+    '<Success: {<digit>: 0}>'
+
+    >>> list(solution.unwrap().keys()) == [digit_dtree_2]
+    True
+
+    Now, we create a different "digit" variable, but let it refer to the same
+    derivation tree.
+
+    >>> digit_2 = Variable("digit_2", "<digit>")
+
+    >>> digit_greater_3_constraint = SMTFormula(
+    ...     "(> (str.to.int digit) 3)",
+    ...     instantiated_variables=FrozenOrderedSet([digit]),
+    ...     substitutions={digit: digit_dtree_1},
+    ... )
+    >>> digit_2_smaller_8_constraint = SMTFormula(
+    ...     "(< (str.to.int digit_2) 8)",
+    ...     instantiated_variables=FrozenOrderedSet([digit_2]),
+    ...     substitutions={digit_2: digit_dtree_1},
+    ... )
+
+    >>> constraints = (
+    ...     digit_greater_3_constraint,
+    ...     digit_2_smaller_8_constraint,
+    ... )
+    >>> solution = unify_smt_formulas_and_solve_first_cluster(graph, constraints)
+    >>> deep_str(solution)
+    '<Success: {<digit>: 4}>'
+
+    >>> list(solution.unwrap().keys()) == [digit_dtree_1]
+    True
+
+    Now, there is only one cluster: The order of the constraints does not matter.
+
+    >>> constraints = (
+    ...     digit_2_smaller_8_constraint,
+    ...     digit_greater_3_constraint,
+    ... )
+    >>> solution = unify_smt_formulas_and_solve_first_cluster(graph, constraints)
+    >>> deep_str(solution)
+    '<Success: {<digit>: 4}>'
+
+    >>> list(solution.unwrap().keys()) == [digit_dtree_1]
+    True
+
+    :param graph: The grammar graph representing the reference grammar.
+    :param smt_formulas: The SMT-LIB formulas to solve.
+    :param maybe_state_tree: The node in the state tree an SMT solving action should
+        be applied on. This is used to obtain previous solutions and compute a new/
+        different solution. If nothing is passed for this argument, we compute a
+        solution without any exclusion constraints.
+    :return: A (possibly empty) list of solutions or a Boolean value (True if the
+        formulas are universally valid or False for unsatisfiable/timeout) in the
+        case of success. If a computed solution is no valid word in the respected
+        sub grammar, a SyntaxError failure is returned. If another solution for the
+        same state tree node resulted in a Boolean result, a failure with a
+        StopIteration is returned.
+    """
+
+    # We cluster SMT formulas by tree substitutions. If there are two formulas with a
+    # variable $var which is instantiated to different trees, we # need two separate
+    # solutions. If, however, $var is instantiated with the *same* tree, we need one
+    # solution to both formulas together.
+    smt_formulas = rename_instantiated_variables_in_smt_formulas(smt_formulas)
+
+    # We also cluster formulas by common variables (and instantiated subtrees:
+    # One formula might yield an instantiation of a subtree of the instantiation of
+    # another formula. They need to appear in the same cluster). The solver can
+    # better handle smaller constraints, and those which do not have variables in
+    # common can be handled independently.
+
+    def cluster_keys(smt_formula: SMTFormula) -> FrozenOrderedSet[Variable]:
+        return (
+            smt_formula.free_variables()
+            | smt_formula.instantiated_variables
+            | set(
+                [
+                    subtree
+                    for tree in smt_formula.substitutions.values()
+                    for _, subtree in tree.paths()
+                ]
+            )
+        )
+
+    formula_clusters: List[List[SMTFormula]] = cluster_by_common_elements(
+        smt_formulas, cluster_keys
+    )
+
+    assert all(
+        not cluster_keys(smt_formula)
+        or any(smt_formula in cluster for cluster in formula_clusters)
+        for smt_formula in smt_formulas
+    ), "An SMT formula was not assigned to any cluster."
+
+    formula_cluster = next(
+        filter(
+            None,
+            formula_clusters
+            + [
+                [
+                    smt_formula
+                    for smt_formula in smt_formulas
+                    if not cluster_keys(smt_formula)
+                ]
+            ],
+        )
+    )
+
+    return solve_smt_formulas(graph, formula_cluster, maybe_state_tree)
+
+
+def solve_smt_formulas(
+    graph: NeoGrammarGraph,
+    smt_formulas: Iterable[SMTFormula],
     maybe_state_tree: Maybe[StateTree] = Nothing,
 ) -> Result[
     bool | Dict[Variable | DerivationTree, DerivationTree], SyntaxError | StopIteration
@@ -848,7 +1081,7 @@ def solve_quantifier_free_formula(
     trees. E.g., a solution may be returned for the formula `var_1 = "a" and
     var_2 = "b"`, though `var_1` and `var_2` point to the same `<var>` tree as
     defined by their substitutions maps. Unification is performed in
-    :func:`~isla.solver2.eliminate_all_semantic_formulas`. TODO Update link
+    :func:`~isla.solver2.unify_smt_formulas_and_solve_first_cluster`.
 
     Example
     -------
@@ -891,7 +1124,7 @@ def solve_quantifier_free_formula(
     ...     substitutions={digit: digit_tree},
     ... )
 
-    >>> solution = solve_quantifier_free_formula(
+    >>> solution = solve_smt_formulas(
     ...     graph, (var_eq_x_constraint, digit_greater_3_constraint)
     ... )
     >>> deep_str(solution)
@@ -947,7 +1180,7 @@ def solve_quantifier_free_formula(
     ...     SolveSMTAction(solution.unwrap()), CDT(FrozenOrderedSet([]), child_dtree)
     ... )
 
-    >>> new_solution = solve_quantifier_free_formula(
+    >>> new_solution = solve_smt_formulas(
     ...     graph, (var_eq_x_constraint, digit_greater_3_constraint), Some(tree)
     ... )
     >>> deep_str(new_solution)
@@ -956,12 +1189,12 @@ def solve_quantifier_free_formula(
     We obtain a Boolean value for valid or unsatisfiable formulas or in the case of
     a timeout.
 
-    >>> deep_str(solve_quantifier_free_formula(
+    >>> deep_str(solve_smt_formulas(
     ...     graph, (SMTFormula(z3_eq(digit.to_smt(), var.to_smt()), digit, var),)
     ... ))
     '<Success: False>'
 
-    >>> deep_str(solve_quantifier_free_formula(
+    >>> deep_str(solve_smt_formulas(
     ...     graph, (SMTFormula(z3_eq(digit.to_smt(), digit.to_smt()), digit),)
     ... ))
     '<Success: True>'
@@ -980,7 +1213,7 @@ def solve_quantifier_free_formula(
     ...     SolveSMTAction(True), CDT(FrozenOrderedSet([]), parent_dtree)
     ... )
 
-    >>> deep_str(solve_quantifier_free_formula(
+    >>> deep_str(solve_smt_formulas(
     ...     graph,
     ...     (SMTFormula(z3_eq(digit.to_smt(), digit.to_smt()), digit),),
     ...     Some(tree)
@@ -993,7 +1226,7 @@ def solve_quantifier_free_formula(
 
     >>> (
     ...     deep_str(
-    ...         solve_quantifier_free_formula(
+    ...         solve_smt_formulas(
     ...             graph, (SMTFormula("(= (str.to.int var) 3)", var),)
     ...         )
     ...     )[:44]
@@ -1029,22 +1262,28 @@ def solve_quantifier_free_formula(
             + "error."
         )
 
-    previous_solutions: List[bool | Dict[Variable, z3.SeqRef]] = maybe_state_tree.map(
-        lambda state_tree: [
-            action.result
-            if isinstance(action.result, bool)
-            else {
-                (
-                    var_or_tree
-                    if isinstance(var_or_tree, Variable)
-                    else find_variable(var_or_tree)
-                ): z3.StringVal(str(val))
-                for var_or_tree, val in action.result.items()
-            }
-            for action, _ in state_tree.children
-            if isinstance(action, SolveSMTAction)
-        ]
-    ).value_or([])
+    previous_solutions: ImmutableList[
+        bool | Dict[Variable, z3.SeqRef]
+    ] = maybe_state_tree.map(
+        lambda state_tree: tuple(
+            [
+                action.result
+                if isinstance(action.result, bool)
+                else {
+                    (
+                        var_or_tree
+                        if isinstance(var_or_tree, Variable)
+                        else find_variable(var_or_tree)
+                    ): z3.StringVal(str(val))
+                    for var_or_tree, val in action.result.items()
+                }
+                for action, _ in state_tree.children
+                if isinstance(action, SolveSMTAction)
+            ]
+        )
+    ).value_or(
+        ()
+    )
 
     if any(isinstance(elem, bool) for elem in previous_solutions):
         # There is no further solution if any previous SMT solving rule application
@@ -1547,8 +1786,8 @@ def solve_smt_formulas_with_language_constraints(
 
 
 def rename_instantiated_variables_in_smt_formulas(
-    smt_formulas: List[SMTFormula],
-) -> List[SMTFormula]:
+    smt_formulas: Iterable[SMTFormula],
+) -> ImmutableList[SMTFormula]:
     """
     This function renames the already instantiated (substituted) variables in an SMT
     formula. For any variable v associated to a tree t, the original, logical nam
@@ -1575,7 +1814,7 @@ def rename_instantiated_variables_in_smt_formulas(
     ...     SMTFormula("(= x y)", x_2, y).substitute_expressions({x_2: x_2_t, y: y_t}),
     ... ]
     >>> print(deep_str(rename_instantiated_variables_in_smt_formulas(formulas)))
-    [(<A>_0 == <A>_0, {'<A>_0': '<A>'}), (<A>_1 == <A>_0, {'<A>_1': '<A>', '<A>_0': '<A>'})]
+    ((<A>_0 == <A>_0, {'<A>_0': '<A>'}), (<A>_1 == <A>_0, {'<A>_1': '<A>', '<A>_0': '<A>'}))
 
     :param smt_formulas: The SMT formulas to rename.
     :return: The renamed formulas.
@@ -1611,7 +1850,7 @@ def rename_instantiated_variables_in_smt_formulas(
             )
         )
 
-    return result
+    return tuple(result)
 
 
 @dataclass(frozen=True)
