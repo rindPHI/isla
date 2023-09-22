@@ -25,11 +25,15 @@ from typing import Union, Optional, Set, Dict, cast, Tuple, List, Callable
 import z3
 from grammar_graph import gg
 from orderedset import OrderedSet
+from returns.functions import compose
+from returns.maybe import Nothing
+from returns.pipeline import flow
+from returns.pointfree import lash
 
 import isla.isla_shortcuts as sc
 from isla import language
 from isla.derivation_tree import DerivationTree
-from isla.helpers import is_nonterminal, Maybe, chain_functions, is_prefix
+from isla.helpers import is_nonterminal, Maybe, is_prefix
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
     STANDARD_SEMANTIC_PREDICATES,
@@ -342,9 +346,10 @@ def well_formed(
             bound_by_smt,
         )
 
-    monad = chain_functions(
-        map(
-            close,
+    return flow(
+        Nothing,
+        *map(
+            compose(lambda f: (lambda _: f(formula)), lash),
             [
                 wellformed_exists_int_formula,
                 wellformed_quantified_formula,
@@ -354,10 +359,7 @@ def well_formed(
                 raise_not_implemented_error,
             ],
         ),
-        formula,
-    )
-
-    return monad.a
+    ).unwrap()
 
 
 def wellformed_exists_int_formula(
@@ -644,9 +646,10 @@ def evaluate_legacy(
             trie,
         )
 
-    monad = chain_functions(
-        map(
-            close,
+    return flow(
+        Nothing,
+        *map(
+            compose(lambda f: (lambda _: f(formula)), lash),
             [
                 evaluate_exists_int_formula,
                 evaluate_smt_formula,
@@ -659,10 +662,7 @@ def evaluate_legacy(
                 raise_not_implemented_error,
             ],
         ),
-        formula,
-    )
-
-    return monad.a
+    ).unwrap()
 
 
 def evaluate_exists_int_formula(

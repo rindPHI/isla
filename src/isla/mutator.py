@@ -20,13 +20,14 @@ import random
 from typing import Tuple, Callable, Optional
 
 from grammar_graph import gg
+from returns.maybe import Nothing, Some
+from returns.result import safe, Success
 
 from isla.derivation_tree import DerivationTree
 from isla.existential_helpers import paths_between, path_to_tree
 from isla.fuzzer import GrammarCoverageFuzzer
 from isla.helpers import (
     Maybe,
-    Exceptional,
     parent_or_child,
     canonical,
     to_id,
@@ -122,7 +123,7 @@ class Mutator:
             return inp.replace_path(path_1, tree_2).replace_path(path_2, tree_1)
 
         return (
-            Exceptional.of(
+            safe(
                 lambda: random.choice(
                     [
                         ((path_1, tree_1), (path_2, tree_2))
@@ -132,13 +133,13 @@ class Mutator:
                         and not parent_or_child(path_1, path_2)
                         and tree_1.value == tree_2.value
                     ]
-                )
-            )
+                ),
+                exceptions=(IndexError,)
+            )()
             .map(process)
-            .map(Maybe)
-            .recover(lambda _: Maybe.nothing(), IndexError)
-            .reraise()
-            .get()
+            .map(Some)
+            .lash(lambda _: Success(Nothing))
+            .unwrap()
         )
 
     def generalize_subtree(self, inp: DerivationTree) -> Maybe[DerivationTree]:
