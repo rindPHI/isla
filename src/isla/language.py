@@ -51,6 +51,12 @@ from antlr4 import InputStream, RuleContext, ParserRuleContext
 from antlr4.Token import CommonToken
 from grammar_graph import gg
 from orderedset import FrozenOrderedSet
+from returns._internal.pipeline.flow import flow
+from returns.converters import result_to_maybe
+from returns.functions import compose
+from returns.maybe import Nothing, Some
+from returns.pointfree import lash
+from returns.result import safe
 from z3 import Z3Exception
 
 import isla.mexpr_parser.MexprParserListener as MexprParserListener
@@ -70,9 +76,7 @@ from isla.helpers import (
     list_set,
     is_prefix,
     Maybe,
-    chain_functions,
     eassert,
-    Exceptional,
     instantiate_escaped_symbols,
     unreachable_nonterminals,
     Success,
@@ -312,7 +316,7 @@ class BindExpression:
                 + " be investigated.",
                 flattened_bind_expr_str,
             )
-            return Maybe.nothing()
+            return Nothing
 
         tree = maybe_tree.get()
 
@@ -435,7 +439,7 @@ class BindExpression:
             for leaf_path, _ in tree.leaves()
         )
 
-        return Maybe((match_expr_tree, consolidated_matches))
+        return Some((match_expr_tree, consolidated_matches))
 
     def match(
         self, tree: DerivationTree, grammar: Grammar
@@ -958,7 +962,9 @@ class StructuralPredicateFormula(Formula):
         return FrozenOrderedSet([arg for arg in self.args if isinstance(arg, Variable)])
 
     def tree_arguments(self) -> FrozenOrderedSet[DerivationTree]:
-        return FrozenOrderedSet([arg for arg in self.args if isinstance(arg, DerivationTree)])
+        return FrozenOrderedSet(
+            [arg for arg in self.args if isinstance(arg, DerivationTree)]
+        )
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_predicate_formula(self)
@@ -1166,7 +1172,9 @@ class SemanticPredicateFormula(Formula):
         return FrozenOrderedSet([arg for arg in self.args if isinstance(arg, Variable)])
 
     def tree_arguments(self) -> FrozenOrderedSet[DerivationTree]:
-        return FrozenOrderedSet([arg for arg in self.args if isinstance(arg, DerivationTree)])
+        return FrozenOrderedSet(
+            [arg for arg in self.args if isinstance(arg, DerivationTree)]
+        )
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_semantic_predicate_formula(self)
@@ -1215,13 +1223,13 @@ class PropositionalCombinator(Formula, ABC):
     def free_variables(self) -> FrozenOrderedSet[Variable]:
         result: FrozenOrderedSet[Variable] = FrozenOrderedSet([])
         for arg in self.args:
-            result |= arg.free_variables()
+            result = result | arg.free_variables()
         return result
 
     def tree_arguments(self) -> FrozenOrderedSet[DerivationTree]:
         result: FrozenOrderedSet[DerivationTree] = FrozenOrderedSet([])
         for arg in self.args:
-            result |= arg.tree_arguments()
+            result = result | arg.tree_arguments()
         return result
 
     def __len__(self):
@@ -1443,7 +1451,9 @@ class SMTFormula(Formula):
     def __setstate__(self, state: Dict[str, bytes]) -> None:
         inst = {f: pickle.loads(v) for f, v in state.items() if f != "formula"}
         free_variables: FrozenOrderedSet[Variable] = inst["free_variables_"]
-        instantiated_variables: FrozenOrderedSet[Variable] = inst["instantiated_variables"]
+        instantiated_variables: FrozenOrderedSet[Variable] = inst[
+            "instantiated_variables"
+        ]
 
         formula = state["formula"].decode("utf-8")
         formula = formula.replace(r"\"", r"\"")
@@ -2119,25 +2129,29 @@ class VariablesCollector(FormulaVisitor):
 
     def visit_quantified_formula(self, formula: QuantifiedFormula):
         if isinstance(formula.in_variable, Variable):
-            self.result.add(formula.in_variable)
-        self.result.add(formula.bound_variable)
+            self.result = self.result | FrozenOrderedSet([formula.in_variable])
+        self.result = self.result | FrozenOrderedSet([formula.bound_variable])
         if formula.bind_expression is not None:
-            self.result.update(formula.bind_expression.bound_variables())
+            self.result = self.result | formula.bind_expression.bound_variables()
 
     def visit_exists_int_formula(self, formula: ExistsIntFormula):
-        self.result.add(formula.bound_variable)
+        self.result = self.result | FrozenOrderedSet([formula.bound_variable])
 
     def visit_forall_int_formula(self, formula: ForallIntFormula):
-        self.result.add(formula.bound_variable)
+        self.result = self.result | FrozenOrderedSet([formula.bound_variable])
 
     def visit_predicate_formula(self, formula: StructuralPredicateFormula):
-        self.result.update([arg for arg in formula.args if isinstance(arg, Variable)])
+        self.result = self.result | FrozenOrderedSet(
+            [arg for arg in formula.args if isinstance(arg, Variable)]
+        )
 
     def visit_semantic_predicate_formula(self, formula: SemanticPredicateFormula):
-        self.result.update([arg for arg in formula.args if isinstance(arg, Variable)])
+        self.result = self.result | FrozenOrderedSet(
+            [arg for arg in formula.args if isinstance(arg, Variable)]
+        )
 
     def visit_smt_formula(self, formula: SMTFormula):
-        self.result.update(formula.free_variables())
+        self.result = self.result | formula.free_variables()
 
 
 class BoundVariablesCollector(FormulaVisitor):
@@ -2158,15 +2172,15 @@ class BoundVariablesCollector(FormulaVisitor):
         self.visit_quantified_formula(formula)
 
     def visit_quantified_formula(self, formula: QuantifiedFormula):
-        self.result.add(formula.bound_variable)
+        self.result = self.result | FrozenOrderedSet([formula.bound_variable])
         if formula.bind_expression is not None:
-            self.result.update(formula.bind_expression.bound_variables())
+            self.result = self.result | formula.bind_expression.bound_variables()
 
     def visit_exists_int_formula(self, formula: ExistsIntFormula):
-        self.result.add(formula.bound_variable)
+        self.result = self.result | FrozenOrderedSet([formula.bound_variable])
 
     def visit_forall_int_formula(self, formula: ForallIntFormula):
-        self.result.add(formula.bound_variable)
+        self.result = self.result | FrozenOrderedSet([formula.bound_variable])
 
 
 class FilterVisitor(FormulaVisitor):
@@ -2312,13 +2326,14 @@ def replace_formula(  # noqa: C901
 def convert_to_nnf(formula: Formula, negate=False) -> Formula:
     """Pushes negations inside the formula."""
 
-    def close(evaluation_function: callable) -> callable:
-        return lambda f: evaluation_function(f, negate)
+    def raise_not_implemented_error(_=Nothing) -> Maybe[Formula]:
+        raise NotImplementedError(f"Unexpected formula type {type(formula).__name__}")
 
     return (
-        chain_functions(
-            map(
-                close,
+        flow(
+            Nothing,
+            *map(
+                compose(lambda f: lambda _: f(formula, negate), lash),
                 [
                     convert_negated_formula_to_nnf,
                     convert_conjunctive_formula_to_nnf,
@@ -2329,48 +2344,43 @@ def convert_to_nnf(formula: Formula, negate=False) -> Formula:
                     convert_quantified_formula_to_nnf,
                 ],
             ),
-            formula,
         )
-        .raise_if_not_present(
-            lambda: NotImplementedError(
-                f"Unexpected formula type {type(formula).__name__}"
-            )
-        )
-        .get()
+        .lash(raise_not_implemented_error)
+        .unwrap()
     )
 
 
 def convert_negated_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
     if not isinstance(formula, NegatedFormula):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(convert_to_nnf(formula.args[0], not negate))
+    return Some(convert_to_nnf(formula.args[0], not negate))
 
 
 def convert_conjunctive_formula_to_nnf(
     formula: Formula, negate: bool
 ) -> Maybe[Formula]:
     if not isinstance(formula, ConjunctiveFormula):
-        return Maybe.nothing()
+        return Nothing
 
     args = [convert_to_nnf(arg, negate) for arg in formula.args]
     if negate:
-        return Maybe(reduce(lambda a, b: a | b, args))
+        return Some(reduce(lambda a, b: a | b, args))
     else:
-        return Maybe(reduce(lambda a, b: a & b, args))
+        return Some(reduce(lambda a, b: a & b, args))
 
 
 def convert_disjunctive_formula_to_nnf(
     formula: Formula, negate: bool
 ) -> Maybe[Formula]:
     if not isinstance(formula, DisjunctiveFormula):
-        return Maybe.nothing()
+        return Nothing
 
     args = [convert_to_nnf(arg, negate) for arg in formula.args]
     if negate:
-        return Maybe(reduce(lambda a, b: a & b, args))
+        return Some(reduce(lambda a, b: a & b, args))
     else:
-        return Maybe(reduce(lambda a, b: a | b, args))
+        return Some(reduce(lambda a, b: a | b, args))
 
 
 def convert_structural_predicate_formula_to_nnf(
@@ -2379,14 +2389,14 @@ def convert_structural_predicate_formula_to_nnf(
     if not isinstance(formula, StructuralPredicateFormula) and not isinstance(
         formula, SemanticPredicateFormula
     ):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(-formula if negate else formula)
+    return Some(-formula if negate else formula)
 
 
 def convert_smt_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
     if not isinstance(formula, SMTFormula):
-        return Maybe.nothing()
+        return Nothing
 
     negated_smt_formula = z3_push_in_negations(formula.formula, negate)
     # Automatic simplification can remove free variables from the formula!
@@ -2407,7 +2417,7 @@ def convert_smt_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]
         if var.to_smt() in actual_symbols
     }
 
-    return Maybe(
+    return Some(
         SMTFormula(
             negated_smt_formula,
             *free_variables,
@@ -2423,7 +2433,7 @@ def convert_exists_int_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[F
     if not isinstance(formula, ExistsIntFormula) and not isinstance(
         formula, ForallIntFormula
     ):
-        return Maybe.nothing()
+        return Nothing
 
     inner_formula = (
         convert_to_nnf(formula.inner_formula, negate)
@@ -2434,14 +2444,14 @@ def convert_exists_int_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[F
     if (isinstance(formula, ForallIntFormula) and negate) or (
         isinstance(formula, ExistsIntFormula) and not negate
     ):
-        return Maybe(ExistsIntFormula(formula.bound_variable, inner_formula))
+        return Some(ExistsIntFormula(formula.bound_variable, inner_formula))
     else:
-        return Maybe(ForallIntFormula(formula.bound_variable, inner_formula))
+        return Some(ForallIntFormula(formula.bound_variable, inner_formula))
 
 
 def convert_quantified_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
     if not isinstance(formula, QuantifiedFormula):
-        return Maybe.nothing()
+        return Nothing
 
     inner_formula = (
         convert_to_nnf(formula.inner_formula, negate)
@@ -2455,7 +2465,7 @@ def convert_quantified_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[F
     if (isinstance(formula, ForallFormula) and negate) or (
         isinstance(formula, ExistsFormula) and not negate
     ):
-        return Maybe(
+        return Some(
             ExistsFormula(
                 formula.bound_variable,
                 formula.in_variable,
@@ -2464,7 +2474,7 @@ def convert_quantified_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[F
             )
         )
     else:
-        return Maybe(
+        return Some(
             ForallFormula(
                 formula.bound_variable,
                 formula.in_variable,
@@ -2684,8 +2694,8 @@ class VariableManager:
         isla_variables = [self._var(str(z3_symbol), None) for z3_symbol in z3_symbols]
         return SMTFormula(formula, *isla_variables)
 
-    def create(self, formula: Formula, safe=True) -> Formula:
-        if safe:
+    def create(self, formula: Formula, do_safe=True) -> Formula:
+        if do_safe:
             undeclared_variables = [
                 ph_name
                 for ph_name in self.placeholders
@@ -2700,13 +2710,16 @@ class VariableManager:
         return formula.substitute_variables(
             {
                 ph_var: (
-                    Maybe.from_iterator(
-                        var
-                        for var_name, var in self.variables.items()
-                        if var_name == ph_name
-                    )
-                    + Maybe(ph_var)
-                ).get()
+                    result_to_maybe(
+                        safe(
+                            lambda: next(
+                                var
+                                for var_name, var in self.variables.items()
+                                if var_name == ph_name
+                            )
+                        )()
+                    ).lash(lambda _: Some(ph_var))
+                ).unwrap()
                 for ph_name, ph_var in self.placeholders.items()
             }
         )
@@ -2758,7 +2771,9 @@ class ConcreteSyntaxMexprUsedVariablesCollector(
         self.used_variables: FrozenOrderedSet[str] = FrozenOrderedSet()
 
     def enterMatchExprVar(self, ctx: MexprParser.MatchExprVarContext):
-        self.used_variables.add(parse_tree_text(ctx.ID()))
+        self.used_variables = self.used_variables | FrozenOrderedSet(
+            [parse_tree_text(ctx.ID())]
+        )
 
 
 class ConcreteSyntaxUsedVariablesCollector(IslaLanguageListener.IslaLanguageListener):
@@ -2771,26 +2786,34 @@ class ConcreteSyntaxUsedVariablesCollector(IslaLanguageListener.IslaLanguageList
         parser._errHandler = BailPrintErrorStrategy()
         collector = ConcreteSyntaxMexprUsedVariablesCollector()
         antlr4.ParseTreeWalker().walk(collector, parser.matchExpr())
-        self.used_variables.update(collector.used_variables)
+        self.used_variables = self.used_variables | collector.used_variables
 
     def enterForall(self, ctx: IslaLanguageParser.ForallContext):
         if ctx.varId:
-            self.used_variables.add(parse_tree_text(ctx.varId))
+            self.used_variables = self.used_variables | FrozenOrderedSet(
+                [parse_tree_text(ctx.varId)]
+            )
 
     def enterForallMexpr(self, ctx: IslaLanguageParser.ForallMexprContext):
         if ctx.varId:
-            self.used_variables.add(parse_tree_text(ctx.varId))
+            self.used_variables = self.used_variables | FrozenOrderedSet(
+                [parse_tree_text(ctx.varId)]
+            )
         self.collect_used_variables_in_mexpr(
             antlr_get_text_with_whitespace(ctx.STRING())[1:-1]
         )
 
     def enterExists(self, ctx: IslaLanguageParser.ExistsContext):
         if ctx.varId:
-            self.used_variables.add(parse_tree_text(ctx.varId))
+            self.used_variables = self.used_variables | FrozenOrderedSet(
+                [parse_tree_text(ctx.varId)]
+            )
 
     def enterExistsMexpr(self, ctx: IslaLanguageParser.ExistsMexprContext):
         if ctx.varId:
-            self.used_variables.add(parse_tree_text(ctx.varId))
+            self.used_variables = self.used_variables | FrozenOrderedSet(
+                [parse_tree_text(ctx.varId)]
+            )
         self.collect_used_variables_in_mexpr(
             antlr_get_text_with_whitespace(ctx.STRING())[1:-1]
         )
@@ -3130,13 +3153,13 @@ class AddMexprTransformer(NoopFormulaTransformer):
                 != new_tree.get_subtree(new_path[:idx]).value
                 for idx in range(len(new_path))
             ):
-                return Maybe.nothing()
+                return Nothing
 
             if not isinstance(new_var, DummyVariable):
                 if merged_tree.get_subtree(new_path).children:
-                    return Maybe.nothing()
+                    return Nothing
 
-            return Maybe(merged_tree)
+            return Some(merged_tree)
         else:
             # `new_tree` has a longer (or as long) path.
             # First, find the valid prefix in `resulting_tree`.
@@ -3150,9 +3173,9 @@ class AddMexprTransformer(NoopFormulaTransformer):
                 != new_tree.get_subtree(valid_path[:idx]).value
                 for idx in range(len(valid_path))
             ):
-                return Maybe.nothing()
+                return Nothing
 
-            return Maybe(
+            return Some(
                 merged_tree.replace_path(valid_path, new_tree.get_subtree(valid_path))
             )
 
@@ -3577,7 +3600,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         try:
             formula: Formula = self.mgr.create(self.formulas[ctx.formula()])
             formula = ensure_unique_bound_variables(formula)
-            self.used_variables.update(
+            self.used_variables = self.used_variables | (
                 {var.name for var in VariablesCollector.collect(formula)}
             )
             self.result = ensure_unique_bound_variables(
@@ -3687,7 +3710,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                 self.formulas[ctx.formula()],
                 bind_expression=mexpr,
             ),
-            safe=False,
+            do_safe=False,
         )
 
     def exitForall(self, ctx: IslaLanguageParser.ForallContext):
@@ -4385,20 +4408,18 @@ def match(
 
     if (
         t.value != mexpr_tree.value
-        or Exceptional.of(lambda: len(mexpr_tree.children) == 0 and t.children is None)
-        .recover(lambda _: False)
-        .get()
+        or safe(lambda: len(mexpr_tree.children) == 0 and t.children is None)()
+        .lash(lambda _: Success(False))
+        .unwrap()
     ):
         return None
 
     # If the match expression tree is "open," we have a match!
     if (
         mexpr_tree.children is None
-        or Exceptional.of(
-            lambda: len(mexpr_tree.children) == 0 and len(t.children) == 0
-        )
-        .recover(lambda _: False)
-        .get()
+        or safe(lambda: len(mexpr_tree.children) == 0 and len(t.children) == 0)()
+        .lash(lambda _: Success(False))
+        .unwrap()
     ):
         assert not mexpr_var_paths or all(not path for path in mexpr_var_paths.values())
 
@@ -4492,13 +4513,11 @@ def parse_match_expression_peg(
         grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar)
     )
 
-    match Exceptional.of(
-        lambda: DerivationTree.from_parse_tree(peg_parser.parse(inp)[0])
-    ):
+    match safe(lambda: DerivationTree.from_parse_tree(peg_parser.parse(inp)[0]))():
         case Success(result):
-            return Maybe(result if in_nonterminal == "<start>" else result.children[0])
+            return Some(result if in_nonterminal == "<start>" else result.children[0])
         case Failure(_):
-            return Maybe.nothing()
+            return Nothing
         case _:
             assert False
 
@@ -4531,13 +4550,13 @@ def parse_match_expression_earley(
         grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar)
     )
 
-    match Exceptional.of(
+    match safe(
         lambda: DerivationTree.from_parse_tree(next(earley_parser.parse(inp)))
-    ):
+    )():
         case Success(result):
-            return Maybe(result if in_nonterminal == "<start>" else result.children[0])
+            return Some(result if in_nonterminal == "<start>" else result.children[0])
         case Failure(_):
-            return Maybe.nothing()
+            return Nothing
         case _:
             assert False
 
@@ -4579,27 +4598,28 @@ def parse_match_expression(
     We parse a statement with two assignments; the resulting tree starts with the
     specified nonterminal :code:`<start>`:
 
-    >>> print(parse_match_expression(
+    >>> from isla.helpers import deep_str
+    >>> print(deep_str(parse_match_expression(
     ...     "x := 0 ; y := x",
     ...     "<start>",
-    ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value)))
-    Maybe((x := 0 ; y := x, <start>))
+    ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value))))
+    <Some: (x := 0 ; y := x, <start>)>
 
     Now, we parse a single assignment with the :code:`<assgn>` start nonterminal:
 
-    >>> print(parse_match_expression(
+    >>> print(deep_str(parse_match_expression(
     ...     "x := 0",
     ...     "<assgn>",
-    ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value)))
-    Maybe((x := 0, <assgn>))
+    ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value))))
+    <Some: (x := 0, <assgn>)>
 
     In case of an error, Nothing is returned:
 
-    >>> print(parse_match_expression(
+    >>> print(deep_str(parse_match_expression(
     ...     "x := 0 FOO",
     ...     "<assgn>",
-    ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value)))
-    Nothing
+    ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value))))
+    <Nothing>
 
     :param inp: The input to parse.
     :param in_nonterminal: The start nonterminmal.
@@ -4618,4 +4638,4 @@ def parse_match_expression(
 
         return parse_match_expression_earley(inp, in_nonterminal, immutable_grammar)
 
-    return monad + (fallback, inp)
+    return monad.lash(fallback)

@@ -33,6 +33,8 @@ from typing import Dict, Tuple, List, Optional, Iterable, cast, Any, Set
 
 import toml
 from grammar_graph import gg
+from returns.maybe import Nothing, Some
+from returns.result import safe
 
 from isla import __version__ as isla_version, language
 from isla.derivation_tree import DerivationTree
@@ -40,7 +42,6 @@ from isla.helpers import (
     is_float,
     Maybe,
     get_isla_resource_file_content,
-    Exceptional,
     eassert,
 )
 from isla.isla_predicates import (
@@ -544,7 +545,7 @@ def do_check(
     except SemanticError:
         return 1, "input does not satisfy the ISLa constraint", Maybe.nothing()
 
-    return 0, "input satisfies the ISLa constraint", Maybe(tree)
+    return 0, "input satisfies the ISLa constraint", Some(tree)
 
 
 def create(stdout, stderr, parser: ArgumentParser, args: Namespace):
@@ -838,11 +839,11 @@ except NameError as err:
 
         return maybe_grammar
 
-    grammar = cast(Maybe[Grammar], Maybe(new_symbols["grammar_"])).map(
+    grammar = cast(Maybe[Grammar], Some(new_symbols["grammar_"])).map(
         assert_is_valid_grammar
     )
 
-    predicates = Maybe(new_symbols["predicates_"]).map(assert_is_set_of_predicates)
+    predicates = Some(new_symbols["predicates_"]).map(assert_is_set_of_predicates)
 
     structural_predicates = cast(
         Maybe[Set[StructuralPredicate]],
@@ -946,12 +947,11 @@ def get_input_string(
         return gg.GrammarGraph.from_grammar(grammar)
 
     return (
-        Exceptional.of(lambda: json.loads(inp))
+        safe(lambda: json.loads(inp))()
         .map(DerivationTree.from_parse_tree)
         .map(lambda tree: eassert(tree, graph().tree_is_valid(tree)))
-        .recover(lambda _: solver().parse(inp, skip_check=True))
-        .reraise()
-        .get()
+        .lash(lambda _: safe(lambda _: solver().parse(inp, skip_check=True))().unwrap())
+        .unwrap()
     )
 
 
@@ -1505,7 +1505,7 @@ def assert_path_is_dir(stderr, command: str, out_dir: str) -> None:
 
 @lru_cache
 def read_isla_rc_defaults(
-    content: Maybe[str] = Maybe.nothing(),
+    content: Maybe[str] = Nothing,
 ) -> Dict[str, Dict[str, str | int | float | bool]]:
     """
     Attempts to read an `.islarc` configuration from the following source, in the
@@ -1584,7 +1584,7 @@ def read_isla_rc_defaults(
 
 
 def get_default(
-    stderr, command: str, argument: str, content: Maybe[str] = Maybe.nothing()
+    stderr, command: str, argument: str, content: Maybe[str] = Nothing
 ) -> Maybe[str | int | float | bool]:
     try:
         config = read_isla_rc_defaults(content)
@@ -1593,7 +1593,7 @@ def get_default(
         sys.exit(1)
 
     default = config.get("default", {}).get(argument, None)
-    return Maybe(config.get(command, {}).get(argument, default))
+    return Some(config.get(command, {}).get(argument, default))
 
 
 def derivation_tree_to_json(tree: DerivationTree, pretty_print: bool = False) -> str:

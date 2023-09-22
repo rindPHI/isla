@@ -17,7 +17,6 @@
 # along with ISLa.  If not, see <http://www.gnu.org/licenses/>.
 
 import copy
-import functools
 import importlib.resources
 import itertools
 import logging
@@ -26,7 +25,6 @@ import operator
 import random
 import re
 import sys
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import lru_cache, reduce
 from typing import (
@@ -43,15 +41,14 @@ from typing import (
     Iterable,
     Any,
     Optional,
-    Generic,
-    Iterator,
-    Type, AbstractSet,
+    AbstractSet,
 )
 
 import returns
 from frozendict import frozendict
 from orderedset import OrderedSet
-from returns.result import Result, Success
+from returns.maybe import Maybe, Some, Nothing
+from returns.result import Result, safe, Success, Failure
 
 from isla.global_config import GLOBAL_CONFIG
 from isla.type_defs import (
@@ -62,6 +59,7 @@ from isla.type_defs import (
     CanonicalGrammar,
     ImmutableList,
     FrozenCanonicalGrammar,
+    FrozenGrammar,
 )
 
 HELPERS_LOGGER = logging.getLogger(__name__)
@@ -217,7 +215,7 @@ def canonical(grammar: Grammar) -> CanonicalGrammar:
     }
 
 
-def frozen_canonical(grammar: Grammar) -> FrozenCanonicalGrammar:
+def frozen_canonical(grammar: Grammar | FrozenGrammar) -> FrozenCanonicalGrammar:
     """
     A "frozen" version of :func:`isla.helpers.canonical`.
 
@@ -684,233 +682,6 @@ def list_del(ilist: Sequence[T], del_idx: int) -> Sequence[T]:
     return ilist[:del_idx] + ilist[del_idx + 1 :]
 
 
-@dataclass(frozen=True)
-class Monad(ABC, Generic[T]):
-    a: T
-
-    @abstractmethod
-    def bind(self, f: Callable[[T], "Monad[S]"]) -> "Monad[S]":
-        raise NotImplementedError()
-
-
-@dataclass(frozen=True)
-class MonadPlus(Generic[T], Monad[T]):
-    @staticmethod
-    @abstractmethod
-    def nothing() -> "MonadPlus[T]":
-        raise NotImplementedError()
-
-    @abstractmethod
-    def mplus(self, other: "MonadPlus[T]") -> "MonadPlus[T]":
-        raise NotImplementedError()
-
-    @abstractmethod
-    def lazy_mplus(self, f: Callable[[S], "MonadPlus[T]"], arg: S) -> "MonadPlus[T]":
-        raise NotImplementedError()
-
-
-@dataclass(frozen=True)
-class Maybe(Generic[T], MonadPlus[Optional[T]]):
-    """
-    A monad for working with values that may or may not be present.
-
-    Examples:
-    >>> m = Maybe(1)
-    >>> m
-    Maybe(a=1)
-    >>> m.is_present()
-    True
-    >>> Maybe.nothing().is_present()
-    False
-    >>> Maybe(None) == Maybe.nothing()
-    True
-    >>> Maybe.from_iterator(iter([])).is_present()
-    False
-    >>> m = Maybe.from_iterator(iter([1, 2, 3]))
-    >>> m
-    Maybe(a=1)
-    >>> m.map(lambda x: x * 2).get()
-    2
-    >>> m.bind(lambda x: Maybe(x + 1)).get()
-    2
-    >>> m.orelse(lambda: 0).get()
-    1
-    >>> Maybe.nothing().orelse(lambda: 0).get()
-    0
-    >>> m.if_present(print)
-    1
-    Maybe(a=1)
-    >>> Maybe(None).raise_if_not_present(lambda: ValueError("No value"))
-    Traceback (most recent call last):
-        ...
-    ValueError: No value
-    >>> m.get()
-    1
-    >>> Maybe(None).get_unsafe() is None
-    True
-    >>> m + Maybe(4)
-    Maybe(a=1)
-    >>> Maybe.nothing() + (lambda x: Maybe(x * 2), 2)
-    Maybe(a=4)
-    """
-
-    a: Optional[T]
-
-    def bind(self, f: Callable[[T], "Maybe[S]"]) -> "Maybe[S]":
-        return self if self.a is None else f(self.a)
-
-    def map(self, f: Callable[[T], S]) -> "Maybe[S]":
-        return self if self.a is None else Maybe(f(self.a))
-
-    def orelse(self, f: Callable[[], S]) -> "Maybe[S]":
-        assert callable(f)
-        return self if self.a is not None else Maybe(f())
-
-    @staticmethod
-    def nothing() -> "Maybe[T]":
-        return Maybe(None)
-
-    @staticmethod
-    def from_iterator(iterator: Iterator[T]) -> "Maybe[T]":
-        try:
-            return Maybe(next(iterator))
-        except StopIteration:
-            return Maybe.nothing()
-
-    def mplus(self, other: "Maybe[T]") -> "Maybe[T]":
-        return other if self.a is None else self
-
-    def lazy_mplus(self, f: Callable[[S, ...], "Maybe[T]"], *args: S) -> "Maybe[T]":
-        return f(*args) if self.a is None else self
-
-    def if_present(self, f: Callable[[T], None]) -> "Maybe[T]":
-        if self.a is not None:
-            f(self.a)
-        return self
-
-    def is_present(self) -> bool:
-        return self.a is not None
-
-    def raise_if_not_present(self, exc: Callable[[], Exception]) -> "Maybe[T]":
-        if self.a is None:
-            raise exc()
-
-        return self
-
-    def get(self) -> T:
-        if self.a is None:
-            raise AttributeError("No element present")
-        return self.a
-
-    def get_unsafe(self) -> Optional[T]:
-        return self.a
-
-    def __add__(
-        self,
-        other: "Maybe[T]" | Tuple[Callable[[S, ...], "Maybe[T]"], S],
-    ) -> "Maybe[T]":
-        if isinstance(other, Maybe):
-            return self.mplus(other)
-
-        assert isinstance(other, tuple)
-        assert callable(other[0])
-        return self.lazy_mplus(*other)
-
-    def __bool__(self):
-        return self.is_present()
-
-    def __str__(self):
-        return "Nothing" if self.a is None else f"Maybe({deep_str(self.a)})"
-
-
-E = TypeVar("E", bound=Exception)
-
-
-@dataclass(frozen=True)
-class Exceptional(Generic[E, T], Monad[T]):
-    @staticmethod
-    def of(f: Callable[[], T]) -> "Exceptional[E, T]":
-        try:
-            return Success(f())
-        except Exception as exc:
-            return Failure(exc)
-
-    @abstractmethod
-    def get(self) -> T:
-        pass
-
-    @abstractmethod
-    def map(self, f: Callable[[T], S]) -> "Exceptional[S]":
-        pass
-
-    @abstractmethod
-    def recover(self, f: Callable[[E], T], *exc_types: Type[E]) -> "Exceptional[E, T]":
-        pass
-
-    @abstractmethod
-    def reraise(self) -> "Exceptional[T]":
-        pass
-
-
-@dataclass(frozen=True)
-class Success(Generic[T], Exceptional[Exception, T]):
-    a: T
-
-    def get(self) -> T:
-        return self.a
-
-    def bind(self, f: Callable[[T], "Exceptional[S]"]) -> "Exceptional[S]":
-        return f(self.a)
-
-    def map(self, f: Callable[[T], S]) -> "Exceptional[S]":
-        return Exceptional.of(lambda: f(self.a))
-
-    def recover(self, _, *__) -> "Success[T]":
-        return self
-
-    def reraise(self) -> "Success[T]":
-        return self
-
-    def __str__(self):
-        return f"Success({deep_str(self.a)})"
-
-
-@dataclass(frozen=True)
-class Failure(Generic[E], Exceptional[E, Any]):
-    a: E
-
-    def get(self) -> E:
-        raise AttributeError(f"{type(self).__name__} does not support get()")
-
-    def bind(self, _) -> "Exceptional[T]":
-        return self
-
-    def map(self, _) -> "Exceptional[S]":
-        return self
-
-    def recover(self, f: Callable[[E], T], *exc_types: Type[E]) -> "Exceptional[E, T]":
-        if not exc_types or any(isinstance(self.a, exc) for exc in exc_types):
-            return Exceptional.of(lambda: f(self.a))
-        else:
-            return self
-
-    def reraise(self) -> Exceptional[E, Any]:
-        raise self.a
-
-    def __str__(self):
-        return f"Failure({deep_str(self.a)})"
-
-
-def chain_functions(
-    functions: Iterable[Callable[[S, ...], Maybe[T]]], *args: S
-) -> Maybe[T]:
-    return functools.reduce(
-        lambda monad, f: (monad + (f, *args)),
-        functions,
-        Maybe.nothing(),
-    )
-
-
 def is_float(num: Any) -> bool:
     try:
         float(num)
@@ -997,17 +768,16 @@ def get_elem_by_equivalence(
     :param equiv: An equivalence relation. Default is standard equivalence `==`.
     :return: An equivalent element from `elems`.
     """
-    return (
-        Maybe.from_iterator(
-            other_elem for other_elem in elems if equiv(elem, other_elem)
-        )
-        .raise_if_not_present(
-            lambda: AssertionError(
+
+    match safe(
+        lambda: next(other_elem for other_elem in elems if equiv(elem, other_elem))
+    )():
+        case Success(elem):
+            return elem
+        case Failure(_):
+            raise RuntimeError(
                 f"Could not find element equivalent to {elem} in container {elems}"
             )
-        )
-        .get()
-    )
 
 
 def get_expansions(leaf_value: str, grammar: CanonicalGrammar | FrozenCanonicalGrammar):
@@ -1076,28 +846,29 @@ def merge_dict_of_sets(
 
 def merge_intervals(
     *list_of_maybe_intervals: Maybe[List[Tuple[int, int]]]
-) -> Maybe(List[Tuple[int, int]]):
+) -> Maybe[List[Tuple[int, int]]]:
     """
     Merges a sequence of potential lists of intervals. Intervals are sorted, directly
     neighboring and overlapping ones are merged. If any list is not present, a
     :code:`Maybe.nothing()` is returned.
 
-    >>> merge_intervals(*[Maybe([(1, 2)]), Maybe([(3, 4), (0, 1)])])
-    Maybe(a=[(0, 4)])
+    >>> merge_intervals(*[Some([(1, 2)]), Some([(3, 4), (0, 1)])])
+    <Some: [(0, 4)]>
 
-    >>> merge_intervals(*[Maybe([(1, 2)]), Maybe([(4, 5), (0, 1)])])
-    Maybe(a=[(0, 2), (4, 5)])
+    >>> merge_intervals(*[Some([(1, 2)]), Some([(4, 5), (0, 1)])])
+    <Some: [(0, 2), (4, 5)]>
 
-    >>> merge_intervals(*[Maybe([(1, 2)]), Maybe.nothing(), Maybe([(3, 4), (0, 1)])])
-    Maybe(a=None)
+    >>> merge_intervals(*[Some([(1, 2)]), Nothing, Some([(3, 4), (0, 1)])])
+    <Nothing>
 
     :param list_of_maybe_intervals: The sequence of potential lists of intervals.
     :return: A potential list of intervals.
     """
+
     maybe_list_of_intervals: Maybe[List[Tuple[int, int]]] = reduce(
         lambda acc, maybe_intervals: acc.bind(
             lambda list_of_intervals: maybe_intervals.bind(
-                lambda other_list_of_intervals: Maybe(
+                lambda other_list_of_intervals: Some(
                     list_of_intervals + other_list_of_intervals
                 )
             )
@@ -1231,6 +1002,12 @@ def deep_str(obj: Any) -> str:
             + ", ".join([f"{deep_str(a)}: {deep_str(b)}" for a, b in obj.items()])
             + "}"
         )
+    elif isinstance(obj, Maybe):
+        match obj:
+            case Some(elem):
+                return str(Some(deep_str(elem)))
+            case Nothing:
+                return str(obj)
     elif isinstance(obj, returns.result.Result):
         match obj:
             case returns.result.Success(inner):

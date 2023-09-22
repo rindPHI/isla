@@ -5,7 +5,17 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from functools import reduce, lru_cache, partial
-from typing import Tuple, List, Set, Dict, Iterable, Callable, cast, AbstractSet
+from typing import (
+    Tuple,
+    List,
+    Set,
+    Dict,
+    Iterable,
+    Callable,
+    cast,
+    AbstractSet,
+    Sequence,
+)
 
 import z3
 from frozendict import frozendict
@@ -15,7 +25,7 @@ from neo_grammar_graph import NeoGrammarGraph
 from orderedset import FrozenOrderedSet
 from returns.functions import tap
 from returns.maybe import Maybe, Nothing, Some
-from returns.pipeline import flow, is_successful
+from returns.pipeline import flow
 from returns.pointfree import lash, map_
 from returns.result import Result, safe, Failure, Success
 
@@ -43,10 +53,18 @@ from isla.language import (
     BoundVariable,
     fresh_constant,
     Constant,
+    true,
+    false,
 )
 from isla.language import Formula
 from isla.parser import EarleyParser, PEGParser
-from isla.type_defs import FrozenCanonicalGrammar, Path, ImmutableList, Grammar
+from isla.type_defs import (
+    FrozenCanonicalGrammar,
+    Path,
+    ImmutableList,
+    Grammar,
+    FrozenGrammar,
+)
 from isla.z3_helpers import (
     z3_subst,
     parent_relationships_in_z3_expr,
@@ -66,6 +84,62 @@ LOGGER = logging.getLogger(__name__)
 # =====================
 
 
+class FormulaSet(FrozenOrderedSet[Formula]):
+    """
+    This class implements a frozen ordered set with specialized compression for
+    formulas. An empty FormulaSet represents truth; adding "true" to a formula set
+    does not change the formula set; adding "false" to a formula set results in
+    a set consisting only of "false."
+
+    Examples
+    --------
+
+    >>> var = Variable("var", "<var>")
+    >>> constraint = SMTFormula('(= var "x")', var)
+
+    >>> deep_str(FormulaSet([constraint, true(), constraint]))
+    '{var == "x"}'
+
+    >>> deep_str(FormulaSet([true(), constraint, constraint]))
+    '{var == "x"}'
+
+    >>> deep_str(FormulaSet([true()]))
+    '{}'
+
+    >>> deep_str(FormulaSet())
+    '{}'
+
+    >>> deep_str(FormulaSet([false(), constraint]))
+    '{False}'
+
+    >>> deep_str(FormulaSet([constraint, false()]))
+    '{False}'
+
+    >>> deep_str(FormulaSet([false()]) | FormulaSet([constraint]))
+    '{False}'
+
+    # >>> deep_str(FormulaSet([constraint]) | FormulaSet([false()]))
+    # '{False}'
+    """
+
+    def __init__(self, base: Dict[Formula, None] | Iterable[Formula] = frozendict({})):
+        super().__init__(base)
+        self.the_dict = frozendict.fromkeys(
+            reduce(
+                lambda formulas, formula: (
+                    formulas
+                    if formula == true() or formulas == [false()]
+                    else ([formula] if formula == false() else formulas + [formula])
+                ),
+                self,
+                [],
+            )
+        )
+
+    def __call__(self, *args, **kwargs):
+        return FormulaSet(*args, **kwargs)
+
+
 @dataclass(frozen=True)
 class CDT:
     """
@@ -76,7 +150,7 @@ class CDT:
     satisfying the constraints.
     """
 
-    constraints: FrozenOrderedSet[Formula]
+    constraints: FormulaSet
     tree: DerivationTree
 
     def __str__(self):
@@ -127,19 +201,19 @@ class StateTree:
 
         >>> dummy_action = ExpandRuleAction((), 0)
         >>> tree_2 = StateTree(
-        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_2>")), (0, 0)
+        ...     CDT(FormulaSet(), DerivationTree("<tree_2>")), (0, 0)
         ... )
         >>> tree_3 = StateTree(
-        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_3>")), (0, 1)
+        ...     CDT(FormulaSet(), DerivationTree("<tree_3>")), (0, 1)
         ... )
         >>> tree_0 = StateTree(
-        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_0>")),
+        ...     CDT(FormulaSet(), DerivationTree("<tree_0>")),
         ...     (0,),
         ...     ((dummy_action, tree_2), (dummy_action, tree_3),),
         ... )
-        >>> tree_1 = StateTree(CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_1>")), (1,))
+        >>> tree_1 = StateTree(CDT(FormulaSet(), DerivationTree("<tree_1>")), (1,))
         >>> stree = StateTree(
-        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<root>")),
+        ...     CDT(FormulaSet(), DerivationTree("<root>")),
         ...     (),
         ...     ((dummy_action, tree_0), (dummy_action, tree_1)),
         ... )
@@ -153,10 +227,10 @@ class StateTree:
             └─ <tree_1>
 
         >>> tree_X = StateTree(
-        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<X>")), (0, 1)
+        ...     CDT(FormulaSet(), DerivationTree("<X>")), (0, 1)
         ... )
         >>> print(stree.replace((0, 1), tree_X))
-        StateTree(({True} ▸ <root>), [(Expand((), 0), StateTree(({True} ▸ <tree_0>), [(Expand((), 0), StateTree(({True} ▸ <tree_2>))), (Expand((), 0), StateTree(({True} ▸ <X>)))])), (Expand((), 0), StateTree(({True} ▸ <tree_1>)))])
+        StateTree(({} ▸ <root>), [(Expand((), 0), StateTree(({} ▸ <tree_0>), [(Expand((), 0), StateTree(({} ▸ <tree_2>))), (Expand((), 0), StateTree(({} ▸ <X>)))])), (Expand((), 0), StateTree(({} ▸ <tree_1>)))])
 
         :param path: The path to replace.
         :param new_node: The new node to insert at the specified path.
@@ -205,15 +279,15 @@ class StateTree:
 
         >>> dummy_action = ExpandRuleAction((), 0)
         >>> tree_2 = StateTree(
-        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_2>")), (0, 0)
+        ...     CDT(FormulaSet(), DerivationTree("<tree_2>")), (0, 0)
         ... )
         >>> tree_0 = StateTree(
-        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_0>")),
+        ...     CDT(FormulaSet(), DerivationTree("<tree_0>")),
         ...     (0,),
         ...     ((dummy_action, tree_2),),
         ... )
         >>> stree = StateTree(
-        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<root>")),
+        ...     CDT(FormulaSet(), DerivationTree("<root>")),
         ...     (),
         ...     ((dummy_action, tree_0),),
         ... )
@@ -221,13 +295,13 @@ class StateTree:
         This is the original tree:
 
         >>> print(stree)
-        StateTree(({True} ▸ <root>), [(Expand((), 0), StateTree(({True} ▸ <tree_0>), [(Expand((), 0), StateTree(({True} ▸ <tree_2>)))]))])
+        StateTree(({} ▸ <root>), [(Expand((), 0), StateTree(({} ▸ <tree_0>), [(Expand((), 0), StateTree(({} ▸ <tree_2>)))]))])
 
         And here is the updated one:
 
-        >>> new_cdt = CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_1>"))
+        >>> new_cdt = CDT(FormulaSet(), DerivationTree("<tree_1>"))
         >>> print(stree.add_child(dummy_action, new_cdt))
-        StateTree(({True} ▸ <root>), [(Expand((), 0), StateTree(({True} ▸ <tree_0>), [(Expand((), 0), StateTree(({True} ▸ <tree_2>)))])), (Expand((), 0), StateTree(({True} ▸ <tree_1>)))])
+        StateTree(({} ▸ <root>), [(Expand((), 0), StateTree(({} ▸ <tree_0>), [(Expand((), 0), StateTree(({} ▸ <tree_2>)))])), (Expand((), 0), StateTree(({} ▸ <tree_1>)))])
 
         Now, we add tree 1 to the inner node tree 0, resulting in::
 
@@ -237,7 +311,7 @@ class StateTree:
                └─ <tree_1>
 
         >>> print(stree.add_child(dummy_action, new_cdt, (0,)))
-        StateTree(({True} ▸ <root>), [(Expand((), 0), StateTree(({True} ▸ <tree_0>), [(Expand((), 0), StateTree(({True} ▸ <tree_2>))), (Expand((), 0), StateTree(({True} ▸ <tree_1>)))]))])
+        StateTree(({} ▸ <root>), [(Expand((), 0), StateTree(({} ▸ <tree_0>), [(Expand((), 0), StateTree(({} ▸ <tree_2>))), (Expand((), 0), StateTree(({} ▸ <tree_1>)))]))])
 
         :param action: The action leading to the new child.
         :param node: The CDT to add.
@@ -285,17 +359,17 @@ class StateTree:
 
         >>> dummy_action = ExpandRuleAction((), 0)
         >>> tree_2 = StateTree(
-        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_2>")), (0, 0)
+        ...     CDT(FormulaSet(), DerivationTree("<tree_2>")), (0, 0)
         ... )
         >>> tree_0 = StateTree(
-        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_0>")),
+        ...     CDT(FormulaSet(), DerivationTree("<tree_0>")),
         ...     (0,),
         ...     ((dummy_action, tree_2),),
         ... )
         >>> tree_1 = StateTree(
-        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_1>")), (1,))
+        ...     CDT(FormulaSet(), DerivationTree("<tree_1>")), (1,))
         >>> stree = StateTree(
-        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<root>")),
+        ...     CDT(FormulaSet(), DerivationTree("<root>")),
         ...     (),
         ...     ((dummy_action, tree_0), (dummy_action, tree_1)),
         ... )
@@ -308,12 +382,12 @@ class StateTree:
         The first child is tree 0:
 
         >>> print(stree.get_subtree((0,)))
-        StateTree(({True} ▸ <tree_0>), [(Expand((), 0), StateTree(({True} ▸ <tree_2>)))])
+        StateTree(({} ▸ <tree_0>), [(Expand((), 0), StateTree(({} ▸ <tree_2>)))])
 
         The first child of tree 0 is tree 2:
 
         >>> print(stree.get_subtree((0, 0)))
-        StateTree(({True} ▸ <tree_2>))
+        StateTree(({} ▸ <tree_2>))
 
         :param path: The path of the tree node to return.
         :return: The tree node at the specified path.
@@ -348,16 +422,16 @@ class StateTree:
 
         >>> dummy_action = ExpandRuleAction((), 0)
         >>> tree_2 = StateTree(
-        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_2>")), (0, 0)
+        ...     CDT(FormulaSet(), DerivationTree("<tree_2>")), (0, 0)
         ... )
         >>> tree_0 = StateTree(
-        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_0>")),
+        ...     CDT(FormulaSet(), DerivationTree("<tree_0>")),
         ...     (0,),
         ...     ((dummy_action, tree_2),),
         ... )
-        >>> tree_1 = StateTree(CDT(FrozenOrderedSet([true()]), DerivationTree("<tree_1>")), (1,))
+        >>> tree_1 = StateTree(CDT(FormulaSet(), DerivationTree("<tree_1>")), (1,))
         >>> stree = StateTree(
-        ...     CDT(FrozenOrderedSet([true()]), DerivationTree("<root>")),
+        ...     CDT(FormulaSet(), DerivationTree("<root>")),
         ...     (),
         ...     ((dummy_action, tree_0), (dummy_action, tree_1)),
         ... )
@@ -365,17 +439,17 @@ class StateTree:
         The :code:`tree_2` is a leaf:
 
         >>> print(tree_2)
-        StateTree(({True} ▸ <tree_2>))
+        StateTree(({} ▸ <tree_2>))
 
         Its parent is :code:`tree_0`:
 
         >>> print(tree_2.parent(stree))
-        StateTree(({True} ▸ <tree_0>), [(Expand((), 0), StateTree(({True} ▸ <tree_2>)))])
+        StateTree(({} ▸ <tree_0>), [(Expand((), 0), StateTree(({} ▸ <tree_2>)))])
 
         The parent of :code:`tree_0`, in turn, is :code:`root`:
 
         >>> print(tree_2.parent(stree).parent(stree))
-        StateTree(({True} ▸ <root>), [(Expand((), 0), StateTree(({True} ▸ <tree_0>), [(Expand((), 0), StateTree(({True} ▸ <tree_2>)))])), (Expand((), 0), StateTree(({True} ▸ <tree_1>)))])
+        StateTree(({} ▸ <root>), [(Expand((), 0), StateTree(({} ▸ <tree_0>), [(Expand((), 0), StateTree(({} ▸ <tree_2>)))])), (Expand((), 0), StateTree(({} ▸ <tree_1>)))])
 
         It is the root node of our tree.
 
@@ -456,7 +530,13 @@ class ExpandRuleAction(Action):
 
 @dataclass(frozen=True)
 class ExpandRule(Rule):
-    grammar: FrozenCanonicalGrammar
+    grammar: FrozenGrammar
+    __canonical_grammar: Maybe[FrozenCanonicalGrammar] = Nothing
+
+    def __post_init__(self):
+        object.__setattr__(
+            self, "_ExpandRule__canonical_grammar", frozen_canonical(self.grammar)
+        )
 
     def action(self, state_tree: StateTree) -> Maybe[ExpandRuleAction]:
         """
@@ -470,24 +550,24 @@ class ExpandRule(Rule):
         >>> import string
         >>> from isla.language import true
 
-        >>> grammar: FrozenCanonicalGrammar = frozendict({
+        >>> grammar: FrozenGrammar = frozendict({
         ...     "<start>":
-        ...         (("<stmt>",),),
+        ...         ("<stmt>",),
         ...     "<stmt>":
-        ...         (("<assgn>", " ; ", "<stmt>"), ("<assgn>",)),
+        ...         ("<assgn> ; <stmt>", "<assgn>"),
         ...     "<assgn>":
-        ...         (("<var>", " := ", "<rhs>"),),
+        ...         ("<var> := <rhs>",),
         ...     "<rhs>":
-        ...         (("<var>",), ("<digit>",)),
-        ...     "<var>": tuple([(c,) for c in string.ascii_lowercase]),
-        ...     "<digit>": tuple([(c,) for c in string.digits]),
+        ...         ("<var>", "<digit>"),
+        ...     "<var>": tuple(string.ascii_lowercase),
+        ...     "<digit>": tuple(string.digits),
         ... })
 
         We create a derivation tree that permits exactly two expansions and a trivial
         state tree.
 
         >>> dtree = DerivationTree("<start>", (DerivationTree("<stmt>"),))
-        >>> stree = StateTree(CDT(FrozenOrderedSet([true()]), dtree))
+        >>> stree = StateTree(CDT(FormulaSet(), dtree))
         >>> rule = ExpandRule(grammar)
         >>> action = rule.action(stree)
 
@@ -520,7 +600,7 @@ class ExpandRule(Rule):
         alternative_id, alternative = random.choice(
             cast(
                 Tuple[int, ImmutableList[ImmutableList[str]]],
-                tuple(enumerate(self.grammar[leaf.value])),
+                tuple(enumerate(self.__canonical_grammar[leaf.value])),
             )
         )
 
@@ -540,20 +620,20 @@ class ExpandRule(Rule):
         >>> import string
         >>> from isla.language import true
 
-        >>> grammar: FrozenCanonicalGrammar = frozendict({
+        >>> grammar: FrozenGrammar = frozendict({
         ...     "<start>":
-        ...         (("<stmt>",),),
+        ...         ("<stmt>",),
         ...     "<stmt>":
-        ...         (("<assgn>", " ; ", "<stmt>"), ("<assgn>",)),
+        ...         ("<assgn> ; <stmt>", "<assgn>"),
         ...     "<assgn>":
-        ...         (("<var>", " := ", "<rhs>"),),
+        ...         ("<var> := <rhs>",),
         ...     "<rhs>":
-        ...         (("<var>",), ("<digit>",)),
-        ...     "<var>": tuple([(c,) for c in string.ascii_lowercase]),
-        ...     "<digit>": tuple([(c,) for c in string.digits]),
+        ...         ("<var>", "<digit>"),
+        ...     "<var>": tuple(string.ascii_lowercase),
+        ...     "<digit>": tuple(string.digits),
         ... })
         >>> dtree = DerivationTree("<start>", (DerivationTree("<stmt>"),))
-        >>> stree = StateTree(CDT(FrozenOrderedSet([true()]), dtree))
+        >>> stree = StateTree(CDT(FormulaSet(), dtree))
 
         We expand the open leaf first with the first expansion rule:
 
@@ -561,13 +641,13 @@ class ExpandRule(Rule):
 
         >>> action = ExpandRuleAction((0,), 0)
         >>> print(rule.apply(stree, action))
-        StateTree(({True} ▸ <stmt>), [(Expand((0,), 0), StateTree(({True} ▸ <assgn> ; <stmt>)))])
+        StateTree(({} ▸ <stmt>), [(Expand((0,), 0), StateTree(({} ▸ <assgn> ; <stmt>)))])
 
         Now, we choose the second expansion rule:
 
         >>> action = ExpandRuleAction((0,), 1)
         >>> print(rule.apply(stree, action))
-        StateTree(({True} ▸ <stmt>), [(Expand((0,), 1), StateTree(({True} ▸ <assgn>)))])
+        StateTree(({} ▸ <stmt>), [(Expand((0,), 1), StateTree(({} ▸ <assgn>)))])
 
         :param state_tree: The state tree whose derivation tree we should expand
             according to the specified action.
@@ -581,9 +661,9 @@ class ExpandRule(Rule):
                 DerivationTree(symbol)
                 if is_nonterminal(symbol)
                 else DerivationTree(symbol, ())
-                for symbol in self.grammar[node.tree.get_subtree(action.path).value][
-                    action.alternative
-                ]
+                for symbol in self.__canonical_grammar[
+                    node.tree.get_subtree(action.path).value
+                ][action.alternative]
             ]
         )
         new_tree = DerivationTree(node.tree.value, new_children)
@@ -618,7 +698,7 @@ class SplitAndRule(Rule):
         ...     & SMTFormula("(< (str.to_int x) 9)", Constant("x", "<X>"))
         ... )
         >>> stree = StateTree(
-        ...     CDT(FrozenOrderedSet([conjunction]), DerivationTree("<start>"))
+        ...     CDT(FormulaSet([conjunction]), DerivationTree("<start>"))
         ... )
         >>> print(SplitAndRule().action(stree))
         <Some: SplitAnd((StrToInt(x) > 0 ∧ StrToInt(x) < 9))>
@@ -653,7 +733,7 @@ class SplitAndRule(Rule):
         ...     & SMTFormula("(< (str.to_int x) 9)", Constant("x", "<X>"))
         ... )
         >>> stree = StateTree(
-        ...     CDT(FrozenOrderedSet([conjunction]), DerivationTree("<start>"))
+        ...     CDT(FormulaSet([conjunction]), DerivationTree("<start>"))
         ... )
         >>> action = SplitAndAction(conjunction)
         >>> print(SplitAndRule().apply(stree, action))
@@ -705,7 +785,7 @@ class ChooseOrRule(Rule):
         ...     | SMTFormula("(< (str.to_int x) 9)", Constant("x", "<X>"))
         ... )
         >>> stree = StateTree(
-        ...     CDT(FrozenOrderedSet([disjunction]), DerivationTree("<start>"))
+        ...     CDT(FormulaSet([disjunction]), DerivationTree("<start>"))
         ... )
         >>> str(ChooseOrRule().action(stree)) in [
         ...     '<Some: ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 0)>',
@@ -714,7 +794,7 @@ class ChooseOrRule(Rule):
         True
 
         >>> ChooseOrRule().action(
-        ...     StateTree(CDT(FrozenOrderedSet({}), DerivationTree("<start>"))))
+        ...     StateTree(CDT(FormulaSet({}), DerivationTree("<start>"))))
         <Nothing>
 
         :param state_tree: The input state tree.
@@ -753,7 +833,7 @@ class ChooseOrRule(Rule):
         ...     | SMTFormula("(< (str.to_int x) 9)", Constant("x", "<X>"))
         ... )
         >>> stree = StateTree(
-        ...     CDT(FrozenOrderedSet([disjunction]), DerivationTree("<start>"))
+        ...     CDT(FormulaSet([disjunction]), DerivationTree("<start>"))
         ... )
 
         >>> action = ChooseOrAction(disjunction, 0)
@@ -786,61 +866,261 @@ class ChooseOrRule(Rule):
 
 @dataclass(frozen=True)
 class SolveSMTAction(Action):
+    cluster: FormulaSet
     result: bool | frozendict[Variable | DerivationTree, DerivationTree]
 
     def __str__(self):
-        return f"SolveSMT({deep_str(self.result)})"
+        return f"SolveSMT({deep_str(self.cluster)} --> {deep_str(self.result)})"
 
 
 @dataclass(frozen=True)
 class SolveSMTRule(Rule):
-    def action(self, state_tree: StateTree) -> Maybe[Action]:
-        """
-        TODO
+    graph: NeoGrammarGraph
 
-        :param state_tree:
-        :return:
+    # TODO: Refine action signature in Rule superclass/sibling classes
+    def action(
+        self, state_tree: StateTree
+    ) -> Maybe[Result[SolveSMTAction, SyntaxError | StopIteration]]:
         """
+        This function returns a :class:`~isla.solver2.SolveSMTAction` if there exit
+        SMT formulas in the given state tree and a solution could be computed. The
+        solution is either an assignment of derivation trees to variables or other
+        derivation trees, True for valid formulas, or False for invalid formulas.
+        Only the first *cluster* of constraints depending on the same variables is
+        considered in solving. In case of an error during the solving process, some
+        failure (SyntaxError or StopIteration) is returned. A SyntaxError signals that
+        a solver solution does not conform to the grammar. A StopIteration signals
+        that we could not generate another, different solution; this applies to the
+        case that :code:`state_tree` already has children and we look for different
+        ones.
 
-        semantic_formulas = [
+        Example
+        -------
+
+        Consider our running assignment language example:
+
+        >>> import string
+        >>> grammar: Grammar = {
+        ...     "<start>":
+        ...         ["<stmt>"],
+        ...     "<stmt>":
+        ...         ["<assgn> ; <stmt>", "<assgn>"],
+        ...     "<assgn>":
+        ...         ["<var> := <rhs>"],
+        ...     "<rhs>":
+        ...         ["<var>", "<digit>"],
+        ...     "<var>": list(string.ascii_lowercase),
+        ...     "<digit>": list(string.digits)
+        ... }
+        >>> graph = NeoGrammarGraph(grammar)
+
+        Assume we are in a state with two simple constraints: A :code:`<var>` variable
+        should equal "x," and a :code:`<digit>` variable should attain a value
+        greater 3.
+
+        >>> var = Variable("var", "<var>")
+        >>> var_tree = DerivationTree("<var>", id=0)
+        >>> digit = Variable("digit", "<digit>")
+        >>> digit_tree = DerivationTree("<digit>", id=1)
+
+        >>> var_eq_x_constraint = SMTFormula(
+        ...     '(= var "x")',
+        ...     instantiated_variables=FrozenOrderedSet([var]),
+        ...     substitutions={var: var_tree},
+        ... )
+
+        >>> digit_greater_3_constraint = SMTFormula(
+        ...     '(> (str.to.int digit) 3)',
+        ...     instantiated_variables=FrozenOrderedSet([digit]),
+        ...     substitutions={digit: digit_tree},
+        ... )
+
+        This is the original derivation tree in our state.
+
+        >>> orig_dtree = DerivationTree(
+        ...     "<start>",
+        ...     (
+        ...         DerivationTree(
+        ...             "<stmt>",
+        ...             (
+        ...                 DerivationTree(
+        ...                     "<assgn>",
+        ...                     (var_tree, DerivationTree(" := ", ()), digit_tree)
+        ...                 ),
+        ...             ),
+        ...         ),
+        ...     ),
+        ... )
+
+        We compute a SolveSMTAction in this situation.
+
+        >>> constraints = FormulaSet([var_eq_x_constraint, digit_greater_3_constraint])
+        >>> rule = SolveSMTRule(graph)
+        >>> rule.action(StateTree(CDT(constraints, orig_dtree)))
+        <Some: <Success: SolveSMT({(<var>_0 == "x", {'<var>_0': '<var>'})} --> {<var>: x})>>
+
+        Note that we obtain a solution for the first cluster, the constraint on the
+        variable "var."
+
+        If there are no SMT formulas, we obtain Nothing:
+
+        >>> rule.action(StateTree(CDT(FormulaSet(), orig_dtree)))
+        <Nothing>
+
+        For "wrong" constraints, e.g., comprising a string-to-int conversion on a
+        :code:`<var>` variable, some SytaxError failure is returned:
+
+        >>> deep_str(
+        ...     rule.action(
+        ...         StateTree(
+        ...             CDT(
+        ...                 FormulaSet([SMTFormula("(= (str.to.int var) 8)", var)]),
+        ...                 orig_dtree,
+        ...             )
+        ...         )
+        ...     )
+        ... )[:51] + "...>>"
+        '<Some: <Failure: Could not parse a numeric solution...>>'
+
+        :param state_tree: The state tree node starting from which we try to find a
+            solution to contained SMT formulas.
+        :return: Nothing if there are not SMT formulas in the state tree; otherwise,
+            some solution or some failure.
+        """  # noqa: E501
+
+        smt_formulas = [
             conjunct
             for conjunct in state_tree.node.constraints
             if isinstance(conjunct, SMTFormula)
         ]
 
-        # other_formulas = [
-        #     conjunct
-        #     for conjunct in state_tree.node.constraints
-        #     if not isinstance(conjunct, SMTFormula)
-        # ]
-
-        if not semantic_formulas:
-            return Maybe.nothing()
+        if not smt_formulas:
+            return Nothing
 
         LOGGER.debug(
-            "Eliminating semantic formulas [%s]", lazyjoin(", ", semantic_formulas)
+            "Eliminating first cluster of semantic formulas {%s}",
+            lazyjoin(", ", smt_formulas),
         )
 
-        raise NotImplementedError
+        return Some(
+            unify_smt_formulas_and_solve_first_cluster(
+                self.graph, smt_formulas, Some(state_tree)
+            ).map(
+                lambda cluster_and_result: SolveSMTAction(
+                    cluster_and_result[0], cluster_and_result[1]
+                )
+            )
+        )
 
-    def apply(self, state_tree: StateTree, action: Action) -> StateTree:
+    def apply(self, state_tree: StateTree, action: SolveSMTAction) -> StateTree:
         """
         TODO
 
-        :param state_tree:
-        :param action:
-        :return:
-        """
+        Example
+        -------
 
-        raise NotImplementedError
+        Consider our running assignment language example:
+
+        >>> import string
+        >>> grammar: Grammar = {
+        ...     "<start>":
+        ...         ["<stmt>"],
+        ...     "<stmt>":
+        ...         ["<assgn> ; <stmt>", "<assgn>"],
+        ...     "<assgn>":
+        ...         ["<var> := <rhs>"],
+        ...     "<rhs>":
+        ...         ["<var>", "<digit>"],
+        ...     "<var>": list(string.ascii_lowercase),
+        ...     "<digit>": list(string.digits)
+        ... }
+        >>> graph = NeoGrammarGraph(grammar)
+
+        Assume we are in a state with two simple constraints: A :code:`<var>` variable
+        should equal "x," and a :code:`<digit>` variable should attain a value
+        greater 3.
+
+        >>> var = Variable("var", "<var>")
+        >>> var_tree = DerivationTree("<var>", id=0)
+        >>> digit = Variable("digit", "<digit>")
+        >>> digit_tree = DerivationTree("<digit>", id=1)
+
+        >>> var_eq_x_constraint = SMTFormula(
+        ...     '(= var "x")',
+        ...     instantiated_variables=FrozenOrderedSet([var]),
+        ...     substitutions={var: var_tree},
+        ... )
+
+        >>> digit_greater_3_constraint = SMTFormula(
+        ...     '(> (str.to.int digit) 3)',
+        ...     instantiated_variables=FrozenOrderedSet([digit]),
+        ...     substitutions={digit: digit_tree},
+        ... )
+
+        This is the original derivation tree in our state.
+
+        >>> orig_dtree = DerivationTree(
+        ...     "<start>",
+        ...     (
+        ...         DerivationTree(
+        ...             "<stmt>",
+        ...             (
+        ...                 DerivationTree(
+        ...                     "<assgn>",
+        ...                     (var_tree, DerivationTree(" := ", ()), digit_tree)
+        ...                 ),
+        ...             ),
+        ...         ),
+        ...     ),
+        ... )
+
+        We compute a SolveSMTAction in this situation.
+
+        >>> constraints = FormulaSet([var_eq_x_constraint, digit_greater_3_constraint])
+        >>> rule = SolveSMTRule(graph)
+        >>> state_tree = StateTree(CDT(constraints, orig_dtree))
+        >>> action = rule.action(state_tree).unwrap().unwrap()
+        >>> print(deep_str(action))
+        SolveSMT({(<var>_0 == "x", {'<var>_0': '<var>'})} --> {<var>: x})
+
+        Next, we apply this action.
+
+        >>> print(deep_str(rule.apply(state_tree, action).children[0]))
+        (SolveSMT({(<var>_0 == "x", {'<var>_0': '<var>'})} --> {<var>: x}), StateTree(({(StrToInt(digit) > 3, {'digit': '<digit>'})} ▸ x := <digit>)))
+
+        :param state_tree: TODO
+        :param action: TODO
+        :return:
+        """  # noqa: E501
+
+        new_constraints = state_tree.node.constraints.difference(action.cluster)
+        new_tree = state_tree.node.tree
+        if action.result is False:
+            new_constraints = FormulaSet([false()])
+        elif action.result is True:
+            pass
+        else:
+            assert isinstance(action.result, dict)
+
+            new_constraints = FormulaSet(
+                map(
+                    lambda constraint: constraint.substitute_expressions(action.result),
+                    new_constraints,
+                )
+            )
+
+            new_tree = new_tree.substitute(action.result)
+
+        return state_tree.add_child(action, CDT(new_constraints, new_tree))
 
 
 def unify_smt_formulas_and_solve_first_cluster(
     graph: NeoGrammarGraph,
-    smt_formulas: ImmutableList[SMTFormula],
+    smt_formulas: Sequence[SMTFormula],
     maybe_state_tree: Maybe[StateTree] = Nothing,
 ) -> Result[
-    bool | Dict[Variable | DerivationTree, DerivationTree], SyntaxError | StopIteration
+    Tuple[FormulaSet, bool | Dict[Variable | DerivationTree, DerivationTree]],
+    SyntaxError | StopIteration,
 ]:
     """
     This function clusters the given SMT formulas and calls
@@ -889,7 +1169,7 @@ def unify_smt_formulas_and_solve_first_cluster(
     ...     digit_smaller_8_constraint,
     ... )
     >>> deep_str(unify_smt_formulas_and_solve_first_cluster(graph, constraints))
-    '<Success: {var: x}>'
+    '<Success: ({var == "x"}, {var: x})>'
 
     The call resulted in a solution to "var" only, since the corresponding constraint
     formed the first cluster. If we reorder the constraints, we obtain a different
@@ -900,7 +1180,7 @@ def unify_smt_formulas_and_solve_first_cluster(
     ...     digit_smaller_8_constraint,
     ...     var_eq_x_constraint)
     >>> deep_str(unify_smt_formulas_and_solve_first_cluster(graph, constraints))
-    '<Success: {digit: 4}>'
+    '<Success: ({StrToInt(digit) > 3, StrToInt(digit) < 8}, {digit: 4})>'
 
     The order of the "digit" constraints is irrelevant.
 
@@ -909,31 +1189,31 @@ def unify_smt_formulas_and_solve_first_cluster(
     ...     digit_smaller_8_constraint,
     ... )
     >>> deep_str(unify_smt_formulas_and_solve_first_cluster(graph, constraints))
-    '<Success: {digit: 4}>'
+    '<Success: ({StrToInt(digit) > 3, StrToInt(digit) < 8}, {digit: 4})>'
 
     >>> constraints = (
     ...     digit_smaller_8_constraint,
     ...     digit_greater_3_constraint,
     ... )
     >>> deep_str(unify_smt_formulas_and_solve_first_cluster(graph, constraints))
-    '<Success: {digit: 4}>'
+    '<Success: ({StrToInt(digit) < 8, StrToInt(digit) > 3}, {digit: 4})>'
 
     In this case, the clustering works by variable names only. However, we also
     consider the *substitutions* in SMT formulas when clustering, since two variables
     with the same name may reference different trees; similarly, two variables with
     different names may reference the same tree.
 
-    >>> digit_dtree_1 = DerivationTree("<digit>")
-    >>> digit_dtree_2 = DerivationTree("<digit>")
+    >>> digit_dtree_1 = DerivationTree("<digit>", id=2)
+    >>> digit_dtree_2 = DerivationTree("<digit>", id=3)
 
     >>> digit_greater_3_constraint = SMTFormula(
     ...     "(> (str.to.int digit) 3)",
-    ...     instantiated_variables=FrozenOrderedSet([digit]),
+    ...     instantiated_variables=FormulaSet([digit]),
     ...     substitutions={digit: digit_dtree_1},
     ... )
     >>> digit_smaller_8_constraint = SMTFormula(
     ...     "(< (str.to.int digit) 8)",
-    ...     instantiated_variables=FrozenOrderedSet([digit]),
+    ...     instantiated_variables=FormulaSet([digit]),
     ...     substitutions={digit: digit_dtree_2},
     ... )
 
@@ -943,10 +1223,7 @@ def unify_smt_formulas_and_solve_first_cluster(
     ... )
     >>> solution = unify_smt_formulas_and_solve_first_cluster(graph, constraints)
     >>> deep_str(solution)
-    '<Success: {<digit>: 4}>'
-
-    >>> list(solution.unwrap().keys()) == [digit_dtree_1]
-    True
+    "<Success: ({(StrToInt(<digit>_2) > 3, {'<digit>_2': '<digit>'})}, {<digit>: 4})>"
 
     Changing the order of the constraints changes the result.
 
@@ -956,10 +1233,7 @@ def unify_smt_formulas_and_solve_first_cluster(
     ... )
     >>> solution = unify_smt_formulas_and_solve_first_cluster(graph, constraints)
     >>> deep_str(solution)
-    '<Success: {<digit>: 0}>'
-
-    >>> list(solution.unwrap().keys()) == [digit_dtree_2]
-    True
+    "<Success: ({(StrToInt(<digit>_3) < 8, {'<digit>_3': '<digit>'})}, {<digit>: 0})>"
 
     Now, we create a different "digit" variable, but let it refer to the same
     derivation tree.
@@ -968,12 +1242,12 @@ def unify_smt_formulas_and_solve_first_cluster(
 
     >>> digit_greater_3_constraint = SMTFormula(
     ...     "(> (str.to.int digit) 3)",
-    ...     instantiated_variables=FrozenOrderedSet([digit]),
+    ...     instantiated_variables=FormulaSet([digit]),
     ...     substitutions={digit: digit_dtree_1},
     ... )
     >>> digit_2_smaller_8_constraint = SMTFormula(
     ...     "(< (str.to.int digit_2) 8)",
-    ...     instantiated_variables=FrozenOrderedSet([digit_2]),
+    ...     instantiated_variables=FormulaSet([digit_2]),
     ...     substitutions={digit_2: digit_dtree_1},
     ... )
 
@@ -983,9 +1257,9 @@ def unify_smt_formulas_and_solve_first_cluster(
     ... )
     >>> solution = unify_smt_formulas_and_solve_first_cluster(graph, constraints)
     >>> deep_str(solution)
-    '<Success: {<digit>: 4}>'
+    "<Success: ({(StrToInt(<digit>_2) > 3, {'<digit>_2': '<digit>'}), (StrToInt(<digit>_2) < 8, {'<digit>_2': '<digit>'})}, {<digit>: 4})>"
 
-    >>> list(solution.unwrap().keys()) == [digit_dtree_1]
+    >>> list(solution.unwrap()[1].keys()) == [digit_dtree_1]
     True
 
     Now, there is only one cluster: The order of the constraints does not matter.
@@ -996,9 +1270,9 @@ def unify_smt_formulas_and_solve_first_cluster(
     ... )
     >>> solution = unify_smt_formulas_and_solve_first_cluster(graph, constraints)
     >>> deep_str(solution)
-    '<Success: {<digit>: 4}>'
+    "<Success: ({(StrToInt(<digit>_2) < 8, {'<digit>_2': '<digit>'}), (StrToInt(<digit>_2) > 3, {'<digit>_2': '<digit>'})}, {<digit>: 4})>"
 
-    >>> list(solution.unwrap().keys()) == [digit_dtree_1]
+    >>> list(solution.unwrap()[1].keys()) == [digit_dtree_1]
     True
 
     :param graph: The grammar graph representing the reference grammar.
@@ -1007,7 +1281,8 @@ def unify_smt_formulas_and_solve_first_cluster(
         be applied on. This is used to obtain previous solutions and compute a new/
         different solution. If nothing is passed for this argument, we compute a
         solution without any exclusion constraints.
-    :return: A (possibly empty) list of solutions or a Boolean value (True if the
+    :return: (1) The formulas in the cluster for which a solution was computed, and (2)
+        a (possibly empty) list of solutions or a Boolean value (True if the
         formulas are universally valid or False for unsatisfiable/timeout) in the
         case of success. If a computed solution is no valid word in the respected
         sub grammar, a SyntaxError failure is returned. If another solution for the
@@ -1064,7 +1339,9 @@ def unify_smt_formulas_and_solve_first_cluster(
         )
     )
 
-    return solve_smt_formulas(graph, formula_cluster, maybe_state_tree)
+    return solve_smt_formulas(graph, formula_cluster, maybe_state_tree).map(
+        lambda result: (FormulaSet(formula_cluster), result)
+    )
 
 
 def solve_smt_formulas(
@@ -1171,13 +1448,10 @@ def solve_smt_formulas(
     ...     ),
     ... )
 
-    >>> tree = StateTree(
-    ...     CDT(
-    ...         FrozenOrderedSet([var_eq_x_constraint, digit_greater_3_constraint]),
-    ...         parent_dtree,
-    ...     )
-    ... ).add_child(
-    ...     SolveSMTAction(solution.unwrap()), CDT(FrozenOrderedSet([]), child_dtree)
+    >>> constraints = FormulaSet([var_eq_x_constraint, digit_greater_3_constraint])
+    >>> tree = StateTree(CDT(constraints, parent_dtree)).add_child(
+    ...     SolveSMTAction(constraints, solution.unwrap()),
+    ...     CDT(FormulaSet([]), child_dtree)
     ... )
 
     >>> new_solution = solve_smt_formulas(
@@ -1202,15 +1476,11 @@ def solve_smt_formulas(
     Once a "True" or "False" solution is contained in the state tree, no more solutions
     are produced. Instead, we return a Failure object with a StopIteration exception.
 
-    >>> tree = StateTree(
-    ...     CDT(
-    ...         FrozenOrderedSet([
-    ...             SMTFormula(z3_eq(digit.to_smt(), digit.to_smt()), digit)
-    ...         ]),
-    ...         parent_dtree,
-    ...     )
-    ... ).add_child(
-    ...     SolveSMTAction(True), CDT(FrozenOrderedSet([]), parent_dtree)
+    >>> constraints = FormulaSet([
+    ...     SMTFormula(z3_eq(digit.to_smt(), digit.to_smt()), digit)
+    ... ])
+    >>> tree = StateTree(CDT(constraints, parent_dtree)).add_child(
+    ...     SolveSMTAction(constraints, True), CDT(FormulaSet([]), parent_dtree)
     ... )
 
     >>> deep_str(solve_smt_formulas(
@@ -1583,7 +1853,7 @@ def solve_smt_formulas_with_language_constraints(
     >>> tree_substitutions = {z: parse("a := 7", grammar).unwrap()}
 
     >>> deep_str(solve_smt_formulas_with_language_constraints(
-    ...     graph, constraints, FrozenOrderedSet([x, y, z]), Some(tree_substitutions)))
+    ...     graph, constraints, FormulaSet([x, y, z]), Some(tree_substitutions)))
     '<Success: (SolverResult.SATISFIABLE, {x: a := 7, y: a := 7})>'
 
     If a solution returned by the SMT solver does not fit to the grammar, a

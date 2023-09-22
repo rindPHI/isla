@@ -18,11 +18,16 @@
 
 import copy
 import functools
+import heapq
 import random
 from typing import Union, List, Optional, Dict, Tuple, Callable
-import heapq
 
 from grammar_graph.gg import GrammarGraph
+from returns.functions import compose
+from returns.maybe import Nothing, Maybe, Some
+from returns.pipeline import flow
+from returns.pointfree import lash
+from returns.result import Failure, Success
 
 from isla import language
 from isla.derivation_tree import DerivationTree
@@ -33,8 +38,6 @@ from isla.helpers import (
     parent_or_child,
     is_nonterminal,
     canonical,
-    Maybe,
-    chain_functions,
 )
 from isla.language import (
     SemPredEvalResult,
@@ -658,23 +661,33 @@ def octal_to_dec(
     def octal_parser(inp):
         return DerivationTree.from_parse_tree(_octal_parser(inp)[0][1][0])
 
-    monad = chain_functions(
-        [
-            octal_to_dec_concrete_octal,
-            octal_to_dec_concrete_decimal,
-            octal_to_dec_both_trees,
-        ],
-        octal,
-        decimal,
-        octal_parser,
-        decimal_parser,
-    )
-
-    if not monad.is_present():
-        raise NotImplementedError(
-            f'Could not convert between octal "{octal}" and decimal "{decimal}"'
+    return (
+        flow(
+            Nothing,
+            *map(
+                compose(
+                    lambda f: (
+                        lambda _: f(octal, decimal, octal_parser, decimal_parser)
+                    ),
+                    lash,
+                ),
+                [
+                    octal_to_dec_concrete_octal,
+                    octal_to_dec_concrete_decimal,
+                    octal_to_dec_both_trees,
+                ],
+            ),
         )
-    return monad.get()
+        .lash(
+            lambda _: Failure(
+                NotImplementedError(
+                    f'Could not convert between octal "{octal}" and decimal "{decimal}"'
+                )
+            )
+        )
+        .bind(Success)
+        .unwrap()
+    )
 
 
 def octal_to_dec_concrete_octal(
@@ -688,10 +701,10 @@ def octal_to_dec_concrete_octal(
         or not isinstance(decimal, language.Variable)
         and decimal.is_complete()
     ):
-        return Maybe.nothing()
+        return Nothing
 
     if not octal.is_complete():
-        return Maybe(SemPredEvalResult(None))
+        return Some(SemPredEvalResult(None))
 
     # Conversion to decimal
     octal_str = str(octal)
@@ -700,7 +713,7 @@ def octal_to_dec_concrete_octal(
     for idx, digit in enumerate(reversed(octal_str)):
         decimal_number += (8**idx) * int(digit)
 
-    return Maybe(SemPredEvalResult({decimal: decimal_parser(str(decimal_number))}))
+    return Some(SemPredEvalResult({decimal: decimal_parser(str(decimal_number))}))
 
 
 def octal_to_dec_concrete_decimal(
@@ -714,16 +727,16 @@ def octal_to_dec_concrete_decimal(
         or not isinstance(octal, language.Variable)
         and octal.is_complete()
     ):
-        return Maybe.nothing()
+        return Nothing
 
     if not decimal.is_complete():
-        return Maybe(SemPredEvalResult(None))
+        return Some(SemPredEvalResult(None))
 
     # Conversion to octal
     decimal_number = int(str(decimal))
     octal_str = oct(decimal_number)[2:]
 
-    return Maybe(SemPredEvalResult({octal: octal_parser(octal_str)}))
+    return Some(SemPredEvalResult({octal: octal_parser(octal_str)}))
 
 
 def octal_to_dec_both_trees(
@@ -733,15 +746,15 @@ def octal_to_dec_both_trees(
     _2,
 ) -> Maybe[SemPredEvalResult]:
     if not isinstance(decimal, DerivationTree) or not isinstance(octal, DerivationTree):
-        return Maybe.nothing()
+        return Nothing
 
     if not decimal.is_complete() or not octal.is_complete():
-        return Maybe(SemPredEvalResult(None))
+        return Some(SemPredEvalResult(None))
 
     decimal_number = int(str(decimal))
     octal_number = int(str(octal))
 
-    return Maybe(SemPredEvalResult(int(oct(octal_number)[2:]) == decimal_number))
+    return Some(SemPredEvalResult(int(oct(octal_number)[2:]) == decimal_number))
 
 
 def OCTAL_TO_DEC_PREDICATE(graph, octal_start, decimal_start):
