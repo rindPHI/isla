@@ -67,7 +67,9 @@ def evaluate_z3_expression(
         return Success(((str(expr),), lambda args: args[0]))
 
     if z3.is_quantifier(expr):
-        raise NotImplementedError("Cannot evaluate expressions with quantifiers.")
+        return Failure(
+            NotImplementedError("Cannot evaluate expressions with quantifiers.")
+        )
 
     children_results: Tuple[Z3EvalResult, ...] = ()
     for child_expr in expr.children():

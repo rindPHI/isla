@@ -19,6 +19,7 @@
 import unittest
 
 from grammar_graph import gg
+from returns.pipeline import is_successful
 
 from isla.derivation_tree import DerivationTree
 from isla.fuzzer import GrammarCoverageFuzzer
@@ -37,8 +38,8 @@ class TestMutator(unittest.TestCase):
         for _ in range(10):
             inp = fuzzer.fuzz_tree()
             result = mutator.replace_subtree_randomly(inp)
-            self.assertTrue(result.is_present())
-            self.assertTrue(graph.tree_is_valid(result.get()))
+            self.assertTrue(is_successful(result))
+            self.assertTrue(graph.tree_is_valid(result.unwrap()))
 
     def test_swap_subtrees(self):
         mutator = Mutator(LANG_GRAMMAR)
@@ -50,14 +51,13 @@ class TestMutator(unittest.TestCase):
             result = mutator.swap_subtrees(inp)
 
             self.assertTrue(
-                result.is_present()
+                is_successful(result)
                 or len(inp.filter(lambda t: t.value == "<assgn>")) == 1
             )
 
             self.assertTrue(
-                result.map(lambda tree: graph.tree_is_valid(result.get()))
-                .orelse(lambda: True)
-                .get()
+                result.map(lambda tree: graph.tree_is_valid(result.unwrap()))
+                .value_or(True)
             )
 
     def test_generalize_subtree(self):
@@ -68,8 +68,8 @@ class TestMutator(unittest.TestCase):
         for _ in range(10):
             inp = fuzzer.fuzz_tree()
             result = mutator.generalize_subtree(inp)
-            self.assertTrue(result.is_present())
-            self.assertTrue(graph.tree_is_valid(result.get()))
+            self.assertTrue(is_successful(result))
+            self.assertTrue(graph.tree_is_valid(result.unwrap()))
 
     def test_mutate(self):
         mutator = Mutator(LANG_GRAMMAR)
