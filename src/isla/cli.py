@@ -33,8 +33,10 @@ from typing import Dict, Tuple, List, Optional, Iterable, cast, Any, Set
 
 import toml
 from grammar_graph import gg
+from returns.functions import tap
 from returns.maybe import Nothing, Some
-from returns.result import safe
+from returns.pipeline import is_successful
+from returns.result import safe, Success, Result, Failure
 
 from isla import __version__ as isla_version, language
 from isla.derivation_tree import DerivationTree
@@ -101,10 +103,12 @@ def main(*args: str, stdout=sys.stdout, stderr=sys.stderr):
     if hasattr(args, "log_level"):
         logging.basicConfig(stream=stderr, level=level_mapping[args.log_level])
     else:
-        get_default(stderr, args.command, "--log-level").if_present(
-            lambda level: logging.basicConfig(
-                stream=stderr,
-                level=level_mapping[level],
+        get_default(stderr, args.command, "--log-level").map(
+            tap(
+                lambda level: logging.basicConfig(
+                    stream=stderr,
+                    level=level_mapping[level],
+                )
             )
         )
 
@@ -206,24 +210,24 @@ def read_predicates(
     """
 
     _, maybe_structural_predicates, maybe_semantic_predicates = (
-        Maybe.from_iterator(
-            file_content
-            for file_name, file_content in files.items()
-            if file_name.endswith(".py")
-        )
+        safe(
+            lambda: next(
+                file_content
+                for file_name, file_content in files.items()
+                if file_name.endswith(".py")
+            )
+        )()
         .map(
             lambda file_content: process_python_extension("solve", file_content, stderr)
         )
-        .orelse(lambda: (Maybe.nothing(), Maybe.nothing(), Maybe.nothing()))
-    ).get()
+        .lash(lambda _: Success((Nothing, Nothing, Nothing)))
+    ).unwrap()
 
     structural_predicates = (
-        STANDARD_STRUCTURAL_PREDICATES
-        | maybe_structural_predicates.orelse(lambda: set()).get()
+        STANDARD_STRUCTURAL_PREDICATES | maybe_structural_predicates.value_or(set())
     )
     semantic_predicates = (
-        STANDARD_SEMANTIC_PREDICATES
-        | maybe_semantic_predicates.orelse(lambda: set()).get()
+        STANDARD_SEMANTIC_PREDICATES | maybe_semantic_predicates.value_or(set())
     )
 
     return structural_predicates, semantic_predicates
@@ -403,7 +407,7 @@ def parse(stdout, stderr, parser: ArgumentParser, args: Namespace):
         else:
             print(json_str, file=stdout)
 
-    maybe_tree.if_present(write_tree)
+    maybe_tree.map(tap(write_tree))
 
 
 def repair(stdout, stderr, parser: ArgumentParser, args: Namespace):
@@ -424,11 +428,14 @@ def repair(stdout, stderr, parser: ArgumentParser, args: Namespace):
         semantic_predicates=semantic_predicates,
     )
 
-    try:
-        inp = get_input_string(command, stderr, args, files, grammar, constraint)
-    except SyntaxError:
-        print("input could not be parsed", file=stderr)
-        sys.exit(1)
+    match get_input_string(command, stderr, args, files, grammar, constraint):
+        case Failure(_):
+            print("input could not be parsed", file=stderr)
+            sys.exit(1)
+        case Success(parsed_tree):
+            inp = parsed_tree
+        case _:
+            assert False
 
     solver = ISLaSolver(
         grammar,
@@ -438,7 +445,7 @@ def repair(stdout, stderr, parser: ArgumentParser, args: Namespace):
     )
     maybe_repaired = solver.repair(inp, fix_timeout_seconds=args.timeout)
 
-    if not maybe_repaired.is_present():
+    if not is_successful(maybe_repaired):
         print(
             "sorry, I could not repair this input (tip: try `isla mutate` instead)",
             file=stderr,
@@ -452,7 +459,7 @@ def repair(stdout, stderr, parser: ArgumentParser, args: Namespace):
         else:
             print(str(tree), file=stdout)
 
-    maybe_repaired.if_present(write_result)
+    maybe_repaired.map(tap(write_result))
     sys.exit(0)
 
 
@@ -474,11 +481,14 @@ def mutate(stdout, stderr, parser: ArgumentParser, args: Namespace):
         semantic_predicates=semantic_predicates,
     )
 
-    try:
-        inp = get_input_string(command, stderr, args, files, grammar, constraint)
-    except SyntaxError:
-        print("input could not be parsed", file=stderr)
-        sys.exit(1)
+    match get_input_string(command, stderr, args, files, grammar, constraint):
+        case Failure(_):
+            print("input could not be parsed", file=stderr)
+            sys.exit(1)
+        case Success(parsed_tree):
+            inp = parsed_tree
+        case _:
+            assert False
 
     solver = ISLaSolver(
         grammar,
@@ -523,14 +533,17 @@ def do_check(
         semantic_predicates=semantic_predicates,
     )
 
-    try:
-        tree = get_input_string(command, stderr, args, files, grammar, constraint)
-    except SyntaxError:
-        return (
-            1,
-            "input could not be parsed",
-            Maybe.nothing(),
-        )
+    match get_input_string(command, stderr, args, files, grammar, constraint):
+        case Failure(_):
+            return (
+                1,
+                "input could not be parsed",
+                Nothing,
+            )
+        case Success(parsed_tree):
+            tree = parsed_tree
+        case _:
+            assert False
 
     try:
         solver = ISLaSolver(
@@ -543,7 +556,7 @@ def do_check(
         if not solver.check(tree):
             raise SemanticError()
     except SemanticError:
-        return 1, "input does not satisfy the ISLa constraint", Maybe.nothing()
+        return 1, "input does not satisfy the ISLa constraint", Nothing
 
     return 0, "input satisfies the ISLa constraint", Some(tree)
 
@@ -736,13 +749,9 @@ def parse_grammar(
                         if grammar_file_name.endswith(".bnf"):
                             grammar |= parse_bnf(grammar_file_content)
                         else:
-                            grammar |= (
-                                process_python_extension(
-                                    subcommand, grammar_file_content, stderr
-                                )[0]
-                                .orelse(lambda: {})
-                                .get()
-                            )
+                            grammar |= process_python_extension(
+                                subcommand, grammar_file_content, stderr
+                            )[0].value_or({})
 
             if not grammar:
                 print(
@@ -839,11 +848,11 @@ except NameError as err:
 
         return maybe_grammar
 
-    grammar = cast(Maybe[Grammar], Some(new_symbols["grammar_"])).map(
-        assert_is_valid_grammar
-    )
+    grammar = Maybe.from_optional(new_symbols["grammar_"]).map(assert_is_valid_grammar)
 
-    predicates = Some(new_symbols["predicates_"]).map(assert_is_set_of_predicates)
+    predicates = Maybe.from_optional(new_symbols["predicates_"]).map(
+        assert_is_set_of_predicates
+    )
 
     structural_predicates = cast(
         Maybe[Set[StructuralPredicate]],
@@ -899,7 +908,7 @@ def get_input_string(
     files: Dict[str, str],
     grammar: Grammar,
     constraint: language.Formula,
-) -> DerivationTree:
+) -> Result[DerivationTree, SyntaxError]:
     """
     Looks for a passed input (either via `args.input_string` or a file name) and
     parses it, if any. Terminates with a `USAGE_ERROR` if no input can be found.
@@ -950,8 +959,7 @@ def get_input_string(
         safe(lambda: json.loads(inp))()
         .map(DerivationTree.from_parse_tree)
         .map(lambda tree: eassert(tree, graph().tree_is_valid(tree)))
-        .lash(lambda _: safe(lambda _: solver().parse(inp, skip_check=True))().unwrap())
-        .unwrap()
+        .lash(lambda _: safe(lambda: solver().parse(inp, skip_check=True))())
     )
 
 
@@ -973,7 +981,7 @@ Create solutions to an ISLa constraint and a reference grammar.""",
         "-T",
         "--tree",
         action=argparse.BooleanOptionalAction,
-        default=get_default(sys.stderr, "solve", "--tree").get(),
+        default=get_default(sys.stderr, "solve", "--tree").unwrap(),
         help="""
 outputs derivation trees in JSON format instead of strings""",
     )
@@ -983,7 +991,7 @@ outputs derivation trees in JSON format instead of strings""",
         "--pretty-print",
         type=bool,
         action=argparse.BooleanOptionalAction,
-        default=get_default(stderr, "solve", "--pretty-print").get(),
+        default=get_default(stderr, "solve", "--pretty-print").unwrap(),
         help="""
 If this flag is set, created JSON parse trees are printed on multiple lines with
 indentation; otherwise the whole string is printed on a single line. Only relevant
@@ -995,7 +1003,7 @@ if `--tree` is used.""",
     parser.add_argument(
         "--unsat-support",
         action="store_true",
-        default=get_default(stderr, "solve", "--unsat-support").get(),
+        default=get_default(stderr, "solve", "--unsat-support").unwrap(),
         help="""
 Activate support for unsatisfiable constraints. This can be required to make the
 analysis of unsatisfiable constraints terminate, but reduces the performance of the
@@ -1040,7 +1048,7 @@ the input file""",
         "-e",
         "--ending",
         metavar="FILE_ENDING",
-        default=get_default(stderr, "fuzz", "--ending").get(),
+        default=get_default(stderr, "fuzz", "--ending").unwrap(),
         help="""
 The file ending for the generated files that are passed to the test target, if the
 test target expects a particular format""",
@@ -1112,7 +1120,7 @@ satisfies an ISLa constraint.""",
     parser.add_argument(
         "-o",
         "--output-file",
-        default=get_default(stderr, "parse", "--output-file").get_unsafe(),
+        default=get_default(stderr, "parse", "--output-file").value_or(None),
         help="""
 The file into which to write the (JSON) derivation tree in case that the input
 could be successfully parsed and checked. If no file is given, the tree is printed
@@ -1124,7 +1132,7 @@ to stdout""",
         "--pretty-print",
         type=bool,
         action=argparse.BooleanOptionalAction,
-        default=get_default(stderr, "parse", "--pretty-print").get(),
+        default=get_default(stderr, "parse", "--pretty-print").unwrap(),
         help="""
 if this flag is set, the created JSON parse tree is printed on multiple lines with
 indentation; otherwise the whole string is printed on a single line""",
@@ -1155,7 +1163,7 @@ the valuation of SMT-LIB and semantic predicate constraints.""",
     parser.add_argument(
         "-o",
         "--output-file",
-        default=get_default(stderr, "repair", "--output-file").get_unsafe(),
+        default=get_default(stderr, "repair", "--output-file").value_or(None),
         help="""
 The file into which to write the repaired result in case that the input could be
 successfully repaired. If no file is given, the result is printed to stdout""",
@@ -1168,7 +1176,7 @@ successfully repaired. If no file is given, the result is printed to stdout""",
         "-t",
         "--timeout",
         type=float,
-        default=get_default(stderr, "repair", "--timeout").get(),
+        default=get_default(stderr, "repair", "--timeout").unwrap(),
         help="""
 the number of (fractions of) seconds after which the solver should stop finding
 solutions when trying to repair an incomplete input""",
@@ -1194,7 +1202,7 @@ Performs structural mutations on the given input and repairs it afterward (see
     parser.add_argument(
         "-o",
         "--output-file",
-        default=get_default(stderr, "mutate", "--output-file").get_unsafe(),
+        default=get_default(stderr, "mutate", "--output-file").value_or(None),
         help="""
 The file into which to write the mutated result. If no file is given, the result is
 printed to stdout""",
@@ -1207,7 +1215,7 @@ printed to stdout""",
         "-x",
         "--min-mutations",
         type=int,
-        default=get_default(stderr, "mutate", "--min-mutations").get(),
+        default=get_default(stderr, "mutate", "--min-mutations").unwrap(),
         help="the minimum number of mutation steps to perform",
     )
 
@@ -1215,7 +1223,7 @@ printed to stdout""",
         "-X",
         "--max-mutations",
         type=int,
-        default=get_default(stderr, "mutate", "--max-mutations").get(),
+        default=get_default(stderr, "mutate", "--max-mutations").unwrap(),
         help="the maximum number of mutation steps to perform",
     )
 
@@ -1223,7 +1231,7 @@ printed to stdout""",
         "-t",
         "--timeout",
         type=float,
-        default=get_default(stderr, "mutate", "--timeout").get(),
+        default=get_default(stderr, "mutate", "--timeout").unwrap(),
         help="""
 the number of (fractions of) seconds after which the solver should stop finding
 solutions when trying to repair a mutated input""",
@@ -1247,7 +1255,7 @@ specification project.""",
     parser.add_argument(
         "-b",
         "--base-name",
-        default=get_default(stderr, "create", "--base-name").get(),
+        default=get_default(stderr, "create", "--base-name").unwrap(),
         help="the base name for the created stubs",
     )
 
@@ -1343,7 +1351,7 @@ def log_level_arg(parser):
         "-l",
         "--log-level",
         choices=["ERROR", "WARNING", "INFO", "DEBUG"],
-        default=get_default(sys.stderr, command, "--log-level").get(),
+        default=get_default(sys.stderr, command, "--log-level").unwrap(),
         help="set the logging level",
     )
 
@@ -1359,7 +1367,7 @@ Set the ISLa weight vector. Expects a comma-separated list of floating point val
 for the following cost factors: (1) Tree closing cost, (2) constraint cost, (3)
 derivation depth penalty, (4) low per-input k-path coverage penalty, and (5)
 low global k-path coverage penalty""",
-        default=get_default(sys.stderr, command, "--weight-vector").get(),
+        default=get_default(sys.stderr, command, "--weight-vector").unwrap(),
     )
 
 
@@ -1371,7 +1379,7 @@ def k_arg(parser):
         type=int,
         help="""
 set the length of the k-paths to be considered for coverage computations""",
-        default=get_default(sys.stderr, command, "-k").get(),
+        default=get_default(sys.stderr, command, "-k").unwrap(),
     )
 
 
@@ -1381,7 +1389,7 @@ def unwinding_depth_arg(parser):
     parser.add_argument(
         "--unwinding-depth",
         type=int,
-        default=get_default(sys.stderr, command, "--unwinding-depth").get(),
+        default=get_default(sys.stderr, command, "--unwinding-depth").unwrap(),
         help="""
 Set the depth until which nonregular grammar elements in SMT-LIB expressions are
 unwound to make them regular before the SMT solver is queried""",
@@ -1394,7 +1402,7 @@ def unique_trees_arg(parser):
     parser.add_argument(
         "--unique-trees",
         action="store_true",
-        default=get_default(sys.stderr, command, "--unique-trees").get(),
+        default=get_default(sys.stderr, command, "--unique-trees").unwrap(),
         help="""
 Enforces the uniqueness of derivation trees in the solver queue. This setting can
 improve the generator performance, but can also lead to omitted interesting solutions
@@ -1409,7 +1417,7 @@ def smt_insts_arg(parser):
         "-s",
         "--smt-instantiations",
         type=int,
-        default=get_default(sys.stderr, command, "--smt-instantiations").get(),
+        default=get_default(sys.stderr, command, "--smt-instantiations").unwrap(),
         help="""
 the number of solutions obtained from the SMT solver for atomic SMT-LIB formulas""",
     )
@@ -1422,7 +1430,7 @@ def free_insts_arg(parser):
         "-f",
         "--free-instantiations",
         type=int,
-        default=get_default(sys.stderr, command, "--free-instantiations").get(),
+        default=get_default(sys.stderr, command, "--free-instantiations").unwrap(),
         help="""
 the number of times an unconstrained nonterminal should be randomly instantiated
 """,
@@ -1436,7 +1444,7 @@ def timeout_arg(parser):
         "-t",
         "--timeout",
         type=float,
-        default=get_default(sys.stderr, command, "--timeout").get(),
+        default=get_default(sys.stderr, command, "--timeout").unwrap(),
         help="""
 The number of (fractions of) seconds after which the solver should stop finding
 solutions. Negative numbers imply that no timeout is set""",
@@ -1450,7 +1458,7 @@ def num_solutions_arg(parser):
         "-n",
         "--num-solutions",
         type=int,
-        default=get_default(sys.stderr, command, "--num-solutions").get(),
+        default=get_default(sys.stderr, command, "--num-solutions").unwrap(),
         help="""
 The number of solutions to generate. Negative numbers indicate an infinite number of
 solutions (you need ot set a `--timeout` or forcefully stop ISLa)""",
@@ -1463,7 +1471,7 @@ def output_dir_arg(parser: ArgumentParser, required: bool = False):
     parser.add_argument(
         "-d",
         "--output-dir",
-        default=get_default(sys.stderr, command, "--output-dir").get_unsafe(),
+        default=get_default(sys.stderr, command, "--output-dir").value_or(None),
         required=required,
         help="a directory into which to place generated output files",
     )
@@ -1526,7 +1534,7 @@ def read_isla_rc_defaults(
     """
 
     sources: List[str] = []
-    content.if_present(lambda c: sources.append(c))
+    content.map(tap(lambda c: sources.append(c)))
 
     dirs = (os.getcwd(), pathlib.Path.home())
     candidate_locations = [os.path.join(dir, ".islarc") for dir in dirs]

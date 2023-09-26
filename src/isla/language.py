@@ -53,8 +53,9 @@ from grammar_graph import gg
 from orderedset import FrozenOrderedSet
 from returns._internal.pipeline.flow import flow
 from returns.converters import result_to_maybe
-from returns.functions import compose
+from returns.functions import compose, tap, raise_exception
 from returns.maybe import Nothing, Some
+from returns.pipeline import is_successful
 from returns.pointfree import lash
 from returns.result import safe
 from z3 import Z3Exception
@@ -286,7 +287,7 @@ class BindExpression:
         ):
             BindExpression.__combination_to_tree_prefix(
                 bound_elements, in_nonterminal, immutable_grammar
-            ).if_present(lambda r: result.append(r))
+            ).map(tap(lambda r: result.append(r)))
 
         self.prefixes[in_nonterminal] = result
         return result
@@ -309,7 +310,7 @@ class BindExpression:
         maybe_tree = parse_match_expression(
             flattened_bind_expr_str, in_nonterminal, immutable_grammar
         )
-        if not maybe_tree.is_present():
+        if not is_successful(maybe_tree):
             language_core_logger.warning(
                 'Parsing match expression string "%s" caused a syntax error. If this is'
                 + " not a test case where this behavior is intended, it should probably"
@@ -318,7 +319,7 @@ class BindExpression:
             )
             return Nothing
 
-        tree = maybe_tree.get()
+        tree = maybe_tree.unwrap()
 
         assert tree.value == in_nonterminal
 
@@ -402,17 +403,22 @@ class BindExpression:
                     )
                 ):
                     var = (
-                        Maybe.from_iterator(
-                            var
-                            for var in remaining_bound_elements
-                            if var.n_type == char
+                        result_to_maybe(
+                            safe(
+                                lambda: next(
+                                    var
+                                    for var in remaining_bound_elements
+                                    if var.n_type == char
+                                )
+                            )()
                         )
-                        .if_present(
-                            lambda var: eassert(var, isinstance(var, DummyVariable))
+                        .map(
+                            tap(
+                                lambda var: eassert(var, isinstance(var, DummyVariable))
+                            )
                         )
-                        .if_present(remaining_bound_elements.remove)
-                        .orelse(lambda: DummyVariable(""))
-                        .get()
+                        .map(tap(remaining_bound_elements.remove))
+                        .value_or(DummyVariable(""))
                     )
 
                     match_expr_matches[var] = path
@@ -3112,16 +3118,15 @@ class AddMexprTransformer(NoopFormulaTransformer):
 
             conflict = False
             for new_var, new_path in new_paths.items():
-                monad = AddMexprTransformer.__merge_trees_at_path(
+                match AddMexprTransformer.__merge_trees_at_path(
                     resulting_tree, new_tree, new_var, new_path
-                )
-                if not monad.is_present():
-                    conflict = True
-                    break
-
-                resulting_tree = monad.get()
-                if not isinstance(new_var, DummyVariable):
-                    resulting_paths[new_path] = new_var
+                ):
+                    case Some(resulting_tree):
+                        if not isinstance(new_var, DummyVariable):
+                            resulting_paths[new_path] = new_var
+                    case Nothing:
+                        conflict = True
+                        break
 
             if conflict:
                 continue
@@ -3142,7 +3147,7 @@ class AddMexprTransformer(NoopFormulaTransformer):
         new_tree: DerivationTree,
         new_var: BoundVariable,
         new_path: Path,
-    ) -> Maybe[Tuple[DerivationTree]]:
+    ) -> Maybe[DerivationTree]:
         # Take the more specific path. They should not conflict,
         # i.e., have a common sub-path pointing to the same nonterminal.
 
@@ -3357,7 +3362,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                 BoundVariable(var_type[1:-1], var_type),
                 add=False,
             )
-            self.used_variables.add(var.name)
+            self.used_variables = self.used_variables | FrozenOrderedSet([var.name])
 
             if var_type in free_nonterminal_vars_also_in_xpath_expr:
                 formula = formula.substitute_variables(
@@ -3450,13 +3455,16 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
         def find_var(var_name: str, error_message: str) -> Variable:
             return (
-                Maybe.from_iterator(
-                    var
-                    for var in VariablesCollector.collect(formula)
-                    if var.name == var_name
-                )
-                .raise_if_not_present(lambda: RuntimeError(error_message))
-                .get()
+                safe(
+                    lambda: next(
+                        var
+                        for var in VariablesCollector.collect(formula)
+                        if var.name == var_name
+                    )
+                )()
+                .lash(lambda _: Failure(RuntimeError(error_message)))
+                .alt(raise_exception)
+                .unwrap()
             )
 
         first_var = cast(
@@ -3520,7 +3528,9 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                 BoundVariable(bound_var_type[1:-1], bound_var_type),
                 add=False,
             )
-            self.used_variables.add(bound_var.name)
+            self.used_variables = self.used_variables | FrozenOrderedSet(
+                [bound_var.name]
+            )
 
         match_expressions = []
         for (

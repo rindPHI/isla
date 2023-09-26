@@ -20,6 +20,7 @@ import random
 from typing import Tuple, Callable, Optional
 
 from grammar_graph import gg
+from returns.functions import tap
 from returns.maybe import Nothing, Some
 from returns.result import safe, Success
 
@@ -75,9 +76,8 @@ class Mutator:
         while applied_mutations < target_num_mutations:
             inp = (
                 self.__get_mutator()(inp)
-                .map(to_id(inc_applied_mutations))
-                .orelse(lambda: inp)
-                .get()
+                .map(tap(inc_applied_mutations))
+                .value_or(inp)
             )
 
         return inp
@@ -107,7 +107,7 @@ class Mutator:
             k=1,
         )[0]
 
-        return Maybe(
+        return Some(
             self.fuzzer.expand_tree(
                 inp.replace_path(path, DerivationTree(subtree.value))
             )
@@ -134,7 +134,7 @@ class Mutator:
                         and tree_1.value == tree_2.value
                     ]
                 ),
-                exceptions=(IndexError,)
+                exceptions=(IndexError,),
             )()
             .map(process)
             .map(Some)
@@ -164,7 +164,7 @@ class Mutator:
             [p for p, t in self_embedding_tree.leaves() if t.value == tree.value]
         )
 
-        return Maybe(
+        return Some(
             self.fuzzer.expand_tree(
                 inp.replace_path(
                     path, self_embedding_tree.replace_path(matching_leaf, tree)

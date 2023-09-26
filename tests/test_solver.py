@@ -33,6 +33,10 @@ import pytest
 import z3
 from grammar_graph import gg
 from orderedset import OrderedSet
+from returns.functions import tap
+from returns.maybe import Maybe, Some
+from returns.pipeline import is_successful
+from returns.result import safe, Success
 
 import isla.derivation_tree
 import isla.evaluator
@@ -742,15 +746,17 @@ forall int colno:
         )
 
         self.assertTrue(
-            Exceptional.of(lambda: solver.parse("Xpagesize=12\nbufsize=12"))
+            safe(lambda: solver.parse("Xpagesize=12\nbufsize=12"))()
             .map(lambda _: False)
-            .recover(lambda e: isinstance(e, SyntaxError))
+            .lash(lambda e: Success(isinstance(e, SyntaxError)))
+            .unwrap()
         )
 
         self.assertTrue(
-            Exceptional.of(lambda: solver.parse("pagesize=12\nbufsize=21"))
+            safe(lambda: solver.parse("pagesize=12\nbufsize=21"))()
             .map(lambda _: False)
-            .recover(lambda e: isinstance(e, SemanticError))
+            .lash(lambda e: Success(isinstance(e, SemanticError)))
+            .unwrap()
         )
 
     def test_check(self):
@@ -804,10 +810,10 @@ forall int colno:
         )
 
         self.assertTrue(
-            Exceptional.of(lambda: solver.check("x := 1"))
+            safe(lambda: solver.check("x := 1"))()
             .map(lambda _: False)
-            .recover(lambda e: isinstance(e, UnknownResultError))
-            .a
+            .lash(lambda e: Success(isinstance(e, UnknownResultError)))
+            .unwrap()
         )
 
     def test_start_nonterminal(self):
@@ -848,9 +854,10 @@ str.len(<string>.<chars>) and
         solver = ISLaSolver(LANG_GRAMMAR, '<var> = "aa"', activate_unsat_support=True)
 
         self.assertTrue(
-            Exceptional.of(solver.solve)
+            safe(solver.solve)()
             .map(lambda _: False)
-            .recover(lambda e: isinstance(e, StopIteration))
+            .lash(lambda e: Success(isinstance(e, StopIteration)))
+            .unwrap()
         )
 
     def test_unsatisfiable_smt_conjunction(self):
@@ -859,9 +866,10 @@ str.len(<string>.<chars>) and
         )
 
         self.assertTrue(
-            Exceptional.of(solver.solve)
+            safe(solver.solve)()
             .map(lambda _: False)
-            .recover(lambda e: isinstance(e, StopIteration))
+            .lash(lambda e: Success(isinstance(e, StopIteration)))
+            .unwrap()
         )
 
     def test_unsatisfiable_smt_quantified_conjunction(self):
@@ -876,9 +884,10 @@ forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
         )
 
         self.assertTrue(
-            Exceptional.of(solver.solve)
+            safe(solver.solve)()
             .map(lambda _: False)
-            .recover(lambda e: isinstance(e, StopIteration))
+            .lash(lambda e: Success(isinstance(e, StopIteration)))
+            .unwrap()
         )
 
     def test_unsatisfiable_smt_formulas(self):
@@ -925,8 +934,8 @@ forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
         result = solver.eliminate_all_semantic_formulas(
             SolutionState(formula_1 & formula_2, tree)
         )
-        self.assertTrue(result.is_present())
-        result.if_present(lambda a: self.assertEqual([], a))
+        self.assertTrue(is_successful(result))
+        result.map(tap(lambda a: self.assertEqual([], a)))
 
     def test_unsatisfiable_forall_exists_formula(self):
         solver = ISLaSolver(
@@ -939,9 +948,10 @@ forall <assgn> assgn_1:
         )
 
         self.assertTrue(
-            Exceptional.of(solver.solve)
+            safe(solver.solve)()
             .map(lambda _: False)
-            .recover(lambda e: isinstance(e, StopIteration))
+            .lash(lambda e: Success(isinstance(e, StopIteration)))
+            .unwrap()
         )
 
     def test_unsatisfiable_existential_formula(self):
@@ -990,9 +1000,10 @@ forall <assgn> assgn_1:
         heapq.heappush(solver.queue, (0, SolutionState(formula, tree)))
 
         self.assertTrue(
-            Exceptional.of(solver.solve)
+            safe(solver.solve)()
             .map(lambda _: False)
-            .recover(lambda e: isinstance(e, StopIteration))
+            .lash(lambda e: Success(isinstance(e, StopIteration)))
+            .unwrap()
         )
 
     def test_implication(self):
@@ -1006,9 +1017,10 @@ not(
         solver = ISLaSolver(LANG_GRAMMAR, formula, activate_unsat_support=True)
 
         self.assertTrue(
-            Exceptional.of(solver.solve)
+            safe(solver.solve)()
             .map(lambda _: False)
-            .recover(lambda e: isinstance(e, StopIteration))
+            .lash(lambda e: Success(isinstance(e, StopIteration)))
+            .unwrap()
         )
 
     @pytest.mark.skip("Fails during CI for some reason, never locally")
@@ -1058,7 +1070,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         inp = "x := 1 ; y := x"
 
         solver = ISLaSolver(LANG_GRAMMAR, formula)
-        self.assertEqual(inp, str(solver.repair(inp).orelse(lambda: "").get()))
+        self.assertEqual(inp, str(solver.repair(inp).value_or("")))
 
     def test_repair_wrong_assignment(self):
         formula = """
@@ -1067,20 +1079,18 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
     (before(assgn_2, assgn_1) and (= lhs rhs))"""
         solver = ISLaSolver(LANG_GRAMMAR, formula)
 
-        self.assertEqual(
-            Maybe(True),
+        self.assertTrue(
             solver.repair("x := 1 ; y := z")
-            .map(to_id(print))
+            .map(tap(print))
             .map(solver.check)
-            .orelse(lambda: False),
+            .value_or(False),
         )
 
-        self.assertEqual(
-            Maybe(True),
+        self.assertTrue(
             solver.repair("x := 0 ; y := z ; z := c")
-            .map(to_id(print))
+            .map(tap(print))
             .map(solver.check)
-            .orelse(lambda: False),
+            .value_or(False),
         )
 
     def test_repair_long_wrong_assignment(self):
@@ -1090,12 +1100,11 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
     (before(assgn_2, assgn_1) and (= lhs rhs))"""
         solver = ISLaSolver(LANG_GRAMMAR, formula)
 
-        self.assertEqual(
-            Maybe(True),
+        self.assertTrue(
             solver.repair("x := 1 ; x := a ; x := b ; x := c")
             .map(to_id(print))
             .map(solver.check)
-            .orelse(lambda: False),
+            .value_or(False),
         )
 
     def test_repair_unrepairable_wrong_assignment(self):
@@ -1109,22 +1118,20 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
     (before(assgn_2, assgn_1) and (= lhs rhs))"""
         solver = ISLaSolver(LANG_GRAMMAR, formula)
 
-        self.assertEqual(
-            Maybe(False),
+        self.assertFalse(
             solver.repair("x := a ; y := z ; z := c")
             .map(solver.check)
-            .orelse(lambda: False),
+            .value_or(False),
         )
 
     def test_repair_unbalanced_xml_tree(self):
         solver = ISLaSolver(XML_GRAMMAR, XML_WELLFORMEDNESS_CONSTRAINT)
 
-        self.assertEqual(
-            Maybe(True),
+        self.assertTrue(
             solver.repair("<a>asdf</b>")
             .map(to_id(print))
             .map(solver.check)
-            .orelse(lambda: False),
+            .value_or(False),
         )
 
     def test_repair_undeclared_xml_namespace(self):
@@ -1132,28 +1139,25 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
             XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, XML_NAMESPACE_CONSTRAINT
         )
 
-        self.assertEqual(
-            Maybe(True),
+        self.assertTrue(
             solver.repair('<a><b x:y="asdf"/></a>')
             .map(to_id(print))
             .map(solver.check)
-            .orelse(lambda: False),
+            .value_or(False),
         )
 
-        self.assertEqual(
-            Maybe(True),
+        self.assertTrue(
             solver.repair('<a xmlns:z="fdsa"><b x:y="asdf"/></a>')
             .map(to_id(print))
             .map(solver.check)
-            .orelse(lambda: False),
+            .value_or(False),
         )
 
-        self.assertEqual(
-            Maybe(True),
+        self.assertTrue(
             solver.repair('<a w:z="fdsa"><b x:y="asdf"/></a>')
             .map(to_id(print))
             .map(solver.check)
-            .orelse(lambda: False),
+            .value_or(False),
         )
 
     def test_mutate_assignment(self):
@@ -1493,7 +1497,11 @@ and str.len(<payload>) = 10
 
         formula_2 = z3_eq(byte_3879.to_smt(), z3.StringVal("\x01"))
 
-        (length_vars, int_vars, flexible_vars,) = ISLaSolver.infer_variable_contexts(
+        (
+            length_vars,
+            int_vars,
+            flexible_vars,
+        ) = ISLaSolver.infer_variable_contexts(
             {byte_3879, payload_3824, byte_3880}, (formula_1, formula_2)
         ).values()
 
@@ -1505,7 +1513,11 @@ and str.len(<payload>) = 10
 
         formula_3 = z3_eq(byte_3879.to_smt(), byte_3880.to_smt())
 
-        (length_vars, int_vars, flexible_vars,) = ISLaSolver.infer_variable_contexts(
+        (
+            length_vars,
+            int_vars,
+            flexible_vars,
+        ) = ISLaSolver.infer_variable_contexts(
             {byte_3879, payload_3824, byte_3880}, (formula_1, formula_2, formula_3)
         ).values()
 
@@ -1517,7 +1529,11 @@ and str.len(<payload>) = 10
 
         formula_4 = z3_eq(byte_3879.to_smt(), payload_3824.to_smt())
 
-        (length_vars, int_vars, flexible_vars,) = ISLaSolver.infer_variable_contexts(
+        (
+            length_vars,
+            int_vars,
+            flexible_vars,
+        ) = ISLaSolver.infer_variable_contexts(
             {byte_3879, payload_3824, byte_3880},
             (formula_1, formula_2, formula_4),
         ).values()
@@ -1635,8 +1651,8 @@ and str.len(<payload>) = 10
 
         solver = ISLaSolver(grammar, constraint)
         result = solver.repair(inp)
-        self.assertTrue(result.is_present())
-        self.assertEqual("08" + inp[2:], str(result.get()))
+        self.assertTrue(is_successful(result))
+        self.assertEqual("08" + inp[2:], str(result.unwrap()))
 
     def test_repair_semantic_predicate_csv(self):
         csv_file = """a;b;c
@@ -1648,11 +1664,11 @@ and str.len(<payload>) = 10
         constraint = 'count(<csv-record>, "<raw-field>", "3")'
         solver = ISLaSolver(CSV_GRAMMAR, constraint)
         result = solver.repair(csv_file)
-        self.assertTrue(result.is_present())
-        self.assertIn("a;b;c", str(result.get()))
-        self.assertIn("3;4;5", str(result.get()))
+        self.assertTrue(is_successful(result))
+        self.assertIn("a;b;c", str(result.unwrap()))
+        self.assertIn("3;4;5", str(result.unwrap()))
         self.assertFalse(solver.check(csv_file))
-        self.assertTrue(solver.check(result.get()))
+        self.assertTrue(solver.check(result.unwrap()))
 
     def test_repair_icmp_mock_checksum(self):
         grammar = '''
@@ -1694,9 +1710,9 @@ and str.len(<payload>) = 10
 
         result = solver.repair(inp)
 
-        self.assertTrue(result.is_present())
-        self.assertEqual("11 11 ", str(result.get().get_subtree((0, 0, 2))))
-        self.assertEqual("00 00 11 11 00 00 00 00 00 00 ", str(result.get()))
+        self.assertTrue(is_successful(result))
+        self.assertEqual("11 11 ", str(result.unwrap().get_subtree((0, 0, 2))))
+        self.assertEqual("00 00 11 11 00 00 00 00 00 00 ", str(result.unwrap()))
 
     def test_repair_icmp_mock_checksum_and_type(self):
         grammar = '''
@@ -1738,8 +1754,8 @@ and str.len(<payload>) = 10
 
         result = solver.repair(inp)
 
-        self.assertTrue(result.is_present())
-        self.assertEqual("08 00 11 11 00 00 00 00 00 00 ", str(result.get()))
+        self.assertTrue(is_successful(result))
+        self.assertEqual("08 00 11 11 00 00 00 00 00 00 ", str(result.unwrap()))
 
     def test_generate_abstracted_trees_icmp_type(self):
         grammar = '''
@@ -2360,13 +2376,17 @@ and str.to.int(<due-payable>.<INT>) =
                 formula, grammar, structural_predicates, semantic_predicates
             )
 
-        constant = Maybe.from_iterator(
-            (
-                c
-                for c in VariablesCollector.collect(formula)
-                if isinstance(c, language.Constant) and not c.is_numeric()
-            )
-        ).orelse(lambda: start_constant())
+        constant = (
+            safe(
+                lambda: next(
+                    c
+                    for c in VariablesCollector.collect(formula)
+                    if isinstance(c, language.Constant) and not c.is_numeric()
+                )
+            )()
+            .lash(lambda _: Success(start_constant()))
+            .unwrap()
+        )
 
         def print_tree():
             if debug:
