@@ -47,8 +47,8 @@ from typing import (
 import returns
 from frozendict import frozendict
 from orderedset import OrderedSet
-from returns.maybe import Maybe, Some, Nothing
-from returns.result import Result, safe, Success, Failure
+from returns.maybe import Maybe, Some
+from returns.result import safe, Success, Failure, Result
 
 from isla.global_config import GLOBAL_CONFIG
 from isla.type_defs import (
@@ -892,7 +892,7 @@ def merge_intervals(
     """
     Merges a sequence of potential lists of intervals. Intervals are sorted, directly
     neighboring and overlapping ones are merged. If any list is not present, a
-    :code:`Maybe.nothing()` is returned.
+    :code:`Nothing` is returned.
 
     >>> merge_intervals(*[Some([(1, 2)]), Some([(3, 4), (0, 1)])])
     <Some: [(0, 4)]>
@@ -900,6 +900,7 @@ def merge_intervals(
     >>> merge_intervals(*[Some([(1, 2)]), Some([(4, 5), (0, 1)])])
     <Some: [(0, 2), (4, 5)]>
 
+    >>> from returns.maybe import Nothing
     >>> merge_intervals(*[Some([(1, 2)]), Nothing, Some([(3, 4), (0, 1)])])
     <Nothing>
 
@@ -1048,14 +1049,14 @@ def deep_str(obj: Any) -> str:
         match obj:
             case Some(elem):
                 return str(Some(deep_str(elem)))
-            case Nothing:
+            case returns.maybe.Nothing:
                 return str(obj)
-    elif isinstance(obj, returns.result.Result):
+    elif isinstance(obj, Result):
         match obj:
-            case returns.result.Success(inner):
-                return str(returns.result.Success(deep_str(inner)))
+            case Success(inner):
+                return str(Success(deep_str(inner)))
             case returns.result.Failure(inner):
-                return str(returns.result.Failure(deep_str(inner)))
+                return str(Failure(deep_str(inner)))
     elif not str(obj):
         return repr(obj)
     else:

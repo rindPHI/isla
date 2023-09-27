@@ -1023,10 +1023,10 @@ not(
             .unwrap()
         )
 
-    @pytest.mark.skip("Fails during CI for some reason, never locally")
     def test_equivalent(self):
-        f1 = parse_isla('forall <var> var_1 in start: var_1 = "a"')
-        f2 = parse_isla('forall <var> var_2 in start: var_2 = "a"')
+        var = language.Variable("var", "<var>")
+        f1 = language.SMTFormula('(= var "a")', var)
+        f2 = language.SMTFormula('(= "a" var)', var)
         self.assertTrue(equivalent(f1, f2, LANG_GRAMMAR, timeout_seconds=60))
 
     def test_implies(self):

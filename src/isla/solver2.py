@@ -1288,7 +1288,7 @@ def unify_smt_formulas_and_solve_first_cluster(
         sub grammar, a SyntaxError failure is returned. If another solution for the
         same state tree node resulted in a Boolean result, a failure with a
         StopIteration is returned.
-    """
+    """  # noqa: E501
 
     # We cluster SMT formulas by tree substitutions. If there are two formulas with a
     # variable $var which is instantiated to different trees, we # need two separate

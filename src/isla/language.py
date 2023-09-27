@@ -46,6 +46,7 @@ from typing import (
 )
 
 import antlr4
+import returns
 import z3
 from antlr4 import InputStream, RuleContext, ParserRuleContext
 from antlr4.Token import CommonToken
@@ -3124,7 +3125,7 @@ class AddMexprTransformer(NoopFormulaTransformer):
                     case Some(resulting_tree):
                         if not isinstance(new_var, DummyVariable):
                             resulting_paths[new_path] = new_var
-                    case Nothing:
+                    case returns.maybe.Nothing:
                         conflict = True
                         break
 
