@@ -74,7 +74,7 @@ SCRIPTSIZE_C_GRAMMAR = {
         "<digit>",
     ],
     "<digits>": [
-        "<digit><int>",
+        "<digit><digits>",
         "<digit>",
     ],
     "<digit>": srange(string.digits),
