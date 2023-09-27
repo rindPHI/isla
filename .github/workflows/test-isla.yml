@@ -21,7 +21,6 @@ jobs:
         python-version: "3.10"
     - name: Install dependencies
       run: |
-        sudo echo "deb https://downloads.skewed.de/apt jammy main" >> /etc/apt/sources.list
         echo "deb https://downloads.skewed.de/apt jammy main" | sudo tee -a /etc/apt/sources.list
         sudo apt-get update
         sudo apt-get install --allow-unauthenticated python3-graph-tool
