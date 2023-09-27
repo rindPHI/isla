@@ -200,17 +200,59 @@ def tree_to_string(tree: ParseTree) -> str:
     return "".join(result)
 
 
+def split_expansion(expansion: str) -> List[str]:
+    """
+    Splits the given expansion alternative into tokens.
+
+    >>> str(split_expansion("a<b><b>c<d>e"))
+    "['a', '<b>', '<b>', 'c', '<d>', 'e']"
+
+    :param expansion: The expansion alternative to split at nonterminal boundaries.
+    :return: The separated terminal and nonterminal symbols in the expansion, in the
+        original order.
+    """
+
+    return [token for token in RE_NONTERMINAL.split(expansion) if token]
+
+
 def canonical(grammar: Grammar) -> CanonicalGrammar:
-    # Slightly optimized w.r.t. Fuzzing Book version: Call to split on
-    # compiled regex instead of fresh compilation every time.
-    def split(expansion):
-        if isinstance(expansion, tuple):
-            expansion = expansion[0]
+    """
+    This function converts a grammar to a "canonical" form in which terminals and
+    nonterminals in expansion alternatives are split.
 
-        return [token for token in RE_NONTERMINAL.split(expansion) if token]
+    Example
+    -------
 
+    >>> import string
+    >>> grammar = {
+    ...     "<start>":
+    ...         ["<stmt>"],
+    ...     "<stmt>":
+    ...         ["<assgn> ; <stmt>", "<assgn>"],
+    ...     "<assgn>":
+    ...         ["<var> := <rhs>"],
+    ...     "<rhs>":
+    ...         ["<var>", "<digit>"],
+    ...     "<var>": list(string.ascii_lowercase),
+    ...     "<digit>": list(string.digits)
+    ... }
+
+    Before conversion, there are two entries for :code:`<stmt>` including sequences
+    of (non-)terminals:
+
+    >>> print(grammar["<stmt>"])
+    ['<assgn> ; <stmt>', '<assgn>']
+
+    After conversion, the entries are lists of individual (non)-terminals:
+
+    >>> print(canonical(grammar)["<stmt>"])
+    [['<assgn>', ' ; ', '<stmt>'], ['<assgn>']]
+
+    :param grammar: The grammar to convert.
+    :return: The converted canonical grammar.
+    """
     return {
-        k: [split(expression) for expression in alternatives]
+        k: [split_expansion(expression) for expression in alternatives]
         for k, alternatives in grammar.items()
     }
 
