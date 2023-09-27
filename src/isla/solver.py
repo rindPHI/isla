@@ -4156,10 +4156,10 @@ def equivalent(
     )
 
     return (
-        Exceptional.of(solver.solve)
+        safe(solver.solve)()
         .map(lambda _: False)
-        .recover(lambda e: isinstance(e, StopIteration))
-    ).a
+        .lash(lambda e: Success(isinstance(e, StopIteration)))
+    ).unwrap()
 
 
 def generate_abstracted_trees(

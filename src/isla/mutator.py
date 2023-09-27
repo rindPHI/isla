@@ -31,7 +31,6 @@ from isla.helpers import (
     Maybe,
     parent_or_child,
     canonical,
-    to_id,
 )
 from isla.type_defs import Grammar, Path
 
@@ -75,9 +74,7 @@ class Mutator:
 
         while applied_mutations < target_num_mutations:
             inp = (
-                self.__get_mutator()(inp)
-                .map(tap(inc_applied_mutations))
-                .value_or(inp)
+                self.__get_mutator()(inp).map(tap(inc_applied_mutations)).value_or(inp)
             )
 
         return inp
