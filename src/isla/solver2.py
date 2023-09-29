@@ -1,3 +1,4 @@
+import itertools
 import logging
 import random
 import sys
@@ -55,7 +56,6 @@ from isla.language import (
     DisjunctiveFormula,
     Variable,
     SMTFormula,
-    BoundVariable,
     fresh_constant,
     Constant,
     true,
@@ -593,10 +593,24 @@ class ExpandRule(Rule):
         The result is an iterator of two expansions.
         >>> some_success_with_iterator = rule.actions(stree, graph)
 
-        We unroll the iterator into a list:
+        We can unroll the iterator into a list:
 
-        >>> deep_str(map_(map_(list))(some_success_with_iterator))
+        >>> unrolled = map_(map_(list))(some_success_with_iterator)
+        >>> deep_str(unrolled)
         '<Some: <Success: [Expand((0,), 0), Expand((0,), 1)]>>'
+
+        Let us now inspect the situation where one of these action was already taken,
+        i.e., leads to a sibling state.
+
+        >>> new_state_tree = rule.apply(stree, unrolled.unwrap().unwrap()[0], graph)
+        >>> print(new_state_tree)
+        StateTree(({} ▸ <stmt>), [(Expand((0,), 0), StateTree(({} ▸ <assgn> ; <stmt>)))])
+
+        If we ask for actions on the resulting state tree, we directly obtain the
+        second alternative (only):
+
+        >>> deep_str(map_(map_(list))(rule.actions(new_state_tree, graph)))
+        '<Some: <Success: [Expand((0,), 1)]>>'
 
         :param state_tree: The input state tree.
         :param graph: The grammar graph for the reference grammar.
@@ -608,20 +622,22 @@ class ExpandRule(Rule):
         # Check if there are any open leaves
         open_leaves = tuple(state_tree.node.tree.open_leaves())
         if not open_leaves:
-            return Maybe.nothing()
+            return Nothing
 
-        # If there are open leaves, we choose a random one and apply a random expansion.
-        # TODO: If there are siblings to state_tree, choose a *different* action.
+        iterator = (
+            ExpandRuleAction(path, alternative_id)
+            for path, leaf in open_leaves
+            for alternative_id in range(len(graph.canonical_grammar[leaf.value]))
+            if all(
+                path != other_action.path or alternative_id != other_action.alternative
+                for other_action, _ in state_tree.children
+                if isinstance(other_action, ExpandRuleAction)
+            )
+        )
 
         return Some(
-            Success(
-                (
-                    ExpandRuleAction(path, alternative_id)
-                    for path, leaf in open_leaves
-                    for alternative_id in range(
-                        len(graph.canonical_grammar[leaf.value])
-                    )
-                )
+            safe(lambda: next(iterator))().map(
+                lambda action: itertools.chain(iter([action]), iterator)
             )
         )
 
@@ -999,7 +1015,7 @@ class SolveSMTRule(Rule):
         ... )
 
         We compute a generator of SolveSMTAction in this situation.
-
+        
         >>> constraints = FormulaSet([digit_greater_3_constraint, var_eq_x_constraint])
         >>> rule = SolveSMTRule()
         >>> from itertools import islice
@@ -1015,7 +1031,7 @@ class SolveSMTRule(Rule):
         Note that we obtain a solution for the first cluster, the constraint on the
         variable "digit." Reversing the constraints results in a solution to the
         constraint on "x:"
-        
+
         >>> constraints = FormulaSet([var_eq_x_constraint, digit_greater_3_constraint])
         >>> rule = SolveSMTRule()
         >>> print(
@@ -1026,31 +1042,34 @@ class SolveSMTRule(Rule):
         ...     )
         ... )
         <Some: <Success: [SolveSMT({(<var>_0 == "x", {'<var>_0': '<var>'})} --> {<var>: x}), SolveSMT({(<var>_0 == "x", {'<var>_0': '<var>'})} --> False)]>>
-        
-        Since there is only one solution for the constraint, the second element 
+
+        Since there is only one solution for the constraint, the second element
         "solution" by the iterator is "False."
 
         If we *apply* the first retrieved action and ask for another action based on
-        the resulting state tree, we directly get another solution (than "digit = 4")
-        in the first element of the iterator. For some reason, Z3 now returns 6 and
-        not 5:
-        
+        the resulting state tree, we directly get another solution than "digit = 4"
+        in the first element of the iterator. 
+
         >>> constraints = FormulaSet([digit_greater_3_constraint, var_eq_x_constraint])
         >>> state_tree = StateTree(CDT(constraints, orig_dtree))
         >>> first_action = next(rule.actions(state_tree, graph).unwrap().unwrap())
         >>> deep_str(first_action)
         "SolveSMT({(StrToInt(<digit>_1) > 3, {'<digit>_1': '<digit>'})} --> {<digit>: 4})"
-        
+
         >>> new_state_tree = rule.apply(state_tree, first_action, graph)
         >>> print(deep_str(state_tree.children))
         ()
         >>> print(deep_str(new_state_tree.children))
         ((SolveSMT({(StrToInt(<digit>_1) > 3, {'<digit>_1': '<digit>'})} --> {<digit>: 4}), StateTree(({(var == "x", {'var': '<var>'})} ▸ <var> := 4))),)
         
-        >>> second_action = next(rule.actions(new_state_tree, graph).unwrap().unwrap())
-        >>> deep_str(second_action)
-        "SolveSMT({(StrToInt(<digit>_1) > 3, {'<digit>_1': '<digit>'})} --> {<digit>: 6})"
+        Z3 might not compute the same result (5) as before; therefore, we do not perform
+        a literal comparison in this example:
         
+        >>> second_action = next(rule.actions(new_state_tree, graph).unwrap().unwrap())
+        >>> numeric_assignment_to_digit = int(str(next(iter(second_action.result.values()))))
+        >>> numeric_assignment_to_digit > 4
+        True
+
         If there are no SMT formulas, we obtain Nothing:
 
         >>> rule.actions(StateTree(CDT(FormulaSet(), orig_dtree)), graph)
@@ -2240,11 +2259,11 @@ def rename_instantiated_variables_in_smt_formulas(
     thus, the formula becomes a tautology. In the second case, they are substituted
     by different trees, and the variables obtain different names.
 
-    >>> x_1 = BoundVariable("x", "<A>")
+    >>> x_1 = Variable("x", "<A>")
     >>> x_1_t = DerivationTree("<A>", id=0)
-    >>> y = BoundVariable("y", "<A>")
+    >>> y = Variable("y", "<A>")
     >>> y_t = DerivationTree("<A>", id=0)
-    >>> x_2 = BoundVariable("x", "<A>")
+    >>> x_2 = Variable("x", "<A>")
     >>> x_2_t = DerivationTree("<A>", id=1)
     >>> formulas = [
     ...     SMTFormula("(= x y)", x_1, y).substitute_expressions({x_1: x_1_t, y: y_t}),
@@ -2300,8 +2319,8 @@ def unifying_renaming_map_for_smt_formula(
     variables with a new variables of name :code:`<A>_5`, where the :code:`<A>` stems
     from the nonterminal type of the variables and the 5 from the ID of the tree.
 
-    >>> x = BoundVariable("x", "<A>")
-    >>> y = BoundVariable("y", "<A>")
+    >>> x = Variable("x", "<A>")
+    >>> y = Variable("y", "<A>")
     >>> tree = DerivationTree("<A>", id=5)
     >>> formula = (
     ...     SMTFormula("(= x y)", x, y).substitute_expressions({x: tree, y: tree})
