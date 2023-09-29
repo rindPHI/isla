@@ -38,7 +38,8 @@ from typing import (
     Set,
     TypeVar,
     Iterable,
-    Sequence, Mapping,
+    Sequence,
+    Mapping,
 )
 
 import z3
