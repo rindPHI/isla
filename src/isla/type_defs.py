@@ -16,20 +16,24 @@
 # You should have received a copy of the GNU General Public License
 # along with ISLa.  If not, see <http://www.gnu.org/licenses/>.
 
-from typing import Tuple, Optional, List, Dict, TypeVar, TypeAlias
+from typing import Tuple, Optional, List, TypeVar, TypeAlias, Mapping, Sequence
 
 from frozendict import frozendict
 
 S = TypeVar("S")
 T = TypeVar("T")
 
+ImmutableList: TypeAlias = tuple[T, ...]
+Pair: TypeAlias = Tuple[S, T]
+
 ParseTree = Tuple[str, Optional[List["ParseTree"]]]
 Path = Tuple[int, ...]
-Grammar = Dict[str, List[str]]
-ImmutableGrammar = Tuple[Tuple[str, Tuple[str, ...]], ...]
-CanonicalGrammar = Dict[str, List[List[str]]]
-ImmutableList: TypeAlias = Tuple[T, ...]
-Pair: TypeAlias = Tuple[S, T]
+
+Grammar = Mapping[str, Sequence[str]]
+CanonicalGrammar = Mapping[str, Sequence[Sequence[str]]]
 
 FrozenGrammar = frozendict[str, Tuple[str, ...]]
 FrozenCanonicalGrammar = frozendict[str, Tuple[Tuple[str, ...], ...]]
+
+# DEPRECATED! # TODO remove and replace with FrozenGrammar
+ImmutableGrammar = Tuple[Tuple[str, Tuple[str, ...]], ...]

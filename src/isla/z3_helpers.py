@@ -38,7 +38,7 @@ from typing import (
     Set,
     TypeVar,
     Iterable,
-    Sequence,
+    Sequence, Mapping,
 )
 
 import z3
@@ -730,7 +730,7 @@ def z3_push_in_negations(formula: z3.BoolRef, negate=False) -> z3.BoolRef:
 E = TypeVar("E", bound=z3.ExprRef)
 
 
-def z3_subst(inp: E, subst_map: Dict[z3.ExprRef, z3.ExprRef]) -> E:
+def z3_subst(inp: E, subst_map: Mapping[z3.ExprRef, z3.ExprRef]) -> E:
     return z3.substitute(inp, *tuple(subst_map.items()))
 
 

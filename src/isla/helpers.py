@@ -69,7 +69,7 @@ S = TypeVar("S")
 T = TypeVar("T")
 
 
-def star(f: Callable[[Sequence[S]], T]) -> Callable[[S, ...], T]:
+def star(f: Callable[[[Any, ...]], T]) -> Callable[[Sequence[Any]], T]:
     return lambda x: f(*x)
 
 
