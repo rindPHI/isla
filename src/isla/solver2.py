@@ -16,6 +16,8 @@ from typing import (
     AbstractSet,
     Sequence,
     Optional,
+    Any,
+    Iterator,
 )
 
 import z3
@@ -24,6 +26,7 @@ from grammar_to_regex.cfg2regex import RegexConverter
 from grammar_to_regex.regex import regex_to_z3
 from neo_grammar_graph import NeoGrammarGraph
 from orderedset import FrozenOrderedSet
+from orderedset.orderedset import T
 from returns.functions import tap
 from returns.maybe import Maybe, Nothing, Some
 from returns.pipeline import flow
@@ -45,6 +48,7 @@ from isla.helpers import (
     get_elem_by_equivalence,
     star,
     cluster_by_common_elements,
+    eassert,
 )
 from isla.language import (
     ConjunctiveFormula,
@@ -62,7 +66,6 @@ from isla.parser import EarleyParser, PEGParser
 from isla.type_defs import (
     FrozenCanonicalGrammar,
     Path,
-    ImmutableList,
     Grammar,
 )
 from isla.z3_helpers import (
@@ -138,6 +141,12 @@ class FormulaSet(FrozenOrderedSet[Formula]):
 
     def __call__(self, *args, **kwargs):
         return FormulaSet(*args, **kwargs)
+
+    def difference(self, s: Iterable[Any]) -> "FormulaSet":
+        return cast(FormulaSet, super().difference(s))
+
+    def union(self, s: Iterable[T]) -> "FormulaSet":
+        return cast(FormulaSet, super().union(s))
 
 
 @dataclass(frozen=True)
@@ -488,21 +497,27 @@ class Rule(ABC):
     """
 
     @abstractmethod
-    def action(
+    def actions(
         self, state_tree: StateTree, graph: NeoGrammarGraph
-    ) -> Result[Action, SyntaxError | StopIteration]:
+    ) -> Maybe[Result[Iterator[Action], SyntaxError | StopIteration]]:
         """
         This method checks whether this rule is applicable to the given state tree.
-        It returns an action (in a Success container) to be used with
-        :meth:`~isla.solver2.Rule.apply` for generating a successor tree node if there
-        was no problem creating the action. If no action could be generated due to
-        missing (additional) options, a StopIteration Failure is returned; if a solution
-        generated was syntactically invalid, a SyntaxError Failure is returned.
+        If this is not the case, it returns Nothing. Otherwise, it returns Some
+        Success or Failure container. The success container contains an iterator of
+        actions to be used with :meth:`~isla.solver2.Rule.apply` for generating a
+        successor tree node if there was no problem creating the action. If no actions
+        could be generated due to missing (additional) options, a StopIteration Failure
+        is returned; if a solution generated was syntactically invalid, a SyntaxError
+        Failure is returned.
 
         :param state_tree: The input tree node.
         :param graph: The grammar graph for the reference grammar.
-        :return: An action (in a :class:`~returns.result.Success` container) or
-            :class:`~returns.result.Failure`.
+        :return: :class:`~returns.maybe.Some` generator of successor actions (in a
+            :class:`~returns.result.Success` container), :class:`~returns.maybe.Some`
+            :class:`~returns.result.Failure` container with a StopIteration exception
+            (if no further solution can be generated) or a SyntaxError exception (if a
+            solution does not conform to the grammar), or
+            :class:`~returns.maybe.Nothing` if the rule is not applicable..
         """
 
         raise NotImplementedError
@@ -540,13 +555,12 @@ class ExpandRuleAction(Action):
 
 @dataclass(frozen=True)
 class ExpandRule(Rule):
-    def action(
+    def actions(
         self, state_tree: StateTree, graph: NeoGrammarGraph
-    ) -> Result[ExpandRuleAction, SyntaxError | StopIteration]:
+    ) -> Maybe[Result[Iterator[ExpandRuleAction], SyntaxError | StopIteration]]:
         """
-        This method computes an expansion action if it is applicable. It avoids
-        previously taken actions from :code:`state_tree` and takes coverage into
-        account. TODO: Implement this (see inline code comments).
+        This method computes an expansion action if it is applicable. It avoids (TODO!)
+        previously taken actions from :code:`state_tree`.
 
         Consider the following grammar for our assignment language:
 
@@ -575,19 +589,20 @@ class ExpandRule(Rule):
         >>> dtree = DerivationTree("<start>", (DerivationTree("<stmt>"),))
         >>> stree = StateTree(CDT(FormulaSet(), dtree))
         >>> rule = ExpandRule()
-        >>> action = rule.action(stree, graph).unwrap().unwrap()
 
-        An action is returned for the open leaf, choosing either the first or the
-        second expansion alternative for "<stmt>".
+        The result is an iterator of two expansions.
+        >>> some_success_with_iterator = rule.actions(stree, graph)
 
-        >>> action.path
-        (0,)
-        >>> action.alternative in {0, 1}
-        True
+        We unroll the iterator into a list:
+
+        >>> deep_str(map_(map_(list))(some_success_with_iterator))
+        '<Some: <Success: [Expand((0,), 0), Expand((0,), 1)]>>'
 
         :param state_tree: The input state tree.
         :param graph: The grammar graph for the reference grammar.
-        :return: An expansion action or nothing.
+        :return: Some Success container with an expansion action iterator, Some Failure
+            container with a StopIteration exception if there are not further
+            expansions, or Nothing.
         """
 
         # Check if there are any open leaves
@@ -596,22 +611,19 @@ class ExpandRule(Rule):
             return Maybe.nothing()
 
         # If there are open leaves, we choose a random one and apply a random expansion.
-        # TODO 1: If there are siblings to state_tree, choose a *different* action.
-        # TODO 2: We eventually must take syntactic and semantic coverage into account.
-        #         For example, we might want to expand a leaf in a way leading to the
-        #         possible instantiation of a quantifier, or covering a grammar k-path.
-        #         This also means that we need more information about the context, such
-        #         as covered k-paths or quantifiers.
+        # TODO: If there are siblings to state_tree, choose a *different* action.
 
-        path, leaf = random.choice(open_leaves)
-        alternative_id, alternative = random.choice(
-            cast(
-                Tuple[int, ImmutableList[ImmutableList[str]]],
-                tuple(enumerate(graph.canonical_grammar[leaf.value])),
+        return Some(
+            Success(
+                (
+                    ExpandRuleAction(path, alternative_id)
+                    for path, leaf in open_leaves
+                    for alternative_id in range(
+                        len(graph.canonical_grammar[leaf.value])
+                    )
+                )
             )
         )
-
-        return Some(Success(ExpandRuleAction(path, alternative_id)))
 
     def apply(
         self, state_tree: StateTree, action: ExpandRuleAction, graph: NeoGrammarGraph
@@ -695,12 +707,13 @@ class SplitAndAction(Action):
 
 @dataclass(frozen=True)
 class SplitAndRule(Rule):
-    def action(
+    def actions(
         self, state_tree: StateTree, graph: Optional[NeoGrammarGraph] = None
-    ) -> Result[Action, SyntaxError | StopIteration]:
+    ) -> Maybe[Result[Iterator[Action], SyntaxError | StopIteration]]:
         """
-        This method returns an action if the constraint set in the provided state tree
-        contains a conjunctive formula.
+        This method returns Some iterator of actions in a Success container if the
+        constraint set in the provided state tree contains a conjunctive formula.
+        The iterator contains a single action. Otherwise, Nothing is returned.
 
         Example
         -------
@@ -714,13 +727,18 @@ class SplitAndRule(Rule):
         >>> stree = StateTree(
         ...     CDT(FormulaSet([conjunction]), DerivationTree("<start>"))
         ... )
-        >>> print(SplitAndRule().action(stree))
-        <Some: <Success: SplitAnd((StrToInt(x) > 0 ∧ StrToInt(x) < 9))>>
+        >>> deep_str(map_(map_(list))(SplitAndRule().actions(stree)))
+        '<Some: <Success: [SplitAnd((StrToInt(x) > 0 ∧ StrToInt(x) < 9))]>>'
 
         :param state_tree: The input state tree.
         :param graph: The grammar graph for the reference grammar.
-        :return: An action if a conjunction is contained in the state tree or nothing.
+        :return: Some Success container with an actions iterator of one element if a
+            conjunction is contained in the state tree, or Nothing.
         """
+
+        # TODO If this action was already applied once (leading to a sibling state
+        #      that would be equivalent to the one we produce here), we should return
+        #      a StopIteration Failure.
 
         return (
             safe(
@@ -730,7 +748,7 @@ class SplitAndRule(Rule):
                     if isinstance(c, ConjunctiveFormula)
                 )
             )()
-            .bind(lambda c: Some(Success(SplitAndAction(c))))
+            .bind(lambda c: Some(Success((SplitAndAction(c) for _ in range(1)))))
             .lash(lambda _: Nothing)
         )
 
@@ -790,12 +808,15 @@ class ChooseOrAction(Action):
 
 @dataclass(frozen=True)
 class ChooseOrRule(Rule):
-    def action(
+    def actions(
         self, state_tree: StateTree, graph: Optional[NeoGrammarGraph] = None
-    ) -> Result[ChooseOrAction, SyntaxError | StopIteration]:
+    ) -> Maybe[Result[Iterator[ChooseOrAction], SyntaxError | StopIteration]]:
         """
-        This method returns an action if the constraint set in the provided state tree
-        contains a disjunctive formula.
+        This method returns Some iterator of actions in a Success container if the
+        constraint set in the provided state tree contains a disjunctive formula.
+        The iterator contains two actions, one per disjunctive element, excluding
+        previously taken options (towards sibling states). Otherwise, Nothing is
+        returned.
 
         Example
         -------
@@ -809,34 +830,33 @@ class ChooseOrRule(Rule):
         >>> stree = StateTree(
         ...     CDT(FormulaSet([disjunction]), DerivationTree("<start>"))
         ... )
-        >>> str(ChooseOrRule().action(stree)) in [
-        ...     '<Some: <Success: ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 0)>>',
-        ...     '<Some: <Success: ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 1)>>'
-        ... ]
-        True
+        >>> deep_str(map_(map_(list))(ChooseOrRule().actions(stree)))
+        '<Some: <Success: [ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 0), ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 1)]>>'
 
-        >>> ChooseOrRule().action(
+        >>> ChooseOrRule().actions(
         ...     StateTree(CDT(FormulaSet({}), DerivationTree("<start>"))))
         <Nothing>
 
         :param state_tree: The input state tree.
         :param graph: The grammar graph for the reference grammar.
         :return: An action if a disjunction is contained in the state tree or nothing.
-        """
+        """  # noqa: E501
 
-        # TODO 1: If there is a sibling present, we should choose a different disjunct.
-        # TODO 2: We will have to consider semantic coverage information (choose the
-        #         disjunct whose origin formula has not been chosen for evaluation
-        #         so far).
+        # TODO: If there is a sibling present, we should choose a different disjunct.
 
-        constraints = state_tree.node.constraints
         return (
             safe(
                 lambda: next(
-                    c for c in constraints if isinstance(c, DisjunctiveFormula)
+                    c
+                    for c in state_tree.node.constraints
+                    if isinstance(c, DisjunctiveFormula)
                 )
             )()
-            .bind(lambda c: Some(Success(ChooseOrAction(c, random.choice([0, 1])))))
+            .bind(
+                lambda c: Some(
+                    Success((ChooseOrAction(c, choice) for choice in [0, 1]))
+                )
+            )
             .lash(lambda _: Nothing)
         )
 
@@ -903,12 +923,12 @@ class SolveSMTAction(Action):
 
 @dataclass(frozen=True)
 class SolveSMTRule(Rule):
-    def action(
+    def actions(
         self, state_tree: StateTree, graph: NeoGrammarGraph
-    ) -> Maybe[Result[SolveSMTAction, SyntaxError | StopIteration]]:
+    ) -> Maybe[Result[Iterator[SolveSMTAction], SyntaxError | StopIteration]]:
         """
-        This function returns a :class:`~isla.solver2.SolveSMTAction` if there exit
-        SMT formulas in the given state tree and a solution could be computed. The
+        This function returns a :class:`~isla.solver2.SolveSMTAction` iterator if there
+        exist SMT formulas in the given state tree and a solution could be computed. The
         solution is either an assignment of derivation trees to variables or other
         derivation trees, True for valid formulas, or False for invalid formulas.
         Only the first *cluster* of constraints depending on the same variables is
@@ -947,6 +967,7 @@ class SolveSMTRule(Rule):
         >>> var_tree = DerivationTree("<var>", id=0)
         >>> digit = Variable("digit", "<digit>")
         >>> digit_tree = DerivationTree("<digit>", id=1)
+        >>> DerivationTree.next_id = 2
 
         >>> var_eq_x_constraint = SMTFormula(
         ...     '(= var "x")',
@@ -977,26 +998,69 @@ class SolveSMTRule(Rule):
         ...     ),
         ... )
 
-        We compute a SolveSMTAction in this situation.
+        We compute a generator of SolveSMTAction in this situation.
 
-        >>> constraints = FormulaSet([var_eq_x_constraint, digit_greater_3_constraint])
+        >>> constraints = FormulaSet([digit_greater_3_constraint, var_eq_x_constraint])
         >>> rule = SolveSMTRule()
-        >>> rule.action(StateTree(CDT(constraints, orig_dtree)), graph)
-        <Some: <Success: SolveSMT({(<var>_0 == "x", {'<var>_0': '<var>'})} --> {<var>: x})>>
+        >>> from itertools import islice
+        >>> print(
+        ...     deep_str(
+        ...         map_(map_(lambda it: list(islice(it, 2))))(
+        ...             rule.actions(StateTree(CDT(constraints, orig_dtree)), graph)
+        ...         )
+        ...     )
+        ... )
+        <Some: <Success: [SolveSMT({(StrToInt(<digit>_1) > 3, {'<digit>_1': '<digit>'})} --> {<digit>: 4}), SolveSMT({(StrToInt(<digit>_1) > 3, {'<digit>_1': '<digit>'})} --> {<digit>: 5})]>>
 
         Note that we obtain a solution for the first cluster, the constraint on the
-        variable "var."
+        variable "digit." Reversing the constraints results in a solution to the
+        constraint on "x:"
+        
+        >>> constraints = FormulaSet([var_eq_x_constraint, digit_greater_3_constraint])
+        >>> rule = SolveSMTRule()
+        >>> print(
+        ...     deep_str(
+        ...         map_(map_(lambda it: list(islice(it, 2))))(
+        ...             rule.actions(StateTree(CDT(constraints, orig_dtree)), graph)
+        ...         )
+        ...     )
+        ... )
+        <Some: <Success: [SolveSMT({(<var>_0 == "x", {'<var>_0': '<var>'})} --> {<var>: x}), SolveSMT({(<var>_0 == "x", {'<var>_0': '<var>'})} --> False)]>>
+        
+        Since there is only one solution for the constraint, the second element 
+        "solution" by the iterator is "False."
 
+        If we *apply* the first retrieved action and ask for another action based on
+        the resulting state tree, we directly get another solution (than "digit = 4")
+        in the first element of the iterator. For some reason, Z3 now returns 6 and
+        not 5:
+        
+        >>> constraints = FormulaSet([digit_greater_3_constraint, var_eq_x_constraint])
+        >>> state_tree = StateTree(CDT(constraints, orig_dtree))
+        >>> first_action = next(rule.actions(state_tree, graph).unwrap().unwrap())
+        >>> deep_str(first_action)
+        "SolveSMT({(StrToInt(<digit>_1) > 3, {'<digit>_1': '<digit>'})} --> {<digit>: 4})"
+        
+        >>> new_state_tree = rule.apply(state_tree, first_action, graph)
+        >>> print(deep_str(state_tree.children))
+        ()
+        >>> print(deep_str(new_state_tree.children))
+        ((SolveSMT({(StrToInt(<digit>_1) > 3, {'<digit>_1': '<digit>'})} --> {<digit>: 4}), StateTree(({(var == "x", {'var': '<var>'})} ▸ <var> := 4))),)
+        
+        >>> second_action = next(rule.actions(new_state_tree, graph).unwrap().unwrap())
+        >>> deep_str(second_action)
+        "SolveSMT({(StrToInt(<digit>_1) > 3, {'<digit>_1': '<digit>'})} --> {<digit>: 6})"
+        
         If there are no SMT formulas, we obtain Nothing:
 
-        >>> rule.action(StateTree(CDT(FormulaSet(), orig_dtree)), graph)
+        >>> rule.actions(StateTree(CDT(FormulaSet(), orig_dtree)), graph)
         <Nothing>
 
         For "wrong" constraints, e.g., comprising a string-to-int conversion on a
         :code:`<var>` variable, some SytaxError failure is returned:
 
         >>> deep_str(
-        ...     rule.action(
+        ...     rule.actions(
         ...         StateTree(
         ...             CDT(
         ...                 FormulaSet([SMTFormula("(= (str.to.int var) 8)", var)]),
@@ -1024,20 +1088,83 @@ class SolveSMTRule(Rule):
         if not smt_formulas:
             return Nothing
 
+        # We first collect previous solutions. If any solution is a bool value, we
+        # return a Failure. This function should not be called in those cases.
+        previous_solutions: Tuple[bool | Dict[Variable, DerivationTree], ...] = tuple(
+            [
+                action.result
+                if isinstance(action.result, bool)
+                else cast(
+                    Dict[Variable, DerivationTree],
+                    {
+                        find_variable(var_or_tree, smt_formulas): val
+                        for var_or_tree, val in action.result.items()
+                    },
+                )
+                for action, _ in state_tree.children
+                if isinstance(action, SolveSMTAction)
+            ]
+        )
+
+        if any(
+            isinstance(previous_solution, bool)
+            for previous_solution in previous_solutions
+        ):
+            return Some(Failure(StopIteration()))
+
         LOGGER.debug(
             "Eliminating first cluster of semantic formulas {%s}",
             lazyjoin(", ", smt_formulas),
         )
 
-        return Some(
-            unify_smt_formulas_and_solve_first_cluster(
-                graph, smt_formulas, Some(state_tree)
-            ).map(
-                lambda cluster_and_result: SolveSMTAction(
-                    cluster_and_result[0], cluster_and_result[1]
-                )
-            )
+        first_result = unify_smt_formulas_and_solve_first_cluster(
+            graph, smt_formulas, previous_solutions
         )
+
+        match first_result:
+            case Failure(_):
+                return Some(first_result)
+            case Success((c, r)):
+                cluster, result = c, r
+            case _:
+                assert False
+
+        def update_previous_solutions(
+            a_result: bool | frozendict[Variable | DerivationTree, DerivationTree],
+            bool_or_dict: Tuple[bool | Dict[Variable, DerivationTree], ...],
+        ) -> Tuple[bool | Dict[Variable, DerivationTree], ...]:
+            if isinstance(a_result, bool):
+                return bool_or_dict + (a_result,)
+
+            return bool_or_dict + (
+                {
+                    find_variable(var_or_tree, smt_formulas): val
+                    for var_or_tree, val in a_result.items()
+                },
+            )
+
+        def generator() -> Iterator[SolveSMTAction]:
+            yield SolveSMTAction(cluster, result)
+            generator_previous_solutions = update_previous_solutions(
+                result, previous_solutions
+            )
+
+            while True:
+                match unify_smt_formulas_and_solve_first_cluster(
+                    graph, smt_formulas, generator_previous_solutions
+                ):
+                    case Failure(_):
+                        # We only communicate a failure for the first retrieval
+                        return
+                    case Success((c, r)):
+                        generator_previous_solutions = update_previous_solutions(
+                            r, generator_previous_solutions
+                        )
+                        yield SolveSMTAction(c, r)
+                    case _:
+                        assert False
+
+        return Some(Success(generator()))
 
     def apply(
         self, state_tree: StateTree, action: SolveSMTAction, graph: NeoGrammarGraph
@@ -1088,6 +1215,7 @@ class SolveSMTRule(Rule):
 
         This is the original derivation tree in our state.
 
+        >>> DerivationTree.next_id = 2
         >>> orig_dtree = DerivationTree(
         ...     "<start>",
         ...     (
@@ -1108,7 +1236,7 @@ class SolveSMTRule(Rule):
         >>> constraints = FormulaSet([var_eq_x_constraint, digit_greater_3_constraint])
         >>> rule = SolveSMTRule()
         >>> state_tree = StateTree(CDT(constraints, orig_dtree))
-        >>> action = rule.action(state_tree, graph).unwrap().unwrap()
+        >>> action = next(rule.actions(state_tree, graph).unwrap().unwrap())
         >>> print(deep_str(action))
         SolveSMT({(<var>_0 == "x", {'<var>_0': '<var>'})} --> {<var>: x})
 
@@ -1147,7 +1275,7 @@ class SolveSMTRule(Rule):
 def unify_smt_formulas_and_solve_first_cluster(
     graph: NeoGrammarGraph,
     smt_formulas: Sequence[SMTFormula],
-    maybe_state_tree: Maybe[StateTree] = Nothing,
+    previous_solutions: Tuple[Dict[Variable, DerivationTree], ...] = (),
 ) -> Result[
     Tuple[FormulaSet, bool | Dict[Variable | DerivationTree, DerivationTree]],
     SyntaxError | StopIteration,
@@ -1307,9 +1435,8 @@ def unify_smt_formulas_and_solve_first_cluster(
 
     :param graph: The grammar graph representing the reference grammar.
     :param smt_formulas: The SMT-LIB formulas to solve.
-    :param maybe_state_tree: The node in the state tree an SMT solving action should
-        be applied on. This is used to obtain previous solutions and compute a new/
-        different solution. If nothing is passed for this argument, we compute a
+    :param previous_solutions: These are solutions that we will avoid when computing
+        the solutions iterator. If nothing is passed for this argument, we compute a
         solution without any exclusion constraints.
     :return: (1) The formulas in the cluster for which a solution was computed, and (2)
         a (possibly empty) list of solutions or a Boolean value (True if the
@@ -1369,7 +1496,19 @@ def unify_smt_formulas_and_solve_first_cluster(
         )
     )
 
-    return solve_smt_formulas(graph, formula_cluster, maybe_state_tree).map(
+    # We rename the previous solutions similarly to the renaming performed before
+    # the clustering step. Otherwise, the previous solutions will not have any effect.
+    renamed_previous_solutions = tuple(
+        [
+            {
+                type(var)(f"{val.value}_{val.id}", var.n_type): val
+                for var, val in previous_solution.items()
+            }
+            for previous_solution in previous_solutions
+        ]
+    )
+
+    return solve_smt_formulas(graph, formula_cluster, renamed_previous_solutions).map(
         lambda result: (FormulaSet(formula_cluster), result)
     )
 
@@ -1377,7 +1516,7 @@ def unify_smt_formulas_and_solve_first_cluster(
 def solve_smt_formulas(
     graph: NeoGrammarGraph,
     smt_formulas: Iterable[SMTFormula],
-    maybe_state_tree: Maybe[StateTree] = Nothing,
+    previous_solutions: Tuple[Dict[Variable, DerivationTree], ...] = (),
 ) -> Result[
     bool | Dict[Variable | DerivationTree, DerivationTree], SyntaxError | StopIteration
 ]:
@@ -1431,61 +1570,24 @@ def solve_smt_formulas(
     ...     substitutions={digit: digit_tree},
     ... )
 
-    >>> solution = solve_smt_formulas(
-    ...     graph, (var_eq_x_constraint, digit_greater_3_constraint)
-    ... )
+    >>> constraints = (var_eq_x_constraint, digit_greater_3_constraint)
+
+    >>> solution = solve_smt_formulas(graph, constraints)
     >>> deep_str(solution)
     '<Success: {<var>: x, <digit>: 4}>'
 
-    Let's assume we computed that solution before. It is not part of the state tree,
-    and we want to compute another one. We construct the state tree, starting with
-    the involved derivation trees:
-
-    >>> parent_dtree = DerivationTree(
-    ...     "<start>",
-    ...     (
-    ...         DerivationTree(
-    ...             "<stmt>",
-    ...             (
-    ...                 DerivationTree(
-    ...                     "<assgn>",
-    ...                     (var_tree, DerivationTree(" := ", ()), digit_tree)
-    ...                 ),
-    ...             ),
-    ...         ),
-    ...     ),
-    ... )
-
-    >>> new_var_tree = DerivationTree(
-    ...     "<var>", (solution.unwrap()[var_tree],), var_tree.id
-    ... )
-    >>> new_digit_tree = DerivationTree(
-    ...     "<digit>", (solution.unwrap()[digit_tree],), digit_tree.id
-    ... )
-
-    >>> child_dtree = DerivationTree(
-    ...     "<start>",
-    ...     (
-    ...         DerivationTree(
-    ...             "<stmt>",
-    ...             (
-    ...                 DerivationTree(
-    ...                     "<assgn>",
-    ...                     (new_var_tree, DerivationTree(" := ", ()), new_digit_tree)
-    ...                 ),
-    ...             ),
-    ...         ),
-    ...     ),
-    ... )
-
-    >>> constraints = FormulaSet([var_eq_x_constraint, digit_greater_3_constraint])
-    >>> tree = StateTree(CDT(constraints, parent_dtree)).add_child(
-    ...     SolveSMTAction(constraints, solution.unwrap()),
-    ...     CDT(FormulaSet([]), child_dtree)
-    ... )
+    Let's assume we computed this solution already; we can ask for a different one
+    by passing the previous solution as an argument:
 
     >>> new_solution = solve_smt_formulas(
-    ...     graph, (var_eq_x_constraint, digit_greater_3_constraint), Some(tree)
+    ...     graph,
+    ...     (var_eq_x_constraint, digit_greater_3_constraint),
+    ...     (
+    ...         {
+    ...             find_variable(var, constraints): val
+    ...             for var, val in solution.unwrap().items()
+    ...         },
+    ...     ),
     ... )
     >>> deep_str(new_solution)
     '<Success: {<var>: x, <digit>: 5}>'
@@ -1503,24 +1605,7 @@ def solve_smt_formulas(
     ... ))
     '<Success: True>'
 
-    Once a "True" or "False" solution is contained in the state tree, no more solutions
-    are produced. Instead, we return a Failure object with a StopIteration exception.
-
-    >>> constraints = FormulaSet([
-    ...     SMTFormula(z3_eq(digit.to_smt(), digit.to_smt()), digit)
-    ... ])
-    >>> tree = StateTree(CDT(constraints, parent_dtree)).add_child(
-    ...     SolveSMTAction(constraints, True), CDT(FormulaSet([]), parent_dtree)
-    ... )
-
-    >>> deep_str(solve_smt_formulas(
-    ...     graph,
-    ...     (SMTFormula(z3_eq(digit.to_smt(), digit.to_smt()), digit),),
-    ...     Some(tree)
-    ... ))
-    '<Failure: StopIteration()>'
-
-    Finally, if a constraint is used in a wrong way, we obtain a SyntaxError failure.
+    If a constraint is used in a wrong way, we obtain a SyntaxError failure.
     This happens, for example, if we ask for the integer representation of a
     :code:`<var>`:
 
@@ -1536,9 +1621,8 @@ def solve_smt_formulas(
 
     :param graph: The grammar graph representing the reference grammar.
     :param smt_formulas: The SMT-LIB formulas to solve.
-    :param maybe_state_tree: The node in the state tree an SMT solving action should
-        be applied on. This is used to obtain previous solutions and compute a new/
-        different solution. If nothing is passed for this argument, we compute a
+    :param previous_solutions: These are solutions that we will avoid when computing
+        the solutions iterator. If nothing is passed for this argument, we compute a
         solution without any exclusion constraints.
     :return: A (possibly empty) list of solutions or a Boolean value (True if the
         formulas are universally valid or False for unsatisfiable/timeout) in the
@@ -1547,48 +1631,6 @@ def solve_smt_formulas(
         same state tree node resulted in a Boolean result, a failure with a
         StopIteration is returned.
     """
-
-    # We first collect previous solutions. If any solution is a bool value, we
-    # return a Failure. This function should not be called in those cases.
-    def find_variable(dtree: DerivationTree) -> Variable:
-        for formula in smt_formulas:
-            for variable, other_dtree in formula.substitutions.items():
-                if dtree.id == other_dtree.id:
-                    return variable
-
-        raise RuntimeError(
-            "Could not to find a variable corresponding to a derivation tree that was "
-            + "substituted in a previous SMT solution. This is probably a programming "
-            + "error."
-        )
-
-    previous_solutions: ImmutableList[
-        bool | Dict[Variable, z3.SeqRef]
-    ] = maybe_state_tree.map(
-        lambda state_tree: tuple(
-            [
-                action.result
-                if isinstance(action.result, bool)
-                else {
-                    (
-                        var_or_tree
-                        if isinstance(var_or_tree, Variable)
-                        else find_variable(var_or_tree)
-                    ): z3.StringVal(str(val))
-                    for var_or_tree, val in action.result.items()
-                }
-                for action, _ in state_tree.children
-                if isinstance(action, SolveSMTAction)
-            ]
-        )
-    ).value_or(
-        ()
-    )
-
-    if any(isinstance(elem, bool) for elem in previous_solutions):
-        # There is no further solution if any previous SMT solving rule application
-        # returned True (universally valid) or False (unsatisfiable/timeout).
-        return Failure(StopIteration())
 
     assert all(
         isinstance(previous_solution, dict) for previous_solution in previous_solutions
@@ -1599,7 +1641,7 @@ def solve_smt_formulas(
         for var in previous_solution
     )
     assert all(
-        isinstance(val, z3.SeqRef)
+        isinstance(val, DerivationTree)
         for previous_solution in previous_solutions
         for val in previous_solution.values()
     )
@@ -1822,7 +1864,7 @@ def solve_smt_formulas_with_language_constraints(
     smt_formulas: Iterable[z3.BoolRef],
     variables: AbstractSet[Variable],
     tree_substitutions: Maybe[Dict[Variable, DerivationTree]] = Maybe.empty,
-    solutions_to_exclude: Maybe[List[Dict[Variable, z3.StringVal]]] = Maybe.empty,
+    solutions_to_exclude: Maybe[List[Dict[Variable, DerivationTree]]] = Maybe.empty,
     enable_optimized_z3_queries: bool = True,
 ) -> Result[
     Tuple[SolverResult, Dict[Variable | DerivationTree, DerivationTree]],
@@ -1871,20 +1913,29 @@ def solve_smt_formulas_with_language_constraints(
     >>> 0 < int(str(solution[n])) <= 9
     True
 
-    We can pass an already fixed assignment ofvariables to derivation trees that is
+    We can pass an already fixed assignment of variables to derivation trees that is
     considered in constraint solving.
 
     >>> x, y, z = (
     ...     Variable("x", "<assgn>"),
     ...     Variable("y", "<assgn>"),
-    ...     Variable("y", "<assgn>"),
+    ...     Variable("z", "<assgn>"),
     ... )
     >>> constraints = (z3_eq(x.to_smt(), y.to_smt()), z3_eq(y.to_smt(), z.to_smt()))
-    >>> tree_substitutions = {z: parse("a := 7", grammar).unwrap()}
+    >>> y_tree = DerivationTree("<assgn>", None, id=0)
+    >>> tree_substitutions = {
+    ...     y: y_tree, z: parse("a := 7", grammar, "<assgn>").unwrap()
+    ... }
 
-    >>> deep_str(solve_smt_formulas_with_language_constraints(
-    ...     graph, constraints, FrozenOrderedSet([x, y, z]), Some(tree_substitutions)))
-    '<Success: (SolverResult.SATISFIABLE, {x: a := 7, y: a := 7})>'
+    >>> result = solve_smt_formulas_with_language_constraints(
+    ...     graph, constraints, FrozenOrderedSet([x, y, z]), Some(tree_substitutions)
+    ... )
+    >>> deep_str(result)
+    '<Success: (SolverResult.SATISFIABLE, {x: a := 7, y: a := 7, z: a := 7})>'
+
+    Observe that the identifier of the open tree for variable y is preserved:
+    >>> result.unwrap()[1][y].id
+    0
 
     If a solution returned by the SMT solver does not fit to the grammar, a
     :class:`~returns.result.Failure` object is returned. If we ask for the integer
@@ -2051,9 +2102,9 @@ def solve_smt_formulas_with_language_constraints(
         prev_solution_formula = z3_and(
             [
                 previous_solution_formula(
-                    var, string_val, fresh_var_map, length_vars, int_vars
+                    var, z3.StringVal(str(tree)), fresh_var_map, length_vars, int_vars
                 )
-                for var, string_val in prev_solution.items()
+                for var, tree in prev_solution.items()
             ]
         )
 
@@ -2070,24 +2121,110 @@ def solve_smt_formulas_with_language_constraints(
     return reduce(
         lambda prev_success_or_failure, variable: prev_success_or_failure.bind(
             lambda res_and_map: (
+                solver_result := res_and_map[0],
+                assignment := res_and_map[1],
                 extract_model_value(
                     graph, variable, maybe_model, fresh_var_map, length_vars, int_vars
                 ).map(
                     lambda model_value: (
-                        res_and_map[0],
-                        res_and_map[1] | {variable: model_value},
+                        solver_result,
+                        assignment
+                        | {
+                            variable: restore_derivation_tree_id(
+                                variable, model_value, tree_substitutions
+                            )
+                        },
                     )
-                )
-            )
+                ),
+            )[-1]
         ),
         variables,
         Success((SolverResult.SATISFIABLE, {})),
     )
 
 
+def restore_derivation_tree_id(
+    variable: Variable,
+    model_value: DerivationTree,
+    original_substitutions: Maybe[Dict[Variable, DerivationTree]],
+) -> DerivationTree:
+    """
+    If :code:`variable` was assigned a DerivationTree with a single, open node in
+    :code:`original_substitutions`, we replace the id in :code:`model_value` by
+    the id of the tree node in the original substitution.
+
+    Example
+    -------
+
+    In the following example, the original ID "0" is restored, the "1" removed:
+
+    >>> x = Variable("x", "<X>")
+    >>> model_value = DerivationTree("<X>", (DerivationTree("x", (), id=2),), id=1)
+    >>> original_substitutions = Some({x: DerivationTree("<X>", None, id=0)})
+    >>> restore_derivation_tree_id(x, model_value, original_substitutions)
+    DerivationTree('<X>', (DerivationTree('x', (), id=2),), id=0)
+
+    If the original substitution is of different shape, nothing happens:
+    >>> x = Variable("x", "<X>")
+    >>> model_value = DerivationTree("<X>", (DerivationTree("x", (), id=2),), id=1)
+    >>> original_substitutions = Some({
+    ...     x: DerivationTree("<X>", (DerivationTree("y", (), id=3),), id=0)
+    ... })
+    >>> restore_derivation_tree_id(x, model_value, original_substitutions)
+    DerivationTree('<X>', (DerivationTree('x', (), id=2),), id=1)
+
+    :param variable: The variable for which the model value was retrieved.
+    :param model_value: The parsed SMT solver solution with new tree IDs.
+    :param original_substitutions: The original substitutions to search.
+    :return: Either the original tree or one of similar shape, but where the root
+        has the ID of the open root node in the original substitution.
+    """
+
+    assert isinstance(variable, Variable)
+    assert isinstance(model_value, DerivationTree)
+
+    return original_substitutions.map(
+        lambda substs: Maybe.from_optional(substs.get(variable, None))
+        .map(
+            lambda orig_tree: eassert(
+                DerivationTree(orig_tree.value, model_value.children, id=orig_tree.id),
+                orig_tree.value == model_value.value,
+            )
+            if orig_tree.children is None
+            else model_value
+        )
+        .value_or(model_value)
+    ).value_or(model_value)
+
+
+def find_variable(
+    dtree: Variable | DerivationTree, smt_formulas: Iterable[SMTFormula]
+) -> Variable:
+    """
+    TODO
+
+    :param dtree:
+    :param smt_formulas:
+    :return:
+    """
+    if isinstance(dtree, Variable):
+        return dtree
+
+    for formula in smt_formulas:
+        for variable, other_dtree in formula.substitutions.items():
+            if dtree.id == other_dtree.id:
+                return variable
+
+    raise RuntimeError(
+        "Could not to find a variable corresponding to a derivation tree that "
+        + "was substituted in a previous SMT solution. This is probably a "
+        + "programming error."
+    )
+
+
 def rename_instantiated_variables_in_smt_formulas(
     smt_formulas: Iterable[SMTFormula],
-) -> ImmutableList[SMTFormula]:
+) -> Tuple[SMTFormula, ...]:
     """
     This function renames the already instantiated (substituted) variables in an SMT
     formula. For any variable v associated to a tree t, the original, logical nam
@@ -2122,24 +2259,18 @@ def rename_instantiated_variables_in_smt_formulas(
 
     result = []
     for sub_formula in smt_formulas:
-        new_smt_formula = sub_formula.formula
-        new_substitutions = sub_formula.substitutions
-        new_instantiated_variables = sub_formula.instantiated_variables
+        renaming_map = unifying_renaming_map_for_smt_formula(sub_formula)
+        z3_renaming_map = frozendict(
+            {v_1.to_smt(): v_2.to_smt() for v_1, v_2 in renaming_map.items()}
+        )
 
-        for subst_var, subst_tree in sub_formula.substitutions.items():
-            new_name = f"{subst_tree.value}_{subst_tree.id}"
-            new_var = BoundVariable(new_name, subst_var.n_type)
-
-            new_smt_formula = z3_subst(
-                new_smt_formula, {subst_var.to_smt(): new_var.to_smt()}
-            )
-            new_substitutions = {
-                new_var if k == subst_var else k: v
-                for k, v in new_substitutions.items()
-            }
-            new_instantiated_variables = {
-                new_var if v == subst_var else v for v in new_instantiated_variables
-            }
+        new_smt_formula = z3_subst(sub_formula.formula, z3_renaming_map)
+        new_substitutions = {
+            renaming_map.get(k, k): v for k, v in sub_formula.substitutions.items()
+        }
+        new_instantiated_variables = FrozenOrderedSet(
+            [renaming_map.get(v, v) for v in sub_formula.instantiated_variables]
+        )
 
         result.append(
             SMTFormula(
@@ -2151,6 +2282,47 @@ def rename_instantiated_variables_in_smt_formulas(
         )
 
     return tuple(result)
+
+
+def unifying_renaming_map_for_smt_formula(
+    smt_formula: SMTFormula,
+) -> frozendict[Variable, Variable]:
+    """
+    This function computes a renaming of the variables in an SMTFormula based on the
+    IDs of the associated derivation trees in the substitutions map.
+
+    Example
+    -------
+
+    In the formula :code:`x = y` constructed below, both variables are associated to
+    the same derivation tree object (the result is the same for different objects with
+    the same :code:`id`). Consequently, the unifying renaming map associates these
+    variables with a new variables of name :code:`<A>_5`, where the :code:`<A>` stems
+    from the nonterminal type of the variables and the 5 from the ID of the tree.
+
+    >>> x = BoundVariable("x", "<A>")
+    >>> y = BoundVariable("y", "<A>")
+    >>> tree = DerivationTree("<A>", id=5)
+    >>> formula = (
+    ...     SMTFormula("(= x y)", x, y).substitute_expressions({x: tree, y: tree})
+    ... )
+
+    >>> print(deep_str(unifying_renaming_map_for_smt_formula(formula)))
+    {x: <A>_5, y: <A>_5}
+
+    :param smt_formula: The SMTFormula for which to compute a unifying renaming map.
+    :return: The unifying renaming map.
+    """
+
+    return frozendict(
+        {
+            subst_var: (
+                new_name := f"{subst_tree.value}_{subst_tree.id}",
+                type(subst_var)(new_name, subst_var.n_type),
+            )[-1]
+            for subst_var, subst_tree in smt_formula.substitutions.items()
+        }
+    )
 
 
 @dataclass(frozen=True)
@@ -3335,9 +3507,7 @@ def create_fixed_length_tree(
 
     nullable = compute_nullable_nonterminals(canonical_grammar)
     start = DerivationTree(start) if isinstance(start, str) else start
-    stack: List[
-        Tuple[DerivationTree, int, ImmutableList[Tuple[Path, DerivationTree]]]
-    ] = [
+    stack: List[Tuple[DerivationTree, int, Tuple[Tuple[Path, DerivationTree], ...]]] = [
         (start, int(start.value not in nullable), (((), start),)),
     ]
 
@@ -3391,11 +3561,11 @@ def create_fixed_length_tree(
 def expand_leaf(
     tree: DerivationTree,
     min_unparsed_tree_len: int,
-    open_leaves: ImmutableList[Tuple[Path, DerivationTree]],
+    open_leaves: Tuple[Tuple[Path, DerivationTree], ...],
     leaf_idx: int,
-    expansion: ImmutableList[str],
+    expansion: Tuple[str, ...],
     nullable_nonterminals: Set[str],
-) -> Tuple[DerivationTree, int, ImmutableList[Tuple[Path, DerivationTree]]]:
+) -> Tuple[DerivationTree, int, Tuple[Tuple[Path, DerivationTree], ...]]:
     """
     This function expands a leaf in :code:`tree` according to the grammar expansion
     in :code:`expansion` and returns (1) the expanded tree, (2) a lower bound on the
