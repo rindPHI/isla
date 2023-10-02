@@ -50,6 +50,7 @@ from isla.helpers import (
     star,
     cluster_by_common_elements,
     eassert,
+    singleton_iterator,
 )
 from isla.language import (
     ConjunctiveFormula,
@@ -63,6 +64,7 @@ from isla.language import (
     QuantifiedFormula,
     BoundVariable,
     BindExpression,
+    ForallFormula,
 )
 from isla.language import Formula
 from isla.parser import EarleyParser, PEGParser
@@ -729,8 +731,12 @@ class ExpandRule(Rule):
 
 @dataclass(frozen=True)
 class MatchAllUniversalQuantifiersAction(Action):
-    universal_formulas: FormulaSet
-    result: frozendict[Variable, DerivationTree]
+    match_result: frozendict[
+        ForallFormula, Tuple[frozendict[Variable, Tuple[Path, DerivationTree]], ...]
+    ]
+
+    def __str__(self):
+        return f"MatchAllUniversalQuantifiers({deep_str(self.match_result)})"
 
 
 @dataclass(frozen=True)
@@ -739,26 +745,256 @@ class MatchAllUniversalQuantifiersRule(Rule):
         self, state_tree: StateTree, graph: NeoGrammarGraph
     ) -> Maybe[Result[Iterator[Action], SyntaxError | StopIteration]]:
         """
+        This function matches all universal formulas in the constraint set. Only new
+        matches are considered, i.e., if the universal formula was already successfully
+        matched on some sub tree, this match is not considered. If there already exists
+        a MatchAllUniversalQuantifiersAction from the given state tree, Nothing is
+        returned. Otherwise, if the match was successful and Some iterator is returned,
+        this will be an iterator of exactly one element.
 
-        :param state_tree:
-        :param graph:
-        :return:
-        """
+        Example
+        -------
 
-        pass
+        We consider the running example with the "assignment language:"
+
+        >>> import string
+        >>> from isla.language import true
+        >>> from isla.type_defs import FrozenGrammar
+
+        >>> grammar: FrozenGrammar = frozendict({
+        ...     "<start>":
+        ...         ("<stmt>",),
+        ...     "<stmt>":
+        ...         ("<assgn> ; <stmt>", "<assgn>"),
+        ...     "<assgn>":
+        ...         ("<var> := <rhs>",),
+        ...     "<rhs>":
+        ...         ("<var>", "<digit>"),
+        ...     "<var>": tuple(string.ascii_lowercase),
+        ...     "<digit>": tuple(string.digits),
+        ... })
+        >>> graph = NeoGrammarGraph(grammar)
+
+        The formula we want to match quantifies over assignments that have a
+        :code:`<digit>` as right-hand side. In the following example input, there are
+        two such assignments:
+
+        >>> dtree = parse("x := 1 ; y := 2 ; y := z", grammar).unwrap()
+
+        Here's the formula; it's core is irrelevant here:
+
+        >>> str_formula = (
+        ...     'forall <assgn> assgn="<var> := {<digit> d}": str.to.int(d) > 0'
+        ... )
+        >>> from isla.language import parse_isla
+        >>> formula = parse_isla(str_formula).substitute_expressions({
+        ...     Constant("start", "<start>"): dtree
+        ... })
+
+        We obtain one action (after *applying* this action, further requests will
+        result in :class:`~returns.maybe.Nothing`).
+
+        >>> rule = MatchAllUniversalQuantifiersRule()
+        >>> stree = StateTree(CDT(FormulaSet([formula]), dtree))
+        >>> results = list(rule.actions(stree, graph).unwrap().unwrap())
+
+        >>> len(results)
+        1
+
+        >>> type(results[0]).__name__
+        'MatchAllUniversalQuantifiersAction'
+
+        The match result in this action has our quantified formula as key (note that
+        we substituted the start constant with our derivation tree):
+
+        >>> deep_str(set(results[0].match_result.keys()))
+        '{∀ "<var> := {<digit> d}" = assgn ∈ x := 1 ; y := 2 ; y := z: (StrToInt(d) > 0)}'
+
+        There are two matches for assignments with :code:`<digit>` right-hand sides.
+
+        >>> matches = results[0].match_result[formula]
+        >>> len(matches)
+        2
+
+        Those are:
+
+        >>> deep_str(matches[0])
+        '{assgn: ((0, 0), x := 1), <var>: ((0, 0, 0), x),  := : ((0, 0, 1),  := ), d: ((0, 0, 2, 0), 1)}'
+
+        >>> deep_str(matches[1])
+        '{assgn: ((0, 2, 0), y := 2), <var>: ((0, 2, 0, 0), y),  := : ((0, 2, 0, 1),  := ), d: ((0, 2, 0, 2, 0), 2)}'
+
+        :param state_tree: The state tree in which to match all universal quantifiers.
+        :param graph: The grammar graph of the reference grammar.
+        :return: Nothing or Some Success container with a singleton-iterator of the
+            computed action.
+        """  # noqa: E501
+
+        if any(
+            isinstance(action, MatchAllUniversalQuantifiersAction)
+            for action, _ in state_tree.children
+        ):
+            return Nothing
+
+        qfr_matches: frozendict[
+            ForallFormula, Tuple[frozendict[Variable, Tuple[Path, DerivationTree]], ...]
+        ] = frozendict(
+            filter(
+                None,
+                [
+                    matches_for_quantified_formula(f, graph)
+                    .map(
+                        lambda matches: tuple(
+                            [
+                                m
+                                for m in matches
+                                if not f.is_already_matched(m[f.bound_variable][1])
+                            ]
+                        )
+                    )
+                    .bind(lambda matches: Some((f, matches)) if matches else Nothing)
+                    .value_or(None)
+                    for f in state_tree.node.constraints
+                    if isinstance(f, ForallFormula)
+                ],
+            )
+        )
+
+        if not qfr_matches:
+            return Nothing
+
+        return Some(
+            Success(singleton_iterator(MatchAllUniversalQuantifiersAction(qfr_matches)))
+        )
 
     def apply(
-        self, state_tree: StateTree, action: Action, graph: NeoGrammarGraph
+        self,
+        state_tree: StateTree,
+        action: MatchAllUniversalQuantifiersAction,
+        graph: NeoGrammarGraph,
     ) -> StateTree:
         """
+        This function applies a
+        :class:`~isla.solver2.MatchAllUniversalQuantifiersAction` on a state tree.
+        In the resulting CDT's constraint set, the instantiated inner formulas of
+        the matched universal formulas come first, followed by the whole original
+        constraint set. The original universal formulas are retained, but with the
+        "already matched" field updated to the applied matches.
 
-        :param state_tree:
-        :param action:
-        :param graph:
-        :return:
-        """
+        Example
+        -------
 
-        pass
+        We consider the running example with the "assignment language:"
+
+        >>> import string
+        >>> from isla.language import true
+        >>> from isla.type_defs import FrozenGrammar
+
+        >>> grammar: FrozenGrammar = frozendict({
+        ...     "<start>":
+        ...         ("<stmt>",),
+        ...     "<stmt>":
+        ...         ("<assgn> ; <stmt>", "<assgn>"),
+        ...     "<assgn>":
+        ...         ("<var> := <rhs>",),
+        ...     "<rhs>":
+        ...         ("<var>", "<digit>"),
+        ...     "<var>": tuple(string.ascii_lowercase),
+        ...     "<digit>": tuple(string.digits),
+        ... })
+        >>> graph = NeoGrammarGraph(grammar)
+
+        The formula we want to match quantifies over assignments that have a
+        :code:`<digit>` as right-hand side. In the following example input, there are
+        two such assignments:
+
+        >>> dtree = parse("x := 1 ; y := 2 ; y := z", grammar).unwrap()
+
+        Here's the formula; it's core is irrelevant here:
+
+        >>> str_formula = (
+        ...     'forall <assgn> assgn="<var> := {<digit> d}": str.to.int(d) > 0'
+        ... )
+        >>> from isla.language import parse_isla
+        >>> formula = parse_isla(str_formula).substitute_expressions({
+        ...     Constant("start", "<start>"): dtree
+        ... })
+
+        We obtain one action (after *applying* this action, further requests will
+        result in :class:`~returns.maybe.Nothing`).
+
+        >>> rule = MatchAllUniversalQuantifiersRule()
+        >>> stree = StateTree(CDT(FormulaSet([formula]), dtree))
+        >>> action = next(rule.actions(stree, graph).unwrap().unwrap())
+
+        The new node looks like the old one, since the instantiated inner formulas are
+        automatically simplified to "true:"
+
+        >>> result_node = rule.apply(stree, action, graph).children[0][1].node
+        >>> deep_str(result_node)
+        '({∀ "<var> := {<digit> d}" = assgn ∈ x := 1 ; y := 2 ; y := z: (StrToInt(d) > 0)} ▸ x := 1 ; y := 2 ; y := z)'
+
+        However, the universal formula now "knows" that it was matched with the two
+        matching trees:
+
+        >>> formula = cast(ForallFormula, result_node.constraints[0])
+        >>> matched_tree_ids = formula.already_matched
+        >>> deep_str([
+        ...     result_node.tree.get_subtree(result_node.tree.find_node(tree_id))
+        ...     for tree_id in matched_tree_ids
+        ... ])
+        '[x := 1, y := 2]'
+
+        Thus, when we again ask for a match with the resulting updated formula, we
+        obtain Nothing:
+
+        >>> stree = StateTree(CDT(FormulaSet([formula]), dtree))
+        >>> rule.actions(stree, graph)
+        <Nothing>
+
+        :param state_tree: The state tree on which to apply the action.
+        :param action: The action to apply.
+        :param graph: The grammar graph of the reference grammar.
+        :return: The state tree with a new child resulting from the match instantiation.
+        """  # noqa: E501
+
+        instantiated_formulas = FormulaSet(
+            [
+                formula
+                for list_of_formulas in [
+                    [
+                        univ_formula.inner_formula.substitute_expressions(
+                            {
+                                variable: match_tree
+                                for variable, (_, match_tree) in match.items()
+                            }
+                        )
+                        for match in matches
+                    ]
+                    for univ_formula, matches in action.match_result.items()
+                ]
+                for formula in list_of_formulas
+            ]
+        )
+
+        original_formulas = FormulaSet(
+            [
+                formula
+                if formula not in action.match_result
+                else formula.add_already_matched(
+                    {
+                        match[formula.bound_variable][1]
+                        for match in action.match_result[formula]
+                    }
+                )
+                for formula in state_tree.node.constraints
+            ]
+        )
+
+        return state_tree.add_child(
+            action,
+            CDT(instantiated_formulas.union(original_formulas), state_tree.node.tree),
+        )
 
 
 def matches_for_quantified_formula(
@@ -768,7 +1004,7 @@ def matches_for_quantified_formula(
     maybe_initial_assignments: Maybe[
         frozendict[Variable, Tuple[Path, DerivationTree]]
     ] = Nothing,
-) -> List[frozendict[Variable, Tuple[Path, DerivationTree]]]:
+) -> Maybe[Tuple[frozendict[Variable, Tuple[Path, DerivationTree]], ...]]:
     """
     Matches the given quantified (universal or existential) formula agains the given
     derivation tree. If no explicit derivation tree is given, the "in variable" of the
@@ -814,7 +1050,7 @@ def matches_for_quantified_formula(
 
     Consequently, we expenct two results.
 
-    >>> result = matches_for_quantified_formula(formula, graph, Some(inp))
+    >>> result = matches_for_quantified_formula(formula, graph, Some(inp)).unwrap()
     >>> len(result)
     2
 
@@ -845,7 +1081,7 @@ def matches_for_quantified_formula(
     maybe_bind_expr: Maybe[BindExpression] = Maybe.from_optional(
         formula.bind_expression
     )
-    new_assignments: List[frozendict[Variable, Tuple[Path, DerivationTree]]] = []
+    new_assignments: Tuple[frozendict[Variable, Tuple[Path, DerivationTree]], ...] = ()
     initial_assignments = maybe_initial_assignments.value_or(frozendict({}))
 
     def search_action(path: Path, tree: DerivationTree) -> None:
@@ -853,15 +1089,16 @@ def matches_for_quantified_formula(
         if node != qfd_var.n_type:
             return
 
-        new_assignments.extend(
+        nonlocal new_assignments
+        new_assignments += (
             maybe_bind_expr.lash(
                 lambda _: Failure(
-                    Some([initial_assignments.set(qfd_var, (path, tree))])
+                    Some((initial_assignments.set(qfd_var, (path, tree)),))
                 )
             )
             .bind(compose(partial(match_bind_expression, qfd_var, path, tree), Failure))
             .lash(identity)  # Failure[Maybe] ==> Maybe
-            .lash(lambda _: Some([]))  # Nothing -> Some
+            .lash(lambda _: Some(()))  # Nothing -> Some
             .unwrap()
         )
 
@@ -870,7 +1107,7 @@ def matches_for_quantified_formula(
         path: Path,
         tree: DerivationTree,
         bind_expr: BindExpression,
-    ) -> Maybe[List[frozendict[Variable, Tuple[Path, DerivationTree]]]]:
+    ) -> Maybe[Tuple[frozendict[Variable, Tuple[Path, DerivationTree]], ...]]:
         return (
             Maybe.from_optional(bind_expr.match(tree, graph.grammar))
             .map(frozendict)
@@ -882,7 +1119,7 @@ def matches_for_quantified_formula(
                 )
             )
             .bind(star(check_assignment))
-            .map(lambda assignment: [assignment])
+            .map(lambda assignment: (assignment,))
         )
 
     def assignment_for(
@@ -892,8 +1129,9 @@ def matches_for_quantified_formula(
         match: frozendict[BoundVariable, Tuple[Path, DerivationTree]],
         initial_assignments: frozendict[Variable, Tuple[Path, DerivationTree]],
     ) -> frozendict[Variable, Tuple[Path, DerivationTree]]:
-        return initial_assignments.set(qfd_var, (path, tree)) | frozendict(
-            {v: (path + p[0], p[1]) for v, p in match.items()}
+        return frozendict(
+            initial_assignments.set(qfd_var, (path, tree))
+            | {v: (path + p[0], p[1]) for v, p in match.items()}
         )
 
     def check_assignment(
@@ -914,7 +1152,7 @@ def matches_for_quantified_formula(
         )
 
     in_tree.traverse(search_action)
-    return new_assignments
+    return Some(new_assignments) if new_assignments else Nothing
 
 
 # endregion Universal Quantifier Expansion Rule

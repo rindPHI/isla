@@ -42,6 +42,7 @@ from typing import (
     Any,
     Optional,
     AbstractSet,
+    Iterator,
 )
 
 import returns
@@ -67,6 +68,24 @@ HELPERS_LOGGER = logging.getLogger(__name__)
 R = TypeVar("R")
 S = TypeVar("S")
 T = TypeVar("T")
+
+
+def singleton_iterator(elem: T) -> Iterator[T]:
+    """
+    Creates an iterator from a single element.
+
+    >>> it = singleton_iterator(1)
+    >>> next(it)
+    1
+
+    >>> deep_str(safe(lambda: next(it))())
+    '<Failure: StopIteration()>'
+
+    :param elem: The element to create an iterator from.
+    :return: The resulting iterator of one element.
+    """
+
+    return (x for x in [elem])
 
 
 def star(f: Callable[[[Any, ...]], T]) -> Callable[[Sequence[Any]], T]:
