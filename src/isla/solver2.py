@@ -28,7 +28,7 @@ from grammar_to_regex.regex import regex_to_z3
 from neo_grammar_graph import NeoGrammarGraph
 from orderedset import FrozenOrderedSet
 from orderedset.orderedset import T
-from returns.functions import tap
+from returns.functions import tap, compose, identity
 from returns.maybe import Maybe, Nothing, Some
 from returns.pipeline import flow
 from returns.pointfree import lash, map_
@@ -60,6 +60,9 @@ from isla.language import (
     Constant,
     true,
     false,
+    QuantifiedFormula,
+    BoundVariable,
+    BindExpression,
 )
 from isla.language import Formula
 from isla.parser import EarleyParser, PEGParser
@@ -83,8 +86,8 @@ from isla.z3_helpers import (
 LOGGER = logging.getLogger(__name__)
 
 
-# BASIC DATA STRUCTURES
-# =====================
+# region BASIC DATA STRUCTURES
+# ============================
 
 
 class FormulaSet(FrozenOrderedSet[Formula]):
@@ -208,7 +211,7 @@ class StateTree:
 
         >>> from isla.language import true
 
-        >>> dummy_action = ExpandRuleAction((), 0)
+        >>> dummy_action = ExpandAction((), 0)
         >>> tree_2 = StateTree(
         ...     CDT(FormulaSet(), DerivationTree("<tree_2>")), (0, 0)
         ... )
@@ -286,7 +289,7 @@ class StateTree:
 
         >>> from isla.language import true
 
-        >>> dummy_action = ExpandRuleAction((), 0)
+        >>> dummy_action = ExpandAction((), 0)
         >>> tree_2 = StateTree(
         ...     CDT(FormulaSet(), DerivationTree("<tree_2>")), (0, 0)
         ... )
@@ -366,7 +369,7 @@ class StateTree:
 
         >>> from isla.language import true
 
-        >>> dummy_action = ExpandRuleAction((), 0)
+        >>> dummy_action = ExpandAction((), 0)
         >>> tree_2 = StateTree(
         ...     CDT(FormulaSet(), DerivationTree("<tree_2>")), (0, 0)
         ... )
@@ -429,7 +432,7 @@ class StateTree:
 
         >>> from isla.language import true
 
-        >>> dummy_action = ExpandRuleAction((), 0)
+        >>> dummy_action = ExpandAction((), 0)
         >>> tree_2 = StateTree(
         ...     CDT(FormulaSet(), DerivationTree("<tree_2>")), (0, 0)
         ... )
@@ -540,12 +543,18 @@ class Rule(ABC):
         raise NotImplementedError
 
 
-# CONCRETE ACTIONS AND RULES
-# ==========================
+# endregion BASIC DATA STRUCTURES
+
+
+# region CONCRETE ACTIONS AND RULES
+# =================================
+
+# region Expansion Rule
+# ---------------------
 
 
 @dataclass(frozen=True)
-class ExpandRuleAction(Action):
+class ExpandAction(Action):
     path: Path
     alternative: int
 
@@ -557,7 +566,7 @@ class ExpandRuleAction(Action):
 class ExpandRule(Rule):
     def actions(
         self, state_tree: StateTree, graph: NeoGrammarGraph
-    ) -> Maybe[Result[Iterator[ExpandRuleAction], SyntaxError | StopIteration]]:
+    ) -> Maybe[Result[Iterator[ExpandAction], SyntaxError | StopIteration]]:
         """
         This method computes an expansion action if it is applicable. It avoids (TODO!)
         previously taken actions from :code:`state_tree`.
@@ -625,13 +634,13 @@ class ExpandRule(Rule):
             return Nothing
 
         iterator = (
-            ExpandRuleAction(path, alternative_id)
+            ExpandAction(path, alternative_id)
             for path, leaf in open_leaves
             for alternative_id in range(len(graph.canonical_grammar[leaf.value]))
             if all(
                 path != other_action.path or alternative_id != other_action.alternative
                 for other_action, _ in state_tree.children
-                if isinstance(other_action, ExpandRuleAction)
+                if isinstance(other_action, ExpandAction)
             )
         )
 
@@ -642,7 +651,7 @@ class ExpandRule(Rule):
         )
 
     def apply(
-        self, state_tree: StateTree, action: ExpandRuleAction, graph: NeoGrammarGraph
+        self, state_tree: StateTree, action: ExpandAction, graph: NeoGrammarGraph
     ) -> StateTree:
         """
         This method applies a previously chosen :class:`~isla.solver2.ExpandRuleAction`
@@ -653,7 +662,6 @@ class ExpandRule(Rule):
 
         Consider the assignment language grammar:
 
-        >>> from frozendict import frozendict
         >>> import string
         >>> from isla.language import true
         >>> from isla.type_defs import FrozenGrammar
@@ -678,13 +686,13 @@ class ExpandRule(Rule):
 
         >>> rule = ExpandRule()
 
-        >>> action = ExpandRuleAction((0,), 0)
+        >>> action = ExpandAction((0,), 0)
         >>> print(rule.apply(stree, action, graph))
         StateTree(({} ▸ <stmt>), [(Expand((0,), 0), StateTree(({} ▸ <assgn> ; <stmt>)))])
 
         Now, we choose the second expansion rule:
 
-        >>> action = ExpandRuleAction((0,), 1)
+        >>> action = ExpandAction((0,), 1)
         >>> print(rule.apply(stree, action, graph))
         StateTree(({} ▸ <stmt>), [(Expand((0,), 1), StateTree(({} ▸ <assgn>)))])
 
@@ -711,6 +719,208 @@ class ExpandRule(Rule):
         return state_tree.add_child(
             action, CDT(node.constraints, node.tree.replace_path(action.path, new_tree))
         )
+
+
+# endregion Expansion Rule
+
+# region Universal Quantifier Expansion Rule
+# ------------------------------------------
+
+
+@dataclass(frozen=True)
+class MatchAllUniversalQuantifiersAction(Action):
+    universal_formulas: FormulaSet
+    result: frozendict[Variable, DerivationTree]
+
+
+@dataclass(frozen=True)
+class MatchAllUniversalQuantifiersRule(Rule):
+    def actions(
+        self, state_tree: StateTree, graph: NeoGrammarGraph
+    ) -> Maybe[Result[Iterator[Action], SyntaxError | StopIteration]]:
+        """
+
+        :param state_tree:
+        :param graph:
+        :return:
+        """
+
+        pass
+
+    def apply(
+        self, state_tree: StateTree, action: Action, graph: NeoGrammarGraph
+    ) -> StateTree:
+        """
+
+        :param state_tree:
+        :param action:
+        :param graph:
+        :return:
+        """
+
+        pass
+
+
+def matches_for_quantified_formula(
+    formula: QuantifiedFormula,
+    graph: NeoGrammarGraph,
+    maybe_in_tree: Maybe[DerivationTree] = Nothing,
+    maybe_initial_assignments: Maybe[
+        frozendict[Variable, Tuple[Path, DerivationTree]]
+    ] = Nothing,
+) -> List[frozendict[Variable, Tuple[Path, DerivationTree]]]:
+    """
+    Matches the given quantified (universal or existential) formula agains the given
+    derivation tree. If no explicit derivation tree is given, the "in variable" of the
+    formula must already be instantiated to a derivation tree. The function returns
+    all matches found. If an initial assignment is given, all matches extend the
+    initial assignment.
+
+    Example
+    -------
+
+    We consider the running example with the "assignment language:"
+
+    >>> import string
+    >>> from isla.language import true
+    >>> from isla.type_defs import FrozenGrammar
+
+    >>> grammar: FrozenGrammar = frozendict({
+    ...     "<start>":
+    ...         ("<stmt>",),
+    ...     "<stmt>":
+    ...         ("<assgn> ; <stmt>", "<assgn>"),
+    ...     "<assgn>":
+    ...         ("<var> := <rhs>",),
+    ...     "<rhs>":
+    ...         ("<var>", "<digit>"),
+    ...     "<var>": tuple(string.ascii_lowercase),
+    ...     "<digit>": tuple(string.digits),
+    ... })
+    >>> graph = NeoGrammarGraph(grammar)
+
+    The formula we want to match quantifies over assignments that have a
+    :code:`<digit>` as right-hand side:
+
+    >>> str_formula = 'forall <assgn> assgn="<var> := {<digit> d}": str.to.int(d) > 0'
+    >>> from isla.language import parse_isla
+    >>> formula = parse_isla(str_formula)
+    >>> isinstance(formula, QuantifiedFormula)
+    True
+
+    In the following example input, there are two such assignments:
+
+    >>> inp = parse("x := 1 ; y := 2 ; y := z", grammar).unwrap()
+
+    Consequently, we expenct two results.
+
+    >>> result = matches_for_quantified_formula(formula, graph, Some(inp))
+    >>> len(result)
+    2
+
+    The first result is the digit "1," the second one the digit "2." The pairs in the
+    mapping consist of the path to the matched elements in the derivation tree and the
+    matching subtree at that path.
+
+    >>> deep_str([mapping[BoundVariable("d", "<digit>")] for mapping in result])
+    '[((0, 0, 2, 0), 1), ((0, 2, 0, 2, 0), 2)]'
+
+    :param formula: The quantified formula to match.
+    :param graph: The grammar graph, to obtain the reference grammar.
+    :param maybe_in_tree: An optional derivation tree in which to look for matches.
+        If no derivation tree is given, the "in variable" of the quantified formula
+        must be instantiated to a derivation tree.
+    :param maybe_initial_assignments: An optional initial assignment that will be
+        extended by the new matches.
+    :return: The matches for the formula in the derivation tree, possibly extending
+        the given initial assignment.
+    """
+
+    assert isinstance(maybe_in_tree, Maybe)
+    assert maybe_in_tree.map(tap(DerivationTree.__instancecheck__))
+    in_tree = maybe_in_tree.value_or(formula.in_variable)
+    assert isinstance(in_tree, DerivationTree)
+
+    qfd_var: BoundVariable = formula.bound_variable
+    maybe_bind_expr: Maybe[BindExpression] = Maybe.from_optional(
+        formula.bind_expression
+    )
+    new_assignments: List[frozendict[Variable, Tuple[Path, DerivationTree]]] = []
+    initial_assignments = maybe_initial_assignments.value_or(frozendict({}))
+
+    def search_action(path: Path, tree: DerivationTree) -> None:
+        node, children = tree
+        if node != qfd_var.n_type:
+            return
+
+        new_assignments.extend(
+            maybe_bind_expr.lash(
+                lambda _: Failure(
+                    Some([initial_assignments.set(qfd_var, (path, tree))])
+                )
+            )
+            .bind(compose(partial(match_bind_expression, qfd_var, path, tree), Failure))
+            .lash(identity)  # Failure[Maybe] ==> Maybe
+            .lash(lambda _: Some([]))  # Nothing -> Some
+            .unwrap()
+        )
+
+    def match_bind_expression(
+        qfd_var: BoundVariable,
+        path: Path,
+        tree: DerivationTree,
+        bind_expr: BindExpression,
+    ) -> Maybe[List[frozendict[Variable, Tuple[Path, DerivationTree]]]]:
+        return (
+            Maybe.from_optional(bind_expr.match(tree, graph.grammar))
+            .map(frozendict)
+            .map(
+                lambda match: (
+                    tree,
+                    match,
+                    assignment_for(qfd_var, path, tree, match, initial_assignments),
+                )
+            )
+            .bind(star(check_assignment))
+            .map(lambda assignment: [assignment])
+        )
+
+    def assignment_for(
+        qfd_var: BoundVariable,
+        path: Path,
+        tree: DerivationTree,
+        match: frozendict[BoundVariable, Tuple[Path, DerivationTree]],
+        initial_assignments: frozendict[Variable, Tuple[Path, DerivationTree]],
+    ) -> frozendict[Variable, Tuple[Path, DerivationTree]]:
+        return initial_assignments.set(qfd_var, (path, tree)) | frozendict(
+            {v: (path + p[0], p[1]) for v, p in match.items()}
+        )
+
+    def check_assignment(
+        tree: DerivationTree,
+        match: frozendict[BoundVariable, Tuple[Path, DerivationTree]],
+        assignment: frozendict[BoundVariable, Tuple[Path, DerivationTree]],
+    ) -> Maybe[frozendict[Variable, Tuple[Path, DerivationTree]]]:
+        return (
+            Some(assignment)
+            if all(
+                any(
+                    match_path == leaf_path[: len(match_path)]
+                    for match_path, _ in match.values()
+                )
+                for leaf_path, _ in tree.leaves()
+            )
+            else Nothing
+        )
+
+    in_tree.traverse(search_action)
+    return new_assignments
+
+
+# endregion Universal Quantifier Expansion Rule
+
+# region Propositional Rules
+# --------------------------
 
 
 @dataclass(frozen=True)
@@ -928,6 +1138,12 @@ class ChooseOrRule(Rule):
         )
 
 
+# endregion Propositional Rules
+
+# region SMT Rule
+# ---------------
+
+
 @dataclass(frozen=True)
 class SolveSMTAction(Action):
     cluster: FormulaSet
@@ -1015,7 +1231,7 @@ class SolveSMTRule(Rule):
         ... )
 
         We compute a generator of SolveSMTAction in this situation.
-        
+
         >>> constraints = FormulaSet([digit_greater_3_constraint, var_eq_x_constraint])
         >>> rule = SolveSMTRule()
         >>> from itertools import islice
@@ -1048,7 +1264,7 @@ class SolveSMTRule(Rule):
 
         If we *apply* the first retrieved action and ask for another action based on
         the resulting state tree, we directly get another solution than "digit = 4"
-        in the first element of the iterator. 
+        in the first element of the iterator.
 
         >>> constraints = FormulaSet([digit_greater_3_constraint, var_eq_x_constraint])
         >>> state_tree = StateTree(CDT(constraints, orig_dtree))
@@ -1061,10 +1277,10 @@ class SolveSMTRule(Rule):
         ()
         >>> print(deep_str(new_state_tree.children))
         ((SolveSMT({(StrToInt(<digit>_1) > 3, {'<digit>_1': '<digit>'})} --> {<digit>: 4}), StateTree(({(var == "x", {'var': '<var>'})} ▸ <var> := 4))),)
-        
+
         Z3 might not compute the same result (5) as before; therefore, we do not perform
         a literal comparison in this example:
-        
+
         >>> second_action = next(rule.actions(new_state_tree, graph).unwrap().unwrap())
         >>> numeric_assignment_to_digit = int(str(next(iter(second_action.result.values()))))
         >>> numeric_assignment_to_digit > 4
@@ -3210,6 +3426,217 @@ def extract_model_value_flexible_var(
     )
 
 
+def create_fixed_length_tree(
+    start: DerivationTree | str,
+    canonical_grammar: FrozenCanonicalGrammar,
+    target_length: int,
+) -> Maybe[DerivationTree]:
+    """
+    This function attempts to create a derivation tree starting in the specified start
+    nonterminal symbol or based on the specified initial derivation tree whose
+    unparsed form (string representation) has the specifeid target length.
+
+    Example
+    -------
+
+    Consider the assignment langugage grammar.
+
+    >>> import string
+    >>> grammar: FrozenCanonicalGrammar = frozendict({
+    ...     "<start>":
+    ...         (("<stmt>",),),
+    ...     "<stmt>":
+    ...         (("<assgn>", " ; ", "<stmt>"), ("<assgn>",)),
+    ...     "<assgn>":
+    ...         (("<var>", " := ", "<rhs>"),),
+    ...     "<rhs>":
+    ...         (("<var>",), ("<digit>",)),
+    ...     "<var>": tuple([(c,) for c in string.ascii_lowercase]),
+    ...     "<digit>": tuple([(c,) for c in string.digits]),
+    ... })
+
+    All assignment language expressions of length 15 consist of two assignments.
+
+    >>> result = create_fixed_length_tree("<stmt>", grammar, 15)
+    >>> result.map(lambda t: len(str(t)))
+    <Some: 15>
+
+    >>> result.map(lambda t: len(t.filter(lambda n: n.value == "<assgn>")))
+    <Some: 2>
+
+    There exists no assignment language expression of length 14.
+
+    >>> create_fixed_length_tree("<stmt>", grammar, 14)
+    <Nothing>
+
+    :param start: The start nonterminal or initial tree for the expression that should
+        be generated.
+    :param canonical_grammar: The grammar for the expression that should be generated,
+        in canonical form.
+    :param target_length: The target length of the expression that should be generated.
+    :return: An expression of the specified length or :code:`None` if no such expression
+        could be found.
+    """
+
+    nullable = compute_nullable_nonterminals(canonical_grammar)
+    start = DerivationTree(start) if isinstance(start, str) else start
+    stack: List[Tuple[DerivationTree, int, Tuple[Tuple[Path, DerivationTree], ...]]] = [
+        (start, int(start.value not in nullable), (((), start),)),
+    ]
+
+    while stack:
+        tree, curr_len, open_leaves = stack.pop()
+
+        if not open_leaves:
+            if curr_len == target_length:
+                return Maybe.from_value(tree)
+            else:
+                continue
+
+        if curr_len > target_length:
+            continue
+
+        idx: int
+        leaf: DerivationTree
+        for idx, (_, leaf) in reversed(list(enumerate(open_leaves))):
+            terminal_expansions, expansions = get_expansions(
+                leaf.value, canonical_grammar
+            )
+
+            if terminal_expansions:
+                expansions.append(random.choice(terminal_expansions))
+
+            # Only choose one random terminal expansion; keep all nonterminal expansions
+            expansions = sorted(
+                expansions,
+                key=lambda expansion: len(
+                    [elem for elem in expansion if is_nonterminal(elem)]
+                ),
+            )
+
+            stack.extend(
+                [
+                    expand_leaf(
+                        tree,
+                        curr_len,
+                        open_leaves,
+                        idx,
+                        expansion,
+                        nullable,
+                    )
+                    for expansion in reversed(expansions)
+                ]
+            )
+
+    return Nothing
+
+
+def expand_leaf(
+    tree: DerivationTree,
+    min_unparsed_tree_len: int,
+    open_leaves: Tuple[Tuple[Path, DerivationTree], ...],
+    leaf_idx: int,
+    expansion: Tuple[str, ...],
+    nullable_nonterminals: Set[str],
+) -> Tuple[DerivationTree, int, Tuple[Tuple[Path, DerivationTree], ...]]:
+    """
+    This function expands a leaf in :code:`tree` according to the grammar expansion
+    in :code:`expansion` and returns (1) the expanded tree, (2) a lower bound on the
+    length of the resulting unparsed tree, and (3) a list of open leaves in the
+    resulting tree. The leaf to expand is specified by its index :code:`leaf_idx`
+    in the list :code:`open_leaves` of open leaves in :code:`tree`.
+
+    >>> tree = DerivationTree("<stmt>", (DerivationTree("<assgn>"),))
+    >>> min_unparsed_tree_len = 1
+    >>> open_leaves = (((0,), tree.get_subtree((0,))),)
+    >>> leaf_idx = 0
+    >>> expansion = ('<var>', ' := ', '<rhs>')
+    >>> nullable_nonterminals = set()
+
+    >>> print(
+    ...     deep_str(
+    ...         expand_leaf(
+    ...             tree,
+    ...             min_unparsed_tree_len,
+    ...             open_leaves,
+    ...             leaf_idx,
+    ...             expansion,
+    ...             nullable_nonterminals,
+    ...         )
+    ...     )
+    ... )
+    (<var> := <rhs>, 6, (((0, 0), <var>), ((0, 2), <rhs>)))
+
+    :param tree: The derivation tree in which we should expand an open leaf.
+    :param min_unparsed_tree_len: The minimal length of the unparsed input tree.
+    :param open_leaves: The open leaves in the input tree.
+    :param leaf_idx: The index of the leaf to expand in :code:`open_leaves`.
+    :param expansion: The expansion alternative to apply.
+    :param nullable_nonterminals: A set of nullable nonterminals in the reference
+        grammar.
+    :return: A triple of (1) the expanded tree, (2) a lower bound on the length of
+        the unparsed tree, which will be precise for closed trees, and (3) the list
+        of open leaves in the new tree.
+    """
+
+    leaf = open_leaves[leaf_idx][1]
+    path_to_leaf = open_leaves[leaf_idx][0]
+
+    new_children = tuple(
+        [
+            DerivationTree(elem, None if is_nonterminal(elem) else ())
+            for elem in expansion
+        ]
+    )
+
+    expanded_tree = tree.replace_path(
+        path_to_leaf,
+        DerivationTree(
+            leaf.value,
+            new_children,
+        ),
+    )
+
+    next_candidate_len = (
+        min_unparsed_tree_len
+        + sum(
+            [
+                len(child.value)
+                if child.children == ()
+                else (1 if child.value not in nullable_nonterminals else 0)
+                for child in new_children
+            ]
+        )
+        - int(leaf.value not in nullable_nonterminals)
+    )
+
+    next_candidate_open_leaves = (
+        open_leaves[:leaf_idx]
+        + tuple(
+            [
+                (path_to_leaf + (child_idx,), new_child)
+                for child_idx, new_child in enumerate(new_children)
+                if is_nonterminal(new_child.value)
+            ]
+        )
+        + open_leaves[leaf_idx + 1 :]
+    )
+
+    return (
+        expanded_tree,
+        next_candidate_len,
+        next_candidate_open_leaves,
+    )
+
+
+# endregion SMT Rule
+
+# endregion CONCRETE ACTIONS AND RULES
+
+# region Parsing
+# ==============
+
+
 @safe
 def parse_peg(
     inp: str, grammar: Grammar, start_nonterminal: str = "<start>"
@@ -3472,204 +3899,4 @@ def parse(
     )
 
 
-def create_fixed_length_tree(
-    start: DerivationTree | str,
-    canonical_grammar: FrozenCanonicalGrammar,
-    target_length: int,
-) -> Maybe[DerivationTree]:
-    """
-    This function attempts to create a derivation tree starting in the specified start
-    nonterminal symbol or based on the specified initial derivation tree whose
-    unparsed form (string representation) has the specifeid target length.
-
-    Example
-    -------
-
-    Consider the assignment langugage grammar.
-
-    >>> import string
-    >>> grammar: FrozenCanonicalGrammar = frozendict({
-    ...     "<start>":
-    ...         (("<stmt>",),),
-    ...     "<stmt>":
-    ...         (("<assgn>", " ; ", "<stmt>"), ("<assgn>",)),
-    ...     "<assgn>":
-    ...         (("<var>", " := ", "<rhs>"),),
-    ...     "<rhs>":
-    ...         (("<var>",), ("<digit>",)),
-    ...     "<var>": tuple([(c,) for c in string.ascii_lowercase]),
-    ...     "<digit>": tuple([(c,) for c in string.digits]),
-    ... })
-
-    All assignment language expressions of length 15 consist of two assignments.
-
-    >>> result = create_fixed_length_tree("<stmt>", grammar, 15)
-    >>> result.map(lambda t: len(str(t)))
-    <Some: 15>
-
-    >>> result.map(lambda t: len(t.filter(lambda n: n.value == "<assgn>")))
-    <Some: 2>
-
-    There exists no assignment language expression of length 14.
-
-    >>> create_fixed_length_tree("<stmt>", grammar, 14)
-    <Nothing>
-
-    :param start: The start nonterminal or initial tree for the expression that should
-        be generated.
-    :param canonical_grammar: The grammar for the expression that should be generated,
-        in canonical form.
-    :param target_length: The target length of the expression that should be generated.
-    :return: An expression of the specified length or :code:`None` if no such expression
-        could be found.
-    """
-
-    nullable = compute_nullable_nonterminals(canonical_grammar)
-    start = DerivationTree(start) if isinstance(start, str) else start
-    stack: List[Tuple[DerivationTree, int, Tuple[Tuple[Path, DerivationTree], ...]]] = [
-        (start, int(start.value not in nullable), (((), start),)),
-    ]
-
-    while stack:
-        tree, curr_len, open_leaves = stack.pop()
-
-        if not open_leaves:
-            if curr_len == target_length:
-                return Maybe.from_value(tree)
-            else:
-                continue
-
-        if curr_len > target_length:
-            continue
-
-        idx: int
-        leaf: DerivationTree
-        for idx, (_, leaf) in reversed(list(enumerate(open_leaves))):
-            terminal_expansions, expansions = get_expansions(
-                leaf.value, canonical_grammar
-            )
-
-            if terminal_expansions:
-                expansions.append(random.choice(terminal_expansions))
-
-            # Only choose one random terminal expansion; keep all nonterminal expansions
-            expansions = sorted(
-                expansions,
-                key=lambda expansion: len(
-                    [elem for elem in expansion if is_nonterminal(elem)]
-                ),
-            )
-
-            stack.extend(
-                [
-                    expand_leaf(
-                        tree,
-                        curr_len,
-                        open_leaves,
-                        idx,
-                        expansion,
-                        nullable,
-                    )
-                    for expansion in reversed(expansions)
-                ]
-            )
-
-    return Nothing
-
-
-def expand_leaf(
-    tree: DerivationTree,
-    min_unparsed_tree_len: int,
-    open_leaves: Tuple[Tuple[Path, DerivationTree], ...],
-    leaf_idx: int,
-    expansion: Tuple[str, ...],
-    nullable_nonterminals: Set[str],
-) -> Tuple[DerivationTree, int, Tuple[Tuple[Path, DerivationTree], ...]]:
-    """
-    This function expands a leaf in :code:`tree` according to the grammar expansion
-    in :code:`expansion` and returns (1) the expanded tree, (2) a lower bound on the
-    length of the resulting unparsed tree, and (3) a list of open leaves in the
-    resulting tree. The leaf to expand is specified by its index :code:`leaf_idx`
-    in the list :code:`open_leaves` of open leaves in :code:`tree`.
-
-    >>> tree = DerivationTree("<stmt>", (DerivationTree("<assgn>"),))
-    >>> min_unparsed_tree_len = 1
-    >>> open_leaves = (((0,), tree.get_subtree((0,))),)
-    >>> leaf_idx = 0
-    >>> expansion = ('<var>', ' := ', '<rhs>')
-    >>> nullable_nonterminals = set()
-
-    >>> print(
-    ...     deep_str(
-    ...         expand_leaf(
-    ...             tree,
-    ...             min_unparsed_tree_len,
-    ...             open_leaves,
-    ...             leaf_idx,
-    ...             expansion,
-    ...             nullable_nonterminals,
-    ...         )
-    ...     )
-    ... )
-    (<var> := <rhs>, 6, (((0, 0), <var>), ((0, 2), <rhs>)))
-
-    :param tree: The derivation tree in which we should expand an open leaf.
-    :param min_unparsed_tree_len: The minimal length of the unparsed input tree.
-    :param open_leaves: The open leaves in the input tree.
-    :param leaf_idx: The index of the leaf to expand in :code:`open_leaves`.
-    :param expansion: The expansion alternative to apply.
-    :param nullable_nonterminals: A set of nullable nonterminals in the reference
-        grammar.
-    :return: A triple of (1) the expanded tree, (2) a lower bound on the length of
-        the unparsed tree, which will be precise for closed trees, and (3) the list
-        of open leaves in the new tree.
-    """
-
-    leaf = open_leaves[leaf_idx][1]
-    path_to_leaf = open_leaves[leaf_idx][0]
-
-    new_children = tuple(
-        [
-            DerivationTree(elem, None if is_nonterminal(elem) else ())
-            for elem in expansion
-        ]
-    )
-
-    expanded_tree = tree.replace_path(
-        path_to_leaf,
-        DerivationTree(
-            leaf.value,
-            new_children,
-        ),
-    )
-
-    next_candidate_len = (
-        min_unparsed_tree_len
-        + sum(
-            [
-                len(child.value)
-                if child.children == ()
-                else (1 if child.value not in nullable_nonterminals else 0)
-                for child in new_children
-            ]
-        )
-        - int(leaf.value not in nullable_nonterminals)
-    )
-
-    next_candidate_open_leaves = (
-        open_leaves[:leaf_idx]
-        + tuple(
-            [
-                (path_to_leaf + (child_idx,), new_child)
-                for child_idx, new_child in enumerate(new_children)
-                if is_nonterminal(new_child.value)
-            ]
-        )
-        + open_leaves[leaf_idx + 1 :]
-    )
-
-    return (
-        expanded_tree,
-        next_candidate_len,
-        next_candidate_open_leaves,
-    )
+# endregion Parsing
