@@ -22,14 +22,32 @@ import random
 import re
 import sys
 from functools import lru_cache, reduce, partial
-from typing import Callable, Tuple, cast, List, Optional, Dict, Union, Generator, Set
+
+from returns.functions import compose
+from returns.pipeline import flow
+from returns.maybe import Maybe, Some, Nothing
+from typing import (
+    Callable,
+    Tuple,
+    cast,
+    List,
+    Optional,
+    Dict,
+    Union,
+    Generator,
+    Set,
+    TypeVar,
+    Iterable,
+    Sequence,
+    Mapping,
+)
 
 import z3
+from returns.pointfree import lash
+from returns.result import Success, Failure, Result
 from z3.z3 import _coerce_exprs
 
 from isla.helpers import (
-    Maybe,
-    chain_functions,
     merge_dict_of_sets,
     merge_intervals,
     HELPERS_LOGGER,
@@ -42,100 +60,111 @@ Z3EvalResult = Tuple[
 
 
 @lru_cache
-def evaluate_z3_expression(expr: z3.ExprRef) -> Z3EvalResult:
+def evaluate_z3_expression(
+    expr: z3.ExprRef,
+) -> Result[Z3EvalResult, NotImplementedError]:
     if z3.is_var(expr) or is_z3_var(expr):
-        return (str(expr),), lambda args: args[0]
+        return Success(((str(expr),), lambda args: args[0]))
 
     if z3.is_quantifier(expr):
-        raise NotImplementedError("Cannot evaluate expressions with quantifiers.")
+        return Failure(
+            NotImplementedError("Cannot evaluate expressions with quantifiers.")
+        )
 
-    children_results: Tuple[Z3EvalResult, ...] = tuple(
-        map(evaluate_z3_expression, expr.children())
-    )
+    children_results: Tuple[Z3EvalResult, ...] = ()
+    for child_expr in expr.children():
+        match evaluate_z3_expression(child_expr):
+            case Success(child_result):
+                children_results += (child_result,)
+            case Failure(exc):
+                return Failure(exc)
 
-    def raise_not_implemented_error(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
+    def not_implemented_failure(_=Nothing) -> Failure[NotImplementedError]:
         logger = logging.getLogger("Z3 evaluation")
         logger.debug("Evaluation of expression %s not implemented.", expr)
-        raise NotImplementedError(f"Evaluation of expression {expr} not implemented.")
+        return Failure(
+            NotImplementedError(f"Evaluation of expression {expr} not implemented.")
+        )
 
-    def close(evaluation_function: callable) -> callable:
-        return lambda f: evaluation_function(f, children_results)
-
-    return chain_functions(
-        map(
-            close,
-            [
-                # Literals
-                evaluate_z3_string_value,
-                evaluate_z3_int_value,
-                evaluate_z3_rat_value,
-                evaluate_z3_str_to_int,
-                evaluate_z3_false_value,
-                evaluate_z3_true_value,
-                # Regular Expressions
-                evaluate_z3_re_range,
-                evaluate_z3_re_loop,
-                evaluate_z3_seq_to_re,
-                evaluate_z3_re_concat,
-                evaluate_z3_seq_in_re,
-                evaluate_z3_re_star,
-                evaluate_z3_re_plus,
-                evaluate_z3_re_option,
-                evaluate_z3_re_union,
-                evaluate_z3_re_comp,
-                evaluate_z3_re_full_set,
-                # Boolean Combinations
-                evaluate_z3_not,
-                evaluate_z3_and,
-                evaluate_z3_or,
-                # Comparisons
-                evaluate_z3_eq,
-                evaluate_z3_lt,
-                evaluate_z3_le,
-                evaluate_z3_gt,
-                evaluate_z3_ge,
-                # Arithmetic Operations
-                evaluate_z3_add,
-                evaluate_z3_sub,
-                evaluate_z3_mul,
-                evaluate_z3_div,
-                evaluate_z3_mod,
-                evaluate_z3_pow,
-                # String Operations
-                evaluate_z3_seq_length,
-                evaluate_z3_seq_concat,
-                evaluate_z3_seq_at,
-                evaluate_z3_seq_extract,
-                evaluate_z3_str_to_code,
-                # Fallback
-                raise_not_implemented_error,
-            ],
-        ),
-        expr,
-    ).get()
+    return (
+        flow(
+            Nothing,
+            *map(
+                compose((lambda f: (lambda _: f(expr, children_results))), lash),
+                [
+                    # Literals
+                    evaluate_z3_string_value,
+                    evaluate_z3_int_value,
+                    evaluate_z3_rat_value,
+                    evaluate_z3_str_to_int,
+                    evaluate_z3_false_value,
+                    evaluate_z3_true_value,
+                    # Regular Expressions
+                    evaluate_z3_re_range,
+                    evaluate_z3_re_loop,
+                    evaluate_z3_seq_to_re,
+                    evaluate_z3_re_concat,
+                    evaluate_z3_seq_in_re,
+                    evaluate_z3_re_star,
+                    evaluate_z3_re_plus,
+                    evaluate_z3_re_option,
+                    evaluate_z3_re_union,
+                    evaluate_z3_re_comp,
+                    evaluate_z3_re_full_set,
+                    # Boolean Combinations
+                    evaluate_z3_not,
+                    evaluate_z3_and,
+                    evaluate_z3_or,
+                    # Comparisons
+                    evaluate_z3_eq,
+                    evaluate_z3_lt,
+                    evaluate_z3_le,
+                    evaluate_z3_gt,
+                    evaluate_z3_ge,
+                    # Arithmetic Operations
+                    evaluate_z3_add,
+                    evaluate_z3_sub,
+                    evaluate_z3_mul,
+                    evaluate_z3_div,
+                    evaluate_z3_mod,
+                    evaluate_z3_pow,
+                    # String Operations
+                    evaluate_z3_seq_length,
+                    evaluate_z3_seq_concat,
+                    evaluate_z3_seq_at,
+                    evaluate_z3_seq_extract,
+                    evaluate_z3_str_to_code,
+                    # Fallback
+                    not_implemented_failure,
+                ],
+            ),
+        )
+        .bind(lambda result: Success(result))
+        .lash(not_implemented_failure)
+    )
 
 
 def evaluate_z3_string_value(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
     if not z3.is_string_value(expr):
-        return Maybe.nothing()
+        return Nothing
     expr: z3.StringVal
-    return Maybe(((), expr.as_string().replace(r"\u{}", "\x00")))
+    return Some(((), expr.as_string().replace(r"\u{}", "\x00")))
 
 
 def evaluate_z3_int_value(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
     if not z3.is_int_value(expr):
-        return Maybe.nothing()
+        return Nothing
 
     expr: z3.IntVal
-    return Maybe(((), expr.as_long()))
+    return Some(((), expr.as_long()))
 
 
 def evaluate_z3_rat_value(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
     if not z3.is_rational_value(expr):
-        return Maybe.nothing()
+        return Nothing
 
     expr: z3.RatVal
-    return Maybe(((), expr.numerator().as_long() / expr.denominator().as_long()))
+    return Some(((), expr.numerator().as_long() / expr.denominator().as_long()))
 
 
 def evaluate_z3_str_to_int(
@@ -145,7 +174,7 @@ def evaluate_z3_str_to_int(
     #       SMT-LIB/Z3 semantics, where str.to.int returns -1 for all strings that don't
     #       represent positive integers.
     if expr.decl().kind() != z3.Z3_OP_STR_TO_INT:
-        return Maybe.nothing()
+        return Nothing
 
     if isinstance(children_results[0][1], str) and not children_results[0][1]:
         raise DomainError("Empty string cannot be converted to int.")
@@ -163,20 +192,20 @@ def evaluate_z3_str_to_int(
                     f"Expression {children_results[0]} cannot be converted to int."
                 )
 
-    return Maybe(construct_result(constructor, children_results))
+    return Some(construct_result(constructor, children_results))
 
 
 def evaluate_z3_false_value(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
     if not z3.is_false(expr):
-        return Maybe.nothing()
-    return Maybe(((), False))
+        return Nothing
+    return Some(((), False))
 
 
 def evaluate_z3_true_value(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
     if not z3.is_true(expr):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(((), True))
+    return Some(((), True))
 
 
 # Regular Expressions
@@ -184,9 +213,9 @@ def evaluate_z3_re_range(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if expr.decl().name() != "re.range":
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(
+    return Some(
         construct_result(lambda args: f"[{args[0]}-{args[1]}]", children_results)
     )
 
@@ -195,9 +224,9 @@ def evaluate_z3_re_loop(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if expr.decl().kind() != z3.Z3_OP_RE_LOOP:
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(
+    return Some(
         construct_result(
             lambda args: f"{args[0]}{{{expr.params()[0]},{expr.params()[1]}}}",
             children_results,
@@ -209,7 +238,7 @@ def evaluate_z3_seq_to_re(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if expr.decl().kind() != z3.Z3_OP_SEQ_TO_RE:
-        return Maybe.nothing()
+        return Nothing
 
     def constructor(args):
         assert len(args) == 1
@@ -220,25 +249,25 @@ def evaluate_z3_seq_to_re(
 
         return re.escape(child_string)
 
-    return Maybe(construct_result(constructor, children_results))
+    return Some(construct_result(constructor, children_results))
 
 
 def evaluate_z3_re_concat(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if expr.decl().kind() != z3.Z3_OP_RE_CONCAT:
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(construct_result(lambda args: "".join(args), children_results))
+    return Some(construct_result(lambda args: "".join(args), children_results))
 
 
 def evaluate_z3_seq_in_re(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if expr.decl().kind() != z3.Z3_OP_SEQ_IN_RE:
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(
+    return Some(
         construct_result(
             lambda args: re.match(f"^{args[1]}$", args[0]) is not None,
             children_results,
@@ -250,43 +279,43 @@ def evaluate_z3_re_star(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if expr.decl().kind() != z3.Z3_OP_RE_STAR:
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(construct_result(lambda args: f"({args[0]})*", children_results))
+    return Some(construct_result(lambda args: f"({args[0]})*", children_results))
 
 
 def evaluate_z3_re_plus(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if expr.decl().kind() != z3.Z3_OP_RE_PLUS:
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(construct_result(lambda args: f"({args[0]})+", children_results))
+    return Some(construct_result(lambda args: f"({args[0]})+", children_results))
 
 
 def evaluate_z3_re_option(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if expr.decl().kind() != z3.Z3_OP_RE_OPTION:
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(construct_result(lambda args: f"({args[0]})?", children_results))
+    return Some(construct_result(lambda args: f"({args[0]})?", children_results))
 
 
 def evaluate_z3_re_union(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if expr.decl().kind() != z3.Z3_OP_RE_UNION:
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(
+    return Some(
         construct_result(lambda args: f"(({args[0]})|({args[1]}))", children_results)
     )
 
 
 def evaluate_z3_re_comp(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
     if expr.decl().name() != "re.comp":
-        return Maybe.nothing()
+        return Nothing
 
     # The argument must be a union of strings or a range.
     child = expr.children()[0]
@@ -298,21 +327,21 @@ def evaluate_z3_re_comp(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
         )
         or child.decl().name() == "re.range"
     ):
-        return Maybe(
+        return Some(
             construct_result(
                 lambda args: "[^" + "".join(args) + "]",
                 tuple(map(evaluate_z3_expression, child.children())),
             )
         )
 
-    return Maybe.nothing()
+    return Nothing
 
 
 def evaluate_z3_re_full_set(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
     if expr.decl().kind() != z3.Z3_OP_RE_FULL_SET:
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(((), ".*?"))
+    return Some(((), ".*?"))
 
 
 # Boolean Combinations
@@ -320,18 +349,18 @@ def evaluate_z3_not(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if not z3.is_not(expr):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(construct_result(lambda args: not args[0], children_results))
+    return Some(construct_result(lambda args: not args[0], children_results))
 
 
 def evaluate_z3_and(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if not z3.is_and(expr):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(
+    return Some(
         construct_result(lambda args: reduce(operator.and_, args), children_results)
     )
 
@@ -340,9 +369,9 @@ def evaluate_z3_or(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if not z3.is_or(expr):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(
+    return Some(
         construct_result(lambda args: reduce(operator.or_, args), children_results)
     )
 
@@ -352,45 +381,45 @@ def evaluate_z3_eq(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if not z3.is_eq(expr):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(construct_result(lambda args: args[0] == args[1], children_results))
+    return Some(construct_result(lambda args: args[0] == args[1], children_results))
 
 
 def evaluate_z3_lt(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if not z3.is_lt(expr):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(construct_result(lambda args: args[0] < args[1], children_results))
+    return Some(construct_result(lambda args: args[0] < args[1], children_results))
 
 
 def evaluate_z3_le(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if not z3.is_le(expr):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(construct_result(lambda args: args[0] <= args[1], children_results))
+    return Some(construct_result(lambda args: args[0] <= args[1], children_results))
 
 
 def evaluate_z3_gt(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if not z3.is_gt(expr):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(construct_result(lambda args: args[0] > args[1], children_results))
+    return Some(construct_result(lambda args: args[0] > args[1], children_results))
 
 
 def evaluate_z3_ge(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if not z3.is_ge(expr):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(construct_result(lambda args: args[0] >= args[1], children_results))
+    return Some(construct_result(lambda args: args[0] >= args[1], children_results))
 
 
 # Arithmetic Operations
@@ -398,36 +427,36 @@ def evaluate_z3_add(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if not z3.is_add(expr):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(construct_result(lambda args: args[0] + args[1], children_results))
+    return Some(construct_result(lambda args: args[0] + args[1], children_results))
 
 
 def evaluate_z3_sub(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if not z3.is_sub(expr):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(construct_result(lambda args: args[0] - args[1], children_results))
+    return Some(construct_result(lambda args: args[0] - args[1], children_results))
 
 
 def evaluate_z3_mul(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if not z3.is_mul(expr):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(construct_result(lambda args: args[0] * args[1], children_results))
+    return Some(construct_result(lambda args: args[0] * args[1], children_results))
 
 
 def evaluate_z3_div(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if not z3.is_div(expr):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(
+    return Some(
         construct_result(
             lambda args: int(float(args[0]) / float(args[1])), children_results
         )
@@ -438,18 +467,18 @@ def evaluate_z3_mod(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if not z3.is_mod(expr):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(construct_result(lambda args: args[0] % args[1], children_results))
+    return Some(construct_result(lambda args: args[0] % args[1], children_results))
 
 
 def evaluate_z3_pow(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if expr.decl().kind() != z3.Z3_OP_POWER:
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(construct_result(lambda args: args[0] ** args[1], children_results))
+    return Some(construct_result(lambda args: args[0] ** args[1], children_results))
 
 
 # String Operations
@@ -457,18 +486,18 @@ def evaluate_z3_seq_length(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if expr.decl().kind() != z3.Z3_OP_SEQ_LENGTH:
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(construct_result(lambda args: len(args[0]), children_results))
+    return Some(construct_result(lambda args: len(args[0]), children_results))
 
 
 def evaluate_z3_seq_concat(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if expr.decl().kind() != z3.Z3_OP_SEQ_CONCAT:
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(
+    return Some(
         construct_result(
             lambda args: cast(str, args[0]) + cast(str, args[1]), children_results
         )
@@ -479,9 +508,9 @@ def evaluate_z3_seq_at(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if expr.decl().kind() != z3.Z3_OP_SEQ_AT:
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(
+    return Some(
         construct_result(
             lambda args: cast(str, args[0])[cast(int, args[1])], children_results
         )
@@ -492,9 +521,9 @@ def evaluate_z3_seq_extract(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if expr.decl().kind() != z3.Z3_OP_SEQ_EXTRACT:
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(
+    return Some(
         construct_result(
             lambda args: cast(str, args[0])[
                 cast(int, args[1]) : cast(int, args[1]) + cast(int, args[2])
@@ -508,13 +537,13 @@ def evaluate_z3_str_to_code(
     expr: z3.ExprRef, children_results: Tuple[Z3EvalResult, ...]
 ) -> Maybe[Z3EvalResult]:
     if expr.decl().kind() != z3.Z3_OP_STR_TO_CODE:
-        return Maybe.nothing()
+        return Nothing
 
     assert (
         len(children_results) == 1
     ), f"Unexpected argument length {len(children_results)}"
 
-    return Maybe(
+    return Some(
         construct_result(
             lambda args: ord(args[0]),
             children_results,
@@ -560,9 +589,10 @@ def construct_result(
 
 
 def z3_solve(
-    formulas: List[z3.BoolRef], timeout_ms=500
+    formulas: Iterable[z3.BoolRef], timeout_ms=500
 ) -> Tuple[z3.CheckSatResult, Optional[z3.ModelRef]]:
     logger = logging.getLogger("z3_solve")
+    formulas = list(formulas)
 
     result = z3.unknown  # To remove IDE warning
     model: Optional[z3.ModelRef] = None
@@ -615,8 +645,7 @@ def is_valid(formula: z3.BoolRef, timeout: int = 500) -> ThreeValuedTruth:
     if z3.is_false(formula):
         return ThreeValuedTruth.false()
 
-    try:
-        eval_result = evaluate_z3_expression(formula)
+    def process_eval_result(eval_result: Z3EvalResult) -> ThreeValuedTruth:
         if eval_result[0]:
             # There must not be any uninstantiated variables left
             return ThreeValuedTruth.false()
@@ -626,19 +655,23 @@ def is_valid(formula: z3.BoolRef, timeout: int = 500) -> ThreeValuedTruth:
         ), f"Received {eval_result[1]} (type {type(eval_result[1]).__name__}), not bool"
 
         return ThreeValuedTruth.from_bool(eval_result[1])
-    except NotImplementedError:
-        pass
 
-    solver = z3.Solver()
-    solver.set("timeout", timeout)
-    solver.add(z3.Not(formula))
+    def solve_using_z3(_=Nothing) -> ThreeValuedTruth:
+        z3_result, _ = z3_solve([z3.Not(formula)], timeout_ms=timeout)
 
-    if solver.check() == z3.unsat:
-        return ThreeValuedTruth.true()
-    elif solver.check() == z3.sat:
-        return ThreeValuedTruth.false()
-    else:
-        return ThreeValuedTruth.unknown()
+        if z3_result == z3.unsat:
+            return ThreeValuedTruth.true()
+        elif z3_result == z3.sat:
+            return ThreeValuedTruth.false()
+        else:
+            return ThreeValuedTruth.unknown()
+
+    return (
+        evaluate_z3_expression(formula)
+        .map(process_eval_result)
+        .lash(lambda _: Success(solve_using_z3()))
+        .unwrap()
+    )
 
 
 def z3_eq(formula_1: z3.ExprRef, formula_2: z3.ExprRef | str | int) -> z3.BoolRef:
@@ -648,7 +681,7 @@ def z3_eq(formula_1: z3.ExprRef, formula_2: z3.ExprRef | str | int) -> z3.BoolRe
     )
 
 
-def z3_and(formulas: List[z3.BoolRef]) -> z3.BoolRef:
+def z3_and(formulas: Sequence[z3.BoolRef]) -> z3.BoolRef:
     if not formulas:
         return z3.BoolRef(True)
     if len(formulas) == 1:
@@ -656,7 +689,7 @@ def z3_and(formulas: List[z3.BoolRef]) -> z3.BoolRef:
     return z3.And(*formulas)
 
 
-def z3_or(formulas: List[z3.BoolRef]) -> z3.BoolRef:
+def z3_or(formulas: Sequence[z3.BoolRef]) -> z3.BoolRef:
     if not formulas:
         return z3.BoolRef(False)
     if len(formulas) == 1:
@@ -695,7 +728,10 @@ def z3_push_in_negations(formula: z3.BoolRef, negate=False) -> z3.BoolRef:
     return z3.simplify(z3.Not(formula) if negate else formula)
 
 
-def z3_subst(inp: z3.ExprRef, subst_map: Dict[z3.ExprRef, z3.ExprRef]) -> z3.ExprRef:
+E = TypeVar("E", bound=z3.ExprRef)
+
+
+def z3_subst(inp: E, subst_map: Mapping[z3.ExprRef, z3.ExprRef]) -> E:
     return z3.substitute(inp, *tuple(subst_map.items()))
 
 
@@ -910,9 +946,9 @@ def seqref_to_int(seqref: z3.SeqRef) -> Maybe[int]:
     """
     assert isinstance(seqref, z3.SeqRef)
     try:
-        return Maybe(int(seqref.as_string()))
+        return Some(int(seqref.as_string()))
     except ValueError:
-        return Maybe.nothing()
+        return Nothing
 
 
 def numeric_intervals_from_regex(regex: z3.ReRef) -> Maybe[List[Tuple[int, int]]]:
@@ -955,7 +991,7 @@ def numeric_intervals_from_regex(regex: z3.ReRef) -> Maybe[List[Tuple[int, int]]
         <regex-list> ::= <regex> ", " <regex-list> | <regex>
         <digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
 
-    For expressions outside this grammar, it returns :code:`Maybe.nothing()`.
+    For expressions outside this grammar, it returns :code:`Nothing`.
 
     There is no distinction between open and closed intervals. Per default, intervals
     are closed; however, intervals with :code:`-sys.maxsize` as lower or
@@ -964,7 +1000,7 @@ def numeric_intervals_from_regex(regex: z3.ReRef) -> Maybe[List[Tuple[int, int]]
     Intervals with the same start and end values represent a single number:
 
     >>> numeric_intervals_from_regex(z3.Re("1"))
-    Maybe(a=[(1, 1)])
+    <Some: [(1, 1)]>
 
     Infinity is represented by (+/-) :code:`sys.maxsize`:
 
@@ -972,55 +1008,55 @@ def numeric_intervals_from_regex(regex: z3.ReRef) -> Maybe[List[Tuple[int, int]]
     9223372036854775807
 
     >>> numeric_intervals_from_regex(z3.Star(z3.Range("0", "9")))
-    Maybe(a=[(-9223372036854775807, 9223372036854775807)])
+    <Some: [(-9223372036854775807, 9223372036854775807)]>
 
     We support concatenations of zeroes:
 
     >>> numeric_intervals_from_regex(z3.Concat(z3.Plus(z3.Re("0")), z3.Re("0"), z3.Star(z3.Range("0", "0"))))
-    Maybe(a=[(0, 0)])
+    <Some: [(0, 0)]>
 
     Neighboring intervals are merged:
 
     >>> numeric_intervals_from_regex(z3.Union(z3.Range("1", "4"), z3.Re("5")))
-    Maybe(a=[(1, 5)])
+    <Some: [(1, 5)]>
 
     Others kept distinct:
 
     >>> numeric_intervals_from_regex(z3.Union(z3.Re("6"), z3.Range("1", "4")))
-    Maybe(a=[(1, 4), (6, 6)])
+    <Some: [(1, 4), (6, 6)]>
 
     We recognize + and - signs in unions and options:
 
     >>> numeric_intervals_from_regex(z3.Concat(z3.Union(z3.Re("+"), z3.Re("-")), z3.Range("0", "9")))
-    Maybe(a=[(-9, 9)])
+    <Some: [(-9, 9)]>
 
     >>> numeric_intervals_from_regex(z3.Concat(z3.Option(z3.Re("-")), z3.Range("0", "9")))
-    Maybe(a=[(-9, 9)])
+    <Some: [(-9, 9)]>
 
     >>> numeric_intervals_from_regex(z3.Concat(z3.Option(z3.Re("+")), z3.Range("0", "9")))
-    Maybe(a=[(0, 9)])
+    <Some: [(0, 9)]>
 
     Intervals might be split if we add a "-":
 
     >>> numeric_intervals_from_regex(z3.Concat(z3.Union(z3.Re("+"), z3.Re("-")), z3.Range("2", "9")))
-    Maybe(a=[(-9, -2), (2, 9)])
+    <Some: [(-9, -2), (2, 9)]>
 
     The interval of strictly positive numbers if created by enforcing the presence of
     a leading 1:
 
     >>> numeric_intervals_from_regex(z3.Concat(z3.Star(z3.Re("0")), z3.Range("1", "9"), z3.Star(z3.Range("0", "9"))))
-    Maybe(a=[(1, 9223372036854775807)])
+    <Some: [(1, 9223372036854775807)]>
 
     If the 0-9 interval is inside a Plus, not a Star, we exclude the single-digit
     numbers.
 
     >>> numeric_intervals_from_regex(z3.Concat(z3.Range("1", "9"), z3.Plus(z3.Range("0", "9"))))
-    Maybe(a=[(10, 9223372036854775807)])
+    <Some: [(10, 9223372036854775807)]>
 
     Also to this interval, we can apply "-":
 
     >>> numeric_intervals_from_regex(z3.Concat(z3.Re("-"), z3.Range("1", "9"), z3.Plus(z3.Range("0", "9"))))
-    Maybe(a=[(-9223372036854775807, -10)])
+    <Some: [(-9223372036854775807, -10)]>
 
     :param regex: The regular expression from which to extract the represented
         intervals.
@@ -1034,7 +1070,7 @@ def numeric_intervals_from_regex(regex: z3.ReRef) -> Maybe[List[Tuple[int, int]]
 
     assert isinstance(regex, z3.ReRef)
 
-    concat = partial(numeric_intervals_from_concat, lambda _: Maybe.nothing())
+    concat = partial(numeric_intervals_from_concat, lambda _: Nothing)
     full_range = partial(
         numeric_intervals_from_full_range,
         concat,
@@ -1058,9 +1094,9 @@ def numeric_intervals_from_regex(regex: z3.ReRef) -> Maybe[List[Tuple[int, int]]
 
     result: Maybe[List[Tuple[int, int]]] = regex_range(regex)
 
-    if not result.is_present():
+    if result == Nothing:
         # Note: This is not a problem if we're in a recursive call from the loop
-        #       removing 0 padding. In that case, the returned `Maybe.nothing()`
+        #       removing 0 padding. In that case, the returned `Nothing`
         #       simply signals that there are no more 0s to remove.
         HELPERS_LOGGER.debug(
             f"Unsupported expression in `numeric_intervals_from_regex`: {regex}"
@@ -1087,9 +1123,7 @@ def numeric_intervals_from_regex_range(
             seqref_to_int(regex.children()[0])
             .bind(
                 lambda low: seqref_to_int(regex.children()[1]).bind(
-                    lambda high: (
-                        Maybe((low, high)) if low <= high else Maybe.nothing()
-                    )
+                    lambda high: (Some((low, high)) if low <= high else Nothing)
                 )
             )
             .map(lambda t: [t])
@@ -1143,18 +1177,15 @@ def numeric_intervals_from_zeroes(
     :param regex: See :func:`~isla.z3_helpers.numeric_intervals_from_regex`
     :return: See :func:`~isla.z3_helpers.numeric_intervals_from_regex`
     """
-    if (
-        regex.decl().kind()
-        in [
-            z3.Z3_OP_RE_STAR,
-            z3.Z3_OP_RE_PLUS,
-        ]
-        and numeric_intervals_from_regex(regex.children()[0])
-        .map(lambda intervals: intervals == [(0, 0)])
-        .orelse(lambda: False)
-        .get()
+    if regex.decl().kind() in [
+        z3.Z3_OP_RE_STAR,
+        z3.Z3_OP_RE_PLUS,
+    ] and numeric_intervals_from_regex(regex.children()[0]).map(
+        lambda intervals: intervals == [(0, 0)]
+    ).value_or(
+        lambda: False
     ):
-        return Maybe([(0, 0)])
+        return Some([(0, 0)])
     else:
         return fallback(regex)
 
@@ -1174,7 +1205,7 @@ def numeric_intervals_from_full_range(
         z3.Z3_OP_RE_STAR,
         z3.Z3_OP_RE_PLUS,
     ] and regex.children()[0] == z3.Range("0", "9"):
-        return Maybe([(-sys.maxsize, sys.maxsize)])
+        return Some([(-sys.maxsize, sys.maxsize)])
     else:
         return fallback(regex)
 
@@ -1240,15 +1271,14 @@ def numeric_intervals_from_concat(
     while idx < len(children) and (
         numeric_intervals_from_regex(children[idx])
         .map(lambda intervals: intervals == [(0, 0)])
-        .orelse(lambda: False)
-        .get()
+        .value_or(False)
     ):
         idx += 1
 
     if idx > 0:
         children = children[idx:]
         return (
-            Maybe([(0, 0)])
+            Some([(0, 0)])
             if not children
             else numeric_intervals_from_regex(
                 children[0] if len(children) == 1 else z3.Concat(*children)
@@ -1260,40 +1290,37 @@ def numeric_intervals_from_concat(
         and (
             numeric_intervals_from_regex(children[0])
             .map(lambda first_intervals: first_intervals == [(1, 9)])
-            .orelse(lambda: False)
-            .get()
+            .value_or(False)
         )
         and children[1].decl().kind() == z3.Z3_OP_RE_STAR
         and children[1].children()[0] == z3.Range("0", "9")
     ):
         # - [1-9] [0-9]* -> (1, inf)
-        return Maybe([(1, sys.maxsize)])
+        return Some([(1, sys.maxsize)])
     elif (
         len(children) == 2
         and (
             numeric_intervals_from_regex(children[0])
             .map(lambda first_intervals: first_intervals == [(1, 9)])
-            .orelse(lambda: False)
-            .get()
+            .value_or(lambda: False)
         )
         and children[1].decl().kind() == z3.Z3_OP_RE_PLUS
         and children[1].children()[0] == z3.Range("0", "9")
     ):
         # - [1-9] [0-9]+ -> (10, inf)
-        return Maybe([(10, sys.maxsize)])
+        return Some([(10, sys.maxsize)])
     elif (
         len(children) == 2
         and (
             numeric_intervals_from_regex(children[0])
             .map(lambda first_intervals: first_intervals == [(0, 9)])
-            .orelse(lambda: False)
-            .get()
+            .value_or(lambda: False)
         )
         and children[1].decl().kind() in [z3.Z3_OP_RE_PLUS, z3.Z3_OP_RE_STAR]
         and children[1].children()[0] == z3.Range("0", "9")
     ):
         # - [0-9] [0-9]* -> (0, inf)
         # - [0-9] [0-9]+ -> (0, inf)
-        return Maybe([(0, sys.maxsize)])
+        return Some([(0, sys.maxsize)])
     else:
         return fallback(regex)

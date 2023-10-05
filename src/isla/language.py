@@ -46,11 +46,19 @@ from typing import (
 )
 
 import antlr4
+import returns
 import z3
 from antlr4 import InputStream, RuleContext, ParserRuleContext
 from antlr4.Token import CommonToken
 from grammar_graph import gg
-from orderedset import OrderedSet
+from orderedset import FrozenOrderedSet, OrderedSet
+from returns._internal.pipeline.flow import flow
+from returns.converters import result_to_maybe
+from returns.functions import compose, tap, raise_exception
+from returns.maybe import Nothing, Some
+from returns.pipeline import is_successful
+from returns.pointfree import lash
+from returns.result import safe
 from z3 import Z3Exception
 
 import isla.mexpr_parser.MexprParserListener as MexprParserListener
@@ -70,11 +78,11 @@ from isla.helpers import (
     list_set,
     is_prefix,
     Maybe,
-    chain_functions,
     eassert,
-    Exceptional,
     instantiate_escaped_symbols,
     unreachable_nonterminals,
+    Success,
+    Failure,
 )
 from isla.helpers import (
     replace_line_breaks,
@@ -229,7 +237,7 @@ class BindExpression:
         self.__flattened_elements: Dict[str, Tuple[Tuple[BoundVariable, ...], ...]] = {}
 
     def __add__(self, other: Union[str, "BoundVariable"]) -> "BindExpression":
-        assert type(other) == str or type(other) == BoundVariable
+        assert isinstance(other, str) or isinstance(other, BoundVariable)
         result = BindExpression(*self.bound_elements)
         result.bound_elements.append(other)
         return result
@@ -242,15 +250,15 @@ class BindExpression:
             ]
         )
 
-    def bound_variables(self) -> OrderedSet[BoundVariable]:
+    def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
         # Not isinstance(var, BoundVariable) since we want to exclude dummy variables
-        return OrderedSet(
+        return FrozenOrderedSet(
             [var for var in self.bound_elements if type(var) is BoundVariable]
         )
 
-    def all_bound_variables(self, grammar: Grammar) -> OrderedSet[BoundVariable]:
+    def all_bound_variables(self, grammar: Grammar) -> FrozenOrderedSet[BoundVariable]:
         # Includes dummy variables
-        return OrderedSet(
+        return FrozenOrderedSet(
             [
                 var
                 for alternative in flatten_bound_elements(
@@ -280,7 +288,7 @@ class BindExpression:
         ):
             BindExpression.__combination_to_tree_prefix(
                 bound_elements, in_nonterminal, immutable_grammar
-            ).if_present(lambda r: result.append(r))
+            ).map(tap(lambda r: result.append(r)))
 
         self.prefixes[in_nonterminal] = result
         return result
@@ -294,23 +302,25 @@ class BindExpression:
         flattened_bind_expr_str = "".join(
             map(
                 lambda elem: f"{{{elem.n_type} {elem.name}}}"
-                if type(elem) == BoundVariable
+                if type(elem) is BoundVariable
                 else str(elem),
                 bound_elements,
             )
         )
 
-        maybe_tree = parse(flattened_bind_expr_str, in_nonterminal, immutable_grammar)
-        if not maybe_tree.is_present():
+        maybe_tree = parse_match_expression(
+            flattened_bind_expr_str, in_nonterminal, immutable_grammar
+        )
+        if not is_successful(maybe_tree):
             language_core_logger.warning(
                 'Parsing match expression string "%s" caused a syntax error. If this is'
                 + " not a test case where this behavior is intended, it should probably"
                 + " be investigated.",
                 flattened_bind_expr_str,
             )
-            return Maybe.nothing()
+            return Nothing
 
-        tree = maybe_tree.get()
+        tree = maybe_tree.unwrap()
 
         assert tree.value == in_nonterminal
 
@@ -394,17 +404,22 @@ class BindExpression:
                     )
                 ):
                     var = (
-                        Maybe.from_iterator(
-                            var
-                            for var in remaining_bound_elements
-                            if var.n_type == char
+                        result_to_maybe(
+                            safe(
+                                lambda: next(
+                                    var
+                                    for var in remaining_bound_elements
+                                    if var.n_type == char
+                                )
+                            )()
                         )
-                        .if_present(
-                            lambda var: eassert(var, isinstance(var, DummyVariable))
+                        .map(
+                            tap(
+                                lambda var: eassert(var, isinstance(var, DummyVariable))
+                            )
                         )
-                        .if_present(remaining_bound_elements.remove)
-                        .orelse(lambda: DummyVariable(""))
-                        .get()
+                        .map(tap(remaining_bound_elements.remove))
+                        .value_or(DummyVariable(""))
                     )
 
                     match_expr_matches[var] = path
@@ -431,7 +446,7 @@ class BindExpression:
             for leaf_path, _ in tree.leaves()
         )
 
-        return Maybe((match_expr_tree, consolidated_matches))
+        return Some((match_expr_tree, consolidated_matches))
 
     def match(
         self, tree: DerivationTree, grammar: Grammar
@@ -711,17 +726,17 @@ class NoopFormulaTransformer(FormulaTransformer):
 
 class Formula(ABC):
     @abstractmethod
-    def bound_variables(self) -> OrderedSet[BoundVariable]:
+    def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
         """Non-recursive: Only non-empty for quantified formulas"""
         raise NotImplementedError()
 
     @abstractmethod
-    def free_variables(self) -> OrderedSet[Variable]:
+    def free_variables(self) -> FrozenOrderedSet[Variable]:
         """Recursive."""
         raise NotImplementedError()
 
     @abstractmethod
-    def tree_arguments(self) -> OrderedSet[DerivationTree]:
+    def tree_arguments(self) -> FrozenOrderedSet[DerivationTree]:
         """Trees that were substituted for variables."""
         raise NotImplementedError()
 
@@ -947,14 +962,16 @@ class StructuralPredicateFormula(Formula):
 
         return StructuralPredicateFormula(self.predicate, *new_args)
 
-    def bound_variables(self) -> OrderedSet[BoundVariable]:
-        return OrderedSet([])
+    def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
+        return FrozenOrderedSet([])
 
-    def free_variables(self) -> OrderedSet[Variable]:
-        return OrderedSet([arg for arg in self.args if isinstance(arg, Variable)])
+    def free_variables(self) -> FrozenOrderedSet[Variable]:
+        return FrozenOrderedSet([arg for arg in self.args if isinstance(arg, Variable)])
 
-    def tree_arguments(self) -> OrderedSet[DerivationTree]:
-        return OrderedSet([arg for arg in self.args if isinstance(arg, DerivationTree)])
+    def tree_arguments(self) -> FrozenOrderedSet[DerivationTree]:
+        return FrozenOrderedSet(
+            [arg for arg in self.args if isinstance(arg, DerivationTree)]
+        )
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_predicate_formula(self)
@@ -1155,14 +1172,16 @@ class SemanticPredicateFormula(Formula):
 
         return SemanticPredicateFormula(self.predicate, *new_args)
 
-    def bound_variables(self) -> OrderedSet[BoundVariable]:
-        return OrderedSet([])
+    def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
+        return FrozenOrderedSet([])
 
-    def free_variables(self) -> OrderedSet[Variable]:
-        return OrderedSet([arg for arg in self.args if isinstance(arg, Variable)])
+    def free_variables(self) -> FrozenOrderedSet[Variable]:
+        return FrozenOrderedSet([arg for arg in self.args if isinstance(arg, Variable)])
 
-    def tree_arguments(self) -> OrderedSet[DerivationTree]:
-        return OrderedSet([arg for arg in self.args if isinstance(arg, DerivationTree)])
+    def tree_arguments(self) -> FrozenOrderedSet[DerivationTree]:
+        return FrozenOrderedSet(
+            [arg for arg in self.args if isinstance(arg, DerivationTree)]
+        )
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_semantic_predicate_formula(self)
@@ -1205,19 +1224,19 @@ class PropositionalCombinator(Formula, ABC):
     def __init__(self, *args: Formula):
         self.args = args
 
-    def bound_variables(self) -> OrderedSet[BoundVariable]:
+    def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
         return reduce(operator.or_, [arg.bound_variables() for arg in self.args])
 
-    def free_variables(self) -> OrderedSet[Variable]:
-        result: OrderedSet[Variable] = OrderedSet([])
+    def free_variables(self) -> FrozenOrderedSet[Variable]:
+        result: FrozenOrderedSet[Variable] = FrozenOrderedSet([])
         for arg in self.args:
-            result |= arg.free_variables()
+            result = result | arg.free_variables()
         return result
 
-    def tree_arguments(self) -> OrderedSet[DerivationTree]:
-        result: OrderedSet[DerivationTree] = OrderedSet([])
+    def tree_arguments(self) -> FrozenOrderedSet[DerivationTree]:
+        result: FrozenOrderedSet[DerivationTree] = FrozenOrderedSet([])
         for arg in self.args:
-            result |= arg.tree_arguments()
+            result = result | arg.tree_arguments()
         return result
 
     def __len__(self):
@@ -1230,7 +1249,7 @@ class PropositionalCombinator(Formula, ABC):
         return hash((type(self).__name__, self.args))
 
     def __eq__(self, other):
-        return type(self) == type(other) and self.args == other.args
+        return type(self) is type(other) and self.args == other.args
 
 
 class NegatedFormula(PropositionalCombinator):
@@ -1376,9 +1395,9 @@ def false() -> "SMTFormula":
 class SMTFormula(Formula):
     def __init__(
         self,
-        formula: z3.BoolRef,
+        formula: z3.BoolRef | str,
         *free_variables: Variable,
-        instantiated_variables: Optional[OrderedSet[Variable]] = None,
+        instantiated_variables: Optional[FrozenOrderedSet[Variable]] = None,
         substitutions: Optional[Dict[Variable, DerivationTree]] = None,
         auto_eval: bool = True,
         auto_subst: bool = True,
@@ -1388,21 +1407,36 @@ class SMTFormula(Formula):
         :param formula: The SMT formula.
         :param free_variables: Free variables in this formula.
         """
-        self.formula = formula
-        self.is_false = z3.is_false(formula)
-        self.is_true = z3.is_true(formula)
 
-        self.free_variables_ = OrderedSet(free_variables)
-        self.instantiated_variables = instantiated_variables or OrderedSet([])
+        if isinstance(formula, z3.BoolRef):
+            self.formula: z3.BoolRef = formula
+        else:
+            assert isinstance(formula, str)
+            declared_symbols = (
+                set(free_variables)
+                | (instantiated_variables or set())
+                | (substitutions or {}).keys()
+            )
+            self.formula: z3.BoolRef = z3.parse_smt2_string(
+                f"(assert {formula})",
+                decls={var.name: var.to_smt() for var in declared_symbols},
+            )[0]
+
+        self.is_false = z3.is_false(self.formula)
+        self.is_true = z3.is_true(self.formula)
+
+        self.free_variables_ = FrozenOrderedSet(free_variables)
+        self.instantiated_variables = instantiated_variables or FrozenOrderedSet([])
         self.substitutions: Dict[Variable, DerivationTree] = substitutions or {}
 
         if assertions_activated():
-            actual_symbols = get_symbols(formula)
+            actual_symbols = get_symbols(self.formula)
             assert len(self.free_variables_) + len(self.instantiated_variables) == len(
                 actual_symbols
             ), (
                 f"Supplied number of {len(free_variables)} symbols does not match "
-                + f"actual number of symbols {len(actual_symbols)} in formula '{formula}'"
+                + f"actual number of symbols {len(actual_symbols)}"
+                + f" in formula '{self.formula}'"
             )
 
         # When substituting expressions, the formula is automatically evaluated if this
@@ -1423,8 +1457,10 @@ class SMTFormula(Formula):
 
     def __setstate__(self, state: Dict[str, bytes]) -> None:
         inst = {f: pickle.loads(v) for f, v in state.items() if f != "formula"}
-        free_variables: OrderedSet[Variable] = inst["free_variables_"]
-        instantiated_variables: OrderedSet[Variable] = inst["instantiated_variables"]
+        free_variables: FrozenOrderedSet[Variable] = inst["free_variables_"]
+        instantiated_variables: FrozenOrderedSet[Variable] = inst[
+            "instantiated_variables"
+        ]
 
         formula = state["formula"].decode("utf-8")
         formula = formula.replace(r"\"", r"\"")
@@ -1508,11 +1544,11 @@ class SMTFormula(Formula):
             set(new_substitutions.keys())
         )
 
-        new_instantiated_variables = OrderedSet(
+        new_instantiated_variables = FrozenOrderedSet(
             [
                 var
                 for var in self.instantiated_variables
-                | OrderedSet(new_substitutions.keys())
+                | FrozenOrderedSet(new_substitutions.keys())
                 if var not in complete_substitutions
             ]
         )
@@ -1528,7 +1564,7 @@ class SMTFormula(Formula):
             ),
         )
 
-        new_free_variables: OrderedSet[Variable] = OrderedSet(
+        new_free_variables: FrozenOrderedSet[Variable] = FrozenOrderedSet(
             [
                 variable
                 for variable in self.free_variables_
@@ -1552,13 +1588,13 @@ class SMTFormula(Formula):
             auto_subst=self.auto_subst,
         )
 
-    def tree_arguments(self) -> OrderedSet[DerivationTree]:
-        return OrderedSet(self.substitutions.values())
+    def tree_arguments(self) -> FrozenOrderedSet[DerivationTree]:
+        return FrozenOrderedSet(self.substitutions.values())
 
-    def bound_variables(self) -> OrderedSet[BoundVariable]:
-        return OrderedSet([])
+    def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
+        return FrozenOrderedSet([])
 
-    def free_variables(self) -> OrderedSet[Variable]:
+    def free_variables(self) -> FrozenOrderedSet[Variable]:
         return self.free_variables_
 
     def accept(self, visitor: FormulaVisitor):
@@ -1639,9 +1675,23 @@ class SMTFormula(Formula):
 
     def __repr__(self):
         return (
-            f"SMTFormula({repr(self.formula)}, {', '.join(map(repr, self.free_variables_))}, "
-            f"instantiated_variables={repr(self.instantiated_variables)}, "
-            f"substitutions={repr(self.substitutions)})"
+            f"SMTFormula('{self.formula.sexpr()}', "
+            + (
+                (", ".join(map(repr, self.free_variables_)) + ", ")
+                if self.free_variables_
+                else ""
+            )
+            + (
+                f"instantiated_variables={repr(self.instantiated_variables)}, "
+                if self.instantiated_variables
+                else ""
+            )
+            + (
+                f"substitutions={repr(self.substitutions)}"
+                if self.substitutions
+                else ""
+            )
+            + ")"
         )
 
     def __str__(self):
@@ -1683,15 +1733,15 @@ class NumericQuantifiedFormula(Formula, ABC):
         self.bound_variable = bound_variable
         self.inner_formula = inner_formula
 
-    def bound_variables(self) -> OrderedSet[BoundVariable]:
+    def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
         """Non-recursive: Only non-empty for quantified formulas"""
-        return OrderedSet([self.bound_variable])
+        return FrozenOrderedSet([self.bound_variable])
 
-    def free_variables(self) -> OrderedSet[Variable]:
+    def free_variables(self) -> FrozenOrderedSet[Variable]:
         """Recursive."""
         return self.inner_formula.free_variables().difference(self.bound_variables())
 
-    def tree_arguments(self) -> OrderedSet[DerivationTree]:
+    def tree_arguments(self) -> FrozenOrderedSet[DerivationTree]:
         return self.inner_formula.tree_arguments()
 
     def __len__(self):
@@ -1821,23 +1871,23 @@ class QuantifiedFormula(Formula, ABC):
         else:
             self.bind_expression = bind_expression
 
-    def bound_variables(self) -> OrderedSet[BoundVariable]:
-        return OrderedSet([self.bound_variable]) | (
-            OrderedSet([])
+    def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
+        return FrozenOrderedSet([self.bound_variable]) | (
+            FrozenOrderedSet([])
             if self.bind_expression is None
             else self.bind_expression.bound_variables()
         )
 
-    def free_variables(self) -> OrderedSet[Variable]:
+    def free_variables(self) -> FrozenOrderedSet[Variable]:
         return (
-            OrderedSet(
+            FrozenOrderedSet(
                 [self.in_variable] if isinstance(self.in_variable, Variable) else []
             )
             | self.inner_formula.free_variables()
         ) - self.bound_variables()
 
-    def tree_arguments(self) -> OrderedSet[DerivationTree]:
-        result = OrderedSet([])
+    def tree_arguments(self) -> FrozenOrderedSet[DerivationTree]:
+        result = FrozenOrderedSet([])
         if isinstance(self.in_variable, DerivationTree):
             result.add(self.in_variable)
         result.update(self.inner_formula.tree_arguments())
@@ -1870,7 +1920,7 @@ class QuantifiedFormula(Formula, ABC):
         )
 
     def __eq__(self, other):
-        return type(self) == type(other) and (
+        return type(self) is type(other) and (
             self.bound_variable,
             self.in_variable,
             self.inner_formula,
@@ -1892,12 +1942,14 @@ class ForallFormula(QuantifiedFormula):
         in_variable: Union[Variable, DerivationTree],
         inner_formula: Formula,
         bind_expression: Optional[BindExpression] = None,
-        already_matched: Optional[Set[int]] = None,
+        already_matched: Optional[OrderedSet[int]] = None,
         id: Optional[int] = None,
     ):
         super().__init__(bound_variable, in_variable, inner_formula, bind_expression)
-        self.already_matched: Set[int] = (
-            set() if not already_matched else set(already_matched)
+        self.already_matched: FrozenOrderedSet[int] = (
+            FrozenOrderedSet()
+            if not already_matched
+            else FrozenOrderedSet(already_matched)
         )
 
         # The id field is used by eliminate_quantifiers to avoid counting universal
@@ -1941,13 +1993,13 @@ class ForallFormula(QuantifiedFormula):
             self.bound_variable not in new_inner_formula.free_variables()
             and self.bind_expression is None
         ):
-            # NOTE: We cannot remove the quantifier if there is a bind expression, not even if
-            #       the variables in the bind expression do not occur in the inner formula,
-            #       since there might be multiple expansion alternatives of the bound variable
-            #       nonterminal and it makes a difference whether a particular expansion has been
-            #       chosen. Consider, e.g., an inner formula "false". Then, this formula evaluates
-            #       to false IF, AND ONLY IF, the defined expansion alternative is chosen, and
-            #       NOT always.
+            # NOTE: We cannot remove the quantifier if there is a bind expression, not
+            #       even if the variables in the bind expression do not occur in the
+            #       inner formula, since there might be multiple expansion alternatives
+            #       of the bound variable nonterminal and it makes a difference whether
+            #       a particular expansion has been chosen. Consider, e.g., an inner
+            #       formula "false". Then, this formula evaluates to false IF, AND ONLY
+            #       IF, the defined expansion alternative is chosen, and NOT always.
             return new_inner_formula
 
         return ForallFormula(
@@ -1969,9 +2021,9 @@ class ForallFormula(QuantifiedFormula):
             self.bind_expression,
             self.already_matched
             | (
-                {trees.id}
+                FrozenOrderedSet([trees.id])
                 if isinstance(trees, DerivationTree)
-                else {tree.id for tree in trees}
+                else FrozenOrderedSet([tree.id for tree in trees])
             ),
             id=self.id,
         )
@@ -2070,10 +2122,10 @@ class ExistsFormula(QuantifiedFormula):
 class VariablesCollector(FormulaVisitor):
     def __init__(self):
         super().__init__()
-        self.result: OrderedSet[Variable] = OrderedSet()
+        self.result: FrozenOrderedSet[Variable] = FrozenOrderedSet()
 
     @staticmethod
-    def collect(formula: Formula) -> OrderedSet[Variable]:
+    def collect(formula: Formula) -> FrozenOrderedSet[Variable]:
         c = VariablesCollector()
         formula.accept(c)
         return c.result
@@ -2086,34 +2138,38 @@ class VariablesCollector(FormulaVisitor):
 
     def visit_quantified_formula(self, formula: QuantifiedFormula):
         if isinstance(formula.in_variable, Variable):
-            self.result.add(formula.in_variable)
-        self.result.add(formula.bound_variable)
+            self.result = self.result | FrozenOrderedSet([formula.in_variable])
+        self.result = self.result | FrozenOrderedSet([formula.bound_variable])
         if formula.bind_expression is not None:
-            self.result.update(formula.bind_expression.bound_variables())
+            self.result = self.result | formula.bind_expression.bound_variables()
 
     def visit_exists_int_formula(self, formula: ExistsIntFormula):
-        self.result.add(formula.bound_variable)
+        self.result = self.result | FrozenOrderedSet([formula.bound_variable])
 
     def visit_forall_int_formula(self, formula: ForallIntFormula):
-        self.result.add(formula.bound_variable)
+        self.result = self.result | FrozenOrderedSet([formula.bound_variable])
 
     def visit_predicate_formula(self, formula: StructuralPredicateFormula):
-        self.result.update([arg for arg in formula.args if isinstance(arg, Variable)])
+        self.result = self.result | FrozenOrderedSet(
+            [arg for arg in formula.args if isinstance(arg, Variable)]
+        )
 
     def visit_semantic_predicate_formula(self, formula: SemanticPredicateFormula):
-        self.result.update([arg for arg in formula.args if isinstance(arg, Variable)])
+        self.result = self.result | FrozenOrderedSet(
+            [arg for arg in formula.args if isinstance(arg, Variable)]
+        )
 
     def visit_smt_formula(self, formula: SMTFormula):
-        self.result.update(formula.free_variables())
+        self.result = self.result | formula.free_variables()
 
 
 class BoundVariablesCollector(FormulaVisitor):
     def __init__(self):
         super().__init__()
-        self.result: OrderedSet[BoundVariable] = OrderedSet()
+        self.result: FrozenOrderedSet[BoundVariable] = FrozenOrderedSet()
 
     @staticmethod
-    def collect(formula: Formula) -> OrderedSet[BoundVariable]:
+    def collect(formula: Formula) -> FrozenOrderedSet[BoundVariable]:
         c = BoundVariablesCollector()
         formula.accept(c)
         return c.result
@@ -2125,15 +2181,15 @@ class BoundVariablesCollector(FormulaVisitor):
         self.visit_quantified_formula(formula)
 
     def visit_quantified_formula(self, formula: QuantifiedFormula):
-        self.result.add(formula.bound_variable)
+        self.result = self.result | FrozenOrderedSet([formula.bound_variable])
         if formula.bind_expression is not None:
-            self.result.update(formula.bind_expression.bound_variables())
+            self.result = self.result | formula.bind_expression.bound_variables()
 
     def visit_exists_int_formula(self, formula: ExistsIntFormula):
-        self.result.add(formula.bound_variable)
+        self.result = self.result | FrozenOrderedSet([formula.bound_variable])
 
     def visit_forall_int_formula(self, formula: ForallIntFormula):
-        self.result.add(formula.bound_variable)
+        self.result = self.result | FrozenOrderedSet([formula.bound_variable])
 
 
 class FilterVisitor(FormulaVisitor):
@@ -2279,13 +2335,14 @@ def replace_formula(  # noqa: C901
 def convert_to_nnf(formula: Formula, negate=False) -> Formula:
     """Pushes negations inside the formula."""
 
-    def close(evaluation_function: callable) -> callable:
-        return lambda f: evaluation_function(f, negate)
+    def raise_not_implemented_error(_=Nothing) -> Maybe[Formula]:
+        raise NotImplementedError(f"Unexpected formula type {type(formula).__name__}")
 
     return (
-        chain_functions(
-            map(
-                close,
+        flow(
+            Nothing,
+            *map(
+                compose(lambda f: lambda _: f(formula, negate), lash),
                 [
                     convert_negated_formula_to_nnf,
                     convert_conjunctive_formula_to_nnf,
@@ -2296,48 +2353,43 @@ def convert_to_nnf(formula: Formula, negate=False) -> Formula:
                     convert_quantified_formula_to_nnf,
                 ],
             ),
-            formula,
         )
-        .raise_if_not_present(
-            lambda: NotImplementedError(
-                f"Unexpected formula type {type(formula).__name__}"
-            )
-        )
-        .get()
+        .lash(raise_not_implemented_error)
+        .unwrap()
     )
 
 
 def convert_negated_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
     if not isinstance(formula, NegatedFormula):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(convert_to_nnf(formula.args[0], not negate))
+    return Some(convert_to_nnf(formula.args[0], not negate))
 
 
 def convert_conjunctive_formula_to_nnf(
     formula: Formula, negate: bool
 ) -> Maybe[Formula]:
     if not isinstance(formula, ConjunctiveFormula):
-        return Maybe.nothing()
+        return Nothing
 
     args = [convert_to_nnf(arg, negate) for arg in formula.args]
     if negate:
-        return Maybe(reduce(lambda a, b: a | b, args))
+        return Some(reduce(lambda a, b: a | b, args))
     else:
-        return Maybe(reduce(lambda a, b: a & b, args))
+        return Some(reduce(lambda a, b: a & b, args))
 
 
 def convert_disjunctive_formula_to_nnf(
     formula: Formula, negate: bool
 ) -> Maybe[Formula]:
     if not isinstance(formula, DisjunctiveFormula):
-        return Maybe.nothing()
+        return Nothing
 
     args = [convert_to_nnf(arg, negate) for arg in formula.args]
     if negate:
-        return Maybe(reduce(lambda a, b: a & b, args))
+        return Some(reduce(lambda a, b: a & b, args))
     else:
-        return Maybe(reduce(lambda a, b: a | b, args))
+        return Some(reduce(lambda a, b: a | b, args))
 
 
 def convert_structural_predicate_formula_to_nnf(
@@ -2346,14 +2398,14 @@ def convert_structural_predicate_formula_to_nnf(
     if not isinstance(formula, StructuralPredicateFormula) and not isinstance(
         formula, SemanticPredicateFormula
     ):
-        return Maybe.nothing()
+        return Nothing
 
-    return Maybe(-formula if negate else formula)
+    return Some(-formula if negate else formula)
 
 
 def convert_smt_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
     if not isinstance(formula, SMTFormula):
-        return Maybe.nothing()
+        return Nothing
 
     negated_smt_formula = z3_push_in_negations(formula.formula, negate)
     # Automatic simplification can remove free variables from the formula!
@@ -2361,7 +2413,7 @@ def convert_smt_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]
     free_variables = [
         var for var in formula.free_variables() if var.to_smt() in actual_symbols
     ]
-    instantiated_variables = OrderedSet(
+    instantiated_variables = FrozenOrderedSet(
         [
             var
             for var in formula.instantiated_variables
@@ -2374,7 +2426,7 @@ def convert_smt_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]
         if var.to_smt() in actual_symbols
     }
 
-    return Maybe(
+    return Some(
         SMTFormula(
             negated_smt_formula,
             *free_variables,
@@ -2390,7 +2442,7 @@ def convert_exists_int_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[F
     if not isinstance(formula, ExistsIntFormula) and not isinstance(
         formula, ForallIntFormula
     ):
-        return Maybe.nothing()
+        return Nothing
 
     inner_formula = (
         convert_to_nnf(formula.inner_formula, negate)
@@ -2401,14 +2453,14 @@ def convert_exists_int_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[F
     if (isinstance(formula, ForallIntFormula) and negate) or (
         isinstance(formula, ExistsIntFormula) and not negate
     ):
-        return Maybe(ExistsIntFormula(formula.bound_variable, inner_formula))
+        return Some(ExistsIntFormula(formula.bound_variable, inner_formula))
     else:
-        return Maybe(ForallIntFormula(formula.bound_variable, inner_formula))
+        return Some(ForallIntFormula(formula.bound_variable, inner_formula))
 
 
 def convert_quantified_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
     if not isinstance(formula, QuantifiedFormula):
-        return Maybe.nothing()
+        return Nothing
 
     inner_formula = (
         convert_to_nnf(formula.inner_formula, negate)
@@ -2422,7 +2474,7 @@ def convert_quantified_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[F
     if (isinstance(formula, ForallFormula) and negate) or (
         isinstance(formula, ExistsFormula) and not negate
     ):
-        return Maybe(
+        return Some(
             ExistsFormula(
                 formula.bound_variable,
                 formula.in_variable,
@@ -2431,7 +2483,7 @@ def convert_quantified_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[F
             )
         )
     else:
-        return Maybe(
+        return Some(
             ForallFormula(
                 formula.bound_variable,
                 formula.in_variable,
@@ -2460,7 +2512,7 @@ def convert_to_dnf(formula: Formula, deep: bool = True) -> Formula:
             [
                 reduce(
                     lambda a, b: a & b,
-                    OrderedSet(split_conjunction(left & right)),
+                    FrozenOrderedSet(split_conjunction(left & right)),
                     true(),
                 )
                 for left, right in itertools.product(*disjuncts_list)
@@ -2493,7 +2545,7 @@ def convert_to_dnf(formula: Formula, deep: bool = True) -> Formula:
 
 
 def fresh_vars(
-    orig_vars: OrderedSet[BoundVariable], used_names: Set[str]
+    orig_vars: FrozenOrderedSet[BoundVariable], used_names: Set[str]
 ) -> Dict[BoundVariable, BoundVariable]:
     result: Dict[BoundVariable, BoundVariable] = {}
 
@@ -2651,8 +2703,8 @@ class VariableManager:
         isla_variables = [self._var(str(z3_symbol), None) for z3_symbol in z3_symbols]
         return SMTFormula(formula, *isla_variables)
 
-    def create(self, formula: Formula, safe=True) -> Formula:
-        if safe:
+    def create(self, formula: Formula, do_safe=True) -> Formula:
+        if do_safe:
             undeclared_variables = [
                 ph_name
                 for ph_name in self.placeholders
@@ -2667,13 +2719,16 @@ class VariableManager:
         return formula.substitute_variables(
             {
                 ph_var: (
-                    Maybe.from_iterator(
-                        var
-                        for var_name, var in self.variables.items()
-                        if var_name == ph_name
-                    )
-                    + Maybe(ph_var)
-                ).get()
+                    result_to_maybe(
+                        safe(
+                            lambda: next(
+                                var
+                                for var_name, var in self.variables.items()
+                                if var_name == ph_name
+                            )
+                        )()
+                    ).lash(lambda _: Some(ph_var))
+                ).unwrap()
                 for ph_name, ph_var in self.placeholders.items()
             }
         )
@@ -2722,15 +2777,17 @@ class ConcreteSyntaxMexprUsedVariablesCollector(
     MexprParserListener.MexprParserListener
 ):
     def __init__(self):
-        self.used_variables: OrderedSet[str] = OrderedSet()
+        self.used_variables: FrozenOrderedSet[str] = FrozenOrderedSet()
 
     def enterMatchExprVar(self, ctx: MexprParser.MatchExprVarContext):
-        self.used_variables.add(parse_tree_text(ctx.ID()))
+        self.used_variables = self.used_variables | FrozenOrderedSet(
+            [parse_tree_text(ctx.ID())]
+        )
 
 
 class ConcreteSyntaxUsedVariablesCollector(IslaLanguageListener.IslaLanguageListener):
     def __init__(self):
-        self.used_variables: OrderedSet[str] = OrderedSet()
+        self.used_variables: FrozenOrderedSet[str] = FrozenOrderedSet()
 
     def collect_used_variables_in_mexpr(self, inp: str) -> None:
         lexer = MexprLexer(InputStream(inp))
@@ -2738,26 +2795,34 @@ class ConcreteSyntaxUsedVariablesCollector(IslaLanguageListener.IslaLanguageList
         parser._errHandler = BailPrintErrorStrategy()
         collector = ConcreteSyntaxMexprUsedVariablesCollector()
         antlr4.ParseTreeWalker().walk(collector, parser.matchExpr())
-        self.used_variables.update(collector.used_variables)
+        self.used_variables = self.used_variables | collector.used_variables
 
     def enterForall(self, ctx: IslaLanguageParser.ForallContext):
         if ctx.varId:
-            self.used_variables.add(parse_tree_text(ctx.varId))
+            self.used_variables = self.used_variables | FrozenOrderedSet(
+                [parse_tree_text(ctx.varId)]
+            )
 
     def enterForallMexpr(self, ctx: IslaLanguageParser.ForallMexprContext):
         if ctx.varId:
-            self.used_variables.add(parse_tree_text(ctx.varId))
+            self.used_variables = self.used_variables | FrozenOrderedSet(
+                [parse_tree_text(ctx.varId)]
+            )
         self.collect_used_variables_in_mexpr(
             antlr_get_text_with_whitespace(ctx.STRING())[1:-1]
         )
 
     def enterExists(self, ctx: IslaLanguageParser.ExistsContext):
         if ctx.varId:
-            self.used_variables.add(parse_tree_text(ctx.varId))
+            self.used_variables = self.used_variables | FrozenOrderedSet(
+                [parse_tree_text(ctx.varId)]
+            )
 
     def enterExistsMexpr(self, ctx: IslaLanguageParser.ExistsMexprContext):
         if ctx.varId:
-            self.used_variables.add(parse_tree_text(ctx.varId))
+            self.used_variables = self.used_variables | FrozenOrderedSet(
+                [parse_tree_text(ctx.varId)]
+            )
         self.collect_used_variables_in_mexpr(
             antlr_get_text_with_whitespace(ctx.STRING())[1:-1]
         )
@@ -2771,7 +2836,7 @@ class BailPrintErrorStrategy(antlr4.BailErrorStrategy):
 
 def used_variables_in_concrete_syntax(
     inp: str | IslaLanguageParser.StartContext,
-) -> OrderedSet[str]:
+) -> FrozenOrderedSet[str]:
     if isinstance(inp, str):
         lexer = IslaLanguageLexer(InputStream(inp))
         parser = IslaLanguageParser(antlr4.CommonTokenStream(lexer))
@@ -3056,16 +3121,15 @@ class AddMexprTransformer(NoopFormulaTransformer):
 
             conflict = False
             for new_var, new_path in new_paths.items():
-                monad = AddMexprTransformer.__merge_trees_at_path(
+                match AddMexprTransformer.__merge_trees_at_path(
                     resulting_tree, new_tree, new_var, new_path
-                )
-                if not monad.is_present():
-                    conflict = True
-                    break
-
-                resulting_tree = monad.get()
-                if not isinstance(new_var, DummyVariable):
-                    resulting_paths[new_path] = new_var
+                ):
+                    case Some(resulting_tree):
+                        if not isinstance(new_var, DummyVariable):
+                            resulting_paths[new_path] = new_var
+                    case returns.maybe.Nothing:
+                        conflict = True
+                        break
 
             if conflict:
                 continue
@@ -3086,7 +3150,7 @@ class AddMexprTransformer(NoopFormulaTransformer):
         new_tree: DerivationTree,
         new_var: BoundVariable,
         new_path: Path,
-    ) -> Maybe[Tuple[DerivationTree]]:
+    ) -> Maybe[DerivationTree]:
         # Take the more specific path. They should not conflict,
         # i.e., have a common sub-path pointing to the same nonterminal.
 
@@ -3097,13 +3161,13 @@ class AddMexprTransformer(NoopFormulaTransformer):
                 != new_tree.get_subtree(new_path[:idx]).value
                 for idx in range(len(new_path))
             ):
-                return Maybe.nothing()
+                return Nothing
 
             if not isinstance(new_var, DummyVariable):
                 if merged_tree.get_subtree(new_path).children:
-                    return Maybe.nothing()
+                    return Nothing
 
-            return Maybe(merged_tree)
+            return Some(merged_tree)
         else:
             # `new_tree` has a longer (or as long) path.
             # First, find the valid prefix in `resulting_tree`.
@@ -3117,9 +3181,9 @@ class AddMexprTransformer(NoopFormulaTransformer):
                 != new_tree.get_subtree(valid_path[:idx]).value
                 for idx in range(len(valid_path))
             ):
-                return Maybe.nothing()
+                return Nothing
 
-            return Maybe(
+            return Some(
                 merged_tree.replace_path(valid_path, new_tree.get_subtree(valid_path))
             )
 
@@ -3175,7 +3239,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             self.grammar = None
 
         self.mgr = VariableManager(self.grammar)
-        self.used_variables: Optional[OrderedSet[str]] = None
+        self.used_variables: Optional[FrozenOrderedSet[str]] = None
 
         self.vars_for_free_nonterminals: Dict[str, BoundVariable] = {}
         self.vars_for_xpath_expressions: Dict[ParsedXPathExpr, BoundVariable] = {}
@@ -3301,7 +3365,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                 BoundVariable(var_type[1:-1], var_type),
                 add=False,
             )
-            self.used_variables.add(var.name)
+            self.used_variables = self.used_variables | FrozenOrderedSet([var.name])
 
             if var_type in free_nonterminal_vars_also_in_xpath_expr:
                 formula = formula.substitute_variables(
@@ -3394,13 +3458,16 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
         def find_var(var_name: str, error_message: str) -> Variable:
             return (
-                Maybe.from_iterator(
-                    var
-                    for var in VariablesCollector.collect(formula)
-                    if var.name == var_name
-                )
-                .raise_if_not_present(lambda: RuntimeError(error_message))
-                .get()
+                safe(
+                    lambda: next(
+                        var
+                        for var in VariablesCollector.collect(formula)
+                        if var.name == var_name
+                    )
+                )()
+                .lash(lambda _: Failure(RuntimeError(error_message)))
+                .alt(raise_exception)
+                .unwrap()
             )
 
         first_var = cast(
@@ -3464,7 +3531,9 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                 BoundVariable(bound_var_type[1:-1], bound_var_type),
                 add=False,
             )
-            self.used_variables.add(bound_var.name)
+            self.used_variables = self.used_variables | FrozenOrderedSet(
+                [bound_var.name]
+            )
 
         match_expressions = []
         for (
@@ -3544,7 +3613,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         try:
             formula: Formula = self.mgr.create(self.formulas[ctx.formula()])
             formula = ensure_unique_bound_variables(formula)
-            self.used_variables.update(
+            self.used_variables = self.used_variables | (
                 {var.name for var in VariablesCollector.collect(formula)}
             )
             self.result = ensure_unique_bound_variables(
@@ -3654,7 +3723,7 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                 self.formulas[ctx.formula()],
                 bind_expression=mexpr,
             ),
-            safe=False,
+            do_safe=False,
         )
 
     def exitForall(self, ctx: IslaLanguageParser.ForallContext):
@@ -4352,20 +4421,18 @@ def match(
 
     if (
         t.value != mexpr_tree.value
-        or Exceptional.of(lambda: len(mexpr_tree.children) == 0 and t.children is None)
-        .recover(lambda _: False)
-        .get()
+        or safe(lambda: len(mexpr_tree.children) == 0 and t.children is None)()
+        .lash(lambda _: Success(False))
+        .unwrap()
     ):
         return None
 
     # If the match expression tree is "open," we have a match!
     if (
         mexpr_tree.children is None
-        or Exceptional.of(
-            lambda: len(mexpr_tree.children) == 0 and len(t.children) == 0
-        )
-        .recover(lambda _: False)
-        .get()
+        or safe(lambda: len(mexpr_tree.children) == 0 and len(t.children) == 0)()
+        .lash(lambda _: Success(False))
+        .unwrap()
     ):
         assert not mexpr_var_paths or all(not path for path in mexpr_var_paths.values())
 
@@ -4436,48 +4503,152 @@ def match(
     return result
 
 
-def parse_peg(
+def parse_match_expression_peg(
     inp: str, in_nonterminal: str, immutable_grammar: ImmutableGrammar
 ) -> Maybe[DerivationTree]:
+    """
+    This function parses :code:`inp` in the given grammar with the specified start
+    nonterminal using a PEG parser.
+
+    The grammar is converted to a match expression grammar using
+    :func:`~isla.language.grammar_to_match_expr_grammar`. Thus, this function *is
+    not intended for general-purpose parsing.*
+
+    See also :func:`~isla.language.parse_match_expression`.
+
+    :param inp: The input to parse.
+    :param in_nonterminal: The start nonterminmal.
+    :param immutable_grammar: The grammar to parse the input in.
+    :return: A parsed derivation tree or a Nothing nonterminal if parsing was
+        unsuccessful.
+    """
     peg_parser = PEGParser(
         grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar)
     )
-    try:
-        result = DerivationTree.from_parse_tree(peg_parser.parse(inp)[0])
-        return Maybe(result if in_nonterminal == "<start>" else result.children[0])
-    except Exception:
-        return Maybe.nothing()
+
+    match safe(lambda: DerivationTree.from_parse_tree(peg_parser.parse(inp)[0]))():
+        case Success(result):
+            return Some(result if in_nonterminal == "<start>" else result.children[0])
+        case Failure(_):
+            return Nothing
+        case _:
+            assert False
 
 
-def parse_earley(
+def parse_match_expression_earley(
     inp: str, in_nonterminal: str, immutable_grammar: ImmutableGrammar
 ) -> Maybe[DerivationTree]:
+    """
+    This function parses :code:`inp` in the given grammar with the specified start
+    nonterminal using an EarleyParser.
+
+    The grammar is converted to a match expression grammar using
+    :func:`~isla.language.grammar_to_match_expr_grammar`. Thus, this function *is
+    not intended for general-purpose parsing.*
+
+    *Attention:* If the Earley parser returns multiple parse trees, we select and return
+    only the first one. Ambiguities are not considered!
+
+    See also :func:`~isla.language.parse_match_expression`.
+
+    :param inp: The input to parse.
+    :param in_nonterminal: The start nonterminmal.
+    :param immutable_grammar: The grammar to parse the input in.
+    :return: A parsed derivation tree or a Nothing nonterminal if parsing was
+        unsuccessful.
+    """
+
     # Should we address ambiguities and return multiple parse trees?
     earley_parser = EarleyParser(
         grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar)
     )
 
-    try:
-        result = DerivationTree.from_parse_tree(next(earley_parser.parse(inp)))
-        return Maybe(result if in_nonterminal == "<start>" else result.children[0])
-    except SyntaxError:
-        return Maybe.nothing()
+    match safe(
+        lambda: DerivationTree.from_parse_tree(next(earley_parser.parse(inp)))
+    )():
+        case Success(result):
+            return Some(result if in_nonterminal == "<start>" else result.children[0])
+        case Failure(_):
+            return Nothing
+        case _:
+            assert False
 
 
-def parse(
+def parse_match_expression(
     inp: str, in_nonterminal: str, immutable_grammar: ImmutableGrammar
 ) -> Maybe[DerivationTree]:
-    monad = parse_peg(inp, in_nonterminal, immutable_grammar)
+    """
+    This function parses :code:`inp` in the given grammar with the specified start
+    nonterminal. It first tries whether the input can be parsed with a PEG parser;
+    if this fails, it falls back to an Earley parser.
 
-    if not monad.is_present():
+    The grammar is converted to a match expression grammar using
+    :func:`~isla.language.grammar_to_match_expr_grammar`. Thus, this function *is
+    not intended for general-purpose parsing.*
+
+    *Attention:* If the Earley parser returns multiple parse trees, we select and return
+    only the first one. Ambiguities are not considered!
+
+    Example
+    -------
+
+    Consider the following grammar for the assignment language.
+
+    >>> import string
+    >>> grammar: Grammar = {
+    ...     "<start>":
+    ...         ["<stmt>"],
+    ...     "<stmt>":
+    ...         ["<assgn> ; <stmt>", "<assgn>"],
+    ...     "<assgn>":
+    ...         ["<var> := <rhs>"],
+    ...     "<rhs>":
+    ...         ["<var>", "<digit>"],
+    ...     "<var>": list(string.ascii_lowercase),
+    ...     "<digit>": list(string.digits)
+    ... }
+
+    We parse a statement with two assignments; the resulting tree starts with the
+    specified nonterminal :code:`<start>`:
+
+    >>> from isla.helpers import deep_str
+    >>> print(deep_str(parse_match_expression(
+    ...     "x := 0 ; y := x",
+    ...     "<start>",
+    ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value))))
+    <Some: (x := 0 ; y := x, <start>)>
+
+    Now, we parse a single assignment with the :code:`<assgn>` start nonterminal:
+
+    >>> print(deep_str(parse_match_expression(
+    ...     "x := 0",
+    ...     "<assgn>",
+    ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value))))
+    <Some: (x := 0, <assgn>)>
+
+    In case of an error, Nothing is returned:
+
+    >>> print(deep_str(parse_match_expression(
+    ...     "x := 0 FOO",
+    ...     "<assgn>",
+    ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value))))
+    <Nothing>
+
+    :param inp: The input to parse.
+    :param in_nonterminal: The start nonterminmal.
+    :param immutable_grammar: The grammar to parse the input in.
+    :return: A parsed derivation tree or a Nothing nonterminal if parsing was
+        unsuccessful.
+    """
+
+    monad = parse_match_expression_peg(inp, in_nonterminal, immutable_grammar)
+
+    def fallback(_) -> Maybe[DerivationTree]:
         language_core_logger.debug(
             "Parsing match expression %s with EarleyParser",
             inp,
         )
 
-    monad += (
-        lambda _inp: parse_earley(inp, in_nonterminal, immutable_grammar),
-        inp,
-    )
+        return parse_match_expression_earley(inp, in_nonterminal, immutable_grammar)
 
-    return monad
+    return monad.lash(fallback)

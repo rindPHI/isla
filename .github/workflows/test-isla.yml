@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
     - uses: actions/checkout@v3
@@ -21,7 +21,11 @@ jobs:
         python-version: "3.10"
     - name: Install dependencies
       run: |
-        sudo apt-get update && sudo apt-get install -y clang python3-dev curl
+        echo "deb https://downloads.skewed.de/apt jammy main" | sudo tee -a /etc/apt/sources.list
+        sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key 612DEFB798507F25
+        sudo apt-get update
+        sudo apt-get install -y clang python3-dev python3-graph-tool curl
+        sudo ln -s /usr/lib/python3/dist-packages/graph_tool /opt/hostedtoolcache/Python/3.10.13/x64/lib/python3.10/site-packages
         curl -L https://github.com/Clever/csvlint/releases/download/v0.3.0/csvlint-v0.3.0-linux-amd64.tar.gz | tar xz --strip-components 1 
         sudo mv csvlint /bin/
         pip install --upgrade pip
