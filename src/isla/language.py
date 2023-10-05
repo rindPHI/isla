@@ -51,7 +51,7 @@ import z3
 from antlr4 import InputStream, RuleContext, ParserRuleContext
 from antlr4.Token import CommonToken
 from grammar_graph import gg
-from orderedset import FrozenOrderedSet
+from orderedset import FrozenOrderedSet, OrderedSet
 from returns._internal.pipeline.flow import flow
 from returns.converters import result_to_maybe
 from returns.functions import compose, tap, raise_exception
@@ -1942,12 +1942,14 @@ class ForallFormula(QuantifiedFormula):
         in_variable: Union[Variable, DerivationTree],
         inner_formula: Formula,
         bind_expression: Optional[BindExpression] = None,
-        already_matched: Optional[Set[int]] = None,
+        already_matched: Optional[OrderedSet[int]] = None,
         id: Optional[int] = None,
     ):
         super().__init__(bound_variable, in_variable, inner_formula, bind_expression)
-        self.already_matched: Set[int] = (
-            set() if not already_matched else set(already_matched)
+        self.already_matched: FrozenOrderedSet[int] = (
+            FrozenOrderedSet()
+            if not already_matched
+            else FrozenOrderedSet(already_matched)
         )
 
         # The id field is used by eliminate_quantifiers to avoid counting universal
@@ -1991,13 +1993,13 @@ class ForallFormula(QuantifiedFormula):
             self.bound_variable not in new_inner_formula.free_variables()
             and self.bind_expression is None
         ):
-            # NOTE: We cannot remove the quantifier if there is a bind expression, not even if
-            #       the variables in the bind expression do not occur in the inner formula,
-            #       since there might be multiple expansion alternatives of the bound variable
-            #       nonterminal and it makes a difference whether a particular expansion has been
-            #       chosen. Consider, e.g., an inner formula "false". Then, this formula evaluates
-            #       to false IF, AND ONLY IF, the defined expansion alternative is chosen, and
-            #       NOT always.
+            # NOTE: We cannot remove the quantifier if there is a bind expression, not
+            #       even if the variables in the bind expression do not occur in the
+            #       inner formula, since there might be multiple expansion alternatives
+            #       of the bound variable nonterminal and it makes a difference whether
+            #       a particular expansion has been chosen. Consider, e.g., an inner
+            #       formula "false". Then, this formula evaluates to false IF, AND ONLY
+            #       IF, the defined expansion alternative is chosen, and NOT always.
             return new_inner_formula
 
         return ForallFormula(
@@ -2019,9 +2021,9 @@ class ForallFormula(QuantifiedFormula):
             self.bind_expression,
             self.already_matched
             | (
-                {trees.id}
+                FrozenOrderedSet([trees.id])
                 if isinstance(trees, DerivationTree)
-                else {tree.id for tree in trees}
+                else FrozenOrderedSet([tree.id for tree in trees])
             ),
             id=self.id,
         )

@@ -85,7 +85,7 @@ def singleton_iterator(elem: T) -> Iterator[T]:
     :return: The resulting iterator of one element.
     """
 
-    return (x for x in [elem])
+    return iter([elem])
 
 
 def star(f: Callable[[[Any, ...]], T]) -> Callable[[Sequence[Any]], T]:

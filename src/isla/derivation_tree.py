@@ -327,12 +327,9 @@ class DerivationTree:
         if isinstance(node_or_id, DerivationTree):
             node_or_id = node_or_id.id
 
-        try:
-            return next(
-                path for path, subtree in self.paths() if subtree.id == node_or_id
-            )
-        except StopIteration:
-            return None
+        return next(
+            (path for path, subtree in self.paths() if subtree.id == node_or_id), None
+        )
 
     def traverse(
         self,

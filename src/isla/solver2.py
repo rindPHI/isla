@@ -1,4 +1,3 @@
-import itertools
 import logging
 import random
 import sys
@@ -19,6 +18,9 @@ from typing import (
     Optional,
     Any,
     Iterator,
+    Mapping,
+    Type,
+    Final,
 )
 
 import z3
@@ -30,11 +32,13 @@ from orderedset import FrozenOrderedSet
 from orderedset.orderedset import T
 from returns.functions import tap, compose, identity
 from returns.maybe import Maybe, Nothing, Some
-from returns.pipeline import flow
-from returns.pointfree import lash, map_
+from returns.pipeline import flow, is_successful
+from returns.pointfree import lash, map_, bind
 from returns.result import Result, safe, Failure, Success
 
+from isla import language
 from isla.derivation_tree import DerivationTree
+from isla.evaluator import evaluate
 from isla.helpers import (
     is_nonterminal,
     deep_str,
@@ -50,7 +54,9 @@ from isla.helpers import (
     star,
     cluster_by_common_elements,
     eassert,
-    singleton_iterator,
+)
+from isla.isla_predicates import (
+    STANDARD_STRUCTURAL_PREDICATES,
 )
 from isla.language import (
     ConjunctiveFormula,
@@ -65,6 +71,10 @@ from isla.language import (
     BoundVariable,
     BindExpression,
     ForallFormula,
+    StructuralPredicate,
+    parse_bnf,
+    parse_isla,
+    start_constant,
 )
 from isla.language import Formula
 from isla.parser import EarleyParser, PEGParser
@@ -72,6 +82,7 @@ from isla.type_defs import (
     FrozenCanonicalGrammar,
     Path,
     Grammar,
+    FrozenGrammar,
 )
 from isla.z3_helpers import (
     z3_subst,
@@ -211,8 +222,6 @@ class StateTree:
             │  └─ <tree_3>
             └─ <tree_1>
 
-        >>> from isla.language import true
-
         >>> dummy_action = ExpandAction((), 0)
         >>> tree_2 = StateTree(
         ...     CDT(FormulaSet(), DerivationTree("<tree_2>")), (0, 0)
@@ -288,8 +297,6 @@ class StateTree:
             ├─ <tree_0>
             │  └─ <tree_2>
             └─ <tree_1>
-
-        >>> from isla.language import true
 
         >>> dummy_action = ExpandAction((), 0)
         >>> tree_2 = StateTree(
@@ -369,8 +376,6 @@ class StateTree:
             │  └─ <tree_2>
             └─ <tree_1>
 
-        >>> from isla.language import true
-
         >>> dummy_action = ExpandAction((), 0)
         >>> tree_2 = StateTree(
         ...     CDT(FormulaSet(), DerivationTree("<tree_2>")), (0, 0)
@@ -403,6 +408,11 @@ class StateTree:
         >>> print(stree.get_subtree((0, 0)))
         StateTree(({} ▸ <tree_2>))
 
+        An attempt to access an unavailable path results in a RuntimeError:
+
+        >>> safe(lambda: print(stree.get_subtree((0, 0, 0))))()
+        <Failure: Cannot access path (0,) in a leaf node>
+
         :param path: The path of the tree node to return.
         :return: The tree node at the specified path.
         """
@@ -431,8 +441,6 @@ class StateTree:
             ├─ <tree_0>
             │  └─ <tree_2>
             └─ <tree_1>
-
-        >>> from isla.language import true
 
         >>> dummy_action = ExpandAction((), 0)
         >>> tree_2 = StateTree(
@@ -504,25 +512,18 @@ class Rule(ABC):
     @abstractmethod
     def actions(
         self, state_tree: StateTree, graph: NeoGrammarGraph
-    ) -> Maybe[Result[Iterator[Action], SyntaxError | StopIteration]]:
+    ) -> Iterator[Result[Action, SyntaxError]]:
         """
-        This method checks whether this rule is applicable to the given state tree.
-        If this is not the case, it returns Nothing. Otherwise, it returns Some
-        Success or Failure container. The success container contains an iterator of
-        actions to be used with :meth:`~isla.solver2.Rule.apply` for generating a
-        successor tree node if there was no problem creating the action. If no actions
-        could be generated due to missing (additional) options, a StopIteration Failure
-        is returned; if a solution generated was syntactically invalid, a SyntaxError
+        This method returns an iterator of actions that are applicable to the given
+        state tree. If a solution generated was syntactically invalid, a SyntaxError
         Failure is returned.
 
         :param state_tree: The input tree node.
         :param graph: The grammar graph for the reference grammar.
-        :return: :class:`~returns.maybe.Some` generator of successor actions (in a
-            :class:`~returns.result.Success` container), :class:`~returns.maybe.Some`
-            :class:`~returns.result.Failure` container with a StopIteration exception
-            (if no further solution can be generated) or a SyntaxError exception (if a
-            solution does not conform to the grammar), or
-            :class:`~returns.maybe.Nothing` if the rule is not applicable..
+        :return: An iterator of successor actions (in a
+            :class:`~returns.result.Success` container) or of a
+            :class:`~returns.result.Failure` container with a SyntaxError exception (if
+            a solution does not conform to the grammar).
         """
 
         raise NotImplementedError
@@ -545,8 +546,28 @@ class Rule(ABC):
         raise NotImplementedError
 
 
-# endregion BASIC DATA STRUCTURES
+class Strategy(ABC):
+    @abstractmethod
+    def pick_action(
+        self,
+        state_tree: StateTree,
+        state_tree_path: Path,
+        options: Mapping[Type[Rule], Iterator[Action]],
+    ) -> Tuple[Type[Rule], Action]:
+        """
+        A strategy chooses an action from the available options based on the current
+        state tree and the node being expanded.
 
+        :param state_tree: The current state tree of CDTs.
+        :param state_tree_path: The path to the state tree node being expanded.
+        :param options: The available actions.
+        :return: A chosen action and the associated rule.
+        """
+
+        raise NotImplementedError
+
+
+# endregion BASIC DATA STRUCTURES
 
 # region CONCRETE ACTIONS AND RULES
 # =================================
@@ -568,18 +589,14 @@ class ExpandAction(Action):
 class ExpandRule(Rule):
     def actions(
         self, state_tree: StateTree, graph: NeoGrammarGraph
-    ) -> Maybe[Result[Iterator[ExpandAction], SyntaxError | StopIteration]]:
+    ) -> Iterator[Result[Action, SyntaxError]]:
         """
-        This method computes an expansion action if it is applicable. It avoids (TODO!)
-        previously taken actions from :code:`state_tree`.
+        This method computes applicable expansion actions. It avoids previously taken
+        actions from :code:`state_tree`.
 
         Consider the following grammar for our assignment language:
 
-        >>> from frozendict import frozendict
         >>> import string
-        >>> from isla.language import true
-        >>> from isla.type_defs import FrozenGrammar
-
         >>> grammar: FrozenGrammar = frozendict({
         ...     "<start>":
         ...         ("<stmt>",),
@@ -602,53 +619,43 @@ class ExpandRule(Rule):
         >>> rule = ExpandRule()
 
         The result is an iterator of two expansions.
-        >>> some_success_with_iterator = rule.actions(stree, graph)
-
-        We can unroll the iterator into a list:
-
-        >>> unrolled = map_(map_(list))(some_success_with_iterator)
-        >>> deep_str(unrolled)
-        '<Some: <Success: [Expand((0,), 0), Expand((0,), 1)]>>'
+        >>> actions = list(rule.actions(stree, graph))
+        >>> deep_str(actions)
+        '[<Success: Expand((0,), 0)>, <Success: Expand((0,), 1)>]'
 
         Let us now inspect the situation where one of these action was already taken,
         i.e., leads to a sibling state.
 
-        >>> new_state_tree = rule.apply(stree, unrolled.unwrap().unwrap()[0], graph)
+        >>> new_state_tree = rule.apply(stree, actions[0].unwrap(), graph)
         >>> print(new_state_tree)
         StateTree(({} ▸ <stmt>), [(Expand((0,), 0), StateTree(({} ▸ <assgn> ; <stmt>)))])
 
         If we ask for actions on the resulting state tree, we directly obtain the
         second alternative (only):
 
-        >>> deep_str(map_(map_(list))(rule.actions(new_state_tree, graph)))
-        '<Some: <Success: [Expand((0,), 1)]>>'
+        >>> deep_str(list(rule.actions(new_state_tree, graph)))
+        '[<Success: Expand((0,), 1)>]'
+
+        An attempt to expand a closed derivation tree results in an empty iterator:
+
+        >>> list(rule.actions(StateTree(
+        ...     CDT(FormulaSet([true()]), parse("x := 1", graph.grammar).unwrap())),
+        ...     graph))
+        []
 
         :param state_tree: The input state tree.
         :param graph: The grammar graph for the reference grammar.
-        :return: Some Success container with an expansion action iterator, Some Failure
-            container with a StopIteration exception if there are not further
-            expansions, or Nothing.
+        :return: An iterator of expansion actions in a Success container.
         """
 
-        # Check if there are any open leaves
-        open_leaves = tuple(state_tree.node.tree.open_leaves())
-        if not open_leaves:
-            return Nothing
-
-        iterator = (
-            ExpandAction(path, alternative_id)
-            for path, leaf in open_leaves
+        return (
+            Success(ExpandAction(path, alternative_id))
+            for path, leaf in state_tree.node.tree.open_leaves()
             for alternative_id in range(len(graph.canonical_grammar[leaf.value]))
             if all(
                 path != other_action.path or alternative_id != other_action.alternative
                 for other_action, _ in state_tree.children
                 if isinstance(other_action, ExpandAction)
-            )
-        )
-
-        return Some(
-            safe(lambda: next(iterator))().map(
-                lambda action: itertools.chain(iter([action]), iterator)
             )
         )
 
@@ -665,9 +672,6 @@ class ExpandRule(Rule):
         Consider the assignment language grammar:
 
         >>> import string
-        >>> from isla.language import true
-        >>> from isla.type_defs import FrozenGrammar
-
         >>> grammar: FrozenGrammar = frozendict({
         ...     "<start>":
         ...         ("<stmt>",),
@@ -706,20 +710,30 @@ class ExpandRule(Rule):
         """
 
         node = state_tree.node
+        path, alternative = action.path, action.alternative
+        old_subtree = node.tree.get_subtree(path)
         new_children = tuple(
             [
                 DerivationTree(symbol)
                 if is_nonterminal(symbol)
                 else DerivationTree(symbol, ())
-                for symbol in graph.canonical_grammar[
-                    node.tree.get_subtree(action.path).value
-                ][action.alternative]
+                for symbol in graph.canonical_grammar[old_subtree.value][alternative]
             ]
         )
-        new_tree = DerivationTree(node.tree.value, new_children)
+        new_subtree = DerivationTree(node.tree.get_subtree(path).value, new_children)
+        new_tree = node.tree.replace_path(action.path, new_subtree)
 
         return state_tree.add_child(
-            action, CDT(node.constraints, node.tree.replace_path(action.path, new_tree))
+            action,
+            CDT(
+                FormulaSet(
+                    [
+                        c.substitute_expressions({old_subtree: new_subtree})
+                        for c in node.constraints
+                    ]
+                ),
+                new_tree,
+            ),
         )
 
 
@@ -743,14 +757,14 @@ class MatchAllUniversalQuantifiersAction(Action):
 class MatchAllUniversalQuantifiersRule(Rule):
     def actions(
         self, state_tree: StateTree, graph: NeoGrammarGraph
-    ) -> Maybe[Result[Iterator[Action], SyntaxError | StopIteration]]:
+    ) -> Iterator[Result[Action, SyntaxError]]:
         """
         This function matches all universal formulas in the constraint set. Only new
         matches are considered, i.e., if the universal formula was already successfully
         matched on some sub tree, this match is not considered. If there already exists
-        a MatchAllUniversalQuantifiersAction from the given state tree, Nothing is
-        returned. Otherwise, if the match was successful and Some iterator is returned,
-        this will be an iterator of exactly one element.
+        a MatchAllUniversalQuantifiersAction from the given state tree, the iterator
+        is empty. Otherwise, if the match was successful, the iterator will contain
+        exactly one element.
 
         Example
         -------
@@ -758,9 +772,6 @@ class MatchAllUniversalQuantifiersRule(Rule):
         We consider the running example with the "assignment language:"
 
         >>> import string
-        >>> from isla.language import true
-        >>> from isla.type_defs import FrozenGrammar
-
         >>> grammar: FrozenGrammar = frozendict({
         ...     "<start>":
         ...         ("<stmt>",),
@@ -792,11 +803,11 @@ class MatchAllUniversalQuantifiersRule(Rule):
         ... })
 
         We obtain one action (after *applying* this action, further requests will
-        result in :class:`~returns.maybe.Nothing`).
+        result in an empty iterator).
 
         >>> rule = MatchAllUniversalQuantifiersRule()
         >>> stree = StateTree(CDT(FormulaSet([formula]), dtree))
-        >>> results = list(rule.actions(stree, graph).unwrap().unwrap())
+        >>> results = list(map(Success.unwrap, rule.actions(stree, graph)))
 
         >>> len(results)
         1
@@ -830,42 +841,53 @@ class MatchAllUniversalQuantifiersRule(Rule):
             computed action.
         """  # noqa: E501
 
-        if any(
-            isinstance(action, MatchAllUniversalQuantifiersAction)
-            for action, _ in state_tree.children
-        ):
-            return Nothing
+        def result_iterator() -> Iterator[Result[Action, SyntaxError]]:
+            if any(
+                isinstance(action, MatchAllUniversalQuantifiersAction)
+                for action, _ in state_tree.children
+            ):
+                return
 
-        qfr_matches: frozendict[
-            ForallFormula, Tuple[frozendict[Variable, Tuple[Path, DerivationTree]], ...]
-        ] = frozendict(
-            filter(
-                None,
-                [
-                    matches_for_quantified_formula(f, graph)
-                    .map(
-                        lambda matches: tuple(
-                            [
-                                m
-                                for m in matches
-                                if not f.is_already_matched(m[f.bound_variable][1])
-                            ]
+            qfr_matches: frozendict[
+                ForallFormula,
+                Tuple[frozendict[Variable, Tuple[Path, DerivationTree]], ...],
+            ]
+
+            qfr_matches = flow(
+                state_tree.node.constraints,
+                partial(filter, ForallFormula.__instancecheck__),
+                partial(
+                    map,
+                    lambda f: (
+                        flow(
+                            matches_for_quantified_formula(f, graph),
+                            map_(
+                                partial(
+                                    filter,
+                                    lambda m: not f.is_already_matched(
+                                        m[f.bound_variable][1]
+                                    ),
+                                )
+                            ),
+                            map_(tuple),
+                            bind(
+                                lambda matches: Some((f, matches))
+                                if matches
+                                else Nothing
+                            ),
                         )
-                    )
-                    .bind(lambda matches: Some((f, matches)) if matches else Nothing)
-                    .value_or(None)
-                    for f in state_tree.node.constraints
-                    if isinstance(f, ForallFormula)
-                ],
+                    ).value_or(None),
+                ),
+                partial(filter, None),
+                frozendict,
             )
-        )
 
-        if not qfr_matches:
-            return Nothing
+            if not qfr_matches:
+                return
 
-        return Some(
-            Success(singleton_iterator(MatchAllUniversalQuantifiersAction(qfr_matches)))
-        )
+            yield Success(MatchAllUniversalQuantifiersAction(qfr_matches))
+
+        return result_iterator()
 
     def apply(
         self,
@@ -887,9 +909,6 @@ class MatchAllUniversalQuantifiersRule(Rule):
         We consider the running example with the "assignment language:"
 
         >>> import string
-        >>> from isla.language import true
-        >>> from isla.type_defs import FrozenGrammar
-
         >>> grammar: FrozenGrammar = frozendict({
         ...     "<start>":
         ...         ("<stmt>",),
@@ -921,11 +940,11 @@ class MatchAllUniversalQuantifiersRule(Rule):
         ... })
 
         We obtain one action (after *applying* this action, further requests will
-        result in :class:`~returns.maybe.Nothing`).
+        result in an empty iterator).
 
         >>> rule = MatchAllUniversalQuantifiersRule()
         >>> stree = StateTree(CDT(FormulaSet([formula]), dtree))
-        >>> action = next(rule.actions(stree, graph).unwrap().unwrap())
+        >>> action = next(rule.actions(stree, graph)).unwrap()
 
         The new node looks like the old one, since the instantiated inner formulas are
         automatically simplified to "true:"
@@ -946,11 +965,11 @@ class MatchAllUniversalQuantifiersRule(Rule):
         '[x := 1, y := 2]'
 
         Thus, when we again ask for a match with the resulting updated formula, we
-        obtain Nothing:
+        obtain no action:
 
         >>> stree = StateTree(CDT(FormulaSet([formula]), dtree))
-        >>> rule.actions(stree, graph)
-        <Nothing>
+        >>> list(rule.actions(stree, graph))
+        []
 
         :param state_tree: The state tree on which to apply the action.
         :param action: The action to apply.
@@ -979,14 +998,14 @@ class MatchAllUniversalQuantifiersRule(Rule):
 
         original_formulas = FormulaSet(
             [
-                formula
-                if formula not in action.match_result
-                else formula.add_already_matched(
+                (f := cast(ForallFormula, formula),f.add_already_matched(
                     {
-                        match[formula.bound_variable][1]
-                        for match in action.match_result[formula]
+                        match[f.bound_variable][1]
+                        for match in action.match_result[f]
                     }
-                )
+                ))[-1]
+                if formula in action.match_result
+                else formula
                 for formula in state_tree.node.constraints
             ]
         )
@@ -1018,9 +1037,6 @@ def matches_for_quantified_formula(
     We consider the running example with the "assignment language:"
 
     >>> import string
-    >>> from isla.language import true
-    >>> from isla.type_defs import FrozenGrammar
-
     >>> grammar: FrozenGrammar = frozendict({
     ...     "<start>":
     ...         ("<stmt>",),
@@ -1173,11 +1189,12 @@ class SplitAndAction(Action):
 class SplitAndRule(Rule):
     def actions(
         self, state_tree: StateTree, graph: Optional[NeoGrammarGraph] = None
-    ) -> Maybe[Result[Iterator[Action], SyntaxError | StopIteration]]:
+    ) -> Iterator[Result[Action, SyntaxError]]:
         """
-        This method returns Some iterator of actions in a Success container if the
-        constraint set in the provided state tree contains a conjunctive formula.
-        The iterator contains a single action. Otherwise, Nothing is returned.
+        This method returns an iterator of actions in a Success container if the
+        constraint set in the provided state tree contains at least conjunctive formula.
+        If an action was already applied, leading to a sibling state, it is not
+        considered.
 
         Example
         -------
@@ -1191,8 +1208,8 @@ class SplitAndRule(Rule):
         >>> stree = StateTree(
         ...     CDT(FormulaSet([conjunction]), DerivationTree("<start>"))
         ... )
-        >>> deep_str(map_(map_(list))(SplitAndRule().actions(stree)))
-        '<Some: <Success: [SplitAnd((StrToInt(x) > 0 ∧ StrToInt(x) < 9))]>>'
+        >>> deep_str(list(SplitAndRule().actions(stree)))
+        '[SplitAnd((StrToInt(x) > 0 ∧ StrToInt(x) < 9))]'
 
         :param state_tree: The input state tree.
         :param graph: The grammar graph for the reference grammar.
@@ -1200,20 +1217,15 @@ class SplitAndRule(Rule):
             conjunction is contained in the state tree, or Nothing.
         """
 
-        # TODO If this action was already applied once (leading to a sibling state
-        #      that would be equivalent to the one we produce here), we should return
-        #      a StopIteration Failure.
-
-        return (
-            safe(
-                lambda: next(
-                    c
-                    for c in state_tree.node.constraints
-                    if isinstance(c, ConjunctiveFormula)
+        return next(
+            (
+                Success(SplitAndAction(c))
+                for c in state_tree.node.constraints
+                if isinstance(c, ConjunctiveFormula)
+                and not any(
+                    action == SplitAndAction(c) for action, _ in state_tree.children
                 )
-            )()
-            .bind(lambda c: Some(Success((SplitAndAction(c) for _ in range(1)))))
-            .lash(lambda _: Nothing)
+            )
         )
 
     def apply(
@@ -1274,7 +1286,7 @@ class ChooseOrAction(Action):
 class ChooseOrRule(Rule):
     def actions(
         self, state_tree: StateTree, graph: Optional[NeoGrammarGraph] = None
-    ) -> Maybe[Result[Iterator[ChooseOrAction], SyntaxError | StopIteration]]:
+    ) -> Iterator[Result[Action, SyntaxError]]:
         """
         This method returns Some iterator of actions in a Success container if the
         constraint set in the provided state tree contains a disjunctive formula.
@@ -1294,34 +1306,26 @@ class ChooseOrRule(Rule):
         >>> stree = StateTree(
         ...     CDT(FormulaSet([disjunction]), DerivationTree("<start>"))
         ... )
-        >>> deep_str(map_(map_(list))(ChooseOrRule().actions(stree)))
-        '<Some: <Success: [ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 0), ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 1)]>>'
+        >>> deep_str(list(ChooseOrRule().actions(stree)))
+        '[<Success: ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 0)>, <Success: ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 1)>]'
 
-        >>> ChooseOrRule().actions(
-        ...     StateTree(CDT(FormulaSet({}), DerivationTree("<start>"))))
-        <Nothing>
+        >>> list(ChooseOrRule().actions(
+        ...     StateTree(CDT(FormulaSet({}), DerivationTree("<start>")))))
+        []
 
         :param state_tree: The input state tree.
         :param graph: The grammar graph for the reference grammar.
         :return: An action if a disjunction is contained in the state tree or nothing.
         """  # noqa: E501
 
-        # TODO: If there is a sibling present, we should choose a different disjunct.
-
         return (
-            safe(
-                lambda: next(
-                    c
-                    for c in state_tree.node.constraints
-                    if isinstance(c, DisjunctiveFormula)
-                )
-            )()
-            .bind(
-                lambda c: Some(
-                    Success((ChooseOrAction(c, choice) for choice in [0, 1]))
-                )
+            Success(ChooseOrAction(c, choice))
+            for choice in [0, 1]
+            for c in state_tree.node.constraints
+            if isinstance(c, DisjunctiveFormula)
+            and not any(
+                action == ChooseOrAction(c, choice) for action, _ in state_tree.children
             )
-            .lash(lambda _: Nothing)
         )
 
     def apply(
@@ -1395,7 +1399,7 @@ class SolveSMTAction(Action):
 class SolveSMTRule(Rule):
     def actions(
         self, state_tree: StateTree, graph: NeoGrammarGraph
-    ) -> Maybe[Result[Iterator[SolveSMTAction], SyntaxError | StopIteration]]:
+    ) -> Iterator[Result[Action, SyntaxError]]:
         """
         This function returns a :class:`~isla.solver2.SolveSMTAction` iterator if there
         exist SMT formulas in the given state tree and a solution could be computed. The
@@ -1404,10 +1408,7 @@ class SolveSMTRule(Rule):
         Only the first *cluster* of constraints depending on the same variables is
         considered in solving. In case of an error during the solving process, some
         failure (SyntaxError or StopIteration) is returned. A SyntaxError signals that
-        a solver solution does not conform to the grammar. A StopIteration signals
-        that we could not generate another, different solution; this applies to the
-        case that :code:`state_tree` already has children and we look for different
-        ones.
+        a solver solution does not conform to the grammar.
 
         Example
         -------
@@ -1475,12 +1476,15 @@ class SolveSMTRule(Rule):
         >>> from itertools import islice
         >>> print(
         ...     deep_str(
-        ...         map_(map_(lambda it: list(islice(it, 2))))(
-        ...             rule.actions(StateTree(CDT(constraints, orig_dtree)), graph)
+        ...         list(
+        ...             islice(
+        ...                 rule.actions(StateTree(CDT(constraints, orig_dtree)), graph),
+        ...                 2,
+        ...             )
         ...         )
         ...     )
         ... )
-        <Some: <Success: [SolveSMT({(StrToInt(<digit>_1) > 3, {'<digit>_1': '<digit>'})} --> {<digit>: 4}), SolveSMT({(StrToInt(<digit>_1) > 3, {'<digit>_1': '<digit>'})} --> {<digit>: 5})]>>
+        [<Success: SolveSMT({(StrToInt(<digit>_1) > 3, {'<digit>_1': '<digit>'})} --> {<digit>: 4})>, <Success: SolveSMT({(StrToInt(<digit>_1) > 3, {'<digit>_1': '<digit>'})} --> {<digit>: 5})>]
 
         Note that we obtain a solution for the first cluster, the constraint on the
         variable "digit." Reversing the constraints results in a solution to the
@@ -1490,15 +1494,18 @@ class SolveSMTRule(Rule):
         >>> rule = SolveSMTRule()
         >>> print(
         ...     deep_str(
-        ...         map_(map_(lambda it: list(islice(it, 2))))(
-        ...             rule.actions(StateTree(CDT(constraints, orig_dtree)), graph)
+        ...         list(
+        ...             islice(
+        ...                 rule.actions(StateTree(CDT(constraints, orig_dtree)), graph),
+        ...                 2,
+        ...             )
         ...         )
         ...     )
         ... )
-        <Some: <Success: [SolveSMT({(<var>_0 == "x", {'<var>_0': '<var>'})} --> {<var>: x}), SolveSMT({(<var>_0 == "x", {'<var>_0': '<var>'})} --> False)]>>
+        [<Success: SolveSMT({(<var>_0 == "x", {'<var>_0': '<var>'})} --> {<var>: x})>, <Success: SolveSMT({(<var>_0 == "x", {'<var>_0': '<var>'})} --> False)>]
 
         Since there is only one solution for the constraint, the second element
-        "solution" by the iterator is "False."
+        "solution" returned by the iterator is "False."
 
         If we *apply* the first retrieved action and ask for another action based on
         the resulting state tree, we directly get another solution than "digit = 4"
@@ -1506,7 +1513,7 @@ class SolveSMTRule(Rule):
 
         >>> constraints = FormulaSet([digit_greater_3_constraint, var_eq_x_constraint])
         >>> state_tree = StateTree(CDT(constraints, orig_dtree))
-        >>> first_action = next(rule.actions(state_tree, graph).unwrap().unwrap())
+        >>> first_action = next(rule.actions(state_tree, graph)).unwrap()
         >>> deep_str(first_action)
         "SolveSMT({(StrToInt(<digit>_1) > 3, {'<digit>_1': '<digit>'})} --> {<digit>: 4})"
 
@@ -1519,90 +1526,98 @@ class SolveSMTRule(Rule):
         Z3 might not compute the same result (5) as before; therefore, we do not perform
         a literal comparison in this example:
 
-        >>> second_action = next(rule.actions(new_state_tree, graph).unwrap().unwrap())
+        >>> second_action = next(rule.actions(new_state_tree, graph)).unwrap()
         >>> numeric_assignment_to_digit = int(str(next(iter(second_action.result.values()))))
         >>> numeric_assignment_to_digit > 4
         True
 
-        If there are no SMT formulas, we obtain Nothing:
+        If there are no SMT formulas, we obtain no result:
 
-        >>> rule.actions(StateTree(CDT(FormulaSet(), orig_dtree)), graph)
-        <Nothing>
+        >>> list(rule.actions(StateTree(CDT(FormulaSet(), orig_dtree)), graph))
+        []
 
         For "wrong" constraints, e.g., comprising a string-to-int conversion on a
-        :code:`<var>` variable, some SytaxError failure is returned:
+        :code:`<var>` variable, a SytaxError Failure is returned:
 
         >>> deep_str(
-        ...     rule.actions(
-        ...         StateTree(
-        ...             CDT(
-        ...                 FormulaSet([SMTFormula("(= (str.to.int var) 8)", var)]),
-        ...                 orig_dtree,
-        ...             )
-        ...         ),
-        ...         graph,
+        ...     list(
+        ...         rule.actions(
+        ...             StateTree(
+        ...                 CDT(
+        ...                     FormulaSet([SMTFormula("(= (str.to.int var) 8)", var)]),
+        ...                     orig_dtree,
+        ...                 )
+        ...             ),
+        ...             graph,
+        ...         )
         ...     )
-        ... )[:51] + "...>>"
-        '<Some: <Failure: Could not parse a numeric solution...>>'
+        ... )[:45] + "...>]"
+        '[<Failure: Could not parse a numeric solution...>]'
 
         :param state_tree: The state tree node starting from which we try to find a
             solution to contained SMT formulas.
         :param graph: The grammar graph for the reference grammar.
-        :return: Nothing if there are not SMT formulas in the state tree; otherwise,
-            some solution or some failure.
+        :return: An iterator of solutions in a Success container or SyntaxErrors in a
+            Failure container.
         """  # noqa: E501
 
-        smt_formulas = [
-            conjunct
-            for conjunct in state_tree.node.constraints
-            if isinstance(conjunct, SMTFormula)
-        ]
-
-        if not smt_formulas:
-            return Nothing
-
-        # We first collect previous solutions. If any solution is a bool value, we
-        # return a Failure. This function should not be called in those cases.
-        previous_solutions: Tuple[bool | Dict[Variable, DerivationTree], ...] = tuple(
-            [
-                action.result
-                if isinstance(action.result, bool)
-                else cast(
-                    Dict[Variable, DerivationTree],
-                    {
-                        find_variable(var_or_tree, smt_formulas): val
-                        for var_or_tree, val in action.result.items()
-                    },
-                )
-                for action, _ in state_tree.children
-                if isinstance(action, SolveSMTAction)
+        def generator() -> Iterator[Result[Action, SyntaxError]]:
+            smt_formulas = [
+                conjunct
+                for conjunct in state_tree.node.constraints
+                if isinstance(conjunct, SMTFormula)
             ]
-        )
 
-        if any(
-            isinstance(previous_solution, bool)
-            for previous_solution in previous_solutions
-        ):
-            return Some(Failure(StopIteration()))
+            if not smt_formulas:
+                return
 
-        LOGGER.debug(
-            "Eliminating first cluster of semantic formulas {%s}",
-            lazyjoin(", ", smt_formulas),
-        )
+            # We first collect previous solutions. If any solution is a bool value, we
+            # don't return an action; there's nothing more to compute.
+            solve_smt_actions = tuple(
+                flow(
+                    state_tree.children,
+                    partial(map, star(lambda action, _: action)),
+                    partial(filter, SolveSMTAction.__instancecheck__),
+                )
+            )
 
-        first_result = unify_smt_formulas_and_solve_first_cluster(
-            graph, smt_formulas, previous_solutions
-        )
+            if any(isinstance(action.result, bool) for action in solve_smt_actions):
+                return
 
-        match first_result:
-            case Failure(_):
-                return Some(first_result)
-            case Success((c, r)):
-                cluster, result = c, r
-            case _:
-                assert False
+            previous_solutions: Tuple[Dict[Variable, DerivationTree], ...] = flow(
+                solve_smt_actions,
+                partial(map, lambda a: a.result),
+                partial(
+                    map,
+                    lambda result: {
+                        find_variable(var_or_tree, smt_formulas): val
+                        for var_or_tree, val in result.items()
+                    },
+                ),
+                tuple,
+            )
+
+            LOGGER.debug(
+                "Eliminating first cluster of semantic formulas {%s}",
+                lazyjoin(", ", smt_formulas),
+            )
+
+            while True:
+                match unify_smt_formulas_and_solve_first_cluster(
+                    graph, smt_formulas, previous_solutions
+                ):
+                    case Failure(err):
+                        yield Failure(err)
+                        # We only communicate the first failure
+                        return
+                    case Success((c, r)):
+                        yield Success(SolveSMTAction(c, r))
+                        previous_solutions = update_previous_solutions(
+                            smt_formulas, r, previous_solutions
+                        )
 
         def update_previous_solutions(
+            smt_formulas: Iterable[SMTFormula],
             a_result: bool | frozendict[Variable | DerivationTree, DerivationTree],
             bool_or_dict: Tuple[bool | Dict[Variable, DerivationTree], ...],
         ) -> Tuple[bool | Dict[Variable, DerivationTree], ...]:
@@ -1616,34 +1631,17 @@ class SolveSMTRule(Rule):
                 },
             )
 
-        def generator() -> Iterator[SolveSMTAction]:
-            yield SolveSMTAction(cluster, result)
-            generator_previous_solutions = update_previous_solutions(
-                result, previous_solutions
-            )
-
-            while True:
-                match unify_smt_formulas_and_solve_first_cluster(
-                    graph, smt_formulas, generator_previous_solutions
-                ):
-                    case Failure(_):
-                        # We only communicate a failure for the first retrieval
-                        return
-                    case Success((c, r)):
-                        generator_previous_solutions = update_previous_solutions(
-                            r, generator_previous_solutions
-                        )
-                        yield SolveSMTAction(c, r)
-                    case _:
-                        assert False
-
-        return Some(Success(generator()))
+        return generator()
 
     def apply(
         self, state_tree: StateTree, action: SolveSMTAction, graph: NeoGrammarGraph
     ) -> StateTree:
         """
-        TODO
+        This method applies a :meth:`~isla.solver2.SolveSMTAction` on the given state
+        tree. The solved SMT formulas are removed from the constraint sets. A False
+        solution results in a False constraint set. For a solution with a substitution,
+        both the whole constraint set as well as the derivation tree in the
+        :class:`~isla.solver2.CDT` are updated.
 
         Example
         -------
@@ -1709,19 +1707,20 @@ class SolveSMTRule(Rule):
         >>> constraints = FormulaSet([var_eq_x_constraint, digit_greater_3_constraint])
         >>> rule = SolveSMTRule()
         >>> state_tree = StateTree(CDT(constraints, orig_dtree))
-        >>> action = next(rule.actions(state_tree, graph).unwrap().unwrap())
+        >>> action = next(rule.actions(state_tree, graph)).unwrap()
         >>> print(deep_str(action))
         SolveSMT({(<var>_0 == "x", {'<var>_0': '<var>'})} --> {<var>: x})
 
-        Next, we apply this action.
+        Next, we apply this action. Observe how the SMT formula is removed from the
+        constraint set and the derivation tree is updated to :code:`x := <digit>`.
 
         >>> print(deep_str(rule.apply(state_tree, action, graph).children[0]))
         (SolveSMT({(<var>_0 == "x", {'<var>_0': '<var>'})} --> {<var>: x}), StateTree(({(StrToInt(digit) > 3, {'digit': '<digit>'})} ▸ x := <digit>)))
 
-        :param state_tree: TODO
-        :param action: TODO
+        :param state_tree: The state tree to apply this action on.
+        :param action: The :class:`~isla.solver2.SolveSMTAction` to apply
         :param graph: The grammar graph for the reference grammar.
-        :return:
+        :return: The resulting state tree.
         """  # noqa: E501
 
         new_constraints = state_tree.node.constraints.difference(action.cluster)
@@ -3870,6 +3869,271 @@ def expand_leaf(
 # endregion SMT Rule
 
 # endregion CONCRETE ACTIONS AND RULES
+
+# region CONCRETE STRATEGY IMPLEMENTATIONS
+
+
+@dataclass(frozen=True)
+class KPathStrategy(Strategy):
+    """
+    A Strategy implementation choosing the expansions maximizing k-path coverage. If
+    no expansion action is available, this strategy chooses the first available action.
+    """
+
+    graph: NeoGrammarGraph
+    k: int = 3
+
+    def pick_action(
+        self,
+        state_tree: StateTree,
+        state_tree_path: Path,
+        options: Mapping[Type[Rule], Iterator[Action]],
+    ) -> Tuple[Type[Rule], Action]:
+        """
+        The KPathStrategy always chooses the grammar expansion maximizing the k-path
+        coverage in a tree. If no expansion action is available, it chooses the first
+        available action.
+
+        :param state_tree: The current state tree of CDTs.
+        :param state_tree_path: The path to the state tree node being expanded.
+        :param options: The available actions.
+        :return: The first action (and its rule) from the options list.
+        """
+
+        # TODO Expand to match; don't solve SMT formula which contains an argument that
+        #      is used inside a universal quantifier (?).
+        # TODO Make sure that SMT solving is only started when strategy asks for
+        #      solutions. Potentially much overhead currently (also for other cases).
+
+        if MatchAllUniversalQuantifiersRule in options:
+            iterator = options[MatchAllUniversalQuantifiersRule]
+            return MatchAllUniversalQuantifiersRule, next(iterator)
+        elif SolveSMTRule in options:
+            iterator = options[SolveSMTRule]
+            return SolveSMTRule, next(iterator)
+        elif ExpandRule in options:
+            iterator = cast(Iterator[ExpandAction], options[ExpandRule])
+            return (
+                ExpandRule,
+                sorted(
+                    iterator,
+                    key=partial(
+                        self.__pick_expansion_action, state_tree, state_tree_path
+                    ),
+                )[0],
+            )
+
+        rule, iterator = next(iter(options.items()))
+        return rule, next(iterator)
+
+    def __pick_expansion_action(
+        self, state_tree: StateTree, state_tree_path: Path, action: ExpandAction
+    ) -> Tuple[int, int]:
+        """
+        TODO
+
+        :param state_tree:
+        :param state_tree_path:
+        :param action:
+        :return:
+        """
+
+        state_tree_node = state_tree.get_subtree(state_tree_path)
+        current_paths = self.graph.k_paths_in_tree(
+            state_tree_node.node.tree,
+            self.k,
+            include_potential_paths=False,
+            include_terminals=True,
+        )
+
+        path, alternative = action.path, action.alternative
+        new_children = tuple(
+            [
+                DerivationTree(symbol)
+                if is_nonterminal(symbol)
+                else DerivationTree(symbol, ())
+                for symbol in self.graph.canonical_grammar[
+                    state_tree_node.node.tree.get_subtree(path).value
+                ][alternative]
+            ]
+        )
+        resulting_tree = state_tree_node.node.tree.replace_path(
+            path,
+            DerivationTree(
+                state_tree_node.node.tree.get_subtree(path).value, new_children
+            ),
+        )
+
+        new_paths = self.graph.k_paths_in_tree(
+            resulting_tree,
+            self.k,
+            include_potential_paths=True,
+            include_terminals=True,
+        )
+
+        return -len(new_paths.difference(current_paths)), len(resulting_tree)
+
+
+# endregion CONCRETE STRATEGY IMPLEMENTATIONS
+
+# region ISLa2 solver
+
+
+@dataclass(frozen=True)
+class SolverDefaults:
+    formula: Maybe[Formula | str] = Nothing
+    structural_predicates: frozenset[
+        StructuralPredicate
+    ] = STANDARD_STRUCTURAL_PREDICATES
+    tree_insertion_methods: Maybe[int] = Nothing
+    activate_unsat_support: bool = False
+    grammar_unwinding_threshold: int = 4
+    initial_tree: Maybe[DerivationTree] = Nothing
+    enable_optimized_z3_queries: bool = True
+    start_symbol: Maybe[str] = Nothing
+    strategy: Maybe[Strategy] = Nothing
+
+
+_DEFAULTS = SolverDefaults()
+
+
+class ISLaSolver:
+    def __init__(
+        self,
+        grammar: FrozenGrammar | str,
+        formula: Maybe[Formula | str] = _DEFAULTS.formula,
+        start_symbol: Maybe[str] = _DEFAULTS.start_symbol,
+        initial_tree: Maybe[DerivationTree] = _DEFAULTS.initial_tree,
+        structural_predicates: Set[
+            language.StructuralPredicate
+        ] = _DEFAULTS.structural_predicates,
+        strategy: Maybe[Strategy] = _DEFAULTS.strategy,
+        activate_unsat_support: bool = _DEFAULTS.activate_unsat_support,
+        grammar_unwinding_threshold: int = _DEFAULTS.grammar_unwinding_threshold,
+        enable_optimized_z3_queries: bool = _DEFAULTS.enable_optimized_z3_queries,
+    ):
+        self.graph: Final[NeoGrammarGraph] = NeoGrammarGraph(
+            parse_bnf(grammar) if isinstance(grammar, str) else grammar
+        )
+
+        # TODO: Use activate_unsat_support, grammar_unwinding_threshold,
+        #       enable_optimized_z3_queries
+
+        self.rules: Final[frozendict[Type[Rule], Rule]] = frozendict(
+            {
+                ExpandRule: ExpandRule(),
+                SplitAndRule: SplitAndRule(),
+                ChooseOrRule: ChooseOrRule(),
+                SolveSMTRule: SolveSMTRule(),
+                MatchAllUniversalQuantifiersRule: MatchAllUniversalQuantifiersRule(),
+            }
+        )
+
+        self.strategy = strategy.value_or(KPathStrategy(self.graph))
+
+        root_derivation_tree = initial_tree.lash(
+            lambda _: Some(DerivationTree(start_symbol.value_or("<start>")))
+        ).unwrap()
+
+        root_formula = (
+            formula.map(
+                lambda f: parse_isla(f, self.graph.grammar, structural_predicates)
+                if isinstance(f, str)
+                else f
+            )
+            .value_or(true())
+            .substitute_expressions({start_constant(): root_derivation_tree})
+        )
+
+        self.state_tree: StateTree = StateTree(
+            CDT(FormulaSet([root_formula]), root_derivation_tree)
+        )
+
+        self.current_path: Path = ()
+
+    def solve(self) -> DerivationTree:
+        """
+        Attempts to compute a solution to the given ISLa formula. Returns that solution,
+        if any. This function can be called repeatedly to obtain more solutions until
+        one of two exception types is raised: A :class:`StopIteration` indicates that
+        no more solution can be found; a :class:`TimeoutError` is raised if a timeout
+        occurred. After that, an exception will be raised every time.
+
+        The timeout can be controlled by the :code:`timeout_seconds`
+        :meth:`constructor <isla.solver2.ISLaSolver.__init__>` parameter.
+
+        Example
+        -------
+
+        >>> import string
+        >>> grammar: FrozenGrammar = frozendict({
+        ...     "<start>":
+        ...         ("<stmt>",),
+        ...     "<stmt>":
+        ...         ("<assgn> ; <stmt>", "<assgn>"),
+        ...     "<assgn>":
+        ...         ("<var> := <rhs>",),
+        ...     "<rhs>":
+        ...         ("<var>", "<digit>"),
+        ...     "<var>": tuple(string.ascii_lowercase),
+        ...     "<digit>": tuple(string.digits),
+        ... })
+
+        The formula we want the generated inputs to satisfy specifies that all digit
+        right-hand-sides have a value of at least 5:
+
+        >>> formula = (
+        ...     'forall <assgn> assgn="<var> := {<digit> d}": str.to.int(d) > 4'
+        ... )
+
+        >>> solver = ISLaSolver(grammar, Some(formula))
+
+        # >>> print(solver.solve())
+        a := a ; a := a ; b := 5 ; a := b
+
+        # TODO Why is no other variable chosen, at least for the final assignment?
+
+        :return: A solution for the ISLa formula passed to the
+            :class:`isla.solver2.ISLaSolver`.
+        """
+
+        while True:
+            state_tree_node = self.state_tree.get_subtree(self.current_path)
+
+            options = flow(
+                self.rules.values(),
+                partial(
+                    map, lambda r: (type(r), r.actions(state_tree_node, self.graph))
+                ),
+                partial(filter, star(lambda _, actions: is_successful(actions))),
+                partial(
+                    filter, star(lambda _, actions: is_successful(actions.unwrap()))
+                ),
+                partial(map, star(lambda r, actions: (r, actions.unwrap().unwrap()))),
+                frozendict,
+            )
+
+            if not options:
+                # TODO: Properly handle FALSE case
+                assert state_tree_node.node.constraints != FormulaSet([false()])
+                assert evaluate(
+                    reduce(Formula.__and__, state_tree_node.node.constraints, true()),
+                    state_tree_node.node.tree,
+                    self.graph.grammar,
+                ).is_true()
+                return state_tree_node.node.tree
+
+            rule_type, action = self.strategy.pick_action(
+                self.state_tree, self.current_path, options
+            )
+            new_node = self.rules[rule_type].apply(state_tree_node, action, self.graph)
+            self.state_tree = self.state_tree.replace(self.current_path, new_node)
+
+            # TODO Properly choose next path, in particular after return
+            self.current_path = self.current_path + (0,)
+
+
+# endregion ISLa2 solver
 
 # region Parsing
 # ==============
