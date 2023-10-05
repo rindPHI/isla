@@ -23,6 +23,7 @@ from typing import (
     Final,
 )
 
+import returns.maybe
 import z3
 from frozendict import frozendict
 from grammar_to_regex.cfg2regex import RegexConverter
@@ -32,7 +33,7 @@ from orderedset import FrozenOrderedSet
 from orderedset.orderedset import T
 from returns.functions import tap, compose, identity
 from returns.maybe import Maybe, Nothing, Some
-from returns.pipeline import flow, is_successful
+from returns.pipeline import flow
 from returns.pointfree import lash, map_, bind
 from returns.result import Result, safe, Failure, Success
 
@@ -553,15 +554,25 @@ class Strategy(ABC):
         state_tree: StateTree,
         state_tree_path: Path,
         options: Mapping[Type[Rule], Iterator[Action]],
-    ) -> Tuple[Type[Rule], Action]:
+    ) -> Maybe[Result[Tuple[Type[Rule], Action], SyntaxError]]:
         """
         A strategy chooses an action from the available options based on the current
         state tree and the node being expanded.
 
+        Since the computation of rule applications is performed lazily, the solver class
+        does not check whether all rules are inapplicable or raised failures. Only the
+        strategies pop from the action iterators. If no action was applicable, the
+        strategy communicates this by returning a :class:`~returns.maybe.Nothing`
+        object. If any rule raised a Failure, this is communicated in a
+        :class:`~returns.maybe.Some` container (as are successfully retrieved
+        rule type-action pairs).
+
         :param state_tree: The current state tree of CDTs.
         :param state_tree_path: The path to the state tree node being expanded.
         :param options: The available actions.
-        :return: A chosen action and the associated rule.
+        :return: Some chosen action and the associated rule in a Success container; or
+            an exception in a Failure container; or Nothing if there is no applicable
+            action.
         """
 
         raise NotImplementedError
@@ -1209,7 +1220,7 @@ class SplitAndRule(Rule):
         ...     CDT(FormulaSet([conjunction]), DerivationTree("<start>"))
         ... )
         >>> deep_str(list(SplitAndRule().actions(stree)))
-        '[SplitAnd((StrToInt(x) > 0 ∧ StrToInt(x) < 9))]'
+        '[<Success: SplitAnd((StrToInt(x) > 0 ∧ StrToInt(x) < 9))>]'
 
         :param state_tree: The input state tree.
         :param graph: The grammar graph for the reference grammar.
@@ -1217,14 +1228,12 @@ class SplitAndRule(Rule):
             conjunction is contained in the state tree, or Nothing.
         """
 
-        return next(
-            (
-                Success(SplitAndAction(c))
-                for c in state_tree.node.constraints
-                if isinstance(c, ConjunctiveFormula)
-                and not any(
-                    action == SplitAndAction(c) for action, _ in state_tree.children
-                )
+        return (
+            Success(SplitAndAction(c))
+            for c in state_tree.node.constraints
+            if isinstance(c, ConjunctiveFormula)
+            and not any(
+                action == SplitAndAction(c) for action, _ in state_tree.children
             )
         )
 
@@ -3887,8 +3896,8 @@ class KPathStrategy(Strategy):
         self,
         state_tree: StateTree,
         state_tree_path: Path,
-        options: Mapping[Type[Rule], Iterator[Action]],
-    ) -> Tuple[Type[Rule], Action]:
+        options: Mapping[Type[Rule], Iterator[Result[Action, SyntaxError]]],
+    ) -> Maybe[Result[Tuple[Type[Rule], Action], SyntaxError]]:
         """
         The KPathStrategy always chooses the grammar expansion maximizing the k-path
         coverage in a tree. If no expansion action is available, it chooses the first
@@ -3902,29 +3911,55 @@ class KPathStrategy(Strategy):
 
         # TODO Expand to match; don't solve SMT formula which contains an argument that
         #      is used inside a universal quantifier (?).
-        # TODO Make sure that SMT solving is only started when strategy asks for
-        #      solutions. Potentially much overhead currently (also for other cases).
 
-        if MatchAllUniversalQuantifiersRule in options:
-            iterator = options[MatchAllUniversalQuantifiersRule]
-            return MatchAllUniversalQuantifiersRule, next(iterator)
-        elif SolveSMTRule in options:
-            iterator = options[SolveSMTRule]
-            return SolveSMTRule, next(iterator)
-        elif ExpandRule in options:
-            iterator = cast(Iterator[ExpandAction], options[ExpandRule])
-            return (
-                ExpandRule,
-                sorted(
-                    iterator,
-                    key=partial(
-                        self.__pick_expansion_action, state_tree, state_tree_path
-                    ),
-                )[0],
+        # Universal Quantifier Matching
+        iterator = options[MatchAllUniversalQuantifiersRule]
+        match next(iterator, None):
+            case Failure(exc):
+                return Some(Failure(exc))
+            case Success(action):
+                return Some(Success((MatchAllUniversalQuantifiersRule, action)))
+
+        # SMT Solving
+        iterator = options[SolveSMTRule]
+        match next(iterator, None):
+            case Failure(exc):
+                return Some(Failure(exc))
+            case Success(action):
+                return Some(Success((SolveSMTRule, action)))
+
+        # Nonterminal Expansion
+        expansion_actions = tuple(
+            flow(options[ExpandRule], partial(map, lambda a: a.unwrap()))
+        )
+
+        if expansion_actions:
+            chosen_expansion = sorted(
+                expansion_actions,
+                key=partial(
+                    self.__pick_expansion_action,
+                    state_tree,
+                    state_tree_path,
+                ),
+            )[0]
+
+            return Some(Success((ExpandRule, chosen_expansion)))
+
+        # Fallback: Pick First Available Action
+        for rule_type, iterator in options.items():
+            maybe_action: Maybe[Result[Action, SyntaxError]] = Maybe.from_optional(
+                next(iterator, None)
             )
 
-        rule, iterator = next(iter(options.items()))
-        return rule, next(iterator)
+            match maybe_action:
+                case returns.maybe.Nothing:
+                    continue
+                case Some(Failure(exc)):
+                    return Failure(exc)
+                case Some(Success(action)):
+                    return Some(Success((rule_type, action)))
+
+        return Nothing
 
     def __pick_expansion_action(
         self, state_tree: StateTree, state_tree_path: Path, action: ExpandAction
@@ -4088,7 +4123,7 @@ class ISLaSolver:
 
         >>> solver = ISLaSolver(grammar, Some(formula))
 
-        # >>> print(solver.solve())
+        >>> print(solver.solve())
         a := a ; a := a ; b := 5 ; a := b
 
         # TODO Why is no other variable chosen, at least for the final assignment?
@@ -4100,34 +4135,36 @@ class ISLaSolver:
         while True:
             state_tree_node = self.state_tree.get_subtree(self.current_path)
 
-            options = flow(
-                self.rules.values(),
-                partial(
-                    map, lambda r: (type(r), r.actions(state_tree_node, self.graph))
-                ),
-                partial(filter, star(lambda _, actions: is_successful(actions))),
-                partial(
-                    filter, star(lambda _, actions: is_successful(actions.unwrap()))
-                ),
-                partial(map, star(lambda r, actions: (r, actions.unwrap().unwrap()))),
-                frozendict,
+            options = frozendict(
+                {
+                    r_type: r.actions(state_tree_node, self.graph)
+                    for r_type, r in self.rules.items()
+                }
             )
 
-            if not options:
-                # TODO: Properly handle FALSE case
-                assert state_tree_node.node.constraints != FormulaSet([false()])
-                assert evaluate(
-                    reduce(Formula.__and__, state_tree_node.node.constraints, true()),
-                    state_tree_node.node.tree,
-                    self.graph.grammar,
-                ).is_true()
-                return state_tree_node.node.tree
-
-            rule_type, action = self.strategy.pick_action(
+            match self.strategy.pick_action(
                 self.state_tree, self.current_path, options
-            )
-            new_node = self.rules[rule_type].apply(state_tree_node, action, self.graph)
-            self.state_tree = self.state_tree.replace(self.current_path, new_node)
+            ):
+                case returns.maybe.Nothing:
+                    # TODO: Properly handle FALSE case; not just assert, backtrack!
+                    assert state_tree_node.node.constraints != FormulaSet([false()])
+                    assert evaluate(
+                        reduce(
+                            Formula.__and__, state_tree_node.node.constraints, true()
+                        ),
+                        state_tree_node.node.tree,
+                        self.graph.grammar,
+                    ).is_true()
+                    return state_tree_node.node.tree
+                case Some(Failure(exc)):
+                    raise exc
+                case Some(Success((rule_type, action))):
+                    new_node = self.rules[rule_type].apply(
+                        state_tree_node, action, self.graph
+                    )
+                    self.state_tree = self.state_tree.replace(
+                        self.current_path, new_node
+                    )
 
             # TODO Properly choose next path, in particular after return
             self.current_path = self.current_path + (0,)
