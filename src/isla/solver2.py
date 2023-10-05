@@ -998,12 +998,12 @@ class MatchAllUniversalQuantifiersRule(Rule):
 
         original_formulas = FormulaSet(
             [
-                (f := cast(ForallFormula, formula),f.add_already_matched(
-                    {
-                        match[f.bound_variable][1]
-                        for match in action.match_result[f]
-                    }
-                ))[-1]
+                (
+                    f := cast(ForallFormula, formula),
+                    f.add_already_matched(
+                        {match[f.bound_variable][1] for match in action.match_result[f]}
+                    ),
+                )[-1]
                 if formula in action.match_result
                 else formula
                 for formula in state_tree.node.constraints
