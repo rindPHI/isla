@@ -877,10 +877,10 @@ str.len(<string>.<chars>) and
         solver = ISLaSolver(
             LANG_GRAMMAR,
             '''
-forall <assgn> assgn_1="{<var> var_1} := <rhs>" in <start>:
-  var_1 = "a" and
-forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
-  var_2 = "b"''',
+forall <assgn> assgn_1="{<var> var_1_tree} := <rhs>" in <start>:
+  var_1_tree = "a" and
+forall <assgn> assgn_2="{<var> var_2_tree} := <rhs>" in <start>:
+  var_2_tree = "b"''',
             activate_unsat_support=True,
         )
 
@@ -918,14 +918,14 @@ forall <assgn> assgn_2="{<var> var_2} := <rhs>" in <start>:
         )
         var_node = tree.get_subtree((0, 0, 0))
 
-        var_1 = language.BoundVariable("var_1", "<var>")
+        var_1 = language.BoundVariable("var_1_tree", "<var>")
         formula_1 = language.SMTFormula(
             z3_eq(var_1.to_smt(), z3.StringVal("a")),
             instantiated_variables=OrderedSet([var_1]),
             substitutions={var_1: var_node},
         )
 
-        var_2 = language.BoundVariable("var_2", "<var>")
+        var_2 = language.BoundVariable("var_2_tree", "<var>")
         formula_2 = language.SMTFormula(
             z3_eq(var_2.to_smt(), z3.StringVal("b")),
             instantiated_variables=OrderedSet([var_2]),
@@ -1010,10 +1010,10 @@ forall <assgn> assgn_1:
     def test_implication(self):
         formula = """
 not(
-  forall <assgn> assgn_1="{<var> var_1} := <rhs>" in start:
-      var_1 = "x" implies
-  exists <var> var_2 in start:
-      var_2 = "x")"""
+  forall <assgn> assgn_1="{<var> var_1_tree} := <rhs>" in start:
+      var_1_tree = "x" implies
+  exists <var> var_2_tree in start:
+      var_2_tree = "x")"""
 
         solver = ISLaSolver(LANG_GRAMMAR, formula, activate_unsat_support=True)
 
@@ -1031,8 +1031,8 @@ not(
         self.assertTrue(equivalent(f1, f2, LANG_GRAMMAR, timeout_seconds=60))
 
     def test_implies(self):
-        f1 = parse_isla('forall <var> var_1 in start: var_1 = "a"')
-        f2 = parse_isla('exists <var> var_2 in start: var_2 = "a"')
+        f1 = parse_isla('forall <var> var_1_tree in start: var_1_tree = "a"')
+        f2 = parse_isla('exists <var> var_2_tree in start: var_2_tree = "a"')
         self.assertTrue(implies(f1, f2, LANG_GRAMMAR, timeout_seconds=60))
 
     def test_negation_previous_smt_solutions(self):

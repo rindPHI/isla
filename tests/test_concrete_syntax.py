@@ -64,21 +64,21 @@ class TestConcreteSyntax(unittest.TestCase):
         mgr = language.VariableManager(LANG_GRAMMAR)
         python_formula: language.Formula = mgr.create(
             sc.forall(
-                mgr.bv("var_1", "<var>"),
+                mgr.bv("var_1_tree", "<var>"),
                 mgr.const("start", "<start>"),
                 sc.forall(
-                    mgr.bv("var_2", "<var>"),
+                    mgr.bv("var_2_tree", "<var>"),
                     mgr.bv("start"),
-                    mgr.smt(z3_eq(mgr.bv("var_1").to_smt(), mgr.bv("var_2").to_smt())),
+                    mgr.smt(z3_eq(mgr.bv("var_1_tree").to_smt(), mgr.bv("var_2_tree").to_smt())),
                 ),
             )
         )
 
         DummyVariable.cnt = 0
         concr_syntax_formula = """
-forall <var> var_1 in start:
-    forall <var> var_2 in start:
-        (= var_1 var_2)"""
+forall <var> var_1_tree in start:
+    forall <var> var_2_tree in start:
+        (= var_1_tree var_2_tree)"""
 
         parsed_formula = parse_isla(concr_syntax_formula, LANG_GRAMMAR)
 

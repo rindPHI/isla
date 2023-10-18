@@ -4,7 +4,7 @@ import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from functools import reduce, lru_cache, partial
+from functools import reduce, lru_cache, partial, cache
 from typing import (
     Tuple,
     List,
@@ -29,6 +29,7 @@ from frozendict import frozendict
 from grammar_to_regex.cfg2regex import RegexConverter
 from grammar_to_regex.regex import regex_to_z3
 from neo_grammar_graph import NeoGrammarGraph
+from neo_grammar_graph.nodes import TerminalNode, NonterminalNode, Node
 from orderedset import FrozenOrderedSet
 from orderedset.orderedset import T
 from returns.functions import tap, compose, identity
@@ -2005,8 +2006,8 @@ def solve_smt_formulas(
     Attempts to solve the given SMT-LIB formulas by calling Z3.
 
     This function does not unify variables pointing to the same derivation
-    trees. E.g., a solution may be returned for the formula `var_1 = "a" and
-    var_2 = "b"`, though `var_1` and `var_2` point to the same `<var>` tree as
+    trees. E.g., a solution may be returned for the formula `var_1_tree = "a" and
+    var_2_tree = "b"`, though `var_1_tree` and `var_2_tree` point to the same `<var>` tree as
     defined by their substitutions maps. Unification is performed in
     :func:`~isla.solver2.unify_smt_formulas_and_solve_first_cluster`.
 
@@ -3890,7 +3891,8 @@ class KPathStrategy(Strategy):
     """
 
     graph: NeoGrammarGraph
-    k: int = 3
+    k: int = 10
+    max_expansion_depth: int = 10
 
     def pick_action(
         self,
@@ -3912,74 +3914,104 @@ class KPathStrategy(Strategy):
         # TODO Expand to match; don't solve SMT formula which contains an argument that
         #      is used inside a universal quantifier (?).
 
-        # Universal Quantifier Matching
-        iterator = options[MatchAllUniversalQuantifiersRule]
+        rule_strategies = frozendict(
+            {
+                MatchAllUniversalQuantifiersRule: self.try_find_action,
+                SolveSMTRule: self.try_find_action,
+                ExpandRule: partial(
+                    self.try_find_and_pick_expand_action,
+                    state_tree.get_subtree(state_tree_path),
+                ),
+            }
+        )
+
+        # Fallback
+        rule_strategies = rule_strategies | frozendict(
+            {
+                rule_type: self.try_find_action
+                for rule_type in FrozenOrderedSet(options).difference(
+                    set(rule_strategies)
+                )
+            }
+        )
+
+        for rule in rule_strategies:
+            match rule_strategies[rule](rule, options):
+                case Some(result):
+                    return Some(result)
+
+        return Nothing
+
+    @staticmethod
+    def try_find_action(
+        rule_type: Type[Rule],
+        options: Mapping[Type[Rule], Iterator[Result[Action, SyntaxError]]],
+    ) -> Maybe[Result[Tuple[Type[Rule], Action], SyntaxError]]:
+        """
+        This method returns Some Failure or Success if an action of the specified type
+        is applicable (or there was an error computing it); otherwise, it returns
+        Nothing.
+
+        :param rule_type: The type of the rule for which an action should be
+            applied, if possible.
+        :param options: The available rule types and action iterators.
+        :return: An applicable action or a failure, if any; otherwise, Nothing
+        """
+
+        iterator = options[rule_type]
         match next(iterator, None):
             case Failure(exc):
                 return Some(Failure(exc))
             case Success(action):
-                return Some(Success((MatchAllUniversalQuantifiersRule, action)))
+                return Some(Success((rule_type, action)))
 
-        # SMT Solving
-        iterator = options[SolveSMTRule]
-        match next(iterator, None):
-            case Failure(exc):
-                return Some(Failure(exc))
-            case Success(action):
-                return Some(Success((SolveSMTRule, action)))
+        return Nothing
 
-        # Nonterminal Expansion
+    def try_find_and_pick_expand_action(
+        self,
+        state_tree_node: StateTree,
+        _,
+        options: Mapping[Type[Rule], Iterator[Result[Action, SyntaxError]]],
+    ) -> Maybe[Result[Tuple[Type[Rule], Action], SyntaxError]]:
+        """
+        This method returns Some Failure or Success if an action of the specified type
+        is applicable (or there was an error computing it); otherwise, it returns
+        Nothing.
+
+        :param state_tree_node: The node of the state tree to which an action should
+            be applied.
+        :param options: The available rule types and action iterators.
+        :return: An applicable action or a failure, if any; otherwise, Nothing
+        """
+
         expansion_actions = tuple(
             flow(options[ExpandRule], partial(map, lambda a: a.unwrap()))
         )
 
-        if expansion_actions:
-            chosen_expansion = sorted(
-                expansion_actions,
-                key=partial(
-                    self.__pick_expansion_action,
-                    state_tree,
-                    state_tree_path,
-                ),
-            )[0]
+        if not expansion_actions:
+            return Nothing
 
-            return Some(Success((ExpandRule, chosen_expansion)))
+        chosen_expansion = sorted(
+            expansion_actions,
+            key=partial(
+                self.expansion_action_sorting_key,
+                state_tree_node,
+            ),
+        )[0]
 
-        # Fallback: Pick First Available Action
-        for rule_type, iterator in options.items():
-            maybe_action: Maybe[Result[Action, SyntaxError]] = Maybe.from_optional(
-                next(iterator, None)
-            )
+        return Some(Success((ExpandRule, chosen_expansion)))
 
-            match maybe_action:
-                case returns.maybe.Nothing:
-                    continue
-                case Some(Failure(exc)):
-                    return Failure(exc)
-                case Some(Success(action)):
-                    return Some(Success((rule_type, action)))
-
-        return Nothing
-
-    def __pick_expansion_action(
-        self, state_tree: StateTree, state_tree_path: Path, action: ExpandAction
-    ) -> Tuple[int, int]:
+    def expansion_action_sorting_key(
+        self, state_tree_node: StateTree, action: ExpandAction
+    ) -> Tuple[int, float, int]:
         """
         TODO
 
-        :param state_tree:
-        :param state_tree_path:
+        :param state_tree_node: The node of the state tree to which an action should
+            be applied.
         :param action:
         :return:
         """
-
-        state_tree_node = state_tree.get_subtree(state_tree_path)
-        current_paths = self.graph.k_paths_in_tree(
-            state_tree_node.node.tree,
-            self.k,
-            include_potential_paths=False,
-            include_terminals=True,
-        )
 
         path, alternative = action.path, action.alternative
         new_children = tuple(
@@ -3992,6 +4024,7 @@ class KPathStrategy(Strategy):
                 ][alternative]
             ]
         )
+
         resulting_tree = state_tree_node.node.tree.replace_path(
             path,
             DerivationTree(
@@ -3999,14 +4032,72 @@ class KPathStrategy(Strategy):
             ),
         )
 
+        if resulting_tree.depth() > self.max_expansion_depth:
+            return (
+                -sys.maxsize,
+                compute_tree_closing_cost(resulting_tree, self.graph),
+                random.randint(0, 100),
+            )
+
+        current_paths = self.graph.k_paths_in_tree(
+            state_tree_node.node.tree,
+            self.k,
+            include_potential_paths=True,
+            include_terminals=False,
+        )
+
         new_paths = self.graph.k_paths_in_tree(
             resulting_tree,
             self.k,
             include_potential_paths=True,
-            include_terminals=True,
+            include_terminals=False,
         )
 
-        return -len(new_paths.difference(current_paths)), len(resulting_tree)
+        assert len(new_paths) <= len(
+            current_paths
+        ), "Tree expansion should eliminate potential k-paths"
+
+        return (
+            len(current_paths.difference(new_paths)),
+            compute_tree_closing_cost(resulting_tree, self.graph),
+            random.randint(0, 100),
+        )
+
+
+def compute_tree_closing_cost(tree: DerivationTree, graph: NeoGrammarGraph) -> float:
+    nonterminals = [leaf.value for _, leaf in tree.open_leaves()]
+    shortest_derivations_ = shortest_derivations(graph)
+    return sum([shortest_derivations_[nonterminal] for nonterminal in nonterminals])
+
+
+@cache
+def shortest_derivations(graph: NeoGrammarGraph) -> Dict[str, int]:
+    parent_relation = {graph.nodes("<start>")[0]: set()}
+    for parent, child in graph.edges():
+        parent_relation.setdefault(child, set()).add(parent)
+
+    shortest_node_derivations: Dict[Node, int] = {}
+    stack: List[Node] = list(graph.filter(TerminalNode.__instancecheck__))
+    while stack:
+        node = stack.pop()
+
+        old_min = shortest_node_derivations.get(node, None)
+
+        if isinstance(node, TerminalNode):
+            shortest_node_derivations[node] = 0
+        else:
+            shortest_node_derivations[node] = max(
+                shortest_node_derivations.get(child, 0)
+                for child in graph.children(node)
+            ) + int(isinstance(node, NonterminalNode))
+
+        if (old_min or sys.maxsize) > shortest_node_derivations[node]:
+            stack.extend(parent_relation[node])
+
+    return {
+        nonterminal: shortest_node_derivations[graph.nodes(nonterminal)[0]]
+        for nonterminal in graph.grammar
+    }
 
 
 # endregion CONCRETE STRATEGY IMPLEMENTATIONS
@@ -4123,10 +4214,9 @@ class ISLaSolver:
 
         >>> solver = ISLaSolver(grammar, Some(formula))
 
+        >>> random.seed(1000)
         >>> print(solver.solve())
-        a := a ; a := a ; b := 5 ; a := b
-
-        # TODO Why is no other variable chosen, at least for the final assignment?
+        o := k ; i := 5 ; s := n ; i := i ; z := r ; e := g ; f := k ; b := r ; k := 5
 
         :return: A solution for the ISLa formula passed to the
             :class:`isla.solver2.ISLaSolver`.

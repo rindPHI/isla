@@ -19,7 +19,16 @@
 import html
 import json
 import zlib
-from functools import lru_cache
+from functools import lru_cache, cache
+
+from neo_grammar_graph import NeoGrammarGraph
+from neo_grammar_graph.nodes import (
+    Node as GGNode,
+    SymbolicNode,
+    TerminalNode,
+    NonterminalNode,
+)
+from orderedset import FrozenOrderedSet
 from typing import (
     Optional,
     Sequence,
@@ -30,6 +39,7 @@ from typing import (
     Callable,
     Union,
     Generator,
+    cast,
 )
 
 import graphviz
@@ -217,6 +227,278 @@ class DerivationTree:
             )
         )
         return self.__k_paths[k]
+
+    def path_to_grammar_path(
+        self, graph: NeoGrammarGraph, path: Path
+    ) -> Tuple[GGNode, ...]:
+        """
+        This method returns the path in the given grammar graph that corresponds to
+        the provided tree path.
+
+        Example
+        -------
+
+        >>> import string
+        >>> from frozendict import frozendict
+        >>> grammar = frozendict({
+        ...     "<start>":
+        ...         ("<stmt>",),
+        ...     "<stmt>":
+        ...         ("<assgn> ; <stmt>", "<assgn>"),
+        ...     "<assgn>":
+        ...         ("<var> := <rhs>",),
+        ...     "<rhs>":
+        ...         ("<var>", "<digit>"),
+        ...     "<var>": tuple(string.ascii_lowercase),
+        ...     "<digit>": tuple(string.digits),
+        ... })
+        >>> graph = NeoGrammarGraph(grammar)
+
+        >>> var_1_tree = DerivationTree("<var>", (DerivationTree("x", (), id=0),), id=1)
+        >>> var_2_tree = DerivationTree("<var>", (DerivationTree("x", (), id=2),), id=3)
+        >>> assgn_tree = DerivationTree(
+        ...     "<assgn>",
+        ...     (
+        ...         var_1_tree,
+        ...         DerivationTree(" := ", (), id=4),
+        ...         DerivationTree("<rhs>", (var_2_tree,), id=5),
+        ...     ),
+        ...     id=6,
+        ... )
+        >>> tree = DerivationTree(
+        ...     "<start>",
+        ...     (
+        ...         DerivationTree(
+        ...             "<stmt>",
+        ...             (
+        ...                 assgn_tree,
+        ...                 DerivationTree(" ; ", (), id=7),
+        ...                 DerivationTree("<stmt>", None, id=8),
+        ...             ),
+        ...             id=9,
+        ...         ),
+        ...     ),
+        ...     id=10,
+        ... )
+
+        >>> from neo_grammar_graph.gg import path_to_str
+
+        >>> tree.get_subtree((0, 0, 0))
+        DerivationTree('<var>', (DerivationTree('x', (), id=0),), id=1)
+
+        >>> path_to_str(tree.path_to_grammar_path(graph, (0, 0, 0)))
+        '<start> (0), <start>-choice (0), <stmt> (0), <stmt>-choice (0), <assgn> (0), <assgn>-choice (0), <var> (0)'
+
+        >>> tree.get_subtree((0, 0, 2, 0))
+        DerivationTree('<var>', (DerivationTree('x', (), id=2),), id=3)
+
+        >>> path_to_str(tree.path_to_grammar_path(graph, (0, 0, 2, 0)))
+        '<start> (0), <start>-choice (0), <stmt> (0), <stmt>-choice (0), <assgn> (0), <assgn>-choice (0), <rhs> (0), <rhs>-choice (0), <var> (1)'
+
+        >>> tree.get_subtree((0, 2))
+        DerivationTree('<stmt>', None, id=8)
+
+        >>> path_to_str(tree.path_to_grammar_path(graph, (0, 2)))
+        '<start> (0), <start>-choice (0), <stmt> (0), <stmt>-choice (0), <stmt> (1)'
+
+        :param graph: The grammar graph.
+        :param path: The path in the derivation tree to convert into a grammar graph
+            path.
+        :return: The converted grammar graph path.
+        """  # noqa: E501
+
+        current_graph_node: SymbolicNode = cast(
+            SymbolicNode, graph.nodes(self.value)[0]
+        )
+        current_tree_node: DerivationTree = self
+        remaining_path: Path = path
+        result: Tuple[GGNode, ...] = (current_graph_node,)
+
+        def graph_node_children_values(node: GGNode) -> List[str]:
+            return list(
+                map(
+                    lambda symbolic_node: symbolic_node.value,
+                    graph.children(node),
+                )
+            )
+
+        def dtree_children_values(node: DerivationTree) -> List[str]:
+            return list(map(lambda child: child.value, node.children))
+
+        while remaining_path:
+            choice_node = next(
+                node
+                for node in graph.children(current_graph_node)
+                if (
+                    graph_node_children_values(node)
+                    == dtree_children_values(current_tree_node)
+                )
+            )
+
+            idx = remaining_path[0]
+            remaining_path = remaining_path[1:]
+            current_tree_node = current_tree_node.children[idx]
+            current_graph_node = graph.children(choice_node)[idx]
+
+            result += (choice_node, current_graph_node)
+
+        return result
+
+    def k_paths_from_path(
+        self,
+        graph: NeoGrammarGraph,
+        path: Path,
+        k: int = 3,
+        include_potential_paths: bool = True,
+        include_terminals: bool = True,
+    ) -> FrozenOrderedSet[Tuple[GGNode, ...]]:
+        r"""
+        This method computes the k-paths represented by a given path in this derivation
+        tree. For paths ending in a nonterminal symbol, it can include potential k-paths
+        resulting from all possible expansions of the path.
+
+        Example
+        -------
+        
+        Consider the assignment language.
+
+        >>> import string
+        >>> from frozendict import frozendict
+        >>> grammar = frozendict({
+        ...     "<start>":
+        ...         ("<stmt>",),
+        ...     "<stmt>":
+        ...         ("<assgn> ; <stmt>", "<assgn>"),
+        ...     "<assgn>":
+        ...         ("<var> := <rhs>",),
+        ...     "<rhs>":
+        ...         ("<var>", "<digit>"),
+        ...     "<var>": tuple(string.ascii_lowercase),
+        ...     "<digit>": tuple(string.digits),
+        ... })
+        >>> graph = NeoGrammarGraph(grammar)
+        
+        We construct a derivation tree for :code:`x := x ; <stmt>`.
+
+        >>> var_1_tree = DerivationTree("<var>", (DerivationTree("x", (), id=0),), id=1)
+        >>> var_2_tree = DerivationTree("<var>", (DerivationTree("x", (), id=2),), id=3)
+        >>> assgn_tree = DerivationTree(
+        ...     "<assgn>",
+        ...     (
+        ...         var_1_tree,
+        ...         DerivationTree(" := ", (), id=4),
+        ...         DerivationTree("<rhs>", (var_2_tree,), id=5),
+        ...     ),
+        ...     id=6,
+        ... )
+        >>> tree = DerivationTree(
+        ...     "<start>",
+        ...     (
+        ...         DerivationTree(
+        ...             "<stmt>",
+        ...             (
+        ...                 assgn_tree,
+        ...                 DerivationTree(" ; ", (), id=7),
+        ...                 DerivationTree("<stmt>", None, id=8),
+        ...             ),
+        ...             id=9,
+        ...         ),
+        ...     ),
+        ...     id=10,
+        ... )
+        
+        The subtree at path (0, 0) is the assignment :code:`x := x`:
+
+        >>> from neo_grammar_graph.gg import path_to_str
+        >>> tree.get_subtree((0, 0))
+        DerivationTree('<assgn>', (DerivationTree('<var>', (DerivationTree('x', (), id=0),), id=1), DerivationTree(' := ', (), id=4), DerivationTree('<rhs>', (DerivationTree('<var>', (DerivationTree('x', (), id=2),), id=3),), id=5)), id=6)
+        
+        The corresponding grammar graph path consists of three symbolic and two
+        intermediate choice nodes:
+
+        >>> path_to_str(tree.path_to_grammar_path(graph, (0, 0)))
+        '<start> (0), <start>-choice (0), <stmt> (0), <stmt>-choice (0), <assgn> (0)'
+        
+        Excluding terminal symbols, this path, which ends in a nonterminal symbol,
+        represents five (potential) 3-paths:
+
+        >>> print("\n".join(map(
+        ...     path_to_str,
+        ...     tree.k_paths_from_path(
+        ...         graph,
+        ...         (0, 0),
+        ...         k=3,
+        ...         include_terminals=False))))
+        <start> (0), <start>-choice (0), <stmt> (0), <stmt>-choice (0), <assgn> (0)
+        <assgn> (0), <assgn>-choice (0), <rhs> (0), <rhs>-choice (0), <var> (1)
+        <assgn> (0), <assgn>-choice (0), <rhs> (0), <rhs>-choice (1), <digit> (0)
+        <stmt> (0), <stmt>-choice (0), <assgn> (0), <assgn>-choice (0), <var> (0)
+        <stmt> (0), <stmt>-choice (0), <assgn> (0), <assgn>-choice (0), <rhs> (0)
+        
+        :param graph: The grammar graph, for extracting grammar graph paths.
+        :param path: The path from which to obtain k-paths.
+        :param k: The value for k.
+        :param include_potential_paths: Set to True iff you are interested in the
+            potential paths arising from tree paths ending in nonterminal symbols.
+        :param include_terminals: Set to True iff you want to include terminal symbols
+            in the k-paths.
+        :return: The set of grammar k-paths as configured.
+        """  # noqa: E501
+
+        # Include choice nodes
+        _k = k + k - 1
+
+        graph_path = self.path_to_grammar_path(graph, path)
+        result: FrozenOrderedSet[Tuple[GGNode, ...]] = FrozenOrderedSet()
+
+        for idx in range(0, len(graph_path) - _k + 1, 2):
+            new_path = graph_path[idx : idx + _k]
+            if not include_terminals and isinstance(new_path[-1], TerminalNode):
+                break
+
+            result = result | FrozenOrderedSet([new_path])
+
+        if not include_potential_paths or not isinstance(
+            graph_path[-1], NonterminalNode
+        ):
+            return result
+
+        # Potential paths should be included, and the last node in the path is a
+        # nonterminal (i.e., there *are* potential paths).
+
+        grammar_k_paths = graph.k_paths(
+            k,
+            up_to=False,
+            include_terminals=include_terminals,
+        )
+
+        # Add reachable k-paths.
+        result = result | FrozenOrderedSet(
+            [
+                other_path
+                for other_path in grammar_k_paths.difference(result)
+                if other_path[0] == graph_path[-1]
+                or graph.reachable(graph_path[-1], other_path[0])
+            ]
+        )
+
+        # Add other_path if there is a non-empty suffix of the tree path ending in
+        # a nonterminal that is a prefix of other_path.
+        #
+        # Example:
+        #
+        # - other_path (length 2*k-1):         1234567
+        # - tree_path:                 9999999912345
+        # - Shared pre/postfix: 12345 (for shift of 2)
+        #
+        # `shift` can proceed in steps of 2, since we do not consider paths starting
+        # or ending in choice nodes (every second node is a choice node).
+        for other_path in grammar_k_paths.difference(FrozenOrderedSet(result)):
+            for shift in range(1, 2 * _k - 1, 2):
+                if graph_path[-shift:] == other_path[:shift]:
+                    result = result | FrozenOrderedSet([other_path])
+
+        return result
 
     def root_nonterminal(self) -> str:
         assert is_nonterminal(self.value)
@@ -495,6 +777,7 @@ class DerivationTree:
             if sub_tree.children is None
         )
 
+    @cache
     def depth(self) -> int:
         if not self.children:
             return 1
