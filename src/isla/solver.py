@@ -2371,8 +2371,8 @@ class ISLaSolver:
         Attempts to solve the given SMT-LIB formulas by calling Z3.
 
         Note that this function does not unify variables pointing to the same derivation
-        trees. E.g., a solution may be returned for the formula `var_1 = "a" and
-        var_2 = "b"`, though `var_1` and `var_2` point to the same `<var>` tree as
+        trees. E.g., a solution may be returned for the formula `var_1_tree = "a" and
+        var_2_tree = "b"`, though `var_1_tree` and `var_2_tree` point to the same `<var>` tree as
         defined by their substitutions maps. Unification is performed in
         `eliminate_all_semantic_formulas`.
 

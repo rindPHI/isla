@@ -412,14 +412,14 @@ class TestLanguage(unittest.TestCase):
         expected: language.Formula = mgr.create(
             sc.exists(mgr.bv("var", "<var>"), mgr.const("start", "<start>"), sc.true())
             & sc.forall_bind(
-                BindExpression("<var>") + " := " + mgr.bv("var_1", "<var>"),
+                BindExpression("<var>") + " := " + mgr.bv("var_1_tree", "<var>"),
                 mgr.bv("assgn_1", "<assgn>"),
                 mgr.const("start", "<start>"),
                 sc.exists_bind(
                     mgr.bv("var_0", "<var>") + " := " + "<rhs>",
                     mgr.bv("assgn", "<assgn>"),
                     mgr.const("start"),
-                    mgr.smt(z3_eq(mgr.bv("var_1").to_smt(), mgr.bv("var_0").to_smt())),
+                    mgr.smt(z3_eq(mgr.bv("var_1_tree").to_smt(), mgr.bv("var_0").to_smt())),
                 ),
             )
         )
