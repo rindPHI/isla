@@ -348,7 +348,7 @@ class TestLanguage(unittest.TestCase):
         rhs_1 = BoundVariable("$rhs_1", "<rhs>")
         var_1 = BoundVariable("$var1", "<var>")
 
-        DummyVariable.cnt = 0
+        DummyVariable.CNT = 0
         formula = sc.forall_bind(
             BindExpression(var_1),
             rhs_1,
@@ -364,7 +364,7 @@ class TestLanguage(unittest.TestCase):
         rhs_1_0 = BoundVariable("$rhs_0", "<rhs>")
         var_1_0 = BoundVariable("$var1_0", "<var>")
 
-        DummyVariable.cnt = 0
+        DummyVariable.CNT = 0
         expected = sc.forall_bind(
             BindExpression(var_1),
             rhs_1,
@@ -810,7 +810,7 @@ class TestLanguage(unittest.TestCase):
             parse_isla(unparsed, CSV_GRAMMAR, semantic_predicates={COUNT_PREDICATE}),
         )
 
-        DummyVariable.cnt = 0
+        DummyVariable.CNT = 0
         scriptsize_c_def_use_constr = parse_isla(
             SCRIPTSIZE_C_DEF_USE_CONSTR_TEXT,
             scriptsizec.SCRIPTSIZE_C_GRAMMAR,
@@ -818,7 +818,7 @@ class TestLanguage(unittest.TestCase):
         )
         unparsed = ISLaUnparser(scriptsize_c_def_use_constr).unparse()
 
-        DummyVariable.cnt = 0
+        DummyVariable.CNT = 0
         self.assertEqual(
             scriptsize_c_def_use_constr,
             parse_isla(
@@ -828,14 +828,14 @@ class TestLanguage(unittest.TestCase):
             ),
         )
 
-        DummyVariable.cnt = 0
+        DummyVariable.CNT = 0
         scriptsize_c_no_redef_constr = parse_isla(
             SCRIPTSIZE_C_NO_REDEF_TEXT,
             scriptsizec.SCRIPTSIZE_C_GRAMMAR,
             structural_predicates={SAME_POSITION_PREDICATE},
         )
         unparsed = ISLaUnparser(scriptsize_c_no_redef_constr).unparse()
-        DummyVariable.cnt = 0
+        DummyVariable.CNT = 0
         self.assertEqual(
             scriptsize_c_no_redef_constr,
             parse_isla(

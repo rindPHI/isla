@@ -69,6 +69,45 @@ R = TypeVar("R")
 S = TypeVar("S")
 T = TypeVar("T")
 
+ListOrTuple = TypeVar("ListOrTuple", list, tuple)
+
+
+def flatten(seq: ListOrTuple) -> ListOrTuple:
+    """
+    This function one level of the passed sequence.
+
+    Flattening of a nested list:
+
+    >>> flatten([[1], [3, 4]])
+    [1, 3, 4]
+
+    Flattening of a nested tuple:
+
+    >>> flatten(((1,), (3, 4)))
+    (1, 3, 4)
+
+    Flattening of a nested tuple, where some elements are no sequences:
+
+    >>> flatten((1, (3, 4)))
+    (1, 3, 4)
+
+    Flattening of a more deeply nested sequence leaves the deeper nested elements
+    unflattened:
+
+    >>> flatten((1, ((3, 4), 5)))
+    (1, (3, 4), 5)
+
+    :param seq: The sequence to flatten.
+    :return: A sequence in which elements nested one level are inlined.
+    """
+
+    constructor = type(seq)
+    return constructor(
+        item
+        for subseq in seq
+        for item in (subseq if isinstance(subseq, (tuple, list)) else [subseq])
+    )
+
 
 def singleton_iterator(elem: T) -> Iterator[T]:
     """
@@ -357,12 +396,6 @@ def grammar_to_immutable(grammar: Grammar) -> ImmutableGrammar:
 
 def grammar_to_mutable(grammar: ImmutableGrammar) -> Grammar:
     return {nonterminal: list(expansion) for nonterminal, expansion in grammar}
-
-
-def nested_list_to_tuple(
-    a_list: List[Union[T, List[T]]]
-) -> Tuple[Union[T, Tuple[T, ...]], ...]:
-    return tuple([tuple(elem) if isinstance(elem, list) else elem for elem in a_list])
 
 
 def assertions_activated() -> bool:

@@ -28,8 +28,8 @@ import z3
 from frozendict import frozendict
 from grammar_to_regex.cfg2regex import RegexConverter
 from grammar_to_regex.regex import regex_to_z3
-from neo_grammar_graph import NeoGrammarGraph
-from neo_grammar_graph.nodes import TerminalNode, NonterminalNode, Node
+from neo_grammar_graph import DTree, NeoGrammarGraph, InvalidTreeException
+from neo_grammar_graph.nodes import TerminalNode, NonterminalNode, Node, SymbolicNode
 from orderedset import FrozenOrderedSet
 from orderedset.orderedset import T
 from returns.functions import tap, compose, identity
@@ -39,7 +39,6 @@ from returns.pointfree import lash, map_, bind
 from returns.result import Result, safe, Failure, Success
 
 from isla import language
-from isla.derivation_tree import DerivationTree
 from isla.evaluator import evaluate
 from isla.helpers import (
     is_nonterminal,
@@ -48,7 +47,6 @@ from isla.helpers import (
     merge_dict_of_sets,
     split_str_with_nonterminals,
     assertions_activated,
-    delete_unreachable,
     compute_nullable_nonterminals,
     get_expansions,
     frozen_canonical,
@@ -178,7 +176,7 @@ class CDT:
     """
 
     constraints: FormulaSet
-    tree: DerivationTree
+    tree: DTree
 
     def __str__(self):
         return f"({self.constraints} ▸ {self.tree})"
@@ -224,21 +222,46 @@ class StateTree:
             │  └─ <tree_3>
             └─ <tree_1>
 
+        >>> grammar: FrozenGrammar = frozendict({
+        ...     "<start>": ("<tree_0>", "<tree_1>", "<tree_2>", "<tree_3>", "<X>"),
+        ...     "<tree_0>": ("0",),
+        ...     "<tree_1>": ("1",),
+        ...     "<tree_2>": ("2",),
+        ...     "<tree_3>": ("3",),
+        ...     "<X>": ("x",),
+        ... })
+        >>> graph = NeoGrammarGraph(grammar)
+
+        >>> def make_dtree(symbol: str) -> DTree:
+        ...     if symbol == "<start>":
+        ...         return DTree.from_parse_tree(
+        ...             ("<start>", None), graph
+        ...         ).unwrap()
+        ...     else:
+        ...         return DTree.from_parse_tree(
+        ...             ("<start>", [(symbol, None)]), graph
+        ...         ).unwrap()
+
         >>> dummy_action = ExpandAction((), 0)
         >>> tree_2 = StateTree(
-        ...     CDT(FormulaSet(), DerivationTree("<tree_2>")), (0, 0)
+        ...     CDT(FormulaSet(), make_dtree("<tree_2>")),
+        ...     (0, 0),
         ... )
         >>> tree_3 = StateTree(
-        ...     CDT(FormulaSet(), DerivationTree("<tree_3>")), (0, 1)
+        ...     CDT(FormulaSet(), make_dtree("<tree_3>")),
+        ...     (0, 1),
         ... )
         >>> tree_0 = StateTree(
-        ...     CDT(FormulaSet(), DerivationTree("<tree_0>")),
+        ...     CDT(FormulaSet(), make_dtree("<tree_0>")),
         ...     (0,),
         ...     ((dummy_action, tree_2), (dummy_action, tree_3),),
         ... )
-        >>> tree_1 = StateTree(CDT(FormulaSet(), DerivationTree("<tree_1>")), (1,))
+        >>> tree_1 = StateTree(
+        ...     CDT(FormulaSet(), make_dtree("<tree_1>")),
+        ...     (1,),
+        ... )
         >>> stree = StateTree(
-        ...     CDT(FormulaSet(), DerivationTree("<root>")),
+        ...     CDT(FormulaSet(), make_dtree("<start>")),
         ...     (),
         ...     ((dummy_action, tree_0), (dummy_action, tree_1)),
         ... )
@@ -251,11 +274,9 @@ class StateTree:
             │  └─ <X>
             └─ <tree_1>
 
-        >>> tree_X = StateTree(
-        ...     CDT(FormulaSet(), DerivationTree("<X>")), (0, 1)
-        ... )
+        >>> tree_X = StateTree(CDT(FormulaSet(), make_dtree("<X>")), (0, 1))
         >>> print(stree.replace((0, 1), tree_X))
-        StateTree(({} ▸ <root>), [(Expand((), 0), StateTree(({} ▸ <tree_0>), [(Expand((), 0), StateTree(({} ▸ <tree_2>))), (Expand((), 0), StateTree(({} ▸ <X>)))])), (Expand((), 0), StateTree(({} ▸ <tree_1>)))])
+        StateTree(({} ▸ <start>), [(Expand((), 0), StateTree(({} ▸ <tree_0>), [(Expand((), 0), StateTree(({} ▸ <tree_2>))), (Expand((), 0), StateTree(({} ▸ <X>)))])), (Expand((), 0), StateTree(({} ▸ <tree_1>)))])
 
         :param path: The path to replace.
         :param new_node: The new node to insert at the specified path.
@@ -300,17 +321,37 @@ class StateTree:
             │  └─ <tree_2>
             └─ <tree_1>
 
+        >>> grammar: FrozenGrammar = frozendict({
+        ...     "<start>": ("<tree_0>", "<tree_1>", "<tree_2>", "<tree_3>", "<X>"),
+        ...     "<tree_0>": ("0",),
+        ...     "<tree_1>": ("1",),
+        ...     "<tree_2>": ("2",),
+        ...     "<tree_3>": ("3",),
+        ...     "<X>": ("x",),
+        ... })
+        >>> graph = NeoGrammarGraph(grammar)
+
+        >>> def make_dtree(symbol: str) -> DTree:
+        ...     if symbol == "<start>":
+        ...         return DTree.from_parse_tree(
+        ...             ("<start>", None), graph
+        ...         ).unwrap()
+        ...     else:
+        ...         return DTree.from_parse_tree(
+        ...             ("<start>", [(symbol, None)]), graph
+        ...         ).unwrap()
+
         >>> dummy_action = ExpandAction((), 0)
         >>> tree_2 = StateTree(
-        ...     CDT(FormulaSet(), DerivationTree("<tree_2>")), (0, 0)
+        ...     CDT(FormulaSet(), make_dtree("<tree_2>")), (0, 0)
         ... )
         >>> tree_0 = StateTree(
-        ...     CDT(FormulaSet(), DerivationTree("<tree_0>")),
+        ...     CDT(FormulaSet(), make_dtree("<tree_0>")),
         ...     (0,),
         ...     ((dummy_action, tree_2),),
         ... )
         >>> stree = StateTree(
-        ...     CDT(FormulaSet(), DerivationTree("<root>")),
+        ...     CDT(FormulaSet(), make_dtree("<start>")),
         ...     (),
         ...     ((dummy_action, tree_0),),
         ... )
@@ -318,13 +359,13 @@ class StateTree:
         This is the original tree:
 
         >>> print(stree)
-        StateTree(({} ▸ <root>), [(Expand((), 0), StateTree(({} ▸ <tree_0>), [(Expand((), 0), StateTree(({} ▸ <tree_2>)))]))])
+        StateTree(({} ▸ <start>), [(Expand((), 0), StateTree(({} ▸ <tree_0>), [(Expand((), 0), StateTree(({} ▸ <tree_2>)))]))])
 
         And here is the updated one:
 
-        >>> new_cdt = CDT(FormulaSet(), DerivationTree("<tree_1>"))
+        >>> new_cdt = CDT(FormulaSet(), make_dtree("<tree_1>"))
         >>> print(stree.add_child(dummy_action, new_cdt))
-        StateTree(({} ▸ <root>), [(Expand((), 0), StateTree(({} ▸ <tree_0>), [(Expand((), 0), StateTree(({} ▸ <tree_2>)))])), (Expand((), 0), StateTree(({} ▸ <tree_1>)))])
+        StateTree(({} ▸ <start>), [(Expand((), 0), StateTree(({} ▸ <tree_0>), [(Expand((), 0), StateTree(({} ▸ <tree_2>)))])), (Expand((), 0), StateTree(({} ▸ <tree_1>)))])
 
         Now, we add tree 1 to the inner node tree 0, resulting in::
 
@@ -334,7 +375,7 @@ class StateTree:
                └─ <tree_1>
 
         >>> print(stree.add_child(dummy_action, new_cdt, (0,)))
-        StateTree(({} ▸ <root>), [(Expand((), 0), StateTree(({} ▸ <tree_0>), [(Expand((), 0), StateTree(({} ▸ <tree_2>))), (Expand((), 0), StateTree(({} ▸ <tree_1>)))]))])
+        StateTree(({} ▸ <start>), [(Expand((), 0), StateTree(({} ▸ <tree_0>), [(Expand((), 0), StateTree(({} ▸ <tree_2>))), (Expand((), 0), StateTree(({} ▸ <tree_1>)))]))])
 
         :param action: The action leading to the new child.
         :param node: The CDT to add.
@@ -378,19 +419,39 @@ class StateTree:
             │  └─ <tree_2>
             └─ <tree_1>
 
+        >>> grammar: FrozenGrammar = frozendict({
+        ...     "<start>": ("<tree_0>", "<tree_1>", "<tree_2>", "<tree_3>", "<X>"),
+        ...     "<tree_0>": ("0",),
+        ...     "<tree_1>": ("1",),
+        ...     "<tree_2>": ("2",),
+        ...     "<tree_3>": ("3",),
+        ...     "<X>": ("x",),
+        ... })
+        >>> graph = NeoGrammarGraph(grammar)
+
+        >>> def make_dtree(symbol: str) -> DTree:
+        ...     if symbol == "<start>":
+        ...         return DTree.from_parse_tree(
+        ...             ("<start>", None), graph
+        ...         ).unwrap()
+        ...     else:
+        ...         return DTree.from_parse_tree(
+        ...             ("<start>", [(symbol, None)]), graph
+        ...         ).unwrap()
+
         >>> dummy_action = ExpandAction((), 0)
         >>> tree_2 = StateTree(
-        ...     CDT(FormulaSet(), DerivationTree("<tree_2>")), (0, 0)
+        ...     CDT(FormulaSet(), make_dtree("<tree_2>")), (0, 0)
         ... )
         >>> tree_0 = StateTree(
-        ...     CDT(FormulaSet(), DerivationTree("<tree_0>")),
+        ...     CDT(FormulaSet(), make_dtree("<tree_0>")),
         ...     (0,),
         ...     ((dummy_action, tree_2),),
         ... )
         >>> tree_1 = StateTree(
-        ...     CDT(FormulaSet(), DerivationTree("<tree_1>")), (1,))
+        ...     CDT(FormulaSet(), make_dtree("<tree_1>")), (1,))
         >>> stree = StateTree(
-        ...     CDT(FormulaSet(), DerivationTree("<root>")),
+        ...     CDT(FormulaSet(), make_dtree("<start>")),
         ...     (),
         ...     ((dummy_action, tree_0), (dummy_action, tree_1)),
         ... )
@@ -444,18 +505,38 @@ class StateTree:
             │  └─ <tree_2>
             └─ <tree_1>
 
+        >>> grammar: FrozenGrammar = frozendict({
+        ...     "<start>": ("<tree_0>", "<tree_1>", "<tree_2>", "<tree_3>", "<X>"),
+        ...     "<tree_0>": ("0",),
+        ...     "<tree_1>": ("1",),
+        ...     "<tree_2>": ("2",),
+        ...     "<tree_3>": ("3",),
+        ...     "<X>": ("x",),
+        ... })
+        >>> graph = NeoGrammarGraph(grammar)
+
+        >>> def make_dtree(symbol: str) -> DTree:
+        ...     if symbol == "<start>":
+        ...         return DTree.from_parse_tree(
+        ...             ("<start>", None), graph
+        ...         ).unwrap()
+        ...     else:
+        ...         return DTree.from_parse_tree(
+        ...             ("<start>", [(symbol, None)]), graph
+        ...         ).unwrap()
+
         >>> dummy_action = ExpandAction((), 0)
         >>> tree_2 = StateTree(
-        ...     CDT(FormulaSet(), DerivationTree("<tree_2>")), (0, 0)
+        ...     CDT(FormulaSet(), make_dtree("<tree_2>")), (0, 0)
         ... )
         >>> tree_0 = StateTree(
-        ...     CDT(FormulaSet(), DerivationTree("<tree_0>")),
+        ...     CDT(FormulaSet(), make_dtree("<tree_0>")),
         ...     (0,),
         ...     ((dummy_action, tree_2),),
         ... )
-        >>> tree_1 = StateTree(CDT(FormulaSet(), DerivationTree("<tree_1>")), (1,))
+        >>> tree_1 = StateTree(CDT(FormulaSet(), make_dtree("<tree_1>")), (1,))
         >>> stree = StateTree(
-        ...     CDT(FormulaSet(), DerivationTree("<root>")),
+        ...     CDT(FormulaSet(), make_dtree("<start>")),
         ...     (),
         ...     ((dummy_action, tree_0), (dummy_action, tree_1)),
         ... )
@@ -473,7 +554,7 @@ class StateTree:
         The parent of :code:`tree_0`, in turn, is :code:`root`:
 
         >>> print(tree_2.parent(stree).parent(stree))
-        StateTree(({} ▸ <root>), [(Expand((), 0), StateTree(({} ▸ <tree_0>), [(Expand((), 0), StateTree(({} ▸ <tree_2>)))])), (Expand((), 0), StateTree(({} ▸ <tree_1>)))])
+        StateTree(({} ▸ <start>), [(Expand((), 0), StateTree(({} ▸ <tree_0>), [(Expand((), 0), StateTree(({} ▸ <tree_2>)))])), (Expand((), 0), StateTree(({} ▸ <tree_1>)))])
 
         It is the root node of our tree.
 
@@ -590,11 +671,11 @@ class Strategy(ABC):
 
 @dataclass(frozen=True)
 class ExpandAction(Action):
-    path: Path
+    vertex_id: int
     alternative: int
 
     def __str__(self):
-        return f"Expand({self.path}, {self.alternative})"
+        return f"Expand({self.vertex_id}, {self.alternative})"
 
 
 @dataclass(frozen=True)
@@ -626,32 +707,34 @@ class ExpandRule(Rule):
         We create a derivation tree that permits exactly two expansions and a trivial
         state tree.
 
-        >>> dtree = DerivationTree("<start>", (DerivationTree("<stmt>"),))
+        >>> dtree = DTree.from_parse_tree(
+        ...     ("<start>", [("<stmt>", None)]), graph
+        ... ).unwrap()
         >>> stree = StateTree(CDT(FormulaSet(), dtree))
         >>> rule = ExpandRule()
 
         The result is an iterator of two expansions.
         >>> actions = list(rule.actions(stree, graph))
         >>> deep_str(actions)
-        '[<Success: Expand((0,), 0)>, <Success: Expand((0,), 1)>]'
+        '[<Success: Expand(2, 0)>, <Success: Expand(2, 1)>]'
 
         Let us now inspect the situation where one of these action was already taken,
         i.e., leads to a sibling state.
 
         >>> new_state_tree = rule.apply(stree, actions[0].unwrap(), graph)
         >>> print(new_state_tree)
-        StateTree(({} ▸ <stmt>), [(Expand((0,), 0), StateTree(({} ▸ <assgn> ; <stmt>)))])
+        StateTree(({} ▸ <stmt>), [(Expand(2, 0), StateTree(({} ▸ <assgn> ; <stmt>)))])
 
         If we ask for actions on the resulting state tree, we directly obtain the
         second alternative (only):
 
         >>> deep_str(list(rule.actions(new_state_tree, graph)))
-        '[<Success: Expand((0,), 1)>]'
+        '[<Success: Expand(2, 1)>]'
 
         An attempt to expand a closed derivation tree results in an empty iterator:
 
         >>> list(rule.actions(StateTree(
-        ...     CDT(FormulaSet([true()]), parse("x := 1", graph.grammar).unwrap())),
+        ...     CDT(FormulaSet([true()]), parse("x := 1", graph).unwrap())),
         ...     graph))
         []
 
@@ -661,11 +744,14 @@ class ExpandRule(Rule):
         """
 
         return (
-            Success(ExpandAction(path, alternative_id))
-            for path, leaf in state_tree.node.tree.open_leaves()
-            for alternative_id in range(len(graph.canonical_grammar[leaf.value]))
+            Success(ExpandAction(int(leaf_node.root), alternative_id))
+            for leaf_node in state_tree.node.tree.open_leaves()
+            for alternative_id in range(
+                len(state_tree.node.tree.expansion_alternatives(leaf_node))
+            )
             if all(
-                path != other_action.path or alternative_id != other_action.alternative
+                int(leaf_node.root) != other_action.vertex_id
+                or alternative_id != other_action.alternative
                 for other_action, _ in state_tree.children
                 if isinstance(other_action, ExpandAction)
             )
@@ -697,22 +783,24 @@ class ExpandRule(Rule):
         ...     "<digit>": tuple(string.digits),
         ... })
         >>> graph = NeoGrammarGraph(grammar)
-        >>> dtree = DerivationTree("<start>", (DerivationTree("<stmt>"),))
+        >>> dtree = DTree.from_parse_tree(
+        ...     ("<start>", [("<stmt>", None)]), graph
+        ... ).unwrap()
         >>> stree = StateTree(CDT(FormulaSet(), dtree))
 
         We expand the open leaf first with the first expansion rule:
 
         >>> rule = ExpandRule()
 
-        >>> action = ExpandAction((0,), 0)
+        >>> action = ExpandAction(int(dtree.open_leaves()[0].root), 0)
         >>> print(rule.apply(stree, action, graph))
-        StateTree(({} ▸ <stmt>), [(Expand((0,), 0), StateTree(({} ▸ <assgn> ; <stmt>)))])
+        StateTree(({} ▸ <stmt>), [(Expand(2, 0), StateTree(({} ▸ <assgn> ; <stmt>)))])
 
         Now, we choose the second expansion rule:
 
-        >>> action = ExpandAction((0,), 1)
+        >>> action = ExpandAction(2, 1)
         >>> print(rule.apply(stree, action, graph))
-        StateTree(({} ▸ <stmt>), [(Expand((0,), 1), StateTree(({} ▸ <assgn>)))])
+        StateTree(({} ▸ <stmt>), [(Expand(2, 1), StateTree(({} ▸ <assgn>)))])
 
         :param state_tree: The state tree whose derivation tree we should expand
             according to the specified action.
@@ -721,27 +809,25 @@ class ExpandRule(Rule):
         :return: The expanded state.
         """
 
-        node = state_tree.node
-        path, alternative = action.path, action.alternative
-        old_subtree = node.tree.get_subtree(path)
-        new_children = tuple(
-            [
-                DerivationTree(symbol)
-                if is_nonterminal(symbol)
-                else DerivationTree(symbol, ())
-                for symbol in graph.canonical_grammar[old_subtree.value][alternative]
-            ]
-        )
-        new_subtree = DerivationTree(node.tree.get_subtree(path).value, new_children)
-        new_tree = node.tree.replace_path(action.path, new_subtree)
+        cdt = state_tree.node
+        orig_tree = cdt.tree
+        orig_constraints = cdt.constraints
+
+        vertex_id, alternative = action.vertex_id, action.alternative
+        old_subtree = orig_tree.get_subtree(vertex_id)
+        vertex = orig_tree.tree_graph.vertex(vertex_id, use_index=False)
+        new_tree = orig_tree.expand(vertex, alternative)
+        new_subtree = new_tree.get_subtree(vertex)
 
         return state_tree.add_child(
             action,
             CDT(
                 FormulaSet(
                     [
+                        # TODO: Check whether expression substitution works
+                        #       "out of the box" for new DTree class.
                         c.substitute_expressions({old_subtree: new_subtree})
-                        for c in node.constraints
+                        for c in orig_constraints
                     ]
                 ),
                 new_tree,
@@ -757,12 +843,12 @@ class ExpandRule(Rule):
 
 @dataclass(frozen=True)
 class MatchAllUniversalQuantifiersAction(Action):
-    match_result: frozendict[
-        ForallFormula, Tuple[frozendict[Variable, Tuple[Path, DerivationTree]], ...]
-    ]
+    # A match result for a universal formula is a mapping from the variables bound
+    # by the formula to the derivation trees for which they could be matched.
+    match_results: frozendict[ForallFormula, Tuple[frozendict[Variable, DTree], ...]]
 
     def __str__(self):
-        return f"MatchAllUniversalQuantifiers({deep_str(self.match_result)})"
+        return f"MatchAllUniversalQuantifiers({deep_str(self.match_results)})"
 
 
 @dataclass(frozen=True)
@@ -802,7 +888,7 @@ class MatchAllUniversalQuantifiersRule(Rule):
         :code:`<digit>` as right-hand side. In the following example input, there are
         two such assignments:
 
-        >>> dtree = parse("x := 1 ; y := 2 ; y := z", grammar).unwrap()
+        >>> dtree = parse("x := 1 ; y := 2 ; y := z", graph).unwrap()
 
         Here's the formula; it's core is irrelevant here:
 
@@ -830,12 +916,12 @@ class MatchAllUniversalQuantifiersRule(Rule):
         The match result in this action has our quantified formula as key (note that
         we substituted the start constant with our derivation tree):
 
-        >>> deep_str(set(results[0].match_result.keys()))
+        >>> deep_str(set(results[0].match_results.keys()))
         '{∀ "<var> := {<digit> d}" = assgn ∈ x := 1 ; y := 2 ; y := z: (StrToInt(d) > 0)}'
 
         There are two matches for assignments with :code:`<digit>` right-hand sides.
 
-        >>> matches = results[0].match_result[formula]
+        >>> matches = results[0].match_results[formula]
         >>> len(matches)
         2
 
@@ -862,7 +948,7 @@ class MatchAllUniversalQuantifiersRule(Rule):
 
             qfr_matches: frozendict[
                 ForallFormula,
-                Tuple[frozendict[Variable, Tuple[Path, DerivationTree]], ...],
+                Tuple[frozendict[Variable, Tuple[Path, DTree]], ...],
             ]
 
             qfr_matches = flow(
@@ -1002,7 +1088,7 @@ class MatchAllUniversalQuantifiersRule(Rule):
                         )
                         for match in matches
                     ]
-                    for univ_formula, matches in action.match_result.items()
+                    for univ_formula, matches in action.match_results.items()
                 ]
                 for formula in list_of_formulas
             ]
@@ -1013,10 +1099,13 @@ class MatchAllUniversalQuantifiersRule(Rule):
                 (
                     f := cast(ForallFormula, formula),
                     f.add_already_matched(
-                        {match[f.bound_variable][1] for match in action.match_result[f]}
+                        {
+                            match[f.bound_variable][1]
+                            for match in action.match_results[f]
+                        }
                     ),
                 )[-1]
-                if formula in action.match_result
+                if formula in action.match_results
                 else formula
                 for formula in state_tree.node.constraints
             ]
@@ -1031,11 +1120,9 @@ class MatchAllUniversalQuantifiersRule(Rule):
 def matches_for_quantified_formula(
     formula: QuantifiedFormula,
     graph: NeoGrammarGraph,
-    maybe_in_tree: Maybe[DerivationTree] = Nothing,
-    maybe_initial_assignments: Maybe[
-        frozendict[Variable, Tuple[Path, DerivationTree]]
-    ] = Nothing,
-) -> Maybe[Tuple[frozendict[Variable, Tuple[Path, DerivationTree]], ...]]:
+    maybe_in_tree: Maybe[DTree] = Nothing,
+    maybe_initial_assignments: Maybe[frozendict[Variable, DTree]] = Nothing,
+) -> Maybe[Tuple[frozendict[Variable, Tuple[Path, DTree]], ...]]:
     """
     Matches the given quantified (universal or existential) formula agains the given
     derivation tree. If no explicit derivation tree is given, the "in variable" of the
@@ -1074,7 +1161,7 @@ def matches_for_quantified_formula(
 
     In the following example input, there are two such assignments:
 
-    >>> inp = parse("x := 1 ; y := 2 ; y := z", grammar).unwrap()
+    >>> inp = parse("x := 1 ; y := 2 ; y := z", graph).unwrap()
 
     Consequently, we expenct two results.
 
@@ -1101,30 +1188,29 @@ def matches_for_quantified_formula(
     """
 
     assert isinstance(maybe_in_tree, Maybe)
-    assert maybe_in_tree.map(tap(DerivationTree.__instancecheck__))
+    assert maybe_in_tree.map(tap(DTree.__instancecheck__))
     in_tree = maybe_in_tree.value_or(formula.in_variable)
-    assert isinstance(in_tree, DerivationTree)
+    assert isinstance(in_tree, DTree)
 
     qfd_var: BoundVariable = formula.bound_variable
     maybe_bind_expr: Maybe[BindExpression] = Maybe.from_optional(
         formula.bind_expression
     )
-    new_assignments: Tuple[frozendict[Variable, Tuple[Path, DerivationTree]], ...] = ()
-    initial_assignments = maybe_initial_assignments.value_or(frozendict({}))
 
-    def search_action(path: Path, tree: DerivationTree) -> None:
-        node, children = tree
-        if node != qfd_var.n_type:
-            return
+    initial_assignments: frozendict[
+        Variable, DTree
+    ] = maybe_initial_assignments.value_or(frozendict({}))
 
-        nonlocal new_assignments
-        new_assignments += (
+    def search_action(tree: DTree) -> Maybe[frozendict[Variable, Tuple[Path, DTree]]]:
+        assert isinstance(tree.graph_node(), SymbolicNode)
+        if tree.graph_node().value != qfd_var.n_type:
+            return Nothing
+
+        return (
             maybe_bind_expr.lash(
-                lambda _: Failure(
-                    Some((initial_assignments.set(qfd_var, (path, tree)),))
-                )
+                lambda _: Failure(Some((initial_assignments.set(qfd_var, tree),)))
             )
-            .bind(compose(partial(match_bind_expression, qfd_var, path, tree), Failure))
+            .bind(compose(partial(match_bind_expression, qfd_var, tree), Failure))
             .lash(identity)  # Failure[Maybe] ==> Maybe
             .lash(lambda _: Some(()))  # Nothing -> Some
             .unwrap()
@@ -1132,10 +1218,9 @@ def matches_for_quantified_formula(
 
     def match_bind_expression(
         qfd_var: BoundVariable,
-        path: Path,
-        tree: DerivationTree,
+        tree: DTree,
         bind_expr: BindExpression,
-    ) -> Maybe[Tuple[frozendict[Variable, Tuple[Path, DerivationTree]], ...]]:
+    ) -> Maybe[frozendict[Variable, DTree]]:
         return (
             Maybe.from_optional(bind_expr.match(tree, graph.grammar))
             .map(frozendict)
@@ -1143,44 +1228,51 @@ def matches_for_quantified_formula(
                 lambda match: (
                     tree,
                     match,
-                    assignment_for(qfd_var, path, tree, match, initial_assignments),
+                    frozendict(initial_assignments.set(qfd_var, tree) | match),
                 )
             )
             .bind(star(check_assignment))
             .map(lambda assignment: (assignment,))
         )
 
-    def assignment_for(
-        qfd_var: BoundVariable,
-        path: Path,
-        tree: DerivationTree,
-        match: frozendict[BoundVariable, Tuple[Path, DerivationTree]],
-        initial_assignments: frozendict[Variable, Tuple[Path, DerivationTree]],
-    ) -> frozendict[Variable, Tuple[Path, DerivationTree]]:
-        return frozendict(
-            initial_assignments.set(qfd_var, (path, tree))
-            | {v: (path + p[0], p[1]) for v, p in match.items()}
-        )
-
     def check_assignment(
-        tree: DerivationTree,
-        match: frozendict[BoundVariable, Tuple[Path, DerivationTree]],
-        assignment: frozendict[BoundVariable, Tuple[Path, DerivationTree]],
-    ) -> Maybe[frozendict[Variable, Tuple[Path, DerivationTree]]]:
+        tree: DTree,
+        match: frozendict[BoundVariable, DTree],
+        assignment: frozendict[Variable, DTree],
+    ) -> Maybe[frozendict[Variable, DTree]]:
+        """
+        This function returns Nothing if there is any tree leaf that is *not* a
+        descendant of some match node (i.e., the tree is not fully matched). Otherwise,
+        it returns the assignment in a Some container.
+
+        :param tree: The tree for which to check if it is fully matched.
+        :param match: The match to check for completeness.
+        :param assignment: The assignment to return in a Some container in case of a
+            successful check.
+        :return: Nothing or :code:`tree` in a Some container.
+        """
+
         return (
             Some(assignment)
             if all(
-                any(
-                    match_path == leaf_path[: len(match_path)]
-                    for match_path, _ in match.values()
-                )
-                for leaf_path, _ in tree.leaves()
+                any(match_node.reachable(leaf_node) for match_node in match.values())
+                for leaf_node in tree.leaves()
             )
             else Nothing
         )
 
-    in_tree.traverse(search_action)
-    return Some(new_assignments) if new_assignments else Nothing
+    return flow(
+        in_tree.dfs_iterator(),
+        partial(map, search_action),
+        lambda it: reduce(
+            lambda assignments, some_assignment: (
+                assignments + some_assignment.map(lambda a: (a,)).value_or(())
+            ),
+            it,
+            (),
+        ),
+        lambda assignments: Some(assignments) if assignments else Nothing,
+    )
 
 
 # endregion Universal Quantifier Expansion Rule
@@ -1218,7 +1310,7 @@ class SplitAndRule(Rule):
         ...     & SMTFormula("(< (str.to_int x) 9)", Constant("x", "<X>"))
         ... )
         >>> stree = StateTree(
-        ...     CDT(FormulaSet([conjunction]), DerivationTree("<start>"))
+        ...     CDT(FormulaSet([conjunction]), DTree("<start>"))
         ... )
         >>> deep_str(list(SplitAndRule().actions(stree)))
         '[<Success: SplitAnd((StrToInt(x) > 0 ∧ StrToInt(x) < 9))>]'
@@ -1257,7 +1349,7 @@ class SplitAndRule(Rule):
         ...     & SMTFormula("(< (str.to_int x) 9)", Constant("x", "<X>"))
         ... )
         >>> stree = StateTree(
-        ...     CDT(FormulaSet([conjunction]), DerivationTree("<start>"))
+        ...     CDT(FormulaSet([conjunction]), DTree("<start>"))
         ... )
         >>> action = SplitAndAction(conjunction)
         >>> print(SplitAndRule().apply(stree, action))
@@ -1314,13 +1406,13 @@ class ChooseOrRule(Rule):
         ...     | SMTFormula("(< (str.to_int x) 9)", Constant("x", "<X>"))
         ... )
         >>> stree = StateTree(
-        ...     CDT(FormulaSet([disjunction]), DerivationTree("<start>"))
+        ...     CDT(FormulaSet([disjunction]), DTree("<start>"))
         ... )
         >>> deep_str(list(ChooseOrRule().actions(stree)))
         '[<Success: ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 0)>, <Success: ChooseOr((StrToInt(x) > 0 ∨ StrToInt(x) < 9), 1)>]'
 
         >>> list(ChooseOrRule().actions(
-        ...     StateTree(CDT(FormulaSet({}), DerivationTree("<start>")))))
+        ...     StateTree(CDT(FormulaSet({}), DTree("<start>")))))
         []
 
         :param state_tree: The input state tree.
@@ -1359,7 +1451,7 @@ class ChooseOrRule(Rule):
         ...     | SMTFormula("(< (str.to_int x) 9)", Constant("x", "<X>"))
         ... )
         >>> stree = StateTree(
-        ...     CDT(FormulaSet([disjunction]), DerivationTree("<start>"))
+        ...     CDT(FormulaSet([disjunction]), DTree("<start>"))
         ... )
 
         >>> action = ChooseOrAction(disjunction, 0)
@@ -1399,7 +1491,7 @@ class ChooseOrRule(Rule):
 @dataclass(frozen=True)
 class SolveSMTAction(Action):
     cluster: FormulaSet
-    result: bool | frozendict[Variable | DerivationTree, DerivationTree]
+    result: bool | frozendict[Variable | DTree, DTree]
 
     def __str__(self):
         return f"SolveSMT({deep_str(self.cluster)} --> {deep_str(self.result)})"
@@ -1445,10 +1537,10 @@ class SolveSMTRule(Rule):
         greater 3.
 
         >>> var = Variable("var", "<var>")
-        >>> var_tree = DerivationTree("<var>", id=0)
+        >>> var_tree = DTree("<var>", id=0)
         >>> digit = Variable("digit", "<digit>")
-        >>> digit_tree = DerivationTree("<digit>", id=1)
-        >>> DerivationTree.next_id = 2
+        >>> digit_tree = DTree("<digit>", id=1)
+        >>> DTree.next_id = 2
 
         >>> var_eq_x_constraint = SMTFormula(
         ...     '(= var "x")',
@@ -1464,15 +1556,15 @@ class SolveSMTRule(Rule):
 
         This is the original derivation tree in our state.
 
-        >>> orig_dtree = DerivationTree(
+        >>> orig_dtree = DTree(
         ...     "<start>",
         ...     (
-        ...         DerivationTree(
+        ...         DTree(
         ...             "<stmt>",
         ...             (
-        ...                 DerivationTree(
+        ...                 DTree(
         ...                     "<assgn>",
-        ...                     (var_tree, DerivationTree(" := ", ()), digit_tree)
+        ...                     (var_tree, DTree(" := ", ()), digit_tree)
         ...                 ),
         ...             ),
         ...         ),
@@ -1594,7 +1686,7 @@ class SolveSMTRule(Rule):
             if any(isinstance(action.result, bool) for action in solve_smt_actions):
                 return
 
-            previous_solutions: Tuple[Dict[Variable, DerivationTree], ...] = flow(
+            previous_solutions: Tuple[Dict[Variable, DTree], ...] = flow(
                 solve_smt_actions,
                 partial(map, lambda a: a.result),
                 partial(
@@ -1628,9 +1720,9 @@ class SolveSMTRule(Rule):
 
         def update_previous_solutions(
             smt_formulas: Iterable[SMTFormula],
-            a_result: bool | frozendict[Variable | DerivationTree, DerivationTree],
-            bool_or_dict: Tuple[bool | Dict[Variable, DerivationTree], ...],
-        ) -> Tuple[bool | Dict[Variable, DerivationTree], ...]:
+            a_result: bool | frozendict[Variable | DTree, DTree],
+            bool_or_dict: Tuple[bool | Dict[Variable, DTree], ...],
+        ) -> Tuple[bool | Dict[Variable, DTree], ...]:
             if isinstance(a_result, bool):
                 return bool_or_dict + (a_result,)
 
@@ -1678,9 +1770,9 @@ class SolveSMTRule(Rule):
         greater 3.
 
         >>> var = Variable("var", "<var>")
-        >>> var_tree = DerivationTree("<var>", id=0)
+        >>> var_tree = DTree("<var>", id=0)
         >>> digit = Variable("digit", "<digit>")
-        >>> digit_tree = DerivationTree("<digit>", id=1)
+        >>> digit_tree = DTree("<digit>", id=1)
 
         >>> var_eq_x_constraint = SMTFormula(
         ...     '(= var "x")',
@@ -1696,16 +1788,16 @@ class SolveSMTRule(Rule):
 
         This is the original derivation tree in our state.
 
-        >>> DerivationTree.next_id = 2
-        >>> orig_dtree = DerivationTree(
+        >>> DTree.next_id = 2
+        >>> orig_dtree = DTree(
         ...     "<start>",
         ...     (
-        ...         DerivationTree(
+        ...         DTree(
         ...             "<stmt>",
         ...             (
-        ...                 DerivationTree(
+        ...                 DTree(
         ...                     "<assgn>",
-        ...                     (var_tree, DerivationTree(" := ", ()), digit_tree)
+        ...                     (var_tree, DTree(" := ", ()), digit_tree)
         ...                 ),
         ...             ),
         ...         ),
@@ -1757,9 +1849,9 @@ class SolveSMTRule(Rule):
 def unify_smt_formulas_and_solve_first_cluster(
     graph: NeoGrammarGraph,
     smt_formulas: Sequence[SMTFormula],
-    previous_solutions: Tuple[Dict[Variable, DerivationTree], ...] = (),
+    previous_solutions: Tuple[Dict[Variable, DTree], ...] = (),
 ) -> Result[
-    Tuple[FormulaSet, bool | Dict[Variable | DerivationTree, DerivationTree]],
+    Tuple[FormulaSet, bool | Dict[Variable | DTree, DTree]],
     SyntaxError | StopIteration,
 ]:
     """
@@ -1843,8 +1935,8 @@ def unify_smt_formulas_and_solve_first_cluster(
     with the same name may reference different trees; similarly, two variables with
     different names may reference the same tree.
 
-    >>> digit_dtree_1 = DerivationTree("<digit>", id=2)
-    >>> digit_dtree_2 = DerivationTree("<digit>", id=3)
+    >>> digit_dtree_1 = DTree("<digit>", id=2)
+    >>> digit_dtree_2 = DTree("<digit>", id=3)
 
     >>> digit_greater_3_constraint = SMTFormula(
     ...     "(> (str.to.int digit) 3)",
@@ -1998,10 +2090,8 @@ def unify_smt_formulas_and_solve_first_cluster(
 def solve_smt_formulas(
     graph: NeoGrammarGraph,
     smt_formulas: Iterable[SMTFormula],
-    previous_solutions: Tuple[Dict[Variable, DerivationTree], ...] = (),
-) -> Result[
-    bool | Dict[Variable | DerivationTree, DerivationTree], SyntaxError | StopIteration
-]:
+    previous_solutions: Tuple[Dict[Variable, DTree], ...] = (),
+) -> Result[bool | Dict[Variable | DTree, DTree], SyntaxError | StopIteration]:
     """
     Attempts to solve the given SMT-LIB formulas by calling Z3.
 
@@ -2036,9 +2126,9 @@ def solve_smt_formulas(
     greater 3.
 
     >>> var = Variable("var", "<var>")
-    >>> var_tree = DerivationTree("<var>")
+    >>> var_tree = DTree("<var>")
     >>> digit = Variable("digit", "<digit>")
-    >>> digit_tree = DerivationTree("<digit>")
+    >>> digit_tree = DTree("<digit>")
 
     >>> var_eq_x_constraint = SMTFormula(
     ...     '(= var "x")',
@@ -2123,7 +2213,7 @@ def solve_smt_formulas(
         for var in previous_solution
     )
     assert all(
-        isinstance(val, DerivationTree)
+        isinstance(val, DTree)
         for previous_solution in previous_solutions
         for val in previous_solution.values()
     )
@@ -2153,8 +2243,8 @@ def solve_smt_formulas(
 
     def process_solution(
         solver_result: SolverResult,
-        maybe_model: Dict[Variable, DerivationTree],
-    ) -> bool | Dict[Variable, DerivationTree]:
+        maybe_model: Dict[Variable, DTree],
+    ) -> bool | Dict[Variable, DTree]:
         if solver_result in (SolverResult.INVALID, SolverResult.UNKNOWN):
             return False
 
@@ -2231,13 +2321,13 @@ def smt_formulas_referring_to_subtrees(
     constructed partial solutions (derivation trees) for these variables. Observe how
     the solution for the assignment references the solution for the digit.
 
-    >>> digit_tree = DerivationTree("<digit>")
-    >>> assgn_tree = DerivationTree(
+    >>> digit_tree = DTree("<digit>")
+    >>> assgn_tree = DTree(
     ...     "<assgn>",
     ...     (
-    ...         DerivationTree("<var>"),
-    ...         DerivationTree(" := ", ()),
-    ...         DerivationTree("<rhs>", (digit_tree,)),
+    ...         DTree("<var>"),
+    ...         DTree(" := ", ()),
+    ...         DTree("<rhs>", (digit_tree,)),
     ...     ),
     ... )
 
@@ -2345,13 +2435,10 @@ def solve_smt_formulas_with_language_constraints(
     graph: NeoGrammarGraph,
     smt_formulas: Iterable[z3.BoolRef],
     variables: AbstractSet[Variable],
-    tree_substitutions: Maybe[Dict[Variable, DerivationTree]] = Maybe.empty,
-    solutions_to_exclude: Maybe[List[Dict[Variable, DerivationTree]]] = Maybe.empty,
+    tree_substitutions: Maybe[Dict[Variable, DTree]] = Maybe.empty,
+    solutions_to_exclude: Maybe[List[Dict[Variable, DTree]]] = Maybe.empty,
     enable_optimized_z3_queries: bool = True,
-) -> Result[
-    Tuple[SolverResult, Dict[Variable | DerivationTree, DerivationTree]],
-    SyntaxError,
-]:
+) -> Result[Tuple[SolverResult, Dict[Variable | DTree, DTree]], SyntaxError,]:
     """
     Computes a solution for the given SMT formulas. All values from the solution
     assignment satisfy the grammatical types of the variables they are assigned to
@@ -2404,7 +2491,7 @@ def solve_smt_formulas_with_language_constraints(
     ...     Variable("z", "<assgn>"),
     ... )
     >>> constraints = (z3_eq(x.to_smt(), y.to_smt()), z3_eq(y.to_smt(), z.to_smt()))
-    >>> y_tree = DerivationTree("<assgn>", None, id=0)
+    >>> y_tree = DTree("<assgn>", None, id=0)
     >>> tree_substitutions = {
     ...     y: y_tree, z: parse("a := 7", grammar, "<assgn>").unwrap()
     ... }
@@ -2627,11 +2714,11 @@ def solve_smt_formulas_with_language_constraints(
 
 def restore_derivation_tree_id(
     variable: Variable,
-    model_value: DerivationTree,
-    original_substitutions: Maybe[Dict[Variable, DerivationTree]],
-) -> DerivationTree:
+    model_value: DTree,
+    original_substitutions: Maybe[Dict[Variable, DTree]],
+) -> DTree:
     """
-    If :code:`variable` was assigned a DerivationTree with a single, open node in
+    If :code:`variable` was assigned a DTree with a single, open node in
     :code:`original_substitutions`, we replace the id in :code:`model_value` by
     the id of the tree node in the original substitution.
 
@@ -2641,19 +2728,19 @@ def restore_derivation_tree_id(
     In the following example, the original ID "0" is restored, the "1" removed:
 
     >>> x = Variable("x", "<X>")
-    >>> model_value = DerivationTree("<X>", (DerivationTree("x", (), id=2),), id=1)
-    >>> original_substitutions = Some({x: DerivationTree("<X>", None, id=0)})
+    >>> model_value = DTree("<X>", (DTree("x", (), id=2),), id=1)
+    >>> original_substitutions = Some({x: DTree("<X>", None, id=0)})
     >>> restore_derivation_tree_id(x, model_value, original_substitutions)
-    DerivationTree('<X>', (DerivationTree('x', (), id=2),), id=0)
+    DTree('<X>', (DTree('x', (), id=2),), id=0)
 
     If the original substitution is of different shape, nothing happens:
     >>> x = Variable("x", "<X>")
-    >>> model_value = DerivationTree("<X>", (DerivationTree("x", (), id=2),), id=1)
+    >>> model_value = DTree("<X>", (DTree("x", (), id=2),), id=1)
     >>> original_substitutions = Some({
-    ...     x: DerivationTree("<X>", (DerivationTree("y", (), id=3),), id=0)
+    ...     x: DTree("<X>", (DTree("y", (), id=3),), id=0)
     ... })
     >>> restore_derivation_tree_id(x, model_value, original_substitutions)
-    DerivationTree('<X>', (DerivationTree('x', (), id=2),), id=1)
+    DTree('<X>', (DTree('x', (), id=2),), id=1)
 
     :param variable: The variable for which the model value was retrieved.
     :param model_value: The parsed SMT solver solution with new tree IDs.
@@ -2663,13 +2750,13 @@ def restore_derivation_tree_id(
     """
 
     assert isinstance(variable, Variable)
-    assert isinstance(model_value, DerivationTree)
+    assert isinstance(model_value, DTree)
 
     return original_substitutions.map(
         lambda substs: Maybe.from_optional(substs.get(variable, None))
         .map(
             lambda orig_tree: eassert(
-                DerivationTree(orig_tree.value, model_value.children, id=orig_tree.id),
+                DTree(orig_tree.value, model_value.children, id=orig_tree.id),
                 orig_tree.value == model_value.value,
             )
             if orig_tree.children is None
@@ -2680,7 +2767,7 @@ def restore_derivation_tree_id(
 
 
 def find_variable(
-    dtree: Variable | DerivationTree, smt_formulas: Iterable[SMTFormula]
+    dtree: Variable | DTree, smt_formulas: Iterable[SMTFormula]
 ) -> Variable:
     """
     TODO
@@ -2723,11 +2810,11 @@ def rename_instantiated_variables_in_smt_formulas(
     by different trees, and the variables obtain different names.
 
     >>> x_1 = Variable("x", "<A>")
-    >>> x_1_t = DerivationTree("<A>", id=0)
+    >>> x_1_t = DTree("<A>", id=0)
     >>> y = Variable("y", "<A>")
-    >>> y_t = DerivationTree("<A>", id=0)
+    >>> y_t = DTree("<A>", id=0)
     >>> x_2 = Variable("x", "<A>")
-    >>> x_2_t = DerivationTree("<A>", id=1)
+    >>> x_2_t = DTree("<A>", id=1)
     >>> formulas = [
     ...     SMTFormula("(= x y)", x_1, y).substitute_expressions({x_1: x_1_t, y: y_t}),
     ...     SMTFormula("(= x y)", x_2, y).substitute_expressions({x_2: x_2_t, y: y_t}),
@@ -2784,7 +2871,7 @@ def unifying_renaming_map_for_smt_formula(
 
     >>> x = Variable("x", "<A>")
     >>> y = Variable("y", "<A>")
-    >>> tree = DerivationTree("<A>", id=5)
+    >>> tree = DTree("<A>", id=5)
     >>> formula = (
     ...     SMTFormula("(= x y)", x, y).substitute_expressions({x: tree, y: tree})
     ... )
@@ -3112,7 +3199,7 @@ def assert_regex_lang_subset_grammar_lang(z3_regex: z3.ReRef, grammar: Grammar) 
 def generate_language_constraints(
     graph: NeoGrammarGraph,
     variables: Iterable[Variable],
-    tree_substitutions: Dict[Variable, DerivationTree],
+    tree_substitutions: Dict[Variable, DTree],
 ) -> List[z3.BoolRef]:
     r"""
     This function generates Z3 constraints on the language of the given variables.
@@ -3157,15 +3244,15 @@ def generate_language_constraints(
     tree assigning a :code:`<digit>` to the :code:`<var>`, a more restrictive constraint
     is returned:
 
-    >>> tree = DerivationTree(
+    >>> tree = DTree(
     ...     "<start>", [
-    ...         DerivationTree(
+    ...         DTree(
     ...             "<stmt>", [
-    ...                 DerivationTree(
+    ...                 DTree(
     ...                     "<assgn>", [
-    ...                         DerivationTree("<var>"),
-    ...                         DerivationTree(" := ", ()),
-    ...                         DerivationTree("<rhs>", (DerivationTree("<digit>"),)),
+    ...                         DTree("<var>"),
+    ...                         DTree(" := ", ()),
+    ...                         DTree("<rhs>", (DTree("<digit>"),)),
     ...                     ])])])
 
     >>> generate_language_constraints(graph, [assgn_var], {assgn_var: tree})
@@ -3274,7 +3361,7 @@ def extract_model_value(
     fresh_var_map: Dict[Variable, z3.ExprRef],
     length_vars: AbstractSet[Variable],
     int_vars: AbstractSet[Variable],
-) -> Result[DerivationTree, SyntaxError]:
+) -> Result[DTree, SyntaxError]:
     r"""
     Extracts a value for :code:`var` from :code:`model`. Considers the following
     special cases:
@@ -3311,9 +3398,9 @@ def extract_model_value(
     >>> z3_solver.check()
     sat
     >>> model = z3_solver.model()
-    >>> DerivationTree.next_id = 1
+    >>> DTree.next_id = 1
     >>> extract_model_value(graph,n, model, {}, set(), set()).unwrap()
-    DerivationTree('15', (), id=1)
+    DTree('15', (), id=1)
 
     For a trivially true solution on numeric variables, we return a random number:
 
@@ -3324,10 +3411,10 @@ def extract_model_value(
     sat
 
     >>> model = z3_solver.model()
-    >>> DerivationTree.next_id = 1
+    >>> DTree.next_id = 1
     >>> random.seed(0)
     >>> extract_model_value(graph, n, model, {n: n.to_smt()}, set(), {n}).unwrap()
-    DerivationTree('-2116850434379610162', (), id=1)
+    DTree('-2116850434379610162', (), id=1)
 
     **"Length" Variables:**
 
@@ -3355,9 +3442,9 @@ def extract_model_value(
     >>> z3_solver.check()
     sat
     >>> model = z3_solver.model()
-    >>> DerivationTree.next_id = 1
+    >>> DTree.next_id = 1
     >>> extract_model_value(graph, y, model, {y: y_0}, set(), {y}).unwrap()
-    DerivationTree('<Y>', (DerivationTree('<digit>', (DerivationTree('5', (), id=1),), id=2),), id=3)
+    DTree('<Y>', (DTree('<digit>', (DTree('5', (), id=1),), id=2),), id=3)
 
     **"Flexible" Variables:**
 
@@ -3414,7 +3501,7 @@ def extract_model_value(
                           "int" variables.
     :param length_vars: The set of "length" variables.
     :param int_vars: The set of "int" variables.
-    :return: A :class:`~isla.derivation_tree.DerivationTree` object corresponding
+    :return: A :class:`~isla.derivation_tree.DTree` object corresponding
              to the solution in :code:`model`.
     """  # noqa: E501
 
@@ -3435,7 +3522,7 @@ ExtractModelValueFallbackType = Callable[
         Set[Variable],
         Set[Variable],
     ],
-    Result[DerivationTree, SyntaxError],
+    Result[DTree, SyntaxError],
 ]
 
 
@@ -3447,7 +3534,7 @@ def extract_model_value_numeric_var(
     fresh_var_map: Dict[Variable, z3.ExprRef],
     length_vars: Set[Variable],
     int_vars: Set[Variable],
-) -> Result[DerivationTree, SyntaxError]:
+) -> Result[DTree, SyntaxError]:
     """
     Addresses the case of numeric variables from
     :meth:`~isla.solver2.extract_model_value`.
@@ -3491,7 +3578,7 @@ def extract_model_value_numeric_var(
         and string_value[1:].isnumeric()
     )
 
-    return Success(DerivationTree(string_value, ()))
+    return Success(DTree(string_value, ()))
 
 
 def extract_model_value_length_var(
@@ -3502,7 +3589,7 @@ def extract_model_value_length_var(
     fresh_var_map: Dict[Variable, z3.ExprRef],
     length_vars: Set[Variable],
     int_vars: Set[Variable],
-) -> Result[DerivationTree, SyntaxError]:
+) -> Result[DTree, SyntaxError]:
     """
     Addresses the case of length variables from
     :meth:`~isla.solver2.extract_model_value`.
@@ -3552,7 +3639,7 @@ def extract_model_value_int_var(
     fresh_var_map: Dict[Variable, z3.ExprRef],
     length_vars: Set[Variable],
     int_vars: Set[Variable],
-) -> Result[DerivationTree, SyntaxError]:
+) -> Result[DTree, SyntaxError]:
     """
     Addresses the case of int variables from
     :meth:`~isla.solver2.extract_model_value`.
@@ -3578,7 +3665,7 @@ def extract_model_value_int_var(
 
     var_type = var.n_type
 
-    def parse_with_extended_format() -> Result[DerivationTree, Exception]:
+    def parse_with_extended_format() -> Result[DTree, Exception]:
         # This may happen, e.g, with padded values: Only "01" is a valid
         # solution, but not "1". Similarly, a grammar may expect "+1", but
         # "1" is returned by the solver. We support the number format
@@ -3652,7 +3739,7 @@ def extract_model_value_flexible_var(
     fresh_var_map: Dict[Variable, z3.ExprRef],
     length_vars: Set[Variable],
     int_vars: Set[Variable],
-) -> Result[DerivationTree, SyntaxError]:
+) -> Result[DTree, SyntaxError]:
     """
     Addresses the case of "flexible" variables from
     :meth:`~isla.solver2.extract_model_value`.
@@ -3674,10 +3761,10 @@ def extract_model_value_flexible_var(
 
 
 def create_fixed_length_tree(
-    start: DerivationTree | str,
+    start: DTree | str,
     canonical_grammar: FrozenCanonicalGrammar,
     target_length: int,
-) -> Maybe[DerivationTree]:
+) -> Maybe[DTree]:
     """
     This function attempts to create a derivation tree starting in the specified start
     nonterminal symbol or based on the specified initial derivation tree whose
@@ -3726,8 +3813,8 @@ def create_fixed_length_tree(
     """
 
     nullable = compute_nullable_nonterminals(canonical_grammar)
-    start = DerivationTree(start) if isinstance(start, str) else start
-    stack: List[Tuple[DerivationTree, int, Tuple[Tuple[Path, DerivationTree], ...]]] = [
+    start = DTree(start) if isinstance(start, str) else start
+    stack: List[Tuple[DTree, int, Tuple[Tuple[Path, DTree], ...]]] = [
         (start, int(start.value not in nullable), (((), start),)),
     ]
 
@@ -3744,7 +3831,7 @@ def create_fixed_length_tree(
             continue
 
         idx: int
-        leaf: DerivationTree
+        leaf: DTree
         for idx, (_, leaf) in reversed(list(enumerate(open_leaves))):
             terminal_expansions, expansions = get_expansions(
                 leaf.value, canonical_grammar
@@ -3779,13 +3866,13 @@ def create_fixed_length_tree(
 
 
 def expand_leaf(
-    tree: DerivationTree,
+    tree: DTree,
     min_unparsed_tree_len: int,
-    open_leaves: Tuple[Tuple[Path, DerivationTree], ...],
+    open_leaves: Tuple[Tuple[Path, DTree], ...],
     leaf_idx: int,
     expansion: Tuple[str, ...],
     nullable_nonterminals: Set[str],
-) -> Tuple[DerivationTree, int, Tuple[Tuple[Path, DerivationTree], ...]]:
+) -> Tuple[DTree, int, Tuple[Tuple[Path, DTree], ...]]:
     """
     This function expands a leaf in :code:`tree` according to the grammar expansion
     in :code:`expansion` and returns (1) the expanded tree, (2) a lower bound on the
@@ -3793,7 +3880,7 @@ def expand_leaf(
     resulting tree. The leaf to expand is specified by its index :code:`leaf_idx`
     in the list :code:`open_leaves` of open leaves in :code:`tree`.
 
-    >>> tree = DerivationTree("<stmt>", (DerivationTree("<assgn>"),))
+    >>> tree = DTree("<stmt>", (DTree("<assgn>"),))
     >>> min_unparsed_tree_len = 1
     >>> open_leaves = (((0,), tree.get_subtree((0,))),)
     >>> leaf_idx = 0
@@ -3830,15 +3917,12 @@ def expand_leaf(
     path_to_leaf = open_leaves[leaf_idx][0]
 
     new_children = tuple(
-        [
-            DerivationTree(elem, None if is_nonterminal(elem) else ())
-            for elem in expansion
-        ]
+        [DTree(elem, None if is_nonterminal(elem) else ()) for elem in expansion]
     )
 
     expanded_tree = tree.replace_path(
         path_to_leaf,
-        DerivationTree(
+        DTree(
             leaf.value,
             new_children,
         ),
@@ -4013,12 +4097,10 @@ class KPathStrategy(Strategy):
         :return:
         """
 
-        path, alternative = action.path, action.alternative
+        path, alternative = action.vertex_id, action.alternative
         new_children = tuple(
             [
-                DerivationTree(symbol)
-                if is_nonterminal(symbol)
-                else DerivationTree(symbol, ())
+                DTree(symbol) if is_nonterminal(symbol) else DTree(symbol, ())
                 for symbol in self.graph.canonical_grammar[
                     state_tree_node.node.tree.get_subtree(path).value
                 ][alternative]
@@ -4027,9 +4109,7 @@ class KPathStrategy(Strategy):
 
         resulting_tree = state_tree_node.node.tree.replace_path(
             path,
-            DerivationTree(
-                state_tree_node.node.tree.get_subtree(path).value, new_children
-            ),
+            DTree(state_tree_node.node.tree.get_subtree(path).value, new_children),
         )
 
         if resulting_tree.depth() > self.max_expansion_depth:
@@ -4064,7 +4144,7 @@ class KPathStrategy(Strategy):
         )
 
 
-def compute_tree_closing_cost(tree: DerivationTree, graph: NeoGrammarGraph) -> float:
+def compute_tree_closing_cost(tree: DTree, graph: NeoGrammarGraph) -> float:
     nonterminals = [leaf.value for _, leaf in tree.open_leaves()]
     shortest_derivations_ = shortest_derivations(graph)
     return sum([shortest_derivations_[nonterminal] for nonterminal in nonterminals])
@@ -4114,7 +4194,7 @@ class SolverDefaults:
     tree_insertion_methods: Maybe[int] = Nothing
     activate_unsat_support: bool = False
     grammar_unwinding_threshold: int = 4
-    initial_tree: Maybe[DerivationTree] = Nothing
+    initial_tree: Maybe[DTree] = Nothing
     enable_optimized_z3_queries: bool = True
     start_symbol: Maybe[str] = Nothing
     strategy: Maybe[Strategy] = Nothing
@@ -4129,7 +4209,7 @@ class ISLaSolver:
         grammar: FrozenGrammar | str,
         formula: Maybe[Formula | str] = _DEFAULTS.formula,
         start_symbol: Maybe[str] = _DEFAULTS.start_symbol,
-        initial_tree: Maybe[DerivationTree] = _DEFAULTS.initial_tree,
+        initial_tree: Maybe[DTree] = _DEFAULTS.initial_tree,
         structural_predicates: Set[
             language.StructuralPredicate
         ] = _DEFAULTS.structural_predicates,
@@ -4158,7 +4238,7 @@ class ISLaSolver:
         self.strategy = strategy.value_or(KPathStrategy(self.graph))
 
         root_derivation_tree = initial_tree.lash(
-            lambda _: Some(DerivationTree(start_symbol.value_or("<start>")))
+            lambda _: Some(DTree(start_symbol.value_or("<start>")))
         ).unwrap()
 
         root_formula = (
@@ -4177,7 +4257,7 @@ class ISLaSolver:
 
         self.current_path: Path = ()
 
-    def solve(self) -> DerivationTree:
+    def solve(self) -> DTree:
         """
         Attempts to compute a solution to the given ISLa formula. Returns that solution,
         if any. This function can be called repeatedly to obtain more solutions until
@@ -4266,10 +4346,9 @@ class ISLaSolver:
 # ==============
 
 
-@safe
 def parse_peg(
-    inp: str, grammar: Grammar, start_nonterminal: str = "<start>"
-) -> Result[DerivationTree, SyntaxError | RecursionError]:
+    inp: str, graph: NeoGrammarGraph, start_nonterminal: str = "<start>"
+) -> Result[DTree, SyntaxError | RecursionError | InvalidTreeException]:
     """
     This function parses :code:`inp` in the given grammar with the specified start
     nonterminal using a PEG parser.
@@ -4294,21 +4373,22 @@ def parse_peg(
     ...     "<var>": list(string.ascii_lowercase),
     ...     "<digit>": list(string.digits)
     ... }
+    >>> graph = NeoGrammarGraph(grammar)
 
     We parse a statement with two assignments; the resulting tree starts with the
     specified nonterminal :code:`<start>`:
 
-    >>> deep_str(parse_peg("x := 0 ; y := x", grammar).map(lambda t: (t, t.value)))
+    >>> deep_str(parse_peg("x := 0 ; y := x", graph).map(lambda t: (t, t.value())))
     '<Success: (x := 0 ; y := x, <start>)>'
 
     Now, we parse a single assignment with the :code:`<assgn>` start nonterminal:
 
-    >>> deep_str(parse_peg("x := 0", grammar, "<assgn>").map(lambda t: (t, t.value)))
+    >>> deep_str(parse_peg("x := 0", graph, "<assgn>").map(lambda t: (t, t.value())))
     '<Success: (x := 0, <assgn>)>'
 
     In case of an error, a Failure is returned:
 
-    >>> print(deep_str(parse_peg("x := 0 FOO", grammar, "<assgn>").alt(
+    >>> print(deep_str(parse_peg("x := 0 FOO", graph, "<assgn>").alt(
     ...     lambda e: f'"{type(e).__name__}: {e}"')))
     <Failure: "SyntaxError: at ' FOO'">
 
@@ -4328,11 +4408,12 @@ def parse_peg(
     ...     "<var>": list(string.ascii_lowercase),
     ...     "<digit>": list(string.digits)
     ... }
+    >>> graph = NeoGrammarGraph(grammar)
 
     We have seen this example before; this time, the PEG parser will not return a
     valid result:
 
-    >>> parse_peg("x := 0 ; y := x", grammar).failure()
+    >>> parse_peg("x := 0 ; y := x", graph).failure()
     SyntaxError("at ' ; y := x'")
 
     The PEG parser raises a :class:`RecursionError` in certain cases (the Earley
@@ -4342,8 +4423,9 @@ def parse_peg(
     ...     "<start>": ["<a>"],
     ...     "<a>": ["<a>"]
     ... }
+    >>> graph = NeoGrammarGraph(grammar)
 
-    >>> type(parse_peg("a", grammar).failure()).__name__
+    >>> type(parse_peg("a", graph).failure()).__name__
     'RecursionError'
 
     :param inp: The input to parse.
@@ -4355,20 +4437,26 @@ def parse_peg(
     """
 
     if start_nonterminal != "<start>":
-        grammar = grammar | {"<start>": [start_nonterminal]}
-        grammar = delete_unreachable(grammar)
+        graph = graph.subgraph(start_nonterminal)
 
-    # Should we address ambiguities and return multiple parse trees?
-    result = DerivationTree.from_parse_tree(PEGParser(grammar).parse(inp)[0])
-    return result if start_nonterminal == "<start>" else result.children[0]
+    grammar = graph.grammar
+
+    return (
+        safe(lambda: PEGParser(grammar).parse(inp)[0])()
+        .bind(lambda parse_tree: DTree.from_parse_tree(parse_tree, graph))
+        .map(
+            lambda tree: (
+                tree if start_nonterminal == "<start>" else tree.children()[0]
+            )
+        )
+    )
 
 
-@safe
 def parse_earley(
     inp: str,
-    grammar: Grammar,
+    graph: NeoGrammarGraph,
     start_nonterminal: str = "<start>",
-) -> Result[DerivationTree, SyntaxError]:
+) -> Result[DTree, SyntaxError | InvalidTreeException]:
     """
     This function parses :code:`inp` in the given grammar with the specified start
     nonterminal using an EarleyParser.
@@ -4396,24 +4484,25 @@ def parse_earley(
     ...     "<var>": list(string.ascii_lowercase),
     ...     "<digit>": list(string.digits)
     ... }
+    >>> graph = NeoGrammarGraph(grammar)
 
     We parse a statement with two assignments; the resulting tree starts with the
     specified nonterminal :code:`<start>`:
 
-    >>> deep_str(parse_earley("x := 0 ; y := x", grammar).map(lambda t: (t, t.value)))
+    >>> deep_str(parse_earley("x := 0 ; y := x", graph).map(lambda t: (t, t.value())))
     '<Success: (x := 0 ; y := x, <start>)>'
 
-    >>> deep_str(parse_earley("x := 0 ; y := x", grammar).map(lambda t: (t, t.value)))
+    >>> deep_str(parse_earley("x := 0 ; y := x", graph).map(lambda t: (t, t.value())))
     '<Success: (x := 0 ; y := x, <start>)>'
 
     Now, we parse a single assignment with the :code:`<assgn>` start nonterminal:
 
-    >>> deep_str(parse_earley("x := 0", grammar, "<assgn>").map(lambda t: (t, t.value)))
+    >>> deep_str(parse_earley("x := 0", graph, "<assgn>").map(lambda t: (t, t.value())))
     '<Success: (x := 0, <assgn>)>'
 
     In case of an error, a Failure is returned:
 
-    >>> print(deep_str(parse_earley("x := 0 FOO", grammar, "<assgn>").alt(
+    >>> print(deep_str(parse_earley("x := 0 FOO", graph, "<assgn>").alt(
     ...     lambda e: f'"{type(e).__name__}: {e}"')))
     <Failure: "SyntaxError: at ' FOO'">
 
@@ -4437,10 +4526,11 @@ def parse_earley(
     ...     "<var>": list(string.ascii_lowercase),
     ...     "<digit>": list(string.digits)
     ... }
+    >>> graph = NeoGrammarGraph(grammar)
 
     We get a Success result:
 
-    >>> deep_str(parse_earley("x := 0 ; y := x", grammar).map(lambda t: (t, t.value)))
+    >>> deep_str(parse_earley("x := 0 ; y := x", graph).map(lambda t: (t, t.value())))
     '<Success: (x := 0 ; y := x, <start>)>'
 
     :param inp: The input to parse.
@@ -4452,19 +4542,27 @@ def parse_earley(
     """
 
     if start_nonterminal != "<start>":
-        grammar = grammar | {"<start>": [start_nonterminal]}
-        grammar = delete_unreachable(grammar)
+        graph = graph.subgraph(start_nonterminal)
+
+    grammar = graph.grammar
 
     # Should we address ambiguities and return multiple parse trees?
-    result = DerivationTree.from_parse_tree(next(EarleyParser(grammar).parse(inp)))
-    return result if start_nonterminal == "<start>" else result.children[0]
+    return (
+        safe(lambda: next(EarleyParser(grammar).parse(inp)))()
+        .bind(lambda parse_tree: DTree.from_parse_tree(parse_tree, graph))
+        .map(
+            lambda tree: (
+                tree if start_nonterminal == "<start>" else tree.children()[0]
+            )
+        )
+    )
 
 
 def parse(
     inp: str,
-    grammar: Grammar,
+    graph: NeoGrammarGraph,
     start_nonterminal: str = "<start>",
-) -> Result[DerivationTree, SyntaxError]:
+) -> Result[DTree, SyntaxError | InvalidTreeException]:
     """
     This function parses :code:`inp` in the given grammar with the specified start
     nonterminal. It first tries whether the input can be parsed with a PEG parser;
@@ -4517,14 +4615,14 @@ def parse(
     """
 
     return flow(
-        parse_peg(inp, grammar, start_nonterminal),
+        parse_peg(inp, graph, start_nonterminal),
         tap(
             lambda _: LOGGER.debug(
                 "Parsing expression %s with EarleyParser",
                 inp,
             )
         ),
-        lash(lambda _: parse_earley(inp, grammar, start_nonterminal)),
+        lash(lambda _: parse_earley(inp, graph, start_nonterminal)),
     )
 
 

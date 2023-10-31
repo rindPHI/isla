@@ -83,21 +83,28 @@ from isla.helpers import (
     unreachable_nonterminals,
     Success,
     Failure,
-)
-from isla.helpers import (
     replace_line_breaks,
     delete_unreachable,
     powerset,
     grammar_to_immutable,
     nested_list_to_tuple,
+    flatten,
 )
+from isla.helpers import deep_str  # noqa
 from isla.isla_language import IslaLanguageListener
 from isla.isla_language.IslaLanguageLexer import IslaLanguageLexer
 from isla.isla_language.IslaLanguageParser import IslaLanguageParser
 from isla.mexpr_lexer.MexprLexer import MexprLexer
 from isla.mexpr_parser.MexprParser import MexprParser
 from isla.parser import EarleyParser, PEGParser
-from isla.type_defs import Path, Grammar, ImmutableGrammar, ImmutableList, Pair
+from isla.type_defs import (
+    Path,
+    Grammar,
+    ImmutableGrammar,
+    ImmutableList,
+    Pair,
+    FrozenGrammar,
+)
 from isla.z3_helpers import (
     is_valid,
     z3_push_in_negations,
@@ -119,12 +126,11 @@ language_core_logger = logging.getLogger("isla-language-core")
 z3.ExprRef.__eq__ = z3.AstRef.__eq__
 
 
-class Variable:
+@dataclass(frozen=True)
+class Variable(ABC):
     NUMERIC_NTYPE = "NUM"
-
-    def __init__(self, name: str, n_type: str):
-        self.name = name
-        self.n_type = n_type
+    name: str
+    n_type: str
 
     def to_smt(self):
         return z3.String(self.name)
@@ -132,63 +138,58 @@ class Variable:
     def is_numeric(self):
         return self.n_type == Constant.NUMERIC_NTYPE
 
-    def __eq__(self, other):
-        return type(self) is type(other) and (self.name, self.n_type) == (
-            other.name,
-            other.n_type,
-        )
-
-    def __hash__(self):
-        return hash((type(self).__name__, self.name, self.n_type))
-
-    def __repr__(self):
-        return f'{type(self).__name__}("{self.name}", "{self.n_type}")'
-
     def __str__(self):
         return self.name
 
 
+@dataclass(frozen=True)
 class Constant(Variable):
-    def __init__(self, name: str, n_type: str):
-        """
-        A constant is a "free variable" in a formula.
+    """
+    A constant is a "free variable" in a formula.
+    """
 
-        :param name: The name of the constant.
-        :param n_type: The nonterminal type of the constant, e.g., "<var>".
-        """
-        super().__init__(name, n_type)
+    pass
 
 
+@dataclass(frozen=True)
 class BoundVariable(Variable):
-    def __init__(self, name: str, n_type: str):
-        """
-        A variable bound by a quantifier.
-
-        :param name: The name of the variable.
-        :param n_type: The nonterminal type of the variable, e.g., "<var>".
-        """
-        super().__init__(name, n_type)
+    """
+    A variable bound by a quantifier.
+    """
 
     def __add__(self, other: Union[str, "BoundVariable"]) -> "BindExpression":
         assert isinstance(other, str) or isinstance(other, BoundVariable)
         return BindExpression(self, other)
 
 
+@dataclass(frozen=True)
 class DummyVariable(BoundVariable):
-    """A variable of which only its nonterminal is of interest (primarily for BindExpressions)."""
+    """
+    A variable of which only its nonterminal is of interest
+    (primarily for BindExpressions).
+    """
 
-    cnt = 0
+    CNT = 0
 
     def __init__(self, n_type: str):
-        super().__init__(f"DUMMY_{DummyVariable.cnt}", n_type)
-        self.is_nonterminal = bool(is_nonterminal(n_type))
-        DummyVariable.cnt += 1
+        super().__init__(f"DUMMY_{DummyVariable.CNT}", n_type)
+        DummyVariable.CNT += 1
+
+    @property
+    def is_nonterminal(self) -> bool:
+        return bool(is_nonterminal(self.n_type))
 
     def __str__(self):
         return self.n_type
 
 
+@dataclass(frozen=True)
 class NameUnawareDummyVariable(DummyVariable):
+    """
+    A DummyVariable variant that only considers variable names for hashing
+    and equality comparisons.
+    """
+
     def __init__(self, n_type: str):
         super().__init__(n_type)
 
@@ -199,254 +200,181 @@ class NameUnawareDummyVariable(DummyVariable):
         return hash(self.n_type)
 
 
+def spec_bound_element_to_var_seq(
+    bound_element: str | BoundVariable | Sequence[str],
+) -> Tuple[BoundVariable | Tuple[BoundVariable, ...], ...]:
+    r"""
+    A match expression element, as it results from parsing an ISLa specification,
+    is either
+
+    - a variable binder :code:`{<var> var}`, which is parsed into a bound variable,
+    - a string :code:`"asdf"` or :code:`"<asdf>"`, corresponding to a terminal symbol
+      or nonterminal symbol whose value is not of interest for the inner formula of
+      a quantifier, or
+    - an optional element :code:`[<some>optional<elements>]`, which is passed to the
+      match expression constructor as a list containing a single string.
+
+    This function transforms a one such element to (1) a singleton sequence containing
+    a sequence of dummy bound variables, for optional elements, and (2) a sequence of
+    bound variables, for all other cases. All grammar symbols outside of binder
+    expressions are transformed to DummyVariables. The original string inside an
+    optional match expression element is split into individual DummyVariables along
+    terminal/nonterminal boundaries.
+
+    Example
+    -------
+
+    A bound variable is returned unchanged:
+
+    >>> spec_bound_element_to_var_seq(BoundVariable("v", "<var>"))
+    (BoundVariable(name='v', n_type='<var>'),)
+
+    A string of terminal and nonterminal symbols is split and converted into
+    dummy variables:
+
+    >>> print("\n".join(map(repr, spec_bound_element_to_var_seq("<a>b<c>d"))))
+    DummyVariable(name='DUMMY_0', n_type='<a>')
+    DummyVariable(name='DUMMY_1', n_type='b')
+    DummyVariable(name='DUMMY_2', n_type='<c>')
+    DummyVariable(name='DUMMY_3', n_type='d')
+
+    An optional element results in a singleton tuple containing a sequence of
+    dummy variables:
+
+    >>> spec_bound_element_to_var_seq(["<a>b"])
+    ((DummyVariable(name='DUMMY_4', n_type='<a>'), DummyVariable(name='DUMMY_5', n_type='b')),)
+
+    :param bound_element:
+    :return: A sequence or singleton sequence of sequences of (bound or dummy)
+        variables.
+    """  # noqa: E501
+
+    if isinstance(bound_element, BoundVariable):
+        return (bound_element,)
+
+    if isinstance(bound_element, (list, tuple)):
+        if all(map(BoundVariable.__instancecheck__, bound_element)):
+            return (bound_element,)
+
+        assert all(map(str.__instancecheck__, bound_element))
+        return (
+            tuple(
+                DummyVariable(token)
+                for token in RE_NONTERMINAL.split("".join(bound_element))
+                if token
+            ),
+        )
+
+    return tuple(
+        DummyVariable(token)
+        for token in re.split(RE_NONTERMINAL, bound_element)
+        if token
+    )
+
+
+@dataclass(frozen=True)
 class BindExpression:
-    def __init__(self, *bound_elements: Union[str, BoundVariable, List[str]]):
-        self.bound_elements: List[BoundVariable | List[BoundVariable]] = []
-        for bound_elem in bound_elements:
-            if isinstance(bound_elem, BoundVariable):
-                self.bound_elements.append(bound_elem)
-                continue
+    bound_elements: Tuple[BoundVariable | Tuple[BoundVariable, ...], ...]
 
-            if isinstance(bound_elem, list):
-                if all(isinstance(list_elem, Variable) for list_elem in bound_elem):
-                    self.bound_elements.append(bound_elem)
-                    continue
+    def __init__(self, *bound_elements: str | BoundVariable | Sequence[str]):
+        """
+        This constructor produces a match expression from a sequence of match
+        expression elements as resulting from parsing a quantified ISLa formula.
+        See also :func:`~isla.language.spec_bound_element_to_var_seq`.
 
-                assert all(isinstance(list_elem, str) for list_elem in bound_elem)
+        >>> str(BindExpression("<var>", "terminal", ["<a>b"]))
+        '<var>terminal[<a>b]'
 
-                self.bound_elements.append(
-                    [
-                        DummyVariable(token)
-                        for token in re.split(RE_NONTERMINAL, "".join(bound_elem))
-                        if token
-                    ]
-                )
-                continue
+        :param bound_elements: The match expression elements.
+        """
 
-            self.bound_elements.extend(
-                [
-                    DummyVariable(token)
-                    for token in re.split(RE_NONTERMINAL, bound_elem)
-                    if token
-                ]
-            )
-
-        self.prefixes: Dict[
-            str, List[Tuple[DerivationTree, Dict[BoundVariable, Path]]]
-        ] = {}
-        self.__flattened_elements: Dict[str, Tuple[Tuple[BoundVariable, ...], ...]] = {}
+        object.__setattr__(
+            self,
+            "bound_elements",
+            flatten(tuple(map(spec_bound_element_to_var_seq, bound_elements))),
+        )
 
     def __add__(self, other: Union[str, "BoundVariable"]) -> "BindExpression":
-        assert isinstance(other, str) or isinstance(other, BoundVariable)
-        result = BindExpression(*self.bound_elements)
-        result.bound_elements.append(other)
-        return result
+        """
+        Adds another element to this match expression
 
-    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
+        Example
+        -------
+
+        >>> mexpr = BindExpression("<var>", "a")
+
+        >>> print(mexpr + "b")
+        <var>ab
+
+        >>> print(mexpr + "<x>")
+        <var>a<x>
+
+        >>> print(mexpr + "[<x>b]")
+        <var>a[<x>b]
+
+        :param other: The match expression to add.
+        :return: A new match expression with the added element.
+        """
+
+        assert isinstance(other, (str, BoundVariable))
+        return BindExpression(*(self.bound_elements + (other,)))
+
+    def substitute_variables(
+        self, subst_map: Dict[Variable, Variable]
+    ) -> "BindExpression":
+        """
+        This method performs a variable substitution in a match expression.
+
+        >>> x = BoundVariable("x", "<X>")
+        >>> mexpr = BindExpression(x, "asdf", BoundVariable("y", "<Y>"))
+        >>> subst_map = {x: BoundVariable("a", "<A>")}
+        >>> print(mexpr.substitute_variables(subst_map))
+        {<A> a}asdf{<Y> y}
+
+        :param subst_map: The variable substitution map.
+        :return: A new match expression after the substitution.
+        """
+
         return BindExpression(
             *[
-                elem if isinstance(elem, list) else subst_map.get(elem, elem)
+                elem if isinstance(elem, (list, tuple)) else subst_map.get(elem, elem)
                 for elem in self.bound_elements
             ]
         )
 
     def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
+        """
+        This method returns the bound variables (excluding the dummy variables) from
+        this match expression.
+
+        >>> x = BoundVariable("x", "<X>")
+        >>> mexpr = BindExpression(x, "asdf", BoundVariable("y", "<Y>"))
+        >>> deep_str(mexpr.bound_variables())
+        '{x, y}'
+
+        :return: The variables bound by the match expression.
+        """
+
         # Not isinstance(var, BoundVariable) since we want to exclude dummy variables
         return FrozenOrderedSet(
             [var for var in self.bound_elements if type(var) is BoundVariable]
         )
 
-    def all_bound_variables(self, grammar: Grammar) -> FrozenOrderedSet[BoundVariable]:
-        # Includes dummy variables
-        return FrozenOrderedSet(
-            [
-                var
-                for alternative in flatten_bound_elements(
-                    nested_list_to_tuple(self.bound_elements),
-                    grammar_to_immutable(grammar),
-                    in_nonterminal=None,
-                )
-                for var in alternative
-                if isinstance(var, BoundVariable)
-            ]
-        )
+    def all_bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
+        """
+        This method returns the bound variables from this match expression, including
+        dummy variables.
 
-    def to_tree_prefix(
-        self, in_nonterminal: str, grammar: Grammar
-    ) -> List[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
-        if in_nonterminal in self.prefixes:
-            cached = self.prefixes[in_nonterminal]
-            return [(opt[0].new_ids(), opt[1]) for opt in cached]
+        >>> x = BoundVariable("x", "<X>")
+        >>> y = BoundVariable("y", "<Y>")
+        >>> mexpr = BindExpression(x, "asdf", y, "<var>", ("a<b>",))
+        >>> deep_str(mexpr.all_bound_variables())
+        '{x, asdf, y, <var>, a, <b>}'
 
-        result: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]] = []
-        immutable_grammar = grammar_to_immutable(grammar)
+        :return: All variables in this match expression, including dummy variables.
+        """
 
-        for bound_elements in flatten_bound_elements(
-            nested_list_to_tuple(self.bound_elements),
-            immutable_grammar,
-            in_nonterminal=in_nonterminal,
-        ):
-            BindExpression.__combination_to_tree_prefix(
-                bound_elements, in_nonterminal, immutable_grammar
-            ).map(tap(lambda r: result.append(r)))
-
-        self.prefixes[in_nonterminal] = result
-        return result
-
-    @staticmethod
-    def __combination_to_tree_prefix(
-        bound_elements: Tuple[BoundVariable, ...],
-        in_nonterminal: str,
-        immutable_grammar: ImmutableGrammar,
-    ) -> Maybe[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
-        flattened_bind_expr_str = "".join(
-            map(
-                lambda elem: f"{{{elem.n_type} {elem.name}}}"
-                if type(elem) is BoundVariable
-                else str(elem),
-                bound_elements,
-            )
-        )
-
-        maybe_tree = parse_match_expression(
-            flattened_bind_expr_str, in_nonterminal, immutable_grammar
-        )
-        if not is_successful(maybe_tree):
-            language_core_logger.warning(
-                'Parsing match expression string "%s" caused a syntax error. If this is'
-                + " not a test case where this behavior is intended, it should probably"
-                + " be investigated.",
-                flattened_bind_expr_str,
-            )
-            return Nothing
-
-        tree = maybe_tree.unwrap()
-
-        assert tree.value == in_nonterminal
-
-        split_bound_elements = []
-        dummy_var_map: Dict[DummyVariable, List[DummyVariable]] = {}
-        for elem in bound_elements:
-            if not isinstance(elem, DummyVariable) or is_nonterminal(elem.n_type):
-                split_bound_elements.append(elem)
-                continue
-
-            new_dummies = (
-                [DummyVariable(char) for char in elem.n_type] if elem.n_type else [elem]
-            )
-            split_bound_elements.extend(new_dummies)
-            dummy_var_map[elem] = new_dummies
-
-        match_expr_tree = tree
-        match_expr_matches: Dict[BoundVariable, Path] = {}
-        skip_paths_below = set()
-        remaining_bound_elements = list(split_bound_elements)
-
-        def search(path: Path, child: DerivationTree):
-            nonlocal match_expr_tree
-            if any(
-                len(path) > len(skip_path) and path[: len(skip_path)] == skip_path
-                for skip_path in skip_paths_below
-            ):
-                return
-
-            if (
-                len(child.children) == 7
-                and child.children[0].value == "{"
-                and child.children[1].value == "<LANGLE>"
-            ):
-                assert is_nonterminal(child.value)
-                skip_paths_below.add(path)
-                match_expr_tree = match_expr_tree.replace_path(
-                    path, DerivationTree(child.value, None)
-                )
-                var_n_type = "<" + child.children[2].value + ">"
-                var_name = str(child.children[5])
-
-                var = next(
-                    var for var in remaining_bound_elements if var.name == var_name
-                )
-                assert var.n_type == var_n_type
-                remaining_bound_elements.remove(var)
-                match_expr_matches[var] = path
-            elif len(child.children) == 3 and child.children[0].value == "<LANGLE>":
-                assert is_nonterminal(child.value)
-                skip_paths_below.add(path)
-                match_expr_tree = match_expr_tree.replace_path(
-                    path, DerivationTree(child.value, None)
-                )
-                var_n_type = "<" + child.children[1].value + ">"
-
-                var = next(
-                    var for var in remaining_bound_elements if var.n_type == var_n_type
-                )
-                remaining_bound_elements.remove(var)
-                match_expr_matches[var] = path
-            elif str(child) == child.value or not str(child):
-                # TODO: Check if `()` is always the right choice for the children
-                match_expr_tree = match_expr_tree.replace_path(
-                    path,
-                    DerivationTree(
-                        child.value,
-                        ()
-                        # None if is_nonterminal(child.value) else ()
-                    ),
-                )
-                skip_paths_below.add(path)
-
-                for char in (
-                    [""]
-                    if not str(child)
-                    else (
-                        [child.value]
-                        if is_nonterminal(child.value)
-                        else list(child.value)
-                    )
-                ):
-                    var = (
-                        result_to_maybe(
-                            safe(
-                                lambda: next(
-                                    var
-                                    for var in remaining_bound_elements
-                                    if var.n_type == char
-                                )
-                            )()
-                        )
-                        .map(
-                            tap(
-                                lambda var: eassert(var, isinstance(var, DummyVariable))
-                            )
-                        )
-                        .map(tap(remaining_bound_elements.remove))
-                        .value_or(DummyVariable(""))
-                    )
-
-                    match_expr_matches[var] = path
-
-        tree.traverse(
-            search,
-            # abort_condition=lambda p, t: not remaining_bound_elements
-        )
-
-        # In the result, we have to combine all terminals that point to the same path.
-        consolidated_matches = consolidate_match_expression_matches(match_expr_matches)
-
-        assert all(
-            var in consolidated_matches
-            for var in bound_elements
-            if not isinstance(var, DummyVariable)
-        )
-        assert all(
-            any(
-                len(match_path) <= len(leaf_path)
-                and leaf_path[: len(match_path)] == match_path
-                for match_path in consolidated_matches.values()
-            )
-            for leaf_path, _ in tree.leaves()
-        )
-
-        return Some((match_expr_tree, consolidated_matches))
+        return FrozenOrderedSet(flatten(self.bound_elements))
 
     def match(
         self, tree: DerivationTree, grammar: Grammar
@@ -458,24 +386,26 @@ class BindExpression:
 
         return None
 
-    def __repr__(self):
-        return f'BindExpression({", ".join(map(repr, self.bound_elements))})'
-
     def __str__(self):
-        return "".join(
-            map(
-                lambda e: f"{str(e)}"
-                if isinstance(e, str)
-                else ("[" + "".join(map(str, e)) + "]")
-                if isinstance(e, list)
-                else (
-                    f"{{{e.n_type} {str(e)}}}"
-                    if not isinstance(e, DummyVariable)
-                    else str(e)
-                ),
-                self.bound_elements,
-            )
-        )
+        """
+        Returns a concise string representation of the match expression.
+
+        >>> str(BindExpression("<var>", "terminal", ["<a>b"]))
+        '<var>terminal[<a>b]'
+
+        :return: A string representation of this match expression.
+        """
+
+        def match_expr_elem_to_str(e) -> str:
+            if isinstance(e, (str, DummyVariable)):
+                return str(e)
+            elif isinstance(e, tuple):
+                return "[" + "".join(map(str, e)) + "]"
+
+            assert isinstance(e, BoundVariable)
+            return f"{{{e.n_type} {str(e)}}}"
+
+        return "".join(map(match_expr_elem_to_str, self.bound_elements))
 
     @staticmethod
     def __dummy_vars_to_str(
@@ -505,6 +435,173 @@ class BindExpression:
         return isinstance(other, BindExpression) and list(
             map(BindExpression.__dummy_vars_to_str, self.bound_elements)
         ) == list(map(BindExpression.__dummy_vars_to_str, other.bound_elements))
+
+
+# TODO Improve this function.
+def combination_to_tree_prefix(
+    mexpr: BindExpression,
+    bound_elements: Tuple[BoundVariable, ...],
+    in_nonterminal: str,
+    grammar: FrozenGrammar,
+) -> Maybe[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
+    flattened_bind_expr_str = "".join(
+        map(
+            lambda elem: f"{{{elem.n_type} {elem.name}}}"
+            if type(elem) is BoundVariable
+            else str(elem),
+            bound_elements,
+        )
+    )
+
+    maybe_tree = parse_match_expression(
+        flattened_bind_expr_str, in_nonterminal, grammar
+    )
+    if not is_successful(maybe_tree):
+        language_core_logger.warning(
+            'Parsing match expression string "%s" caused a syntax error. If this is'
+            + " not a test case where this behavior is intended, it should probably"
+            + " be investigated.",
+            flattened_bind_expr_str,
+        )
+        return Nothing
+
+    tree = maybe_tree.unwrap()
+
+    assert tree.value == in_nonterminal
+
+    split_bound_elements = []
+    dummy_var_map: Dict[DummyVariable, List[DummyVariable]] = {}
+    for elem in bound_elements:
+        if not isinstance(elem, DummyVariable) or is_nonterminal(elem.n_type):
+            split_bound_elements.append(elem)
+            continue
+
+        new_dummies = (
+            [DummyVariable(char) for char in elem.n_type] if elem.n_type else [elem]
+        )
+        split_bound_elements.extend(new_dummies)
+        dummy_var_map[elem] = new_dummies
+
+    match_expr_tree = tree
+    match_expr_matches: Dict[BoundVariable, Path] = {}
+    skip_paths_below = set()
+    remaining_bound_elements = list(split_bound_elements)
+
+    def search(path: Path, child: DerivationTree):
+        nonlocal match_expr_tree
+        if any(
+            len(path) > len(skip_path) and path[: len(skip_path)] == skip_path
+            for skip_path in skip_paths_below
+        ):
+            return
+
+        if (
+            len(child.children) == 7
+            and child.children[0].value == "{"
+            and child.children[1].value == "<LANGLE>"
+        ):
+            assert is_nonterminal(child.value)
+            skip_paths_below.add(path)
+            match_expr_tree = match_expr_tree.replace_path(
+                path, DerivationTree(child.value, None)
+            )
+            var_n_type = "<" + child.children[2].value + ">"
+            var_name = str(child.children[5])
+
+            var = next(var for var in remaining_bound_elements if var.name == var_name)
+            assert var.n_type == var_n_type
+            remaining_bound_elements.remove(var)
+            match_expr_matches[var] = path
+        elif len(child.children) == 3 and child.children[0].value == "<LANGLE>":
+            assert is_nonterminal(child.value)
+            skip_paths_below.add(path)
+            match_expr_tree = match_expr_tree.replace_path(
+                path, DerivationTree(child.value, None)
+            )
+            var_n_type = "<" + child.children[1].value + ">"
+
+            var = next(
+                var for var in remaining_bound_elements if var.n_type == var_n_type
+            )
+            remaining_bound_elements.remove(var)
+            match_expr_matches[var] = path
+        elif str(child) == child.value or not str(child):
+            # TODO: Check if `()` is always the right choice for the children
+            match_expr_tree = match_expr_tree.replace_path(
+                path,
+                DerivationTree(
+                    child.value,
+                    ()
+                    # None if is_nonterminal(child.value) else ()
+                ),
+            )
+            skip_paths_below.add(path)
+
+            for char in (
+                [""]
+                if not str(child)
+                else (
+                    [child.value] if is_nonterminal(child.value) else list(child.value)
+                )
+            ):
+                var = (
+                    result_to_maybe(
+                        safe(
+                            lambda: next(
+                                var
+                                for var in remaining_bound_elements
+                                if var.n_type == char
+                            )
+                        )()
+                    )
+                    .map(tap(lambda var: eassert(var, isinstance(var, DummyVariable))))
+                    .map(tap(remaining_bound_elements.remove))
+                    .value_or(DummyVariable(""))
+                )
+
+                match_expr_matches[var] = path
+
+    tree.traverse(
+        search,
+        # abort_condition=lambda p, t: not remaining_bound_elements
+    )
+
+    # In the result, we have to combine all terminals that point to the same path.
+    consolidated_matches = consolidate_match_expression_matches(match_expr_matches)
+
+    assert all(
+        var in consolidated_matches
+        for var in bound_elements
+        if not isinstance(var, DummyVariable)
+    )
+    assert all(
+        any(
+            len(match_path) <= len(leaf_path)
+            and leaf_path[: len(match_path)] == match_path
+            for match_path in consolidated_matches.values()
+        )
+        for leaf_path, _ in tree.leaves()
+    )
+
+    return Some((match_expr_tree, consolidated_matches))
+
+
+@cache
+def to_tree_prefix(
+    mexpr: BindExpression, in_nonterminal: str, grammar: FrozenGrammar
+) -> List[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
+    result: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]] = []
+
+    for bound_elements in flatten_bound_elements(
+        mexpr.bound_elements,
+        grammar,
+        in_nonterminal=in_nonterminal,
+    ):
+        combination_to_tree_prefix(mexpr, bound_elements, in_nonterminal, grammar).map(
+            tap(lambda r: result.append(r))
+        )
+
+    return result
 
 
 def consolidate_match_expression_matches(

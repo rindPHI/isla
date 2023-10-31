@@ -59,7 +59,7 @@ from test_data import LANG_GRAMMAR
 
 class TestConcreteSyntax(unittest.TestCase):
     def test_simple_formula(self):
-        DummyVariable.cnt = 0
+        DummyVariable.CNT = 0
 
         mgr = language.VariableManager(LANG_GRAMMAR)
         python_formula: language.Formula = mgr.create(
@@ -74,7 +74,7 @@ class TestConcreteSyntax(unittest.TestCase):
             )
         )
 
-        DummyVariable.cnt = 0
+        DummyVariable.CNT = 0
         concr_syntax_formula = """
 forall <var> var_1_tree in start:
     forall <var> var_2_tree in start:
@@ -85,7 +85,7 @@ forall <var> var_1_tree in start:
         self.assertEqual(python_formula, parsed_formula)
 
     def test_declared_before_used(self):
-        DummyVariable.cnt = 0
+        DummyVariable.CNT = 0
         dummy_2 = DummyVariable(" := ")
         dummy_1 = DummyVariable(" := ")
 
@@ -111,7 +111,7 @@ forall <var> var_1_tree in start:
             )
         )
 
-        DummyVariable.cnt = 0
+        DummyVariable.CNT = 0
         concr_syntax_formula = """
 forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
   forall <var> var in rhs_1:
@@ -855,12 +855,12 @@ forall <assgn> assgn="<var> := {<rhs> rhs}" in start:
     def test_parse_match_expression_with_escape_char(self):
         isla_emitter = ISLaEmitter(None)
 
-        DummyVariable.cnt = 0
+        DummyVariable.CNT = 0
         parsed = isla_emitter.parse_mexpr(
             r"{<a> a}a\\n\n\r{<b> b}<c>", VariableManager()
         )
 
-        DummyVariable.cnt = 0
+        DummyVariable.CNT = 0
         expected = language.BindExpression(
             language.BoundVariable("a", "<a>"),
             DummyVariable("a\\n\n\r"),
