@@ -15,14 +15,25 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with ISLa.  If not, see <http://www.gnu.org/licenses/>.
-
+import itertools
 import logging
 import operator
 import random
 import re
 import sys
 from functools import lru_cache, reduce, partial
-from typing import Callable, Tuple, cast, List, Optional, Dict, Union, Generator, Set
+from typing import (
+    Callable,
+    Tuple,
+    cast,
+    List,
+    Optional,
+    Dict,
+    Union,
+    Generator,
+    Set,
+    Sequence,
+)
 
 import z3
 from z3.z3 import _coerce_exprs
@@ -915,8 +926,10 @@ def seqref_to_int(seqref: z3.SeqRef) -> Maybe[int]:
         return Maybe.nothing()
 
 
-def numeric_intervals_from_regex(regex: z3.ReRef) -> Maybe[List[Tuple[int, int]]]:
-    r"""
+def numeric_intervals_from_regex(
+    regex: z3.ReRef, x=False
+) -> Maybe[List[Tuple[int, int]]]:
+    r"""TODO remove x=False
     This function transforms regular expressions representing intervals of integers
     to these intervals. It recognizes regular expressions represented by the following
     context-free grammar (the definition of <sequence> is possibly an
@@ -1008,7 +1021,11 @@ def numeric_intervals_from_regex(regex: z3.ReRef) -> Maybe[List[Tuple[int, int]]
     The interval of strictly positive numbers if created by enforcing the presence of
     a leading 1:
 
-    >>> numeric_intervals_from_regex(z3.Concat(z3.Star(z3.Re("0")), z3.Range("1", "9"), z3.Star(z3.Range("0", "9"))))
+    >>> numeric_intervals_from_regex(
+    ...     z3.Concat(
+    ...         z3.Star(z3.Re("0")),
+    ...         z3.Range("1", "9"),
+    ...         z3.Star(z3.Range("0", "9"))))
     Maybe(a=[(1, 9223372036854775807)])
 
     If the 0-9 interval is inside a Plus, not a Star, we exclude the single-digit
@@ -1021,6 +1038,16 @@ def numeric_intervals_from_regex(regex: z3.ReRef) -> Maybe[List[Tuple[int, int]]
 
     >>> numeric_intervals_from_regex(z3.Concat(z3.Re("-"), z3.Range("1", "9"), z3.Plus(z3.Range("0", "9"))))
     Maybe(a=[(-9223372036854775807, -10)])
+
+    ISLa performs some simplifications to handle cases like `a* ++ a` (which is
+    equivalent to `a+`) as expected.
+
+    >>> numeric_intervals_from_regex(
+    ...     z3.Concat(
+    ...         z3.Concat(z3.Range("1", "9"), z3.Star(z3.Range("0", "9"))),
+    ...         z3.Range("0", "9")  # <- this was a problem in ISLa <= 1.14.1
+    ... ), True)
+    Maybe(a=[(10, 9223372036854775807)])
 
     :param regex: The regular expression from which to extract the represented
         intervals.
@@ -1197,6 +1224,29 @@ def numeric_intervals_from_concat(
         List[z3.ReRef], z3_split_at_operator(regex, z3.Z3_OP_RE_CONCAT)
     )
 
+    # Replace any `Range(c, c)` by `Re(c)`
+    children = cast(
+        List[z3.ReRef],
+        list(
+            map(
+                lambda r: replace_in_z3_expr(
+                    r,
+                    lambda s: (
+                        (z3.Re(s.children()[0]))
+                        if (
+                            s.decl().kind() == z3.Z3_OP_RE_RANGE
+                            and s.children()[0] == s.children()[1]
+                        )
+                        else None
+                    ),
+                ),
+                children,
+            )
+        ),
+    )
+
+    children = compress_concatenation_elements(children)
+
     first_child = children[0]
     if first_child.decl().kind() == z3.Z3_OP_RE_UNION or first_child == z3.Option(
         z3.Re("-")
@@ -1297,3 +1347,119 @@ def numeric_intervals_from_concat(
         return Maybe([(0, sys.maxsize)])
     else:
         return fallback(regex)
+
+
+def compress_concatenation_elements(
+    concat_elements: Sequence[z3.ReRef],
+) -> List[z3.ReRef]:
+    """
+    This function "compresses" the given elements of a RegEx concatenation.
+
+    Example
+    -------
+
+    A regular expression concatenated with its star (in any order) gets its plus.
+
+    >>> compress_concatenation_elements([z3.Re("a"), z3.Star(z3.Re("a"))])
+    [Plus(Re("a"))]
+
+    >>> compress_concatenation_elements([z3.Star(z3.Re("a")), z3.Re("a")])
+    [Plus(Re("a"))]
+
+    A concatenation of the same starred expression equals that starred expression
+
+    >>> compress_concatenation_elements([z3.Star(z3.Re("a")), z3.Star(z3.Re("a"))])
+    [Star(Re("a"))]
+
+    Similarly, for plus expressions.
+
+    >>> compress_concatenation_elements([z3.Plus(z3.Re("a")), z3.Plus(z3.Re("a"))])
+    [Plus(Re("a"))]
+
+    If there is a plus in any concatenation, it supersedes all other expressions.
+
+    >>> compress_concatenation_elements([
+    ...     z3.Plus(z3.Re("a")),
+    ...     z3.Re("a"),
+    ...     z3.Star(z3.Re("a"))])
+    [Plus(Re("a"))]
+
+    Nothing happens if the child of the star is different.
+
+    >>> compress_concatenation_elements([z3.Star(z3.Re("a")), z3.Re("b")])
+    [Star(Re("a")), Re("b")]
+
+    A concatenation of the same element is also retained.
+
+    >>> compress_concatenation_elements([z3.Re("a"), z3.Re("a")])
+    [Re("a"), Re("a")]
+
+    Trivial cases are handled as expected.
+
+    >>> compress_concatenation_elements([z3.Re("a")])
+    [Re("a")]
+
+    :param concat_elements: The elements of a concatenation. None of them should be a
+        concatenation themselves.
+    :return: An equivalent, compressed/simplified version of the concatenated
+        expressions.
+    """
+
+    def key_group_by_star_plus_child(r: z3.ReRef) -> z3.ReRef:
+        if r.decl().kind() in [z3.Z3_OP_RE_STAR, z3.Z3_OP_RE_PLUS]:
+            return r.children()[0]
+
+        return r
+
+    # Each group will contain an arbitrary number of expressions `r`, `r*`, and `r+`
+    # for the same r.
+    children_groups: List[List[z3.ReRef]] = list(
+        map(
+            lambda p: list(p[1]),
+            itertools.groupby(concat_elements, key_group_by_star_plus_child),
+        )
+    )
+
+    new_children: List[z3.ReRef] = []
+    for group in children_groups:
+        if len(group) == 1:
+            # Trivial group.
+            new_children.append(group[0])
+        elif all(elem.decl().kind() == z3.Z3_OP_RE_STAR for elem in group):
+            # Compress spurious star expressions.
+            new_children.append(group[0])
+        elif any(
+            elem.decl().kind() in [z3.Z3_OP_RE_PLUS, z3.Z3_OP_RE_STAR] for elem in group
+        ):
+            # Compress `r+ ++ r ++ r*` etc.
+            # Note: We already ruled out `r* ++ r*`. Thus, if there is any starred
+            # element in the group, there must also be plus or atomic elements in
+            # there with the same child. We can compress to plus.
+            assert all(
+                not elem.decl().kind() == z3.Z3_OP_RE_STAR
+                or any(
+                    other_elem == elem.children()[0]
+                    for other_elem in group
+                    if other_elem is not elem
+                )
+                for elem in group
+            )
+
+            new_children.append(
+                next(
+                    z3.Plus(elem.children()[0])
+                    for elem in group
+                    if elem.decl().kind() in [z3.Z3_OP_RE_PLUS, z3.Z3_OP_RE_STAR]
+                )
+            )
+        elif all(elem == group[0] for elem in group[1:]):
+            # Something like `a ++ a`. Note that `a` cannot be a star or plus expression
+            # since these cases have been addressed before.
+            new_children.extend(group)
+        else:
+            assert False, (
+                "Seemingly impossible case triggered "
+                + "when compressing RegEx concatenation"
+            )
+
+    return new_children

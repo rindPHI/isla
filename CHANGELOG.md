@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.14.2] - 2023-11-01
+
+### Changed
+
+- Improved the inference of intervals from grammars for numeric variables (relevant for
+  the `enable_optimized_z3_queries` mode).
+
 ## [1.14.1] - 2023-07-10
 
 ### Changed

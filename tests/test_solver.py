@@ -1495,7 +1495,11 @@ and str.len(<payload>) = 10
 
         formula_2 = z3_eq(byte_3879.to_smt(), z3.StringVal("\x01"))
 
-        (length_vars, int_vars, flexible_vars,) = ISLaSolver.infer_variable_contexts(
+        (
+            length_vars,
+            int_vars,
+            flexible_vars,
+        ) = ISLaSolver.infer_variable_contexts(
             {byte_3879, payload_3824, byte_3880}, (formula_1, formula_2)
         ).values()
 
@@ -1507,7 +1511,11 @@ and str.len(<payload>) = 10
 
         formula_3 = z3_eq(byte_3879.to_smt(), byte_3880.to_smt())
 
-        (length_vars, int_vars, flexible_vars,) = ISLaSolver.infer_variable_contexts(
+        (
+            length_vars,
+            int_vars,
+            flexible_vars,
+        ) = ISLaSolver.infer_variable_contexts(
             {byte_3879, payload_3824, byte_3880}, (formula_1, formula_2, formula_3)
         ).values()
 
@@ -1519,7 +1527,11 @@ and str.len(<payload>) = 10
 
         formula_4 = z3_eq(byte_3879.to_smt(), payload_3824.to_smt())
 
-        (length_vars, int_vars, flexible_vars,) = ISLaSolver.infer_variable_contexts(
+        (
+            length_vars,
+            int_vars,
+            flexible_vars,
+        ) = ISLaSolver.infer_variable_contexts(
             {byte_3879, payload_3824, byte_3880},
             (formula_1, formula_2, formula_4),
         ).values()
@@ -2294,6 +2306,38 @@ and str.to.int(<due-payable>.<INT>) =
         solver = ISLaSolver(grammar)
         self.assertEqual(
             "+005", str(solver.extract_model_value(i, model, {i: i_0}, set(), {i}))
+        )
+
+    def test_numeric_equation_nonzero(self):
+        grammar = {
+            "<start>": ["<eq>"],
+            "<eq>": ["<a>+<a>+<a>=<b>"],
+            "<a>": ["<integer>"],
+            "<b>": ["<integer>"],
+            "<integer>": ["<nzdigit>", "<nzdigit><digits>"],
+            "<digits>": ["<digit>", "<digit><digits>"],
+            "<nzdigit>": list("123456789"),
+            "<digit>": list(string.digits),
+        }
+
+        constraint = """
+              str.to.int(<eq>.<a>[1]) 
+            + str.to.int(<eq>.<a>[2]) 
+            + str.to.int(<eq>.<a>[3]) 
+            = str.to.int(<eq>.<b>)"""
+
+        def oracle(tree: DerivationTree) -> bool:
+            def a(i: int, n: str = "<a>") -> int:
+                return int(str(tree.filter(lambda t: t.value == n)[i][1]))
+
+            return a(0) + a(1) + a(2) == a(0, n="<b>")
+
+        self.execute_generation_test(
+            formula=constraint,
+            grammar=grammar,
+            max_number_free_instantiations=1,
+            enable_optimized_z3_queries=True,
+            custom_test_func=oracle,
         )
 
     def execute_generation_test(
