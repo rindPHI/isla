@@ -229,7 +229,7 @@ class BindExpression:
         self.__flattened_elements: Dict[str, Tuple[Tuple[BoundVariable, ...], ...]] = {}
 
     def __add__(self, other: Union[str, "BoundVariable"]) -> "BindExpression":
-        assert type(other) == str or type(other) == BoundVariable
+        assert isinstance(other, str) or type(other) is BoundVariable
         result = BindExpression(*self.bound_elements)
         result.bound_elements.append(other)
         return result
@@ -294,7 +294,7 @@ class BindExpression:
         flattened_bind_expr_str = "".join(
             map(
                 lambda elem: f"{{{elem.n_type} {elem.name}}}"
-                if type(elem) == BoundVariable
+                if type(elem) is BoundVariable
                 else str(elem),
                 bound_elements,
             )
@@ -1230,7 +1230,7 @@ class PropositionalCombinator(Formula, ABC):
         return hash((type(self).__name__, self.args))
 
     def __eq__(self, other):
-        return type(self) == type(other) and self.args == other.args
+        return type(self) is type(other) and self.args == other.args
 
 
 class NegatedFormula(PropositionalCombinator):
@@ -1870,7 +1870,7 @@ class QuantifiedFormula(Formula, ABC):
         )
 
     def __eq__(self, other):
-        return type(self) == type(other) and (
+        return type(self) is type(other) and (
             self.bound_variable,
             self.in_variable,
             self.inner_formula,
