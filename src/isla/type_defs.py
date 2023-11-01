@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with ISLa.  If not, see <http://www.gnu.org/licenses/>.
 
-from typing import Tuple, Optional, List, TypeVar, TypeAlias, Mapping, Sequence
+from typing import Tuple, Optional, List, TypeVar, TypeAlias, Mapping, Sequence, Dict
 
 from frozendict import frozendict
 
@@ -30,6 +30,7 @@ ParseTree = Tuple[str, Optional[List["ParseTree"]]]
 Path = Tuple[int, ...]
 
 Grammar = Mapping[str, Sequence[str]]
+MutableGrammar = Dict[str, List[str]]
 CanonicalGrammar = Mapping[str, Sequence[Sequence[str]]]
 
 FrozenGrammar = frozendict[str, Tuple[str, ...]]

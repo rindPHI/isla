@@ -26,6 +26,7 @@ from typing import Union
 from xml.dom.minidom import Document
 
 from docutils.core import publish_doctree
+from frozendict import frozendict
 from orderedset import OrderedSet
 
 import isla.derivation_tree
@@ -42,70 +43,72 @@ from isla.language import parse_isla
 # Remove _, {, | to exclude back references and inline substitutions
 # Remove ` to exclude inline interpreted text
 # * is inline emphasis and needs to be closed: Remove from standard text
-REST_GRAMMAR = {
-    "<start>": ["<body-elements>"],
-    # "<body-elements>": ["", "<body-element>\n<body-elements>"],
-    "<body-elements>": ["<body-element>\n<body-elements>", "<body-element>"],
-    "<body-element>": [
-        "<section-title>\n",
-        "<labeled_paragraph>",
-        "<paragraph>",
-        "<enumeration>",
-    ],
-    "<section-title>": ["<title-text>\n<underline>"],
-    "<title-text>": ["<title-first-char>", "<title-first-char><nobr-string>"],
-    "<paragraph>": ["<first_paragraph_element><paragraph_elements>\n"],
-    "<labeled_paragraph>": ["<label>\n\n<paragraph>"],
-    "<label>": [".. _<id>:"],
-    "<paragraph_elements>": [
-        "<paragraph_element><paragraph_elements>",
-        "<paragraph_element>",
-    ],
-    "<first_paragraph_element>": [
-        "<paragraph_chars_nospace>",
-        "<internal_reference_nospace>",
-    ],
-    "<paragraph_element>": ["<paragraph_chars>", "<internal_reference>"],
-    "<internal_reference>": ["<presep><id>_<postsep>"],
-    "<internal_reference_nospace>": ["<id>_<postsep>"],
-    "<enumeration>": ["<enumeration_items>\n"],
-    "<enumeration_items>": [
-        "<enumeration_item>\n<enumeration_items>",
-        "<enumeration_item>",
-    ],
-    "<enumeration_item>": ["<number>. <nobr-string>"],
-    "<paragraph_chars>": ["<paragraph_char><paragraph_chars>", "<paragraph_char>"],
-    "<paragraph_chars_nospace>": [
-        "<paragraph_char_nospace><paragraph_chars_nospace>",
-        "<paragraph_char_nospace>",
-    ],
-    "<paragraph_char>": list(
-        OrderedSet(srange(string.printable)) - OrderedSet(srange("_{}`|*"))
-    ),
-    "<paragraph_char_nospace>": list(
-        OrderedSet(srange(string.printable))
-        - OrderedSet(srange("_{}`|*" + string.whitespace))
-    ),
-    "<presep>": srange(" \t,;()"),
-    "<postsep>": srange(" \t,.;()"),
-    "<id>": srange(string.ascii_lowercase),
-    "<number>": ["<digit_nonzero><digits>", "<digit>"],
-    "<digit_nonzero>": srange("123456789"),
-    "<digits>": ["<digit><digits>", "<digit>"],
-    "<digit>": srange(string.digits),
-    "<nobr-string>": ["<nobr-char>", "<nobr-char><nobr-string>"],
-    # Exclude tab in <nobr-char> since otherwise, title can get too long (counts more than one character)
-    "<nobr-char>": list(
-        OrderedSet(srange(string.printable)) - OrderedSet(srange("\n\r\t_{}`|"))
-    ),
-    "<title-first-char>": list(
-        OrderedSet(srange(string.printable))
-        - OrderedSet(srange(string.whitespace + "\b\f\v-*+_{}`|=-"))
-    ),
-    "<underline>": ["<eqs>", "<dashes>"],
-    "<eqs>": ["=", "=<eqs>"],
-    "<dashes>": ["-", "-<dashes>"],
-}
+REST_GRAMMAR = frozendict(
+    {
+        "<start>": ("<body-elements>",),
+        # "<body-elements>": ("", "<body-element>\n<body-elements>"),
+        "<body-elements>": ("<body-element>\n<body-elements>", "<body-element>"),
+        "<body-element>": (
+            "<section-title>\n",
+            "<labeled_paragraph>",
+            "<paragraph>",
+            "<enumeration>",
+        ),
+        "<section-title>": ("<title-text>\n<underline>",),
+        "<title-text>": ("<title-first-char>", "<title-first-char><nobr-string>"),
+        "<paragraph>": ("<first_paragraph_element><paragraph_elements>\n",),
+        "<labeled_paragraph>": ("<label>\n\n<paragraph>",),
+        "<label>": (".. _<id>:",),
+        "<paragraph_elements>": (
+            "<paragraph_element><paragraph_elements>",
+            "<paragraph_element>",
+        ),
+        "<first_paragraph_element>": (
+            "<paragraph_chars_nospace>",
+            "<internal_reference_nospace>",
+        ),
+        "<paragraph_element>": ("<paragraph_chars>", "<internal_reference>"),
+        "<internal_reference>": ("<presep><id>_<postsep>",),
+        "<internal_reference_nospace>": ("<id>_<postsep>",),
+        "<enumeration>": ("<enumeration_items>\n",),
+        "<enumeration_items>": (
+            "<enumeration_item>\n<enumeration_items>",
+            "<enumeration_item>",
+        ),
+        "<enumeration_item>": ("<number>. <nobr-string>",),
+        "<paragraph_chars>": ("<paragraph_char><paragraph_chars>", "<paragraph_char>"),
+        "<paragraph_chars_nospace>": (
+            "<paragraph_char_nospace><paragraph_chars_nospace>",
+            "<paragraph_char_nospace>",
+        ),
+        "<paragraph_char>": tuple(
+            OrderedSet(srange(string.printable)) - OrderedSet(srange("_{}`|*"))
+        ),
+        "<paragraph_char_nospace>": tuple(
+            OrderedSet(srange(string.printable))
+            - OrderedSet(srange("_{}`|*" + string.whitespace))
+        ),
+        "<presep>": srange(" \t,;()"),
+        "<postsep>": srange(" \t,.;()"),
+        "<id>": srange(string.ascii_lowercase),
+        "<number>": ("<digit_nonzero><digits>", "<digit>"),
+        "<digit_nonzero>": srange("123456789"),
+        "<digits>": ("<digit><digits>", "<digit>"),
+        "<digit>": srange(string.digits),
+        "<nobr-string>": ("<nobr-char>", "<nobr-char><nobr-string>"),
+        # Exclude tab in <nobr-char> since otherwise, title can get too long (counts more than one character)
+        "<nobr-char>": tuple(
+            OrderedSet(srange(string.printable)) - OrderedSet(srange("\n\r\t_{}`|"))
+        ),
+        "<title-first-char>": tuple(
+            OrderedSet(srange(string.printable))
+            - OrderedSet(srange(string.whitespace + "\b\f\v-*+_{}`|=-"))
+        ),
+        "<underline>": ("<eqs>", "<dashes>"),
+        "<eqs>": ("=", "=<eqs>"),
+        "<dashes>": ("-", "-<dashes>"),
+    }
+)
 
 # The below encoding is the most efficient one, but heavily uses semantic predicates
 LENGTH_UNDERLINE = parse_isla(

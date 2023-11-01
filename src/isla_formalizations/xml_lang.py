@@ -22,53 +22,61 @@ import xml.etree.ElementTree as ET
 from html import escape
 from typing import Optional, List
 
+from frozendict import frozendict
+
 from isla.helpers import srange
 from isla.isla_predicates import IN_TREE_PREDICATE, SAME_POSITION_PREDICATE
 from isla.language import parse_isla
 from isla.derivation_tree import DerivationTree
 
-XML_GRAMMAR = {
-    "<start>": ["<xml-tree>"],
-    "<xml-tree>": [
-        "<xml-open-tag><inner-xml-tree><xml-close-tag>",
-        "<xml-openclose-tag>",
-    ],
-    "<inner-xml-tree>": [
-        "<xml-tree><inner-xml-tree>",
-        "<xml-tree>",
-        "<text>",
-    ],
-    "<xml-open-tag>": ["<<id> <xml-attribute>>", "<<id>>"],
-    "<xml-openclose-tag>": ["<<id> <xml-attribute>/>", "<<id>/>"],
-    "<xml-close-tag>": ["</<id>>"],
-    "<xml-attribute>": ["<xml-attribute> <xml-attribute>", '<id>="<text>"'],
-    "<id>": [
-        "<id-start-char><id-chars>",
-        "<id-start-char>",
-    ],
-    "<id-start-char>": srange("_" + string.ascii_letters),
-    "<id-chars>": ["<id-char><id-chars>", "<id-char>"],
-    "<id-char>": ["<id-start-char>"] + srange("-." + string.digits),
-    "<text>": ["<text-char><text>", "<text-char>"],
-    "<text-char>": [
-        escape(c)
-        for c in srange(string.ascii_letters + string.digits + "\"'. \t/?-,=:+")
-    ],
-}
-
-XML_GRAMMAR_WITH_NAMESPACE_PREFIXES = copy.deepcopy(XML_GRAMMAR)
-XML_GRAMMAR_WITH_NAMESPACE_PREFIXES.update(
+XML_GRAMMAR = frozendict(
     {
-        "<id>": [
-            "<id-with-prefix>",
-            "<id-no-prefix>",
-        ],
-        "<id-no-prefix>": [
+        "<start>": ("<xml-tree>",),
+        "<xml-tree>": (
+            "<xml-open-tag><inner-xml-tree><xml-close-tag>",
+            "<xml-openclose-tag>",
+        ),
+        "<inner-xml-tree>": (
+            "<xml-tree><inner-xml-tree>",
+            "<xml-tree>",
+            "<text>",
+        ),
+        "<xml-open-tag>": ("<<id> <xml-attribute>>", "<<id>>"),
+        "<xml-openclose-tag>": ("<<id> <xml-attribute>/>", "<<id>/>"),
+        "<xml-close-tag>": ("</<id>>",),
+        "<xml-attribute>": ("<xml-attribute> <xml-attribute>", '<id>="<text>"'),
+        "<id>": (
             "<id-start-char><id-chars>",
             "<id-start-char>",
-        ],
-        "<id-with-prefix>": ["<id-no-prefix>:<id-no-prefix>"],
+        ),
+        "<id-start-char>": srange("_" + string.ascii_letters),
+        "<id-chars>": ("<id-char><id-chars>", "<id-char>"),
+        "<id-char>": ("<id-start-char>",) + srange("-." + string.digits),
+        "<text>": ("<text-char><text>", "<text-char>"),
+        "<text-char>": tuple(
+            escape(c)
+            for c in srange(string.ascii_letters + string.digits + "\"'. \t/?-,=:+")
+        ),
     }
+)
+
+XML_GRAMMAR_WITH_NAMESPACE_PREFIXES = copy.deepcopy(XML_GRAMMAR)
+XML_GRAMMAR_WITH_NAMESPACE_PREFIXES = (
+    XML_GRAMMAR_WITH_NAMESPACE_PREFIXES.set(
+        "<id>",
+        (
+            "<id-with-prefix>",
+            "<id-no-prefix>",
+        ),
+    )
+    .set(
+        "<id-no-prefix>",
+        (
+            "<id-start-char><id-chars>",
+            "<id-start-char>",
+        ),
+    )
+    .set("<id-with-prefix>", ("<id-no-prefix>:<id-no-prefix>",))
 )
 
 

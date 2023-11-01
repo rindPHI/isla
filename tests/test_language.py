@@ -52,8 +52,8 @@ from isla.language import (
     ExistsFormula,
     match,
     unparse_isla,
-    start_constant,
     true,
+    to_tree_prefix,
 )
 from isla.parser import EarleyParser
 from isla.z3_helpers import z3_eq
@@ -254,7 +254,7 @@ class TestLanguage(unittest.TestCase):
         assgn = BoundVariable("$assgn", "<assgn>")
 
         bind_expr: BindExpression = lhs + " := " + rhs
-        tree, bindings = bind_expr.to_tree_prefix(assgn.n_type, LANG_GRAMMAR)[0]
+        tree, bindings = to_tree_prefix(bind_expr, assgn.n_type, LANG_GRAMMAR)[0]
         self.assertEqual("<var> := <rhs>", str(tree))
         self.assertEqual((0,), bindings[lhs])
         self.assertEqual((2,), bindings[rhs])
@@ -264,7 +264,7 @@ class TestLanguage(unittest.TestCase):
         rhs_2 = BoundVariable("$rhs_2", "<rhs>")
 
         bind_expr: BindExpression = lhs + " := " + rhs + " ; " + lhs_2 + " := " + rhs_2
-        tree, bindings = bind_expr.to_tree_prefix(prog.n_type, LANG_GRAMMAR)[0]
+        tree, bindings = to_tree_prefix(bind_expr, prog.n_type, LANG_GRAMMAR)[0]
         self.assertEqual("<var> := <rhs> ; <var> := <rhs>", str(tree))
 
         self.assertEqual((0, 0), bindings[lhs])
@@ -419,7 +419,9 @@ class TestLanguage(unittest.TestCase):
                     mgr.bv("var_0", "<var>") + " := " + "<rhs>",
                     mgr.bv("assgn", "<assgn>"),
                     mgr.const("start"),
-                    mgr.smt(z3_eq(mgr.bv("var_1_tree").to_smt(), mgr.bv("var_0").to_smt())),
+                    mgr.smt(
+                        z3_eq(mgr.bv("var_1_tree").to_smt(), mgr.bv("var_0").to_smt())
+                    ),
                 ),
             )
         )
@@ -458,7 +460,7 @@ class TestLanguage(unittest.TestCase):
         bind_expression = mgr.bv("$file_name_str", "<file_name_str>") + "<maybe_nuls>"
         self.assertEqual(
             ("<file_name>", [("<file_name_str>", None), ("<maybe_nuls>", None)]),
-            bind_expression.to_tree_prefix("<file_name>", tar.TAR_GRAMMAR)[0][
+            to_tree_prefix(bind_expression, "<file_name>", tar.TAR_GRAMMAR)[0][
                 0
             ].to_parse_tree(),
         )
@@ -469,7 +471,7 @@ class TestLanguage(unittest.TestCase):
             DummyVariable("\n\n"),
             DummyVariable("<paragraph>"),
         )
-        tree_prefix = mexpr.to_tree_prefix("<labeled_paragraph>", rest.REST_GRAMMAR)
+        tree_prefix = to_tree_prefix(mexpr, "<labeled_paragraph>", rest.REST_GRAMMAR)
         self.assertTrue(tree_prefix)
 
     def test_to_tree_prefix_rest_ref_2(self):
@@ -481,7 +483,7 @@ class TestLanguage(unittest.TestCase):
         )
         in_nonterminal = "<labeled_paragraph>"
 
-        result = mexpr.to_tree_prefix(in_nonterminal, rest.REST_GRAMMAR)
+        result = to_tree_prefix(mexpr, in_nonterminal, rest.REST_GRAMMAR)
         self.assertEqual(1, len(result))
         tree_prefix, bind_paths = result[0]
         self.assertEqual(".. _<id>:\n\n<paragraph>", str(tree_prefix))
@@ -501,7 +503,7 @@ class TestLanguage(unittest.TestCase):
                     DerivationTree("<xml-attribute>", None),
                 ],
             ).structurally_equal(
-                bind_expression.to_tree_prefix("<xml-attribute>", XML_GRAMMAR)[0][0]
+                to_tree_prefix(bind_expression, "<xml-attribute>", XML_GRAMMAR)[0][0]
             )
         )
 

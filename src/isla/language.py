@@ -50,7 +50,9 @@ import returns
 import z3
 from antlr4 import InputStream, RuleContext, ParserRuleContext
 from antlr4.Token import CommonToken
+from frozendict import frozendict
 from grammar_graph import gg
+from neo_grammar_graph import DTree, NeoGrammarGraph
 from orderedset import FrozenOrderedSet, OrderedSet
 from returns._internal.pipeline.flow import flow
 from returns.converters import result_to_maybe
@@ -102,6 +104,7 @@ from isla.type_defs import (
     ImmutableList,
     Pair,
     FrozenGrammar,
+    MutableGrammar,
 )
 from isla.z3_helpers import (
     is_valid,
@@ -435,13 +438,91 @@ class BindExpression:
         ) == list(map(BindExpression.__dummy_vars_to_str, other.bound_elements))
 
 
+@cache
+def to_tree_prefix(
+    mexpr: BindExpression, in_nonterminal: str, grammar: FrozenGrammar
+) -> List[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
+    """
+    TODO
+
+    Example
+    -------
+
+    >>> grammar = frozendict({
+    ...     "<start>": ("<stmt>",),
+    ...     "<stmt>": ("<assgn> ; <stmt>", "<assgn>"),
+    ...     "<assgn>": ("<var> := <rhs>",),
+    ...     "<rhs>": (
+    ...         "<var>",
+    ...         "<digit>",
+    ...     ),
+    ...     "<var>": tuple(string.ascii_lowercase),
+    ...     "<digit>": tuple(string.digits),
+    ... })
+
+    >>> mexpr = BindExpression(
+    ...     BoundVariable("var", "<var>"),
+    ...     " := ",
+    ...     ["<digit>"],
+    ...     ["<var>"])
+    >>> deep_str(to_tree_prefix(mexpr, "<assgn>", grammar))
+
+    :param mexpr:
+    :param in_nonterminal:
+    :param grammar:
+    :return:
+    """
+
+    result: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]] = []
+
+    for bound_elements in flatten_bound_elements(
+        mexpr.bound_elements,
+        grammar,
+        in_nonterminal=in_nonterminal,
+    ):
+        combination_to_tree_prefix(bound_elements, in_nonterminal, grammar).map(
+            tap(lambda r: result.append(r))
+        )
+
+    return result
+
+
 # TODO Improve this function.
 def combination_to_tree_prefix(
-    mexpr: BindExpression,
     bound_elements: Tuple[BoundVariable, ...],
     in_nonterminal: str,
-    grammar: FrozenGrammar,
-) -> Maybe[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
+    graph: NeoGrammarGraph,
+) -> Maybe[Tuple[DTree, Dict[BoundVariable, Path]]]:
+    """
+    TODO
+
+    Example
+    -------
+
+    >>> grammar = frozendict({
+    ...     "<start>": ("<stmt>",),
+    ...     "<stmt>": ("<assgn> ; <stmt>", "<assgn>"),
+    ...     "<assgn>": ("<var> := <rhs>",),
+    ...     "<rhs>": (
+    ...         "<var>",
+    ...         "<digit>",
+    ...     ),
+    ...     "<var>": tuple(string.ascii_lowercase),
+    ...     "<digit>": tuple(string.digits),
+    ... })
+    >>> graph = NeoGrammarGraph(grammar)
+
+    >>> mexpr = BindExpression(BoundVariable("var", "<var>"), " := <var>")
+    >>> combination_to_tree_prefix(mexpr.bound_elements, "<assgn>", graph)
+
+    :param bound_elements:
+    :param in_nonterminal:
+    :param graph:
+    :return:
+    """
+
+    # TODO: Continue DTree integration here
+
     flattened_bind_expr_str = "".join(
         map(
             lambda elem: f"{{{elem.n_type} {elem.name}}}"
@@ -452,8 +533,9 @@ def combination_to_tree_prefix(
     )
 
     maybe_tree = parse_match_expression(
-        flattened_bind_expr_str, in_nonterminal, grammar
+        flattened_bind_expr_str, in_nonterminal, graph
     )
+
     if not is_successful(maybe_tree):
         language_core_logger.warning(
             'Parsing match expression string "%s" caused a syntax error. If this is'
@@ -463,9 +545,9 @@ def combination_to_tree_prefix(
         )
         return Nothing
 
-    tree = maybe_tree.unwrap()
+    tree: DTree = maybe_tree.unwrap()
 
-    assert tree.value == in_nonterminal
+    assert tree.value() == in_nonterminal
 
     split_bound_elements = []
     dummy_var_map: Dict[DummyVariable, List[DummyVariable]] = {}
@@ -584,24 +666,6 @@ def combination_to_tree_prefix(
     return Some((match_expr_tree, consolidated_matches))
 
 
-@cache
-def to_tree_prefix(
-    mexpr: BindExpression, in_nonterminal: str, grammar: FrozenGrammar
-) -> List[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
-    result: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]] = []
-
-    for bound_elements in flatten_bound_elements(
-        mexpr.bound_elements,
-        grammar,
-        in_nonterminal=in_nonterminal,
-    ):
-        combination_to_tree_prefix(mexpr, bound_elements, in_nonterminal, grammar).map(
-            tap(lambda r: result.append(r))
-        )
-
-    return result
-
-
 def consolidate_match_expression_matches(
     match_expr_matches: Dict[BoundVariable, Path]
 ) -> Dict[BoundVariable, Path]:
@@ -635,13 +699,21 @@ def consolidate_match_expression_matches(
 
 
 @functools.lru_cache(10)
-def grammar_to_match_expr_grammar(
-    start_symbol: str, grammar: ImmutableGrammar
-) -> Grammar:
-    new_grammar = grammar_to_mutable(grammar)
-    if start_symbol != "<start>":
-        new_grammar |= {"<start>": [start_symbol]}
-        new_grammar = delete_unreachable(new_grammar)
+def grammar_to_match_expr_grammar(start_symbol: str, grammar: FrozenGrammar) -> Grammar:
+    # TODO: Use immutable grammars only.
+    new_grammar = cast(
+        MutableGrammar,
+        grammar_to_mutable(
+            delete_unreachable(
+                grammar.set(
+                    "<start>",
+                    (start_symbol,)
+                    if start_symbol != "<start>"
+                    else grammar["<start>"],
+                )
+            )
+        ),
+    )
 
     def fresh_nonterminal(suggestion: str) -> str:
         if suggestion[1:-1] not in new_grammar:
@@ -4364,7 +4436,7 @@ def instantiate_top_constant(formula: Formula, tree: DerivationTree) -> Formula:
 @lru_cache(maxsize=None)
 def flatten_bound_elements(
     orig_bound_elements: Tuple[Union[BoundVariable, Tuple[BoundVariable, ...]], ...],
-    grammar: ImmutableGrammar,
+    grammar: FrozenGrammar,
     in_nonterminal: Optional[str] = None,
 ) -> Tuple[Tuple[BoundVariable, ...], ...]:
     """Returns all possible bound elements lists where each contained optional either has
@@ -4425,10 +4497,9 @@ def flatten_bound_elements(
 @lru_cache(maxsize=None)
 def is_valid_combination(
     combination: Sequence[BoundVariable],
-    immutable_grammar: ImmutableGrammar,
-    in_nonterminal: Optional[str],
+    grammar: FrozenGrammar,
+    in_nonterminal: Optional[str] = None,
 ) -> bool:
-    grammar = grammar_to_mutable(immutable_grammar)
     fuzzer = GrammarCoverageFuzzer(grammar, min_nonterminals=1, max_nonterminals=6)
     in_nonterminals = [in_nonterminal] if in_nonterminal else grammar.keys()
 
@@ -4436,7 +4507,7 @@ def is_valid_combination(
         if nonterminal == "<start>":
             specialized_grammar = grammar
         else:
-            specialized_grammar = copy.deepcopy(grammar) | {"<start>": [nonterminal]}
+            specialized_grammar = frozendict(grammar | {"<start>": [nonterminal]})
             specialized_grammar = delete_unreachable(specialized_grammar)
 
         parser = EarleyParser(specialized_grammar)
@@ -4599,8 +4670,8 @@ def match(
 
 
 def parse_match_expression_peg(
-    inp: str, in_nonterminal: str, immutable_grammar: ImmutableGrammar
-) -> Maybe[DerivationTree]:
+    inp: str, in_nonterminal: str, graph: NeoGrammarGraph
+) -> Maybe[DTree]:
     """
     This function parses :code:`inp` in the given grammar with the specified start
     nonterminal using a PEG parser.
@@ -4613,17 +4684,25 @@ def parse_match_expression_peg(
 
     :param inp: The input to parse.
     :param in_nonterminal: The start nonterminmal.
-    :param immutable_grammar: The grammar to parse the input in.
+    :param graph: The grammar graph for the grammar to parse the input in.
     :return: A parsed derivation tree or a Nothing nonterminal if parsing was
         unsuccessful.
     """
-    peg_parser = PEGParser(
-        grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar)
-    )
 
-    match safe(lambda: DerivationTree.from_parse_tree(peg_parser.parse(inp)[0]))():
+    match_expr_grammar = grammar_to_match_expr_grammar(in_nonterminal, graph.grammar)
+    match_expr_graph = NeoGrammarGraph(match_expr_grammar)
+
+    peg_parser = PEGParser(match_expr_grammar)
+
+    match safe(lambda: peg_parser.parse(inp)[0])().bind(
+        lambda parse_tree: DTree.from_parse_tree(
+            parse_tree, match_expr_graph.subgraph(in_nonterminal)
+        )
+    ):
         case Success(result):
-            return Some(result if in_nonterminal == "<start>" else result.children[0])
+            return Some(
+                result if in_nonterminal == "<start>" else result.get_subtree((0,))
+            )
         case Failure(_):
             return Nothing
         case _:
@@ -4631,7 +4710,7 @@ def parse_match_expression_peg(
 
 
 def parse_match_expression_earley(
-    inp: str, in_nonterminal: str, immutable_grammar: ImmutableGrammar
+    inp: str, in_nonterminal: str, graph: NeoGrammarGraph
 ) -> Maybe[DerivationTree]:
     """
     This function parses :code:`inp` in the given grammar with the specified start
@@ -4648,21 +4727,26 @@ def parse_match_expression_earley(
 
     :param inp: The input to parse.
     :param in_nonterminal: The start nonterminmal.
-    :param immutable_grammar: The grammar to parse the input in.
+    :param graph: The grammar graph for the grammar to parse the input in.
     :return: A parsed derivation tree or a Nothing nonterminal if parsing was
         unsuccessful.
     """
 
     # Should we address ambiguities and return multiple parse trees?
-    earley_parser = EarleyParser(
-        grammar_to_match_expr_grammar(in_nonterminal, immutable_grammar)
-    )
+    match_expr_grammar = grammar_to_match_expr_grammar(in_nonterminal, graph.grammar)
+    match_expr_graph = NeoGrammarGraph(match_expr_grammar)
 
-    match safe(
-        lambda: DerivationTree.from_parse_tree(next(earley_parser.parse(inp)))
-    )():
+    earley_parser = EarleyParser(match_expr_grammar)
+
+    match safe(lambda: next(earley_parser.parse(inp)))().bind(
+        lambda parse_tree: DTree.from_parse_tree(
+            parse_tree, match_expr_graph.subgraph(in_nonterminal)
+        )
+    ):
         case Success(result):
-            return Some(result if in_nonterminal == "<start>" else result.children[0])
+            return Some(
+                result if in_nonterminal == "<start>" else result.get_subtree((0,))
+            )
         case Failure(_):
             return Nothing
         case _:
@@ -4670,8 +4754,8 @@ def parse_match_expression_earley(
 
 
 def parse_match_expression(
-    inp: str, in_nonterminal: str, immutable_grammar: ImmutableGrammar
-) -> Maybe[DerivationTree]:
+    inp: str, in_nonterminal: str, graph: NeoGrammarGraph
+) -> Maybe[DTree]:
     """
     This function parses :code:`inp` in the given grammar with the specified start
     nonterminal. It first tries whether the input can be parsed with a PEG parser;
@@ -4690,18 +4774,19 @@ def parse_match_expression(
     Consider the following grammar for the assignment language.
 
     >>> import string
-    >>> grammar: Grammar = {
+    >>> grammar: FrozenGrammar = frozendict({
     ...     "<start>":
-    ...         ["<stmt>"],
+    ...         ("<stmt>",),
     ...     "<stmt>":
-    ...         ["<assgn> ; <stmt>", "<assgn>"],
+    ...         ("<assgn> ; <stmt>", "<assgn>"),
     ...     "<assgn>":
-    ...         ["<var> := <rhs>"],
+    ...         ("<var> := <rhs>",),
     ...     "<rhs>":
-    ...         ["<var>", "<digit>"],
-    ...     "<var>": list(string.ascii_lowercase),
-    ...     "<digit>": list(string.digits)
-    ... }
+    ...         ("<var>", "<digit>",),
+    ...     "<var>": tuple(string.ascii_lowercase),
+    ...     "<digit>": tuple(string.digits)
+    ... })
+    >>> graph = NeoGrammarGraph(grammar)
 
     We parse a statement with two assignments; the resulting tree starts with the
     specified nonterminal :code:`<start>`:
@@ -4710,7 +4795,7 @@ def parse_match_expression(
     >>> print(deep_str(parse_match_expression(
     ...     "x := 0 ; y := x",
     ...     "<start>",
-    ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value))))
+    ...     graph).map(lambda t: (t, t.value()))))
     <Some: (x := 0 ; y := x, <start>)>
 
     Now, we parse a single assignment with the :code:`<assgn>` start nonterminal:
@@ -4718,7 +4803,7 @@ def parse_match_expression(
     >>> print(deep_str(parse_match_expression(
     ...     "x := 0",
     ...     "<assgn>",
-    ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value))))
+    ...     graph).map(lambda t: (t, t.value()))))
     <Some: (x := 0, <assgn>)>
 
     In case of an error, Nothing is returned:
@@ -4726,17 +4811,17 @@ def parse_match_expression(
     >>> print(deep_str(parse_match_expression(
     ...     "x := 0 FOO",
     ...     "<assgn>",
-    ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value))))
+    ...     graph).map(lambda t: (t, t.value()))))
     <Nothing>
 
     :param inp: The input to parse.
     :param in_nonterminal: The start nonterminmal.
-    :param immutable_grammar: The grammar to parse the input in.
+    :param graph: The grammar graph for the grammar to parse the input in.
     :return: A parsed derivation tree or a Nothing nonterminal if parsing was
         unsuccessful.
     """
 
-    monad = parse_match_expression_peg(inp, in_nonterminal, immutable_grammar)
+    maybe_result = parse_match_expression_peg(inp, in_nonterminal, graph)
 
     def fallback(_) -> Maybe[DerivationTree]:
         language_core_logger.debug(
@@ -4744,6 +4829,6 @@ def parse_match_expression(
             inp,
         )
 
-        return parse_match_expression_earley(inp, in_nonterminal, immutable_grammar)
+        return parse_match_expression_earley(inp, in_nonterminal, graph)
 
-    return monad.lash(fallback)
+    return maybe_result.lash(fallback)

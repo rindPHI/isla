@@ -19,23 +19,26 @@
 import string
 from typing import Dict, Callable
 
+from frozendict import frozendict
+
 from isla import language
 from isla.helpers import tree_to_string, srange, crange, convert_ebnf_grammar
 from isla.parser import EarleyParser
 from isla.type_defs import ParseTree, Path, Grammar
 
-LANG_GRAMMAR = {
-    "<start>":
-        ["<stmt>"],
-    "<stmt>":
-        ["<assgn> ; <stmt>", "<assgn>"],
-    "<assgn>":
-        ["<var> := <rhs>"],
-    "<rhs>":
-        ["<var>", "<digit>"],
-    "<var>": list(string.ascii_lowercase),
-    "<digit>": list(string.digits)
-}
+LANG_GRAMMAR = frozendict(
+    {
+        "<start>": ("<stmt>",),
+        "<stmt>": ("<assgn> ; <stmt>", "<assgn>"),
+        "<assgn>": ("<var> := <rhs>",),
+        "<rhs>": (
+            "<var>",
+            "<digit>",
+        ),
+        "<var>": tuple(string.ascii_lowercase),
+        "<digit>": tuple(string.digits),
+    }
+)
 
 CONFIG_GRAMMAR: Grammar = {
     "<start>": ["<config>"],
@@ -110,17 +113,26 @@ def get_subtree(path: Path, tree: ParseTree) -> ParseTree:
 
 
 CHARACTERS_WITHOUT_QUOTE = (
-        string.digits
-        + string.ascii_letters
-        + string.punctuation.replace('"', '').replace('\\', '')
-        + ' ')
+    string.digits
+    + string.ascii_letters
+    + string.punctuation.replace('"', "").replace("\\", "")
+    + " "
+)
 
 JSON_EBNF_GRAMMAR: Grammar = {
     "<start>": ["<json>"],
     "<json>": ["<element>"],
     "<element>": ["<ws><value><ws>"],
-    "<value>": ["<object>", "<array>", "<string>", "<number>",
-                "true", "false", "null", "'; DROP TABLE STUDENTS"],
+    "<value>": [
+        "<object>",
+        "<array>",
+        "<string>",
+        "<number>",
+        "true",
+        "false",
+        "null",
+        "'; DROP TABLE STUDENTS",
+    ],
     "<object>": ["{<ws>}", "{<members>}"],
     "<members>": ["<member>(,<members>)*"],
     "<member>": ["<ws><string><ws>:<element>"],
@@ -132,12 +144,12 @@ JSON_EBNF_GRAMMAR: Grammar = {
     "<number>": ["<int><frac><exp>"],
     "<int>": ["<digit>", "<onenine><digits>", "-<digit>", "-<onenine><digits>"],
     "<digits>": ["<digit>+"],
-    "<digit>": ['0', "<onenine>"],
-    "<onenine>": crange('1', '9'),
+    "<digit>": ["0", "<onenine>"],
+    "<onenine>": crange("1", "9"),
     "<frac>": ["", ".<digits>"],
     "<exp>": ["", "E<sign><digits>", "e<sign><digits>"],
-    "<sign>": ["", '+', '-'],
-    "<ws>": [" "]
+    "<sign>": ["", "+", "-"],
+    "<ws>": [" "],
 }
 
 JSON_GRAMMAR = convert_ebnf_grammar(JSON_EBNF_GRAMMAR)

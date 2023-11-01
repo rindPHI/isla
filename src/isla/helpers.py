@@ -175,12 +175,32 @@ def path_iterator(
             yield from path_iterator(child, path + (i,))
 
 
-def delete_unreachable(grammar: Grammar) -> Grammar:
-    return {
-        nonterminal: expansions
-        for nonterminal, expansions in grammar.items()
-        if nonterminal not in unreachable_nonterminals(grammar)
-    }
+def delete_unreachable(grammar: FrozenGrammar) -> FrozenGrammar:
+    """
+    This function removes rules for unreachabel nonterminal symbols.
+
+    Example
+    -------
+
+    >>> grammar = frozendict({
+    ...     "<start>": ("<a>", "<b>"),
+    ...     "<c>": ("<c>",),
+    ... })
+
+    >>> deep_str(delete_unreachable(grammar))
+    '{<start>: (<a>, <b>)}'
+
+    :param grammar: The original grammar.
+    :return: The grammar after removal of unreachable nonterminal symbols.
+    """
+
+    return frozendict(
+        {
+            nonterminal: tuple(expansions)
+            for nonterminal, expansions in grammar.items()
+            if nonterminal not in unreachable_nonterminals(grammar)
+        }
+    )
 
 
 def is_prefix(path_1: Path, path_2: Path) -> bool:
@@ -394,8 +414,9 @@ def grammar_to_immutable(grammar: Grammar) -> ImmutableGrammar:
     )
 
 
-def grammar_to_mutable(grammar: ImmutableGrammar) -> Grammar:
-    return {nonterminal: list(expansion) for nonterminal, expansion in grammar}
+def grammar_to_mutable(grammar: FrozenGrammar) -> Grammar:
+    assert isinstance(grammar, frozendict)
+    return {nonterminal: list(expansion) for nonterminal, expansion in grammar.items()}
 
 
 def assertions_activated() -> bool:
@@ -469,9 +490,9 @@ def cluster_by_common_elements(
     return result
 
 
-def srange(characters: str) -> List[str]:
-    """Construct a list with all characters in the string"""
-    return [c for c in characters]
+def srange(characters: str) -> Tuple[str, ...]:
+    """Construct a sequence with all characters in the string"""
+    return tuple(c for c in characters)
 
 
 def crange(character_start: str, character_end: str) -> List[str]:
