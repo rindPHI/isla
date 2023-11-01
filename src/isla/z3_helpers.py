@@ -15,13 +15,14 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with ISLa.  If not, see <http://www.gnu.org/licenses/>.
-
+import itertools
 import logging
 import operator
 import random
 import re
 import sys
 from functools import lru_cache, reduce, partial
+from math import prod
 
 from returns.functions import compose
 from returns.pipeline import flow
@@ -447,7 +448,7 @@ def evaluate_z3_mul(
     if not z3.is_mul(expr):
         return Nothing
 
-    return Some(construct_result(lambda args: args[0] * args[1], children_results))
+    return Some(construct_result(prod, children_results))
 
 
 def evaluate_z3_div(
@@ -1044,7 +1045,11 @@ def numeric_intervals_from_regex(regex: z3.ReRef) -> Maybe[List[Tuple[int, int]]
     The interval of strictly positive numbers if created by enforcing the presence of
     a leading 1:
 
-    >>> numeric_intervals_from_regex(z3.Concat(z3.Star(z3.Re("0")), z3.Range("1", "9"), z3.Star(z3.Range("0", "9"))))
+    >>> numeric_intervals_from_regex(
+    ...     z3.Concat(
+    ...         z3.Star(z3.Re("0")),
+    ...         z3.Range("1", "9"),
+    ...         z3.Star(z3.Range("0", "9"))))
     <Some: [(1, 9223372036854775807)]>
 
     If the 0-9 interval is inside a Plus, not a Star, we exclude the single-digit
@@ -1057,6 +1062,16 @@ def numeric_intervals_from_regex(regex: z3.ReRef) -> Maybe[List[Tuple[int, int]]
 
     >>> numeric_intervals_from_regex(z3.Concat(z3.Re("-"), z3.Range("1", "9"), z3.Plus(z3.Range("0", "9"))))
     <Some: [(-9223372036854775807, -10)]>
+
+    ISLa performs some simplifications to handle cases like `a* ++ a` (which is
+    equivalent to `a+`) as expected.
+
+    >>> numeric_intervals_from_regex(
+    ...     z3.Concat(
+    ...         z3.Concat(z3.Range("1", "9"), z3.Star(z3.Range("0", "9"))),
+    ...         z3.Range("0", "9")  # <- this was a problem in ISLa <= 1.14.1
+    ... ))
+    <Some: [(10, 9223372036854775807)]>
 
     :param regex: The regular expression from which to extract the represented
         intervals.
@@ -1228,6 +1243,29 @@ def numeric_intervals_from_concat(
         List[z3.ReRef], z3_split_at_operator(regex, z3.Z3_OP_RE_CONCAT)
     )
 
+    # Replace any `Range(c, c)` by `Re(c)`
+    children = cast(
+        List[z3.ReRef],
+        list(
+            map(
+                lambda r: replace_in_z3_expr(
+                    r,
+                    lambda s: (
+                        (z3.Re(s.children()[0]))
+                        if (
+                            s.decl().kind() == z3.Z3_OP_RE_RANGE
+                            and s.children()[0] == s.children()[1]
+                        )
+                        else None
+                    ),
+                ),
+                children,
+            )
+        ),
+    )
+
+    children = compress_concatenation_elements(children)
+
     first_child = children[0]
     if first_child.decl().kind() == z3.Z3_OP_RE_UNION or first_child == z3.Option(
         z3.Re("-")
@@ -1324,3 +1362,165 @@ def numeric_intervals_from_concat(
         return Some([(0, sys.maxsize)])
     else:
         return fallback(regex)
+
+
+def compress_concatenation_elements(
+    concat_elements: Sequence[z3.ReRef],
+) -> List[z3.ReRef]:
+    """
+    This function "compresses" the given elements of a RegEx concatenation.
+
+    Example
+    -------
+
+    A regular expression concatenated with its star (in any order) gets its plus.
+
+    >>> compress_concatenation_elements([z3.Re("a"), z3.Star(z3.Re("a"))])
+    [Plus(Re("a"))]
+
+    >>> compress_concatenation_elements([z3.Star(z3.Re("a")), z3.Re("a")])
+    [Plus(Re("a"))]
+
+    A concatenation of the same starred expression equals that starred expression
+
+    >>> compress_concatenation_elements([z3.Star(z3.Re("a")), z3.Star(z3.Re("a"))])
+    [Star(Re("a"))]
+
+    For plus expressions, this is not the case: `a+ ++ a+` contains at least two times
+    `a`. However, we can simplify all but one plus expressions to their child and
+    change the order:
+
+    >>> compress_concatenation_elements([
+    ...     z3.Plus(z3.Re("a")),
+    ...     z3.Plus(z3.Re("a")),
+    ...     z3.Plus(z3.Re("a"))])
+    [Re("a"), Re("a"), Plus(Re("a"))]
+
+    If there is a plus in any concatenation, all stars get removed. Also, we normalize
+    the order.
+
+    >>> compress_concatenation_elements([
+    ...     z3.Plus(z3.Re("a")),
+    ...     z3.Re("a"),
+    ...     z3.Star(z3.Re("a"))])
+    [Re("a"), Plus(Re("a"))]
+
+    Nothing happens if the child of the star is different.
+
+    >>> compress_concatenation_elements([z3.Star(z3.Re("a")), z3.Re("b")])
+    [Star(Re("a")), Re("b")]
+
+    A concatenation of the same element is also retained.
+
+    >>> compress_concatenation_elements([z3.Re("a"), z3.Re("a")])
+    [Re("a"), Re("a")]
+
+    Trivial cases are handled as expected.
+
+    >>> compress_concatenation_elements([z3.Re("a")])
+    [Re("a")]
+
+    :param concat_elements: The elements of a concatenation. None of them should be a
+        concatenation themselves.
+    :return: An equivalent, compressed/simplified version of the concatenated
+        expressions.
+    """
+
+    def key_group_by_star_plus_child(r: z3.ReRef) -> z3.ReRef:
+        if r.decl().kind() in [z3.Z3_OP_RE_STAR, z3.Z3_OP_RE_PLUS]:
+            return r.children()[0]
+
+        return r
+
+    # Each group will contain an arbitrary number of expressions `r`, `r*`, and `r+`
+    # for the same r.
+    children_groups: List[List[z3.ReRef]] = list(
+        map(
+            lambda p: list(p[1]),
+            itertools.groupby(concat_elements, key_group_by_star_plus_child),
+        )
+    )
+
+    new_children: List[z3.ReRef] = []
+    for group in children_groups:
+        if len(group) == 1:
+            # Trivial group.
+            new_children.append(group[0])
+        elif all(elem.decl().kind() == z3.Z3_OP_RE_STAR for elem in group):
+            # Compress spurious star expressions.
+            new_children.append(group[0])
+        elif any(elem.decl().kind() == z3.Z3_OP_RE_PLUS for elem in group):
+            # Compress `r+ ++ r ++ r*` etc. to `r ++ r+`: Remove all stars, turn all but
+            # one plus into a non-plus and move to the beginning.
+            # Note: We already ruled out `r* ++ r*`. Thus, if there is any starred
+            # element in the group, there must also be plus or atomic elements in
+            # there with the same child. We can compress to plus.
+            assert all(
+                not elem.decl().kind() == z3.Z3_OP_RE_STAR
+                or any(
+                    other_elem == elem.children()[0]
+                    or other_elem.children()[0] == elem.children()[0]
+                    for other_elem in group
+                    if other_elem is not elem
+                )
+                for elem in group
+            )
+
+            cleaned_group = [
+                elem for elem in group if elem.decl().kind() != z3.Z3_OP_RE_STAR
+            ]
+            cleaned_group = sorted(
+                cleaned_group,
+                key=lambda elem: int(elem.decl().kind() == z3.Z3_OP_RE_PLUS),
+            )
+            cleaned_group = list(
+                map(
+                    lambda elem: (
+                        elem
+                        if elem.decl().kind() != z3.Z3_OP_RE_PLUS
+                        else elem.children()[0]
+                    ),
+                    cleaned_group[:-1],
+                )
+            ) + [cleaned_group[-1]]
+
+            new_children.extend(cleaned_group)
+        elif any(elem.decl().kind() == z3.Z3_OP_RE_STAR for elem in group):
+            # Note: We already ruled out `r* ++ r*` or the existence of any pluses.
+            # Thus, if there is any starred element in the group, there must also be
+            # atomic elements in there the same child. We can re-order the elements
+            # and compress one atomic element and one starred element to a plus.
+            assert all(
+                not elem.decl().kind() == z3.Z3_OP_RE_STAR
+                or (  # any + all ==> there must at least be one of these elements
+                    any(
+                        other_elem == elem.children()[0]
+                        for other_elem in group
+                        if not z3.AstRef.eq(other_elem, elem)
+                    )
+                    and all(
+                        other_elem == elem.children()[0]
+                        for other_elem in group
+                        if not z3.AstRef.eq(other_elem, elem)
+                    )
+                )
+                for elem in group
+            )
+
+            cleaned_group = [
+                elem for elem in group if elem.decl().kind() != z3.Z3_OP_RE_STAR
+            ]
+            cleaned_group = cleaned_group[:-1] + [z3.Plus(cleaned_group[-1])]
+
+            new_children.extend(cleaned_group)
+        elif all(elem == group[0] for elem in group[1:]):
+            # Something like `a ++ a`. Note that `a` cannot be a star or plus expression
+            # since these cases have been addressed before.
+            new_children.extend(group)
+        else:
+            assert False, (
+                "Seemingly impossible case triggered "
+                + "when compressing RegEx concatenation"
+            )
+
+    return new_children

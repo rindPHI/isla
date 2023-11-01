@@ -41,6 +41,7 @@ from returns.result import safe, Success
 import isla.derivation_tree
 import isla.evaluator
 import isla.global_config
+from evaluations.evaluate_csv import max_number_smt_instantiations
 from isla import isla_shortcuts as sc
 from isla import language
 from isla.derivation_tree import DerivationTree
@@ -2310,6 +2311,40 @@ and str.to.int(<due-payable>.<INT>) =
         solver = ISLaSolver(grammar)
         self.assertEqual(
             "+005", str(solver.extract_model_value(i, model, {i: i_0}, set(), {i}))
+        )
+
+    def test_numeric_equation_nonzero(self):
+        grammar = {
+            "<start>": ["<eq>"],
+            "<eq>": ["<a>+<a>+<a>=<b>"],
+            "<a>": ["<integer>"],
+            "<b>": ["<integer>"],
+            "<integer>": ["<nzdigit>", "<nzdigit><digits>"],
+            "<digits>": ["<digit>", "<digit><digits>"],
+            "<nzdigit>": list("123456789"),
+            "<digit>": list(string.digits),
+        }
+
+        constraint = """
+              str.to.int(<eq>.<a>[1]) 
+            + str.to.int(<eq>.<a>[2]) 
+            + str.to.int(<eq>.<a>[3]) 
+            = str.to.int(<eq>.<b>)"""
+
+        def oracle(tree: DerivationTree) -> bool:
+            def a(i: int, n: str = "<a>") -> int:
+                return int(str(tree.filter(lambda t: t.value == n)[i][1]))
+
+            return a(0) + a(1) + a(2) == a(0, n="<b>")
+
+        self.execute_generation_test(
+            formula=constraint,
+            grammar=grammar,
+            max_number_free_instantiations=1,
+            max_number_smt_instantiations=10,
+            enable_optimized_z3_queries=True,
+            custom_test_func=oracle,
+            num_solutions=10,
         )
 
     def execute_generation_test(

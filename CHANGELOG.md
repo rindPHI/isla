@@ -5,6 +5,16 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.14.2] - 2023-11-01
+
+### Changed
+
+- Improved the inference of intervals from grammars for numeric variables (relevant for
+  the `enable_optimized_z3_queries` mode).
+- Fixed a bug in the evaluation of (concrete) arithmetic expressions: So far, we assumed
+  that Z3 addition and multiplication operations can only have two children, while more
+  are possible. Thus, some elements were ignored when computing sums or products.
+
 ## [1.14.1] - 2023-07-10
 
 ### Changed
