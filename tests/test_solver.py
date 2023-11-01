@@ -37,6 +37,7 @@ from orderedset import OrderedSet
 import isla.derivation_tree
 import isla.evaluator
 import isla.global_config
+from evaluations.evaluate_csv import max_number_smt_instantiations
 from isla import isla_shortcuts as sc
 from isla import language
 from isla.derivation_tree import DerivationTree
@@ -2336,8 +2337,10 @@ and str.to.int(<due-payable>.<INT>) =
             formula=constraint,
             grammar=grammar,
             max_number_free_instantiations=1,
+            max_number_smt_instantiations=10,
             enable_optimized_z3_queries=True,
             custom_test_func=oracle,
+            num_solutions=10,
         )
 
     def execute_generation_test(

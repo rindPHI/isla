@@ -22,6 +22,7 @@ import random
 import re
 import sys
 from functools import lru_cache, reduce, partial
+from math import prod
 from typing import (
     Callable,
     Tuple,
@@ -411,7 +412,7 @@ def evaluate_z3_add(
     if not z3.is_add(expr):
         return Maybe.nothing()
 
-    return Maybe(construct_result(lambda args: args[0] + args[1], children_results))
+    return Maybe(construct_result(sum, children_results))
 
 
 def evaluate_z3_sub(
@@ -429,7 +430,7 @@ def evaluate_z3_mul(
     if not z3.is_mul(expr):
         return Maybe.nothing()
 
-    return Maybe(construct_result(lambda args: args[0] * args[1], children_results))
+    return Maybe(construct_result(prod, children_results))
 
 
 def evaluate_z3_div(
