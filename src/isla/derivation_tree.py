@@ -359,7 +359,7 @@ class DerivationTree:
 
         Example
         -------
-        
+
         Consider the assignment language.
 
         >>> import string
@@ -377,7 +377,7 @@ class DerivationTree:
         ...     "<digit>": tuple(string.digits),
         ... })
         >>> graph = NeoGrammarGraph(grammar)
-        
+
         We construct a derivation tree for :code:`x := x ; <stmt>`.
 
         >>> var_1_tree = DerivationTree("<var>", (DerivationTree("x", (), id=0),), id=1)
@@ -406,19 +406,19 @@ class DerivationTree:
         ...     ),
         ...     id=10,
         ... )
-        
+
         The subtree at path (0, 0) is the assignment :code:`x := x`:
 
         >>> from neo_grammar_graph.gg import path_to_str
         >>> tree.get_subtree((0, 0))
         DerivationTree('<assgn>', (DerivationTree('<var>', (DerivationTree('x', (), id=0),), id=1), DerivationTree(' := ', (), id=4), DerivationTree('<rhs>', (DerivationTree('<var>', (DerivationTree('x', (), id=2),), id=3),), id=5)), id=6)
-        
+
         The corresponding grammar graph path consists of three symbolic and two
         intermediate choice nodes:
 
         >>> path_to_str(tree.path_to_grammar_path(graph, (0, 0)))
         '<start> (0), <start>-choice (0), <stmt> (0), <stmt>-choice (0), <assgn> (0)'
-        
+
         Excluding terminal symbols, this path, which ends in a nonterminal symbol,
         represents five (potential) 3-paths:
 
@@ -434,7 +434,7 @@ class DerivationTree:
         <assgn> (0), <assgn>-choice (0), <rhs> (0), <rhs>-choice (1), <digit> (0)
         <stmt> (0), <stmt>-choice (0), <assgn> (0), <assgn>-choice (0), <var> (0)
         <stmt> (0), <stmt>-choice (0), <assgn> (0), <assgn>-choice (0), <rhs> (0)
-        
+
         :param graph: The grammar graph, for extracting grammar graph paths.
         :param path: The path from which to obtain k-paths.
         :param k: The value for k.

@@ -86,11 +86,9 @@ from isla.helpers import (
     replace_line_breaks,
     delete_unreachable,
     powerset,
-    grammar_to_immutable,
-    nested_list_to_tuple,
     flatten,
 )
-from isla.helpers import deep_str  # noqa
+from isla.helpers import deep_str, grammar_to_immutable  # noqa
 from isla.isla_language import IslaLanguageListener
 from isla.isla_language.IslaLanguageLexer import IslaLanguageLexer
 from isla.isla_language.IslaLanguageParser import IslaLanguageParser

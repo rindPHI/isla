@@ -131,28 +131,6 @@ def star(f: Callable[[[Any, ...]], T]) -> Callable[[Sequence[Any]], T]:
     return lambda x: f(*x)
 
 
-def singleton_iterator(elem: T) -> Iterator[T]:
-    """
-    Creates an iterator from a single element.
-
-    >>> it = singleton_iterator(1)
-    >>> next(it)
-    1
-
-    >>> deep_str(safe(lambda: next(it))())
-    '<Failure: StopIteration()>'
-
-    :param elem: The element to create an iterator from.
-    :return: The resulting iterator of one element.
-    """
-
-    return iter([elem])
-
-
-def star(f: Callable[[[Any, ...]], T]) -> Callable[[Sequence[Any]], T]:
-    return lambda x: f(*x)
-
-
 def is_path(maybe_path: Any) -> bool:
     """
     >>> is_path("str")

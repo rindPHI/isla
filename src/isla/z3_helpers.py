@@ -23,10 +23,6 @@ import re
 import sys
 from functools import lru_cache, reduce, partial
 from math import prod
-
-from returns.functions import compose
-from returns.pipeline import flow
-from returns.maybe import Maybe, Some, Nothing
 from typing import (
     Callable,
     Tuple,
@@ -44,6 +40,9 @@ from typing import (
 )
 
 import z3
+from returns.functions import compose
+from returns.maybe import Maybe, Some, Nothing
+from returns.pipeline import flow
 from returns.pointfree import lash
 from returns.result import Success, Failure, Result
 from z3.z3 import _coerce_exprs
