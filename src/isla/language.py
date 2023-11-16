@@ -618,6 +618,28 @@ def integrate_subtree_match(
     match_expr_matches: frozendict[BoundVariable, int],
     subtree_id: int,
 ) -> Tuple[DTree, FrozenOrderedSet[BoundVariable], frozendict[BoundVariable, int]]:
+    """
+    If the subtree from :code:`match_expr_tree` with ID :code:`subtree_id` corresponds
+    to an element of a match expression (which is apparent from the structure of that
+    subtree; it results from parsing a flattened match expression with a special
+    match expression grammar), this function collapses the match expression tree
+    at that position, removes the match expression element (a variable) from
+    :code:`remaining_bound_elements`, and adds the mapping from the variable to the
+    subtree ID to :code:`match_expr_matches`. Otherwise, the function returns the
+    arguments unchanged.
+
+    :param graph: The grammar graph.
+    :param match_expr_tree: The parsed flattened match expression.
+    :param remaining_bound_elements: The remaining bound elements of the match
+        expression.
+    :param match_expr_matches: The original mapping from bound variables to their
+        corresponding subtrees.
+    :param subtree_id: The ID of the subtree to check.
+    :return: A tuple containing the updated match expression tree, the updated set of
+        remaining bound elements, and the updated mapping from bound variables to their
+        corresponding subtrees.
+    """
+
     if subtree_id not in match_expr_tree.ids():
         return match_expr_tree, remaining_bound_elements, match_expr_matches
 
@@ -650,6 +672,23 @@ def match_bound_variable_spec(
     remaining_bound_elements: FrozenOrderedSet[BoundVariable],
     graph: NeoGrammarGraph,
 ) -> Maybe[Tuple[DTree, frozendict[BoundVariable, int]]]:
+    """
+    This function checks whether the given subtree corresponds to a bound variable
+    specification :code:`{<var> var}` in a match expression. If so, it replaces the
+    subtree in the match expression tree with a new subtree corresponding to the
+    nonterminal :code:`<var>`, and returns the resulting tree and a mapping from the
+    bound variable to the subtree ID. Otherwise, the function returns :code:`Nothing`.
+
+    :param subtree: The subtree to check.
+    :param match_expr_tree: The match expression tree.
+    :param remaining_bound_elements: The remaining bound elements of the match
+        expression.
+    :param graph: The grammar graph.
+    :return: A tuple containing the updated match expression tree and a
+        mapping from the matched bound variable to the updated subtree, if the
+        given subtree corresponds to a bound variable specification.
+    """
+
     if not (
         len(subtree.children()) == 7
         and subtree.children()[0].value() == "{"
@@ -676,6 +715,24 @@ def match_nonterminal_spec(
     remaining_bound_elements: FrozenOrderedSet[BoundVariable],
     graph: NeoGrammarGraph,
 ) -> Maybe[Tuple[DTree, frozendict[BoundVariable, int]]]:
+    """
+    This function checks whether the given subtree corresponds to a nonterminal
+    specification :code:`<var>` in a match expression. If so, it replaces the
+    subtree in the match expression tree with a new subtree corresponding to the
+    nonterminal :code:`<var>`, and returns the resulting tree and a mapping from the
+    bound (dummy) variable to the subtree ID. Otherwise, the function returns
+    :code:`Nothing`.
+
+    :param subtree: The subtree to check.
+    :param match_expr_tree: The match expression tree.
+    :param remaining_bound_elements: The remaining bound elements of the match
+        expression.
+    :param graph: The grammar graph.
+    :return: A tuple containing the updated match expression tree and a
+        mapping from the matched bound variable to the updated subtree, if the
+        given subtree corresponds to a nonterminal specification.
+    """
+
     if not (
         len(subtree.children()) == 3 and subtree.children()[0].value() == "<LANGLE>"
     ):
@@ -698,6 +755,25 @@ def match_terminal_spec(
     remaining_bound_elements: FrozenOrderedSet[BoundVariable],
     graph: NeoGrammarGraph,
 ) -> Maybe[Tuple[DTree, frozendict[BoundVariable, int]]]:
+    """
+    This function checks whether the given subtree corresponds to a terminal
+    sequence :code:`some characters` in a match expression. If so, it replaces the
+    subtree in the match expression tree with a new subtree corresponding to the
+    value of the terminal, and returns the resulting tree and a mapping from the
+    XXX TODO to the subtree ID. Otherwise, the function returns
+    :code:`Nothing`.
+
+    Example
+    -------
+
+    TODO: Add example. Cover all :code:`char_seqs` cases.
+
+    :param subtree:
+    :param match_expr_tree:
+    :param remaining_bound_elements:
+    :param graph:
+    :return:
+    """
     if str(subtree) != subtree.value() and str(subtree):
         # TODO: What cases are these?
         return Nothing
