@@ -16,7 +16,6 @@
 # You should have received a copy of the GNU General Public License
 # along with ISLa.  If not, see <http://www.gnu.org/licenses/>.
 
-import copy
 import dataclasses
 import functools
 import itertools
@@ -28,7 +27,7 @@ import re
 import string
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from functools import reduce, lru_cache, cache
+from functools import reduce, lru_cache, cache, partial
 from typing import (
     Union,
     List,
@@ -59,7 +58,7 @@ from returns.converters import result_to_maybe
 from returns.functions import compose, tap, raise_exception
 from returns.maybe import Nothing, Some
 from returns.pipeline import is_successful
-from returns.pointfree import lash
+from returns.pointfree import lash, map_
 from returns.result import safe
 from z3 import Z3Exception
 
@@ -89,6 +88,7 @@ from isla.helpers import (
     delete_unreachable,
     powerset,
     flatten,
+    star,
 )
 from isla.helpers import deep_str, grammar_to_immutable  # noqa
 from isla.isla_language import IslaLanguageListener
@@ -97,10 +97,10 @@ from isla.isla_language.IslaLanguageParser import IslaLanguageParser
 from isla.mexpr_lexer.MexprLexer import MexprLexer
 from isla.mexpr_parser.MexprParser import MexprParser
 from isla.parser import EarleyParser, PEGParser
+from isla.type_defs import ParseTree  # noqa
 from isla.type_defs import (
     Path,
     Grammar,
-    ImmutableGrammar,
     ImmutableList,
     Pair,
     FrozenGrammar,
@@ -487,14 +487,264 @@ def to_tree_prefix(
     return result
 
 
-# TODO Improve this function.
 def combination_to_tree_prefix(
     bound_elements: Tuple[BoundVariable, ...],
     in_nonterminal: str,
     graph: NeoGrammarGraph,
-) -> Maybe[Tuple[DTree, Dict[BoundVariable, Path]]]:
+) -> Maybe[Tuple[DTree, Dict[BoundVariable, DTree]]]:
     """
-    TODO
+    This function converts the given sequence of bound elements to a prefix tree
+    incorporating them.
+
+    Example
+    -------
+
+    Consider the match expression :code:`{<var> var} := <var>`, whose overall
+    type is :code:`<assgn>`:
+
+    >>> grammar = frozendict({
+    ...     "<start>": ("<stmt>",),
+    ...     "<stmt>": ("<assgn> ; <stmt>", "<assgn>"),
+    ...     "<assgn>": ("<var> := <rhs>",),
+    ...     "<rhs>": (
+    ...         "<var>",
+    ...         "<digit>",
+    ...     ),
+    ...     "<var>": tuple(string.ascii_lowercase),
+    ...     "<digit>": tuple(string.digits),
+    ... })
+    >>> graph = NeoGrammarGraph(grammar)
+
+    >>> mexpr = BindExpression(BoundVariable("var", "<var>"), " := <var>")
+
+    The function :func:`isla.language.combination_to_tree_prefix` converts this match
+    expression into a prefix tree and a mapping from the sequence of bound variables
+    in the match expression to the corresponding leaves in the prefix tree:
+
+    >>> DTree._DTree__next_id = 0
+    >>> prefix_tree, matches = combination_to_tree_prefix(
+    ...     mexpr.bound_elements, "<assgn>", graph
+    ... ).unwrap()
+
+    >>> print(prefix_tree.to_str_repr())
+    2: <assgn>
+    ├── 46: <var>
+    ├── 47: " := "
+    └── 7: <rhs>
+        └── 48: <var>
+
+    >>> print({str(var): f"{tree.id()}" for var, tree in matches.items()})
+    {'var': '46', ' :=': '47', '<var>': '48'}
+
+    :param bound_elements: The sequence of bound element variables from the match
+        expression.
+    :param in_nonterminal: The nonterminal type of the match expression.
+    :param graph: The grammar graph.
+    :return: A tuple containing the prefix tree and the mapping from bound variables
+        to their corresponding prefix tree leaves.
+    """
+
+    flattened_bind_expr_str = "".join(
+        map(
+            lambda elem: f"{{{elem.n_type} {elem.name}}}"
+            if type(elem) is BoundVariable
+            else str(elem),
+            bound_elements,
+        )
+    )
+
+    maybe_tree = parse_match_expression(flattened_bind_expr_str, in_nonterminal, graph)
+
+    if not is_successful(maybe_tree):
+        language_core_logger.warning(
+            'Parsing match expression string "%s" caused a syntax error. If this is'
+            + " not a test case where this behavior is intended, it should probably"
+            + " be investigated.",
+            flattened_bind_expr_str,
+        )
+        return Nothing
+
+    tree: DTree = maybe_tree.unwrap()
+    assert tree.value() == in_nonterminal
+
+    split_bound_elements = flatten(
+        [
+            [elem]
+            if not isinstance(elem, DummyVariable) or is_nonterminal(elem.n_type)
+            else ([DummyVariable(char) for char in elem.n_type])
+            for elem in bound_elements
+        ]
+    )
+
+    match_expr_tree, remaining_bound_elements, match_expr_matches = reduce(
+        star(partial(integrate_subtree_match, graph), do_flatten=True),
+        map(DTree.id, tree.dfs_iterator()),
+        (tree, FrozenOrderedSet(split_bound_elements), frozendict({})),
+    )
+
+    # In the result, we have to combine all terminals that point to the same path.
+    consolidated_matches = consolidate_match_expression_matches(
+        {
+            bv: (
+                match_expr_tree.vertex_by_node_id(node_id)
+                .map(match_expr_tree.get_subtree)
+                .unwrap()
+            )
+            for bv, node_id in match_expr_matches.items()
+        }
+    )
+
+    assert all(
+        var in consolidated_matches
+        for var in bound_elements
+        if not isinstance(var, DummyVariable)
+    ), "Some variable was lost during consolidating matches."
+
+    assert all(
+        any(
+            match_tree == leaf_tree or match_tree.reachable(leaf_tree)
+            for match_tree in consolidated_matches.values()
+        )
+        for leaf_tree in match_expr_tree.leaves()
+    ), "Some tree leaf is not in the subtree of any match."
+
+    return Some((match_expr_tree, consolidated_matches))
+
+
+def integrate_subtree_match(
+    graph: NeoGrammarGraph,
+    match_expr_tree: DTree,
+    remaining_bound_elements: FrozenOrderedSet[BoundVariable],
+    match_expr_matches: frozendict[BoundVariable, int],
+    subtree_id: int,
+) -> Tuple[DTree, FrozenOrderedSet[BoundVariable], frozendict[BoundVariable, int]]:
+    if subtree_id not in match_expr_tree.ids():
+        return match_expr_tree, remaining_bound_elements, match_expr_matches
+
+    subtree = (
+        match_expr_tree.vertex_by_node_id(subtree_id)
+        .map(match_expr_tree.get_subtree)
+        .unwrap()
+    )
+
+    args = (subtree, match_expr_tree, remaining_bound_elements, graph)
+    return flow(
+        match_bound_variable_spec(*args),
+        lash(lambda _: match_nonterminal_spec(*args)),
+        lash(lambda _: match_terminal_spec(*args)),
+        map_(
+            star(
+                lambda match_expr_tree, matches: (
+                    match_expr_tree,
+                    remaining_bound_elements.difference(set(matches.keys())),
+                    frozendict(match_expr_matches | matches),
+                )
+            )
+        ),
+    ).value_or((match_expr_tree, remaining_bound_elements, match_expr_matches))
+
+
+def match_bound_variable_spec(
+    subtree: DTree,
+    match_expr_tree: DTree,
+    remaining_bound_elements: FrozenOrderedSet[BoundVariable],
+    graph: NeoGrammarGraph,
+) -> Maybe[Tuple[DTree, frozendict[BoundVariable, int]]]:
+    if not (
+        len(subtree.children()) == 7
+        and subtree.children()[0].value() == "{"
+        and subtree.children()[1].value() == "<LANGLE>"
+    ):
+        return Nothing
+
+    assert is_nonterminal(subtree.value())
+    new_subtree: DTree = DTree.from_parse_tree((subtree.value(), None), graph).unwrap()
+
+    match_expr_tree = match_expr_tree.replace_subtree(subtree, new_subtree)
+
+    var_n_type = "<" + subtree.children()[2].value() + ">"
+    var_name = str(subtree.children()[5])
+    var = next(var for var in remaining_bound_elements if var.name == var_name)
+    assert var.n_type == var_n_type
+
+    return Some((match_expr_tree, frozendict({var: new_subtree.id()})))
+
+
+def match_nonterminal_spec(
+    subtree: DTree,
+    match_expr_tree: DTree,
+    remaining_bound_elements: FrozenOrderedSet[BoundVariable],
+    graph: NeoGrammarGraph,
+) -> Maybe[Tuple[DTree, frozendict[BoundVariable, int]]]:
+    if not (
+        len(subtree.children()) == 3 and subtree.children()[0].value() == "<LANGLE>"
+    ):
+        return Nothing
+
+    assert is_nonterminal(subtree.value())
+    new_subtree: DTree = DTree.from_parse_tree((subtree.value(), None), graph).unwrap()
+
+    match_expr_tree = match_expr_tree.replace_subtree(subtree, new_subtree)
+
+    var_n_type = "<" + subtree.children()[1].value() + ">"
+    var = next(var for var in remaining_bound_elements if var.n_type == var_n_type)
+
+    return Some((match_expr_tree, frozendict({var: new_subtree.id()})))
+
+
+def match_terminal_spec(
+    subtree: DTree,
+    match_expr_tree: DTree,
+    remaining_bound_elements: FrozenOrderedSet[BoundVariable],
+    graph: NeoGrammarGraph,
+) -> Maybe[Tuple[DTree, frozendict[BoundVariable, int]]]:
+    if str(subtree) != subtree.value() and str(subtree):
+        # TODO: What cases are these?
+        return Nothing
+
+    new_subtree: DTree = DTree.from_parse_tree(
+        (subtree.value(), ()),
+        graph,
+    ).unwrap()
+    match_expr_tree = match_expr_tree.replace_subtree(subtree, new_subtree)
+
+    char_seqs: List[str] = (
+        [""]
+        if not str(subtree)
+        else (
+            [subtree.value()]
+            if is_nonterminal(subtree.value())
+            else list(subtree.value())
+        )
+    )
+
+    matches = frozendict(
+        {
+            (
+                Maybe.from_optional(
+                    next(
+                        (var for var in remaining_bound_elements if var.n_type == char),
+                        None,
+                    )
+                )
+                .map(tap(lambda var: eassert(var, isinstance(var, DummyVariable))))
+                .value_or(DummyVariable(""))
+            ): new_subtree.id()
+            for char in char_seqs
+        }
+    )
+
+    return Some((match_expr_tree, matches))
+
+# TODO: Continue DTree integration here
+
+def consolidate_match_expression_matches(
+    match_expr_matches: Dict[BoundVariable, DTree]
+) -> Dict[BoundVariable, DTree]:
+    """
+    Groups together DummyVariables in code:`match_expr_matches` that point to the same
+    subtree. This is needed since we have to split dummy variables into individual
+    characters when creating prefix trees for match expressions.
 
     Example
     -------
@@ -513,189 +763,70 @@ def combination_to_tree_prefix(
     >>> graph = NeoGrammarGraph(grammar)
 
     >>> mexpr = BindExpression(BoundVariable("var", "<var>"), " := <var>")
-    >>> combination_to_tree_prefix(mexpr.bound_elements, "<assgn>", graph)
 
-    :param bound_elements:
-    :param in_nonterminal:
-    :param graph:
-    :return:
-    """
+    The following ParseTree can be derived from the above grammar:
 
-    # TODO: Continue DTree integration here
+    >>> parse_tree: ParseTree = (
+    ...   '<start>',
+    ...     [('<stmt>',
+    ...       [('<assgn>',
+    ...         [('<var>', [('x', [])]),
+    ...          (' := ', []),
+    ...          ('<rhs>', [('<digit>', [('1', [])])])]),
+    ...        (' ; ', []),
+    ...        ('<stmt>',
+    ...         [('<assgn>',
+    ...           [('<var>', [('y', [])]),
+    ...            (' := ', []),
+    ...            ('<rhs>', [('<var>', [('x', [])])])])])])])
 
-    flattened_bind_expr_str = "".join(
-        map(
-            lambda elem: f"{{{elem.n_type} {elem.name}}}"
-            if type(elem) is BoundVariable
-            else str(elem),
-            bound_elements,
-        )
-    )
+    >>> dtree = DTree.from_parse_tree(parse_tree, graph).unwrap()
 
-    maybe_tree = parse_match_expression(
-        flattened_bind_expr_str, in_nonterminal, graph
-    )
+    >>> orig_matches = {
+    ...     BoundVariable("v1", "<var>"): dtree.get_subtree((0, 0, 0)),
+    ...     DummyVariable(" "): dtree.get_subtree((0, 0, 1)),
+    ...     DummyVariable(":="): dtree.get_subtree((0, 0, 1)),
+    ...     DummyVariable(" "): dtree.get_subtree((0, 0, 1)),
+    ...     BoundVariable("v2", "<rhs>"): dtree.get_subtree((0, 0, 2)),
+    ... }
 
-    if not is_successful(maybe_tree):
-        language_core_logger.warning(
-            'Parsing match expression string "%s" caused a syntax error. If this is'
-            + " not a test case where this behavior is intended, it should probably"
-            + " be investigated.",
-            flattened_bind_expr_str,
-        )
-        return Nothing
+    The function :func:`isla.language.consolidate_match_expression_matches` combines
+    the dummy variables referring to the " := " subtree to a single variable:
 
-    tree: DTree = maybe_tree.unwrap()
+    >>> def dict_to_str(d) -> str:
+    ...     return str({
+    ...         str(k): str(v) for k, v in d.items()
+    ...     })
 
-    assert tree.value() == in_nonterminal
+    >>> print(dict_to_str(orig_matches))
+    {'v1': 'x', ' ': ' := ', ':=': ' := ', 'v2': '1'}
 
-    split_bound_elements = []
-    dummy_var_map: Dict[DummyVariable, List[DummyVariable]] = {}
-    for elem in bound_elements:
-        if not isinstance(elem, DummyVariable) or is_nonterminal(elem.n_type):
-            split_bound_elements.append(elem)
-            continue
-
-        new_dummies = (
-            [DummyVariable(char) for char in elem.n_type] if elem.n_type else [elem]
-        )
-        split_bound_elements.extend(new_dummies)
-        dummy_var_map[elem] = new_dummies
-
-    match_expr_tree = tree
-    match_expr_matches: Dict[BoundVariable, Path] = {}
-    skip_paths_below = set()
-    remaining_bound_elements = list(split_bound_elements)
-
-    def search(path: Path, child: DerivationTree):
-        nonlocal match_expr_tree
-        if any(
-            len(path) > len(skip_path) and path[: len(skip_path)] == skip_path
-            for skip_path in skip_paths_below
-        ):
-            return
-
-        if (
-            len(child.children) == 7
-            and child.children[0].value == "{"
-            and child.children[1].value == "<LANGLE>"
-        ):
-            assert is_nonterminal(child.value)
-            skip_paths_below.add(path)
-            match_expr_tree = match_expr_tree.replace_path(
-                path, DerivationTree(child.value, None)
-            )
-            var_n_type = "<" + child.children[2].value + ">"
-            var_name = str(child.children[5])
-
-            var = next(var for var in remaining_bound_elements if var.name == var_name)
-            assert var.n_type == var_n_type
-            remaining_bound_elements.remove(var)
-            match_expr_matches[var] = path
-        elif len(child.children) == 3 and child.children[0].value == "<LANGLE>":
-            assert is_nonterminal(child.value)
-            skip_paths_below.add(path)
-            match_expr_tree = match_expr_tree.replace_path(
-                path, DerivationTree(child.value, None)
-            )
-            var_n_type = "<" + child.children[1].value + ">"
-
-            var = next(
-                var for var in remaining_bound_elements if var.n_type == var_n_type
-            )
-            remaining_bound_elements.remove(var)
-            match_expr_matches[var] = path
-        elif str(child) == child.value or not str(child):
-            # TODO: Check if `()` is always the right choice for the children
-            match_expr_tree = match_expr_tree.replace_path(
-                path,
-                DerivationTree(
-                    child.value,
-                    ()
-                    # None if is_nonterminal(child.value) else ()
-                ),
-            )
-            skip_paths_below.add(path)
-
-            for char in (
-                [""]
-                if not str(child)
-                else (
-                    [child.value] if is_nonterminal(child.value) else list(child.value)
-                )
-            ):
-                var = (
-                    result_to_maybe(
-                        safe(
-                            lambda: next(
-                                var
-                                for var in remaining_bound_elements
-                                if var.n_type == char
-                            )
-                        )()
-                    )
-                    .map(tap(lambda var: eassert(var, isinstance(var, DummyVariable))))
-                    .map(tap(remaining_bound_elements.remove))
-                    .value_or(DummyVariable(""))
-                )
-
-                match_expr_matches[var] = path
-
-    tree.traverse(
-        search,
-        # abort_condition=lambda p, t: not remaining_bound_elements
-    )
-
-    # In the result, we have to combine all terminals that point to the same path.
-    consolidated_matches = consolidate_match_expression_matches(match_expr_matches)
-
-    assert all(
-        var in consolidated_matches
-        for var in bound_elements
-        if not isinstance(var, DummyVariable)
-    )
-    assert all(
-        any(
-            len(match_path) <= len(leaf_path)
-            and leaf_path[: len(match_path)] == match_path
-            for match_path in consolidated_matches.values()
-        )
-        for leaf_path, _ in tree.leaves()
-    )
-
-    return Some((match_expr_tree, consolidated_matches))
-
-
-def consolidate_match_expression_matches(
-    match_expr_matches: Dict[BoundVariable, Path]
-) -> Dict[BoundVariable, Path]:
-    """
-    Groups together `DummyVariable`s in `match_expr_matches` that point to the same path.
-    This is needed since we have tosplit dummy variables into individual characters when
-    creating prefix trees for match expressions.
+    >>> print(dict_to_str(consolidate_match_expression_matches(orig_matches)))
+    {'v1': 'x', ' := ': ' := ', 'v2': '1'}
 
     :param match_expr_matches: The matches to consolidate.
     :return: The consolidated matches; all paths are unique.
     """
-    consolidated_matches: Dict[BoundVariable, Path] = {}
-    last_dummy_elem = None
-    last_dummy_path = None
-    for var, path in match_expr_matches.items():
-        if not isinstance(var, DummyVariable) or is_nonterminal(var.n_type):
-            consolidated_matches[var] = path
-            continue
 
-        if last_dummy_path is None or last_dummy_path != path:
-            last_dummy_path = path
-            last_dummy_elem = var
-            consolidated_matches[var] = path
-            continue
+    def key_dummies_by_tree_id(var: BoundVariable, tree: DTree) -> Tuple[bool, int]:
+        return isinstance(var, DummyVariable), tree.id()
 
-        del consolidated_matches[last_dummy_elem]
-        new_dummy = DummyVariable(last_dummy_elem.n_type + var.n_type)
-        consolidated_matches[new_dummy] = path
-        last_dummy_elem = new_dummy
-    return consolidated_matches
+    groups = map(
+        lambda t: list(t[1]),
+        itertools.groupby(
+            tuple(match_expr_matches.items()), key=star(key_dummies_by_tree_id)
+        ),
+    )
+
+    return dict(
+        group[0]
+        if len(group) == 1
+        else (
+            DummyVariable("".join(map(star(lambda v, _: v.n_type), group))),
+            group[0][1],
+        )
+        for group in groups
+    )
 
 
 @functools.lru_cache(10)
@@ -4689,6 +4820,7 @@ def parse_match_expression_peg(
         unsuccessful.
     """
 
+    # TODO: Don't compute match expr grammar twice (also in early parser function)
     match_expr_grammar = grammar_to_match_expr_grammar(in_nonterminal, graph.grammar)
     match_expr_graph = NeoGrammarGraph(match_expr_grammar)
 
