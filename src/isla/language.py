@@ -89,6 +89,7 @@ from isla.helpers import (
     powerset,
     flatten,
     star,
+    add_expansion_to_frozen_grammar,
 )
 from isla.helpers import deep_str, grammar_to_immutable  # noqa
 from isla.isla_language import IslaLanguageListener
@@ -760,22 +761,137 @@ def match_terminal_spec(
     sequence :code:`some characters` in a match expression. If so, it replaces the
     subtree in the match expression tree with a new subtree corresponding to the
     value of the terminal, and returns the resulting tree and a mapping from the
-    XXX TODO to the subtree ID. Otherwise, the function returns
-    :code:`Nothing`.
+    all applicable dummy variables to the subtree ID (the original dummy variable(s)
+    might have been split into individual characters to avoid erroneously merged
+    terminals to not be recognized). Otherwise, the function returns :code:`Nothing`.
 
     Example
     -------
 
-    TODO: Add example. Cover all :code:`char_seqs` cases.
+    Consider the match expression :code:`{<var> var} := <var>`, whose overall
+    type is :code:`<assgn>`:
 
-    :param subtree:
-    :param match_expr_tree:
-    :param remaining_bound_elements:
-    :param graph:
-    :return:
-    """
+    >>> grammar = frozendict({
+    ...     "<start>": ("<stmt>",),
+    ...     "<stmt>": ("<assgn> ; <stmt>", "<assgn>"),
+    ...     "<assgn>": ("<var> := <rhs>",),
+    ...     "<rhs>": (
+    ...         "<var>",
+    ...         "<digit>",
+    ...     ),
+    ...     "<var>": tuple(string.ascii_lowercase),
+    ...     "<digit>": tuple(string.digits),
+    ... })
+    >>> graph = NeoGrammarGraph(grammar)
+
+    >>> DTree._DTree__next_id = 0
+    >>> match_expr_tree = parse_match_expression(
+    ...     "{<var> var} := <var>", "<assgn>", graph).unwrap()
+
+    Parsing the match expression string with the special match expression grammar
+    results in the following derivation tree:
+
+    >>> print(match_expr_tree.to_str_repr())
+    2: <assgn>
+    ├── 4: <var>
+    │   ├── 9: "{"
+    │   ├── 10: <LANGLE>
+    │   │   └── 21: "<"
+    │   ├── 12: "var"
+    │   ├── 13: <RANGLE>
+    │   │   └── 22: ">"
+    │   ├── 15: " "
+    │   ├── 16: <ID>
+    │   │   ├── 23: <LETTER>
+    │   │   │   └── 32: "v"
+    │   │   └── 25: <id_chars>
+    │   │       ├── 33: <LETTER_OR_DIGIT>
+    │   │       │   └── 39: "a"
+    │   │       └── 35: <id_chars>
+    │   │           ├── 40: <LETTER_OR_DIGIT>
+    │   │           │   └── 44: "r"
+    │   │           └── 42: <id_chars>
+    │   │               └── 45: ""
+    │   └── 18: "}"
+    ├── 6: " := "
+    └── 7: <rhs>
+        └── 19: <var>
+            ├── 27: <LANGLE>
+            │   └── 37: "<"
+            ├── 29: "var"
+            └── 30: <RANGLE>
+                └── 38: ">"
+
+    For this match expression, we have the following bound elements:
+
+    >>> remaining_bound_elements = [
+    ...     BoundVariable('var', '<var>'),
+    ...     DummyVariable(' '),
+    ...     DummyVariable(':'),
+    ...     DummyVariable('='),
+    ...     DummyVariable(' '),
+    ...     DummyVariable('<var>')
+    ... ]
+
+    Foro the subtree corresponding to the terminal sequence :code:` := `, we obtain
+    the following refined match tree (one subtree was replaced by an identical one)
+    and mappings:
+
+    >>> tree, mappings = match_terminal_spec(
+    ...     match_expr_tree.get_subtree(match_expr_tree.vertex_by_node_id(6).unwrap()),
+    ...     match_expr_tree,
+    ...     remaining_bound_elements,
+    ...     graph
+    ... ).unwrap()
+
+    >>> print(tree.to_str_repr())
+    2: <assgn>
+    ├── 4: <var>
+    │   ├── 9: "{"
+    │   ├── 10: <LANGLE>
+    │   │   └── 21: "<"
+    │   ├── 12: "var"
+    │   ├── 13: <RANGLE>
+    │   │   └── 22: ">"
+    │   ├── 15: " "
+    │   ├── 16: <ID>
+    │   │   ├── 23: <LETTER>
+    │   │   │   └── 32: "v"
+    │   │   └── 25: <id_chars>
+    │   │       ├── 33: <LETTER_OR_DIGIT>
+    │   │       │   └── 39: "a"
+    │   │       └── 35: <id_chars>
+    │   │           ├── 40: <LETTER_OR_DIGIT>
+    │   │           │   └── 44: "r"
+    │   │           └── 42: <id_chars>
+    │   │               └── 45: ""
+    │   └── 18: "}"
+    ├── 46: " := "
+    └── 7: <rhs>
+        └── 19: <var>
+            ├── 27: <LANGLE>
+            │   └── 37: "<"
+            ├── 29: "var"
+            └── 30: <RANGLE>
+                └── 38: ">"
+
+    >>> print(dict(mappings))
+    {DummyVariable(name='DUMMY_0', n_type=' '): 46, DummyVariable(name='DUMMY_1', n_type=':'): 46, DummyVariable(name='DUMMY_2', n_type='='): 46}
+
+    :param subtree: The subtree to check.
+    :param match_expr_tree: The match expression tree.
+    :param remaining_bound_elements: The remaining bound elements of the match
+        expression.
+    :param graph: The grammar graph.
+    :return: A tuple containing the updated match expression tree and a
+        mapping from the dummy variables corresponding to the terminal specification to
+        the updated subtree, if the given subtree corresponds to a terminal
+        specification; otherwise, :code:`Nothing`.
+    """  # noqa: E501
+
     if str(subtree) != subtree.value() and str(subtree):
-        # TODO: What cases are these?
+        # `subtree` is, for example, a predecessor of a tree matching a match
+        # expression element.
         return Nothing
 
     new_subtree: DTree = DTree.from_parse_tree(
@@ -783,6 +899,11 @@ def match_terminal_spec(
         graph,
     ).unwrap()
     match_expr_tree = match_expr_tree.replace_subtree(subtree, new_subtree)
+
+    # TODO Why should str(subtree) be empty or a nonterminal?
+    #      When these assignments fail, add a corresponding documentation / test case.
+    assert str(subtree)
+    assert not is_nonterminal(subtree.value())
 
     char_seqs: List[str] = (
         [""]
@@ -812,7 +933,6 @@ def match_terminal_spec(
 
     return Some((match_expr_tree, matches))
 
-# TODO: Continue DTree integration here
 
 def consolidate_match_expression_matches(
     match_expr_matches: Dict[BoundVariable, DTree]
@@ -906,20 +1026,48 @@ def consolidate_match_expression_matches(
 
 
 @functools.lru_cache(10)
-def grammar_to_match_expr_grammar(start_symbol: str, grammar: FrozenGrammar) -> Grammar:
-    # TODO: Use immutable grammars only.
-    new_grammar = cast(
-        MutableGrammar,
-        grammar_to_mutable(
-            delete_unreachable(
-                grammar.set(
-                    "<start>",
-                    (start_symbol,)
-                    if start_symbol != "<start>"
-                    else grammar["<start>"],
-                )
-            )
-        ),
+def grammar_to_match_expr_grammar(
+    start_symbol: str, grammar: FrozenGrammar
+) -> FrozenGrammar:
+    r"""
+    This function converts a grammar to a grammar that can be used to parse match
+    expressions. The resulting grammar recognizes expressions :code:`{<var> var}` and
+    :code:`<var>` for all nonterminal symbols :code:`<var>` in the for all nonterminal
+    symbols :code:`<var>` in the original grammar.
+
+    Example
+    -------
+
+    >>> grammar = frozendict({
+    ...     "<start>": ("<stmt>",),
+    ...     "<stmt>": ("<assgn> ; <stmt>", "<assgn>"),
+    ...     "<assgn>": ("<var> := <rhs>",),
+    ...     "<rhs>": (
+    ...         "<var>",
+    ...         "<digit>",
+    ...     ),
+    ...     "<var>": tuple(string.ascii_lowercase),
+    ...     "<digit>": tuple(string.digits),
+    ... })
+
+    >>> match_expr_grammar = grammar_to_match_expr_grammar("<stmt>", grammar)
+    >>> print("\n".join(map(str, match_expr_grammar["<stmt>"])))
+    <LANGLE>stmt<RANGLE>
+    {<LANGLE>stmt<RANGLE> <ID>}
+    <assgn> ; <stmt>
+    <assgn>
+
+    :param start_symbol: The start symbol to use (suitable for obtaining match
+        expression grammar for sub grammars/particular nonterminals).
+    :param grammar: The original grammar.
+    :return: The grammar for parsing match expressions.
+    """
+
+    new_grammar = delete_unreachable(
+        grammar.set(
+            "<start>",
+            (start_symbol,) if start_symbol != "<start>" else grammar["<start>"],
+        )
     )
 
     def fresh_nonterminal(suggestion: str) -> str:
@@ -940,31 +1088,49 @@ def grammar_to_match_expr_grammar(start_symbol: str, grammar: FrozenGrammar) -> 
     for nonterminal in new_grammar:
         if nonterminal == "<start>":
             continue
-        new_grammar[nonterminal].insert(
-            0, f"{{{langle_nonterminal}{nonterminal[1:-1]}{rangle_nonterminal} <ID>}}"
+
+        new_grammar = add_expansion_to_frozen_grammar(
+            new_grammar,
+            nonterminal,
+            f"{{{langle_nonterminal}{nonterminal[1:-1]}{rangle_nonterminal} <ID>}}",
+            0,
         )
-        new_grammar[nonterminal].insert(
-            0, f"{langle_nonterminal}{nonterminal[1:-1]}{rangle_nonterminal}"
+        new_grammar = add_expansion_to_frozen_grammar(
+            new_grammar,
+            nonterminal,
+            f"{langle_nonterminal}{nonterminal[1:-1]}{rangle_nonterminal}",
+            0,
         )
 
-    new_grammar[langle_nonterminal] = ["<"]
-    new_grammar[rangle_nonterminal] = [">"]
-    new_grammar[letter_nonterminal] = srange(string.ascii_letters)
-    new_grammar[letter_or_digit_nonterminal] = srange(string.digits) + srange(
-        string.ascii_letters
+    new_grammar = new_grammar.set(langle_nonterminal, ("<",))
+    new_grammar = new_grammar.set(rangle_nonterminal, (">",))
+    new_grammar = new_grammar.set(letter_nonterminal, srange(string.ascii_letters))
+    new_grammar = new_grammar.set(
+        letter_or_digit_nonterminal,
+        srange(string.digits) + srange(string.ascii_letters),
     )
-    new_grammar[id_chars] = [
-        f"{letter_or_digit_nonterminal}{id_chars}",
-        f"_{id_chars}",
-        f"-{id_chars}",
-        "",
-    ]
-    new_grammar[id_nonterminal] = [
-        f"${letter_nonterminal}{id_chars}",
-        f"{letter_nonterminal}{id_chars}",
-    ]
+
+    new_grammar = new_grammar.set(
+        id_chars,
+        (
+            f"{letter_or_digit_nonterminal}{id_chars}",
+            f"_{id_chars}",
+            f"-{id_chars}",
+            "",
+        ),
+    )
+    new_grammar = new_grammar.set(
+        id_nonterminal,
+        (
+            f"${letter_nonterminal}{id_chars}",
+            f"{letter_nonterminal}{id_chars}",
+        ),
+    )
 
     return new_grammar
+
+
+# TODO: Continue DTree integration here
 
 
 class FormulaVisitor:

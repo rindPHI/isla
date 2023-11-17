@@ -127,9 +127,7 @@ def singleton_iterator(elem: T) -> Iterator[T]:
     return iter([elem])
 
 
-def star(
-        f: Callable[..., T], do_flatten=False
-) -> Callable[..., T]:
+def star(f: Callable[..., T], do_flatten=False) -> Callable[..., T]:
     """
     Transforms a function accepting n arguments into one accepting a sequence of n
     elements. If :code:`do_flatten` is True, the returned function accepts multiple
@@ -173,6 +171,7 @@ def star(
         return lambda *x: f(*flatten(x))
     else:
         return lambda x: f(*x)
+
 
 def is_path(maybe_path: Any) -> bool:
     """
@@ -243,6 +242,53 @@ def delete_unreachable(grammar: FrozenGrammar) -> FrozenGrammar:
             for nonterminal, expansions in grammar.items()
             if nonterminal not in unreachable_nonterminals(grammar)
         }
+    )
+
+
+def add_expansion_to_frozen_grammar(
+    grammar: FrozenGrammar,
+    nonterminal: str,
+    new_expansion: str,
+    pos=-1,
+) -> FrozenGrammar:
+    """
+    This function adds an expansion alternative to a frozen grammar.
+
+    Example
+    -------
+
+    >>> grammar = frozendict({
+    ...     "<start>": ("<a>",),
+    ...     "<a>": ("<b>", "<c>"),
+    ...     "<b>": ("b",),
+    ...     "<c>": ("c",),
+    ... })
+
+    >>> deep_str(add_expansion_to_frozen_grammar(grammar, "<a>", "<b> <c>"))
+    '{<start>: (<a>,), <a>: (<b>, <c>, <b> <c>), <b>: (b,), <c>: (c,)}'
+
+    >>> deep_str(add_expansion_to_frozen_grammar(grammar, "<a>", "<b> <c>", pos=0))
+    '{<start>: (<a>,), <a>: (<b> <c>, <b>, <c>), <b>: (b,), <c>: (c,)}'
+
+    >>> deep_str(add_expansion_to_frozen_grammar(grammar, "<a>", "<b> <c>", pos=1))
+    '{<start>: (<a>,), <a>: (<b>, <b> <c>, <c>), <b>: (b,), <c>: (c,)}'
+
+    >>> deep_str(add_expansion_to_frozen_grammar(grammar, "<a>", "<b> <c>", pos=-2))
+    '{<start>: (<a>,), <a>: (<b>, <b> <c>, <c>), <b>: (b,), <c>: (c,)}'
+
+    :param grammar: The original grammar.
+    :param nonterminal: The nonterminal to add the expansion to.
+    :param new_expansion: The expansion to add.
+    :param pos: The position to add the expansion to. Default is -1, i.e., the end.
+    :return: The grammar after addition of the expansion.
+    """
+
+    if pos < 0:
+        pos = len(grammar[nonterminal]) + pos + 1
+
+    return grammar.set(
+        nonterminal,
+        grammar[nonterminal][:pos] + (new_expansion,) + grammar[nonterminal][pos:],
     )
 
 
