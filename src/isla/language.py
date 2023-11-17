@@ -28,6 +28,7 @@ import string
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import reduce, lru_cache, cache, partial
+from derivation_tree import DerivationTree
 from typing import (
     Union,
     List,
@@ -66,7 +67,6 @@ import isla.mexpr_parser.MexprParserListener as MexprParserListener
 from isla.bnf import bnfListener
 from isla.bnf.bnfLexer import bnfLexer
 from isla.bnf.bnfParser import bnfParser
-from isla.derivation_tree import DerivationTree
 from isla.fuzzer import GrammarCoverageFuzzer
 from isla.helpers import (
     RE_NONTERMINAL,
@@ -379,14 +379,65 @@ class BindExpression:
         return FrozenOrderedSet(flatten(self.bound_elements))
 
     def match(
-        self, tree: DerivationTree, grammar: Grammar
-    ) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
-        for mexpr_tree, mexpr_var_matches in self.to_tree_prefix(tree.value, grammar):
-            possible_match = match(tree, mexpr_tree, mexpr_var_matches)
-            if possible_match:
-                return possible_match
+        self,
+        tree: DTree,
+        graph: NeoGrammarGraph,
+    ) -> Maybe[Dict[BoundVariable, Tuple[Path, DTree]]]:
+        """
+        This method matches the given derivation tree against this match expression.
 
-        return None
+        Example
+        -------
+
+        Consider the match expression :code:`{<var> var} := <var>`, whose overall
+        type is :code:`<assgn>`:
+
+        >>> grammar = frozendict({
+        ...     "<start>": ("<stmt>",),
+        ...     "<stmt>": ("<assgn> ; <stmt>", "<assgn>"),
+        ...     "<assgn>": ("<var> := <rhs>",),
+        ...     "<rhs>": (
+        ...         "<var>",
+        ...         "<digit>",
+        ...     ),
+        ...     "<var>": tuple(string.ascii_lowercase),
+        ...     "<digit>": tuple(string.digits),
+        ... })
+        >>> graph = NeoGrammarGraph(grammar)
+
+        >>> mexpr = BindExpression(BoundVariable("var", "<var>"), " := <var>")
+
+        The following derivation tree matches the match expression:
+
+        >>> tree = DTree.from_parse_tree(
+        ...     ("<assgn>", [
+        ...         ("<var>", [("x", [])]),
+        ...         (" := ", []),
+        ...         ("<rhs>", [
+        ...             ("<var>", [("a", [])])])]),
+        ...     graph,
+        ... ).unwrap()
+
+        >>> mexpr.match(tree, graph)
+
+        TODO
+
+        :param tree:
+        :param grammar:
+        :return:
+        """
+
+        return Maybe.from_optional(
+            next(
+                (
+                    match(tree, mexpr_tree, mexpr_var_matches)
+                    for mexpr_tree, mexpr_var_matches in to_tree_prefix(
+                        self, tree.value(), graph
+                    )
+                ),
+                None,
+            )
+        )
 
     def __str__(self):
         """
@@ -441,13 +492,21 @@ class BindExpression:
 
 @cache
 def to_tree_prefix(
-    mexpr: BindExpression, in_nonterminal: str, grammar: FrozenGrammar
-) -> List[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
+    mexpr: BindExpression,
+    in_nonterminal: str,
+    graph: NeoGrammarGraph,
+) -> Tuple[Tuple[DTree, Dict[BoundVariable, DTree]], ...]:
     """
-    TODO
+    This function converts the given match expression to a prefix trees incorporating
+    the matches. The returned is a singleton if there are no optional elements in the
+    match expression. Otherwise, the returned list contains one element for each
+    possible combination of optional elements.
 
     Example
     -------
+
+    Consider the match expression :code:`{<var> var} := [<digit>][<var>]`, whose overall
+    type is :code:`<assgn>`:
 
     >>> grammar = frozendict({
     ...     "<start>": ("<stmt>",),
@@ -460,32 +519,56 @@ def to_tree_prefix(
     ...     "<var>": tuple(string.ascii_lowercase),
     ...     "<digit>": tuple(string.digits),
     ... })
+    >>> graph = NeoGrammarGraph(grammar)
 
+    >>> DTree._DTree__next_id = 0
     >>> mexpr = BindExpression(
     ...     BoundVariable("var", "<var>"),
     ...     " := ",
     ...     ["<digit>"],
-    ...     ["<var>"])
-    >>> deep_str(to_tree_prefix(mexpr, "<assgn>", grammar))
+    ...     ["<var>"]
+    ... )
 
-    :param mexpr:
-    :param in_nonterminal:
-    :param grammar:
-    :return:
+    The function :func:`isla.language.to_tree_prefix` converts this match expression
+    into a two prefix trees and corresponding mappings from match expression elements
+    to the corresponding leaves in the prefix trees:
+
+    >>> (t_1, matches_1), (t_2, matches_2) = to_tree_prefix(mexpr, "<assgn>", graph)
+
+    >>> print(t_1)
+    <var> := <digit>
+
+    >>> print({str(var): f"{tree.id()}: '{tree}'" for var, tree in matches_1.items()})
+    {'var': "46: '<var>'", ' := ': "47: ' := '", '<digit>': "48: '<digit>'"}
+
+    >>> print(t_2)
+    <var> := <var>
+
+    >>> print({str(var): f"{tree.id()}: '{tree}'" for var, tree in matches_2.items()})
+    {'var': "95: '<var>'", ' := ': "96: ' := '", '<var>': "97: '<var>'"}
+
+    :param mexpr: The match expression.
+    :param in_nonterminal: The nonterminal type of the match expression.
+    :param graph: The grammar graph.
+    :return: A list of tuples containing possible prefix trees and the mappings from
+        match expression elements to their corresponding prefix tree leaves.
     """
 
-    result: List[Tuple[DerivationTree, Dict[BoundVariable, Path]]] = []
-
-    for bound_elements in flatten_bound_elements(
-        mexpr.bound_elements,
-        grammar,
-        in_nonterminal=in_nonterminal,
-    ):
-        combination_to_tree_prefix(bound_elements, in_nonterminal, grammar).map(
-            tap(lambda r: result.append(r))
+    return tuple(
+        filter(
+            None,
+            [
+                combination_to_tree_prefix(
+                    bound_elements, in_nonterminal, graph
+                ).value_or(None)
+                for bound_elements in flatten_bound_elements(
+                    mexpr.bound_elements,
+                    graph.grammar,
+                    in_nonterminal=in_nonterminal,
+                )
+            ],
         )
-
-    return result
+    )
 
 
 def combination_to_tree_prefix(
@@ -535,7 +618,7 @@ def combination_to_tree_prefix(
         └── 48: <var>
 
     >>> print({str(var): f"{tree.id()}" for var, tree in matches.items()})
-    {'var': '46', ' :=': '47', '<var>': '48'}
+    {'var': '46', ' := ': '47', '<var>': '48'}
 
     :param bound_elements: The sequence of bound element variables from the match
         expression.
@@ -756,7 +839,7 @@ def match_terminal_spec(
     remaining_bound_elements: FrozenOrderedSet[BoundVariable],
     graph: NeoGrammarGraph,
 ) -> Maybe[Tuple[DTree, frozendict[BoundVariable, int]]]:
-    """
+    r"""
     This function checks whether the given subtree corresponds to a terminal
     sequence :code:`some characters` in a match expression. If so, it replaces the
     subtree in the match expression tree with a new subtree corresponding to the
@@ -824,14 +907,14 @@ def match_terminal_spec(
 
     For this match expression, we have the following bound elements:
 
-    >>> remaining_bound_elements = [
+    >>> remaining_bound_elements = FrozenOrderedSet([
     ...     BoundVariable('var', '<var>'),
     ...     DummyVariable(' '),
     ...     DummyVariable(':'),
     ...     DummyVariable('='),
     ...     DummyVariable(' '),
     ...     DummyVariable('<var>')
-    ... ]
+    ... ])
 
     Foro the subtree corresponding to the terminal sequence :code:` := `, we obtain
     the following refined match tree (one subtree was replaced by an identical one)
@@ -875,8 +958,11 @@ def match_terminal_spec(
             └── 30: <RANGLE>
                 └── 38: ">"
 
-    >>> print(dict(mappings))
-    {DummyVariable(name='DUMMY_0', n_type=' '): 46, DummyVariable(name='DUMMY_1', n_type=':'): 46, DummyVariable(name='DUMMY_2', n_type='='): 46}
+    >>> print("\n".join(map(str, mappings)))
+    (DummyVariable(name='DUMMY_0', n_type=' '), 46)
+    (DummyVariable(name='DUMMY_1', n_type=':'), 46)
+    (DummyVariable(name='DUMMY_2', n_type='='), 46)
+    (DummyVariable(name='DUMMY_3', n_type=' '), 46)
 
     :param subtree: The subtree to check.
     :param match_expr_tree: The match expression tree.
@@ -887,7 +973,7 @@ def match_terminal_spec(
         mapping from the dummy variables corresponding to the terminal specification to
         the updated subtree, if the given subtree corresponds to a terminal
         specification; otherwise, :code:`Nothing`.
-    """  # noqa: E501
+    """
 
     if str(subtree) != subtree.value() and str(subtree):
         # `subtree` is, for example, a predecessor of a tree matching a match
@@ -915,20 +1001,30 @@ def match_terminal_spec(
         )
     )
 
-    matches = frozendict(
-        {
-            (
-                Maybe.from_optional(
-                    next(
-                        (var for var in remaining_bound_elements if var.n_type == char),
-                        None,
-                    )
-                )
-                .map(tap(lambda var: eassert(var, isinstance(var, DummyVariable))))
-                .value_or(DummyVariable(""))
-            ): new_subtree.id()
-            for char in char_seqs
-        }
+    def accumulator(
+        accumulated_matches: Tuple[Tuple[BoundVariable, int], ...],
+        accumulated_remaining_bound_elements: FrozenOrderedSet[BoundVariable],
+        char: str,
+    ) -> Tuple[Tuple[Tuple[BoundVariable, int], ...], FrozenOrderedSet[BoundVariable]]:
+        maybe_var = Maybe.from_optional(
+            next(
+                (var for var in accumulated_remaining_bound_elements if var.n_type == char),
+                None,
+            )
+        )
+
+        var = maybe_var.value_or(DummyVariable(""))
+        assert isinstance(var, DummyVariable)
+
+        return (
+            accumulated_matches + ((var, new_subtree.id()),),
+            accumulated_remaining_bound_elements.difference([var]),
+        )
+
+    matches, remaining_bound_elements = reduce(
+        star(accumulator, do_flatten=True),
+        char_seqs,
+        ((), remaining_bound_elements),
     )
 
     return Some((match_expr_tree, matches))
@@ -1128,9 +1224,6 @@ def grammar_to_match_expr_grammar(
     )
 
     return new_grammar
-
-
-# TODO: Continue DTree integration here
 
 
 class FormulaVisitor:
@@ -1387,6 +1480,9 @@ class Formula(ABC):
             return ForallIntFormula(self.bound_variable, -self.inner_formula)
 
         return NegatedFormula(self)
+
+
+# TODO: Continue DTree integration here
 
 
 def substitute(
@@ -4921,125 +5017,166 @@ def set_smt_auto_subst(formula: Formula, auto_subst: bool = False):
 
 
 def match(
-    t: DerivationTree,
-    mexpr_tree: DerivationTree,
-    mexpr_var_paths: Dict[BoundVariable, Path],
-    path_in_t: Path = (),
-) -> Optional[Dict[BoundVariable, Tuple[Path, DerivationTree]]]:
+    tree_to_match: DTree,
+    mexpr_tree: DTree,
+    mexpr_matches: Dict[BoundVariable, DTree],
+) -> Maybe[Dict[BoundVariable, DTree]]:
     """
+    TODO Update, add test
+
     This function is described in the
     [ISLa language specification](https://rindphi.github.io/isla/islaspec/).
     It takes a derivation tree corresponding to a match expression and a mapping from
     bound variables to their paths inside those trees. The result is a mapping from
     variables to their positions in the given tree `t`, or None if there is no match.
 
-    :param t: The derivation tree to match.
+    Example
+    -------
+
+    Consider the match expression :code:`{<var> var} := <var>`, whose overall
+    type is :code:`<assgn>`:
+
+    >>> grammar = frozendict({
+    ...     "<start>": ("<stmt>",),
+    ...     "<stmt>": ("<assgn> ; <stmt>", "<assgn>"),
+    ...     "<assgn>": ("<var> := <rhs>",),
+    ...     "<rhs>": (
+    ...         "<var>",
+    ...         "<digit>",
+    ...     ),
+    ...     "<var>": tuple(string.ascii_lowercase),
+    ...     "<digit>": tuple(string.digits),
+    ... })
+    >>> graph = NeoGrammarGraph(grammar)
+
+    >>> mexpr = BindExpression(BoundVariable("var", "<var>"), " := <var>")
+
+    The following derivation tree matches the match expression:
+
+    >>> tree = DTree.from_parse_tree(
+    ...     ("<assgn>", [
+    ...         ("<var>", [("x", [])]),
+    ...         (" := ", []),
+    ...         ("<rhs>", [
+    ...             ("<var>", [("a", [])])])]),
+    ...     graph,
+    ... ).unwrap()
+
+    >>> mexpr_tree, mexpr_var_matches = to_tree_prefix(mexpr, tree.value(), graph)[0]
+
+    >>> match(tree, mexpr_tree, mexpr_var_matches)
+
+    :param tree_to_match: The derivation tree to match.
     :param mexpr_tree: One derivation tree resulting from parsing the match expression.
-    :param mexpr_var_paths: A mapping from variables bound in the match expression to
+    :param mexpr_matches: A mapping from variables bound in the match expression to
     their paths in `mexpr_tree`.
     :param path_in_t: The path in the original tree t (at the beginning of recursion).
     :return: `None` if there is no match, or a mapping of variables in the match
     expression to their matching subtrees in `t`.
     """
 
-    def is_complete_match(
-        t: DerivationTree, match_paths: Dict[BoundVariable, Tuple[Path, DerivationTree]]
-    ) -> bool:
-        nonlocal path_in_t
+    def is_complete_match(t: DTree, matches: Dict[BoundVariable, DTree]) -> bool:
+        """
+        This function checks whether the given match is complete, i.e., whether all
+        leaves of the given tree `t` are in the subtree of some match.
+
+        :param t: The tree for which to assert that all leaves are matched.
+        :param matches: The matches to check.
+        :return: Whether all leaves of `t` are matched.
+        """
+
         return all(
             any(
-                (
-                    sub_path := match_path[len(path_in_t) :],
-                    len(sub_path) <= len(leaf_path)
-                    and leaf_path[: len(sub_path)] == sub_path,
-                )[-1]
-                for match_path, _ in match_paths.values()
+                matched_subtree.reachable(leaf_node)
+                for matched_subtree in matches.values()
             )
-            for leaf_path, _ in t.leaves()
+            for leaf_node in t.leaves()
         )
 
     if (
-        t.value != mexpr_tree.value
-        or safe(lambda: len(mexpr_tree.children) == 0 and t.children is None)()
-        .lash(lambda _: Success(False))
-        .unwrap()
+        tree_to_match.value() != mexpr_tree.value()
+        or len(mexpr_tree.children()) == 0
+        and tree_to_match.children() is None
     ):
-        return None
+        return Nothing
 
     # If the match expression tree is "open," we have a match!
-    if (
-        mexpr_tree.children is None
-        or safe(lambda: len(mexpr_tree.children) == 0 and len(t.children) == 0)()
-        .lash(lambda _: Success(False))
-        .unwrap()
+    if (is_nonterminal(mexpr_tree.value()) and not mexpr_tree.children()) or (
+        len(mexpr_tree.children()) == 0 and len(tree_to_match.children()) == 0
     ):
-        assert not mexpr_var_paths or all(not path for path in mexpr_var_paths.values())
-
-        if not is_nonterminal(t.value):
+        if not is_nonterminal(tree_to_match.value()):
             # We matched a terminal symbol.
             # In that case, the concatenation of all dummy variables remaining in the
             # mexpr_var_paths should equal the current tree symbol. The join is due to
             # the split of dummies we perform in tree prefix creation; this is needed
             # for certain grammars where nonterminals sequences are not "bundled," but
             # occur in different subtrees.
-            assert all(isinstance(var, DummyVariable) for var in mexpr_var_paths)
+            assert all(isinstance(var, DummyVariable) for var in mexpr_matches)
             assert (
-                not mexpr_var_paths
-                or "".join(map(lambda var: var.n_type, mexpr_var_paths.keys()))
-                == t.value
+                not mexpr_matches
+                or "".join(map(lambda var: var.n_type, mexpr_matches.keys()))
+                == tree_to_match.value()
             )
 
-            if len(mexpr_var_paths) == 1:
-                return {
-                    bv: (path_in_t, t)
-                    for bv in mexpr_var_paths
-                    if not mexpr_var_paths[bv]
-                }
+            if len(mexpr_matches) == 1:
+                return Some(
+                    {bv: tree_to_match for bv in mexpr_matches if not mexpr_matches[bv]}
+                )
             else:
                 new_dummy = DummyVariable(
-                    "".join(map(lambda var: var.n_type, mexpr_var_paths))
+                    "".join(map(lambda var: var.n_type, mexpr_matches))
                 )
-                return {
-                    new_dummy: (path_in_t, t)
-                    for bv in mexpr_var_paths
-                    if not mexpr_var_paths[bv]
-                }
+                return Some(
+                    {
+                        new_dummy: tree_to_match
+                        for bv in mexpr_matches
+                        if not mexpr_matches[bv]
+                    }
+                )
 
-        assert 0 <= len(mexpr_var_paths) <= 1
+        assert 0 <= len(mexpr_matches) <= 1
 
         # `mexpr_var_paths` will have the form `{bv: ()}` iff this position is
         # associated to a bound variable; associate the current tree `t` to `bv` then.
         # Otherwise, we return an empty mapping (which signals success, just not
         # binding!).
-        return {bv: (path_in_t, t) for bv in mexpr_var_paths if not mexpr_var_paths[bv]}
+        return Some(
+            {bv: tree_to_match for bv in mexpr_matches if not mexpr_matches[bv]}
+        )
 
-    assert not mexpr_var_paths or all(
-        mexpr_var_paths[var] is not None for var in mexpr_var_paths
+    assert not mexpr_matches or all(
+        mexpr_matches[var] is not None for var in mexpr_matches
     )
 
     # On the other hand, if the numbers of children differ (and `mexpr_tree` *does* have
     # children), this cannot possibly be a match.
-    if len(t.children or []) != len(mexpr_tree.children or []):
-        return None
+    if len(tree_to_match.children()) != len(mexpr_tree.children()):
+        return Nothing
 
-    assert t.children and mexpr_tree.children
+    assert tree_to_match.children() and mexpr_tree.children()
 
     # Otherwise, proceed by matching the children.
     result = {}
-    for idx in range(len(t.children)):
+    for tree_to_match_child, mexpr_tree_child in zip(
+        tree_to_match.children(), mexpr_tree.children()
+    ):
         maybe_match = match(
-            t.children[idx],
-            mexpr_tree.children[idx],
-            {bv: path[1:] for bv, path in mexpr_var_paths.items() if path[0] == idx},
-            path_in_t + (idx,),
+            tree_to_match_child,
+            mexpr_tree_child,
+            {
+                bv: tree_to_match_child
+                for bv, mexpr_match in mexpr_matches.items()
+                if mexpr_match == mexpr_tree_child
+            },
         )
-        if maybe_match is None:
-            return None
 
-        result |= maybe_match
+        if not is_successful(maybe_match):
+            return Nothing
 
-    assert is_complete_match(t, result)
-    return result
+        result |= maybe_match.value_or({})
+
+    assert is_complete_match(tree_to_match, result)
+    return Some(result)
 
 
 def parse_match_expression_peg(
