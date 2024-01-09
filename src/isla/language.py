@@ -28,7 +28,7 @@ import string
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import reduce, lru_cache, cache, partial
-from derivation_tree import DerivationTree
+from isla.derivation_tree import DerivationTree
 from typing import (
     Union,
     List,
