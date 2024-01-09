@@ -25,6 +25,8 @@ import unittest
 from tempfile import NamedTemporaryFile
 from typing import Tuple
 
+from returns.maybe import Some
+
 from isla import __version__ as isla_version
 from isla import cli
 from isla.cli import (
@@ -1355,7 +1357,7 @@ exists <assgn> assgn:
 "-k" = -42
 """
 
-        config = read_isla_rc_defaults(Maybe(non_default_config))
+        config = read_isla_rc_defaults(Some(non_default_config))
 
         self.assertEqual(
             -42,
@@ -1376,7 +1378,7 @@ exists <assgn> assgn:
 """
 
         self.assertRaises(
-            RuntimeError, lambda: read_isla_rc_defaults(Maybe(non_default_config))
+            RuntimeError, lambda: read_isla_rc_defaults(Some(non_default_config))
         )
 
     def test_get_default(self):
@@ -1387,12 +1389,14 @@ exists <assgn> assgn:
         stderr = io.StringIO()
         self.assertEqual(
             ",".join(map(str, STD_COST_SETTINGS.weight_vector)),
-            get_default(stderr, "solve", "--weight-vector").get(),
+            get_default(stderr, "solve", "--weight-vector").unwrap(),
         )
         self.assertFalse(stderr.getvalue())
 
         stderr = io.StringIO()
-        self.assertFalse(get_default(stderr, "solve", "--all-problems-of-the-world"))
+        self.assertFalse(
+            get_default(stderr, "solve", "--all-problems-of-the-world").value_or(None)
+        )
         self.assertFalse(stderr.getvalue())
 
     def test_get_default_invalid_format(self):
@@ -1404,7 +1408,7 @@ exists <assgn> assgn:
 
         stderr = io.StringIO()
         try:
-            get_default(stderr, "solve", "-k", Maybe(non_default_config))
+            get_default(stderr, "solve", "-k", Some(non_default_config))
             code = 0
         except SystemExit as sys_exit:
             code = sys_exit.code

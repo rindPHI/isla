@@ -19,7 +19,8 @@
 import html
 import json
 import zlib
-from functools import lru_cache
+from functools import lru_cache, cache
+from orderedset import FrozenOrderedSet
 from typing import (
     Optional,
     Sequence,
@@ -30,6 +31,7 @@ from typing import (
     Callable,
     Union,
     Generator,
+    cast,
 )
 
 import graphviz
@@ -327,12 +329,9 @@ class DerivationTree:
         if isinstance(node_or_id, DerivationTree):
             node_or_id = node_or_id.id
 
-        try:
-            return next(
-                path for path, subtree in self.paths() if subtree.id == node_or_id
-            )
-        except StopIteration:
-            return None
+        return next(
+            (path for path, subtree in self.paths() if subtree.id == node_or_id), None
+        )
 
     def traverse(
         self,
@@ -498,6 +497,7 @@ class DerivationTree:
             if sub_tree.children is None
         )
 
+    @cache
     def depth(self) -> int:
         if not self.children:
             return 1

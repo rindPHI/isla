@@ -1,4 +1,5 @@
 import doctest
+import logging
 import unittest
 
 from isla import (
@@ -77,6 +78,7 @@ class TestDocstrings(unittest.TestCase):
         self.assertFalse(doctest_results.failed)
 
     def test_solver(self):
+        logging.getLogger("RegexConverter").setLevel(logging.ERROR)
         doctest_results = doctest.testmod(m=solver)
         self.assertFalse(doctest_results.failed)
 
