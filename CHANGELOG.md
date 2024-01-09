@@ -5,6 +5,12 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.14.3] - 2024-01-09
+
+### Changed
+
+- Internal refactoring: Replaced custom Maybe/Exceptional classes by the `returns` library.
+
 ## [1.14.2] - 2023-11-01
 
 ### Changed
