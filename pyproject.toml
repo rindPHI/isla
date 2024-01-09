@@ -8,12 +8,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isla-solver"
-version = "1.14.3"
 authors = [
     { name = "Dominic Steinhoefel", email = "dominic.steinhoefel@cispa.de" },
 ]
 description = "The ISLa Input Specification Language and its solver."
-readme = "README.md"
 license = { file = "COPYING" }
 requires-python = ">=3.10"
 classifiers = [
@@ -25,6 +23,7 @@ classifiers = [
     "Topic :: Security",
     "Topic :: Software Development :: Testing",
 ]
+dynamic = ["version", "readme"]
 
 dependencies = [
     "antlr4-python3-runtime>=4.13",
@@ -72,12 +71,12 @@ dev = [
 [project.scripts]
 isla = "isla.cli:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]
-namespaces = false
-
 [tool.setuptools]
 include-package-data = true  # `true` is the default value
+
+[tool.setuptools.dynamic]
+version = {attr = "isla.__version__"}
+readme = {file = ["README.md"], content-type = "text/markdown"}
 
 [tool.black]
 line-length = 88
@@ -90,3 +89,6 @@ extend-exclude = '''
   | ^/src/isla/mexpr_parser/*
 )
 '''
+
+[tool.mypy]
+plugins = ["returns.contrib.mypy.returns_plugin"]

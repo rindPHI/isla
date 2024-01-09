@@ -10,6 +10,7 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 ### Changed
 
 - Internal refactoring: Replaced custom Maybe/Exceptional classes by the `returns` library.
+- Switched to `pyproject.toml` configuration.
 
 ## [1.14.2] - 2023-11-01
 
