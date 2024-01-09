@@ -23,9 +23,10 @@ import re
 import sys
 from functools import lru_cache, reduce, partial
 from math import prod
+from returns.converters import result_to_maybe
 
 from returns.functions import compose
-from returns.pipeline import flow
+from returns.pipeline import flow, is_successful
 from returns.maybe import Maybe, Some, Nothing
 from typing import (
     Callable,
@@ -320,7 +321,7 @@ def evaluate_z3_re_comp(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
 
     # The argument must be a union of strings or a range.
     child = expr.children()[0]
-    if (
+    if not (
         child.decl().kind() == z3.Z3_OP_RE_UNION
         and all(
             grandchild.decl().kind() == z3.Z3_OP_SEQ_TO_RE
@@ -328,14 +329,25 @@ def evaluate_z3_re_comp(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
         )
         or child.decl().name() == "re.range"
     ):
-        return Some(
-            construct_result(
-                lambda args: "[^" + "".join(args) + "]",
-                tuple(map(evaluate_z3_expression, child.children())),
-            )
-        )
+        return Nothing
 
-    return Nothing
+    maybe_children_result: Maybe[Tuple[Z3EvalResult]] = result_to_maybe(
+        reduce(
+            lambda acc, maybe_child_result: acc.map(
+                lambda some_acc: maybe_child_result.map(
+                    lambda child_result: some_acc + (child_result,)
+                )
+            ),
+            map(evaluate_z3_expression, child.children()),
+            Success(()),
+        )
+    )
+
+    return maybe_children_result.map(
+        lambda children_result: construct_result(
+            lambda args: "[^" + "".join(args) + "]", children_result
+        )
+    )
 
 
 def evaluate_z3_re_full_set(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
@@ -430,7 +442,7 @@ def evaluate_z3_add(
     if not z3.is_add(expr):
         return Nothing
 
-    return Maybe(construct_result(sum, children_results))
+    return Some(construct_result(sum, children_results))
 
 
 def evaluate_z3_sub(
@@ -448,7 +460,7 @@ def evaluate_z3_mul(
     if not z3.is_mul(expr):
         return Nothing
 
-    return Maybe(construct_result(prod, children_results))
+    return Some(construct_result(prod, children_results))
 
 
 def evaluate_z3_div(
@@ -1050,7 +1062,7 @@ def numeric_intervals_from_regex(regex: z3.ReRef) -> Maybe[List[Tuple[int, int]]
     ...         z3.Star(z3.Re("0")),
     ...         z3.Range("1", "9"),
     ...         z3.Star(z3.Range("0", "9"))))
-    Maybe(a=[(1, 9223372036854775807)])
+    <Some: [(1, 9223372036854775807)]>
 
     If the 0-9 interval is inside a Plus, not a Star, we exclude the single-digit
     numbers.
@@ -1071,7 +1083,7 @@ def numeric_intervals_from_regex(regex: z3.ReRef) -> Maybe[List[Tuple[int, int]]
     ...         z3.Concat(z3.Range("1", "9"), z3.Star(z3.Range("0", "9"))),
     ...         z3.Range("0", "9")  # <- this was a problem in ISLa <= 1.14.1
     ... ))
-    Maybe(a=[(10, 9223372036854775807)])
+    <Some: [(10, 9223372036854775807)]>
 
     :param regex: The regular expression from which to extract the represented
         intervals.
