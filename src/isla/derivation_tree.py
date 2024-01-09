@@ -18,9 +18,7 @@
 
 import html
 import json
-import zlib
 from functools import lru_cache, cache
-from orderedset import FrozenOrderedSet
 from typing import (
     Optional,
     Sequence,
@@ -31,11 +29,11 @@ from typing import (
     Callable,
     Union,
     Generator,
-    cast,
 )
 
 import graphviz
 import ijson
+import zlib
 from grammar_graph import gg
 from graphviz import Digraph
 
