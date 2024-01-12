@@ -42,7 +42,8 @@ from typing import (
     Sequence,
     Protocol,
     TypeVar,
-    MutableSet, Mapping,
+    MutableSet,
+    Mapping,
 )
 
 import antlr4
