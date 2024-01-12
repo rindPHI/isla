@@ -42,7 +42,7 @@ from typing import (
     Sequence,
     Protocol,
     TypeVar,
-    MutableSet,
+    MutableSet, Mapping,
 )
 
 import antlr4
@@ -740,12 +740,12 @@ class Formula(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def substitute_variables(self, subst_map: Dict[Variable, Variable]) -> "Formula":
+    def substitute_variables(self, subst_map: Mapping[Variable, Variable]) -> "Formula":
         raise NotImplementedError()
 
     @abstractmethod
     def substitute_expressions(
-        self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]
+        self, subst_map: Mapping[Variable | DerivationTree, DerivationTree]
     ) -> "Formula":
         raise NotImplementedError()
 

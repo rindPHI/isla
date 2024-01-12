@@ -1132,7 +1132,7 @@ def eliminate_quantifiers_in_quantified_formula(
 ) -> Formula:
     assert isinstance(quantified_formula.in_variable, DerivationTree)
     # We can only eliminate this quantifier if in the in_expr, there is no open tree
-    # from which the nonterminal of the bound variale can be reached. In that case,
+    # from which the nonterminal of the bound variable can be reached. In that case,
     # we don't know whether the formula holds. We can still instantiate all matches,
     # but have to keep the original formula.
     keep_orig_formula = keep_existential_quantifiers or any(
