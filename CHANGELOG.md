@@ -5,6 +5,13 @@ This file contains the notable changes in the ISLa project since version 0.2a1
 
 ## [unreleased]
 
+## [1.14.4] - 2024-01-12
+
+### Changed
+
+- TAR formalization: Changed order field of checksum predicate to ensure checksum is
+  evaluated last.
+
 ## [1.14.3] - 2024-01-09
 
 ### Changed
