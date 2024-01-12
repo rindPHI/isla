@@ -44,10 +44,6 @@ from isla.language import (
 )
 from isla.solver import ISLaSolver
 from isla.type_defs import FrozenGrammar, Path, Grammar
-from isla_formalizations.xml_lang import (
-    XML_NAMESPACE_CONSTRAINT,
-    XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
-)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -502,15 +498,3 @@ class RepairSolver:
         ).substitute_expressions(tree_substitutions)
 
         yield instantiated_formula, tree_substitutions
-
-
-# logging.basicConfig(level=logging.DEBUG)
-# print(repair_tree(formula, inp_tree, grammar))
-
-# iterator = solve(def_use_constraint, grammar)
-# for _ in range(100):
-#     print(next(iterator))
-
-solver = RepairSolver(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, XML_NAMESPACE_CONSTRAINT)
-for _ in range(100):
-    print(solver.solve())
