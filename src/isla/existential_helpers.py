@@ -415,7 +415,7 @@ def insert_trees(
 
                 # for subtree in [t for t in single_parent_tree_children if t.value == insertion_point_tree.value]:
                 #     # NOTE: Here, IDs from `tree` might get lost, since we extract subtrees
-                #     #       and place them in insert_tree!
+                #     #       and place them in process_insertion_results!
                 #     new_tree = result_tree.replace_path(insertion_path, subtree)
                 #     assert new_tree.has_unique_ids()
                 #     assert graph.tree_is_valid(new_tree.to_parse_tree())

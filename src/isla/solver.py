@@ -2079,7 +2079,7 @@ class ISLaSolver:
         bind_expr_paths: Dict[language.BoundVariable, Path]
         for inserted_tree, bind_expr_paths in inserted_trees_and_bind_paths:
             self.logger.debug(
-                "insert_tree(self.canonical_grammar, %s, %s, self.graph, %s)",
+                "process_insertion_results(self.canonical_grammar, %s, %s, self.graph, %s)",
                 lazystr(lambda: repr(inserted_tree)),
                 lazystr(lambda: repr(existential_formula.in_variable)),
                 self.max_number_tree_insertion_results,

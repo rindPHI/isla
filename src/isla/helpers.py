@@ -355,6 +355,33 @@ def grammar_to_immutable(grammar: Grammar) -> ImmutableGrammar:
     )
 
 
+def grammar_to_frozen(grammar: Grammar | FrozenGrammar) -> FrozenGrammar:
+    """
+    Converts a grammar to a frozen grammar.
+
+    Example
+    -------
+
+    >>> grammar = {
+    ...     "<start>": ["<A>"],
+    ...     "<A>": ["b", "c", "d"],
+    ... }
+
+    >>> grammar_to_frozen(grammar)
+    frozendict.frozendict({'<start>': ('<A>',), '<A>': ('b', 'c', 'd')})
+
+    The first result of :code:`grammar_to_frozen` is a fixed point:
+
+    >>> grammar_to_frozen(grammar_to_frozen(grammar))
+    frozendict.frozendict({'<start>': ('<A>',), '<A>': ('b', 'c', 'd')})
+
+    :param grammar: The grammar to convert.
+    :return: The converted frozen grammar.
+    """
+
+    return frozendict({k: tuple(v) for k, v in grammar.items()})
+
+
 def grammar_to_mutable(grammar: ImmutableGrammar) -> Grammar:
     return {nonterminal: list(expansion) for nonterminal, expansion in grammar}
 

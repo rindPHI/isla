@@ -442,11 +442,11 @@ class TestExistentialHelpers(unittest.TestCase):
         self.assertIn("{<id>;int <id>;<statements>}", result_trees_str)
 
     # Test deactivated: Should assert that no prefix trees are generated. The implemented
-    # check in insert_tree, however, was too expensive for the JSON examples. Stalling for now.
+    # check in process_insertion_results, however, was too expensive for the JSON examples. Stalling for now.
     # def test_insert_var(self):
     #    tree = ('<start>', [('<stmt>', [('<assgn>', None), ('<stmt>', None)])])
     #
-    #    results = insert_tree(canonical(LANG_GRAMMAR),
+    #    results = process_insertion_results(canonical(LANG_GRAMMAR),
     #                          DerivationTree("<var>", None),
     #                          DerivationTree.from_parse_tree(tree))
     #

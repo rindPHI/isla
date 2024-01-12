@@ -42,7 +42,8 @@ from typing import (
     Sequence,
     Protocol,
     TypeVar,
-    MutableSet, Mapping,
+    MutableSet,
+    Mapping,
 )
 
 import antlr4
@@ -107,6 +108,7 @@ from isla.z3_helpers import (
 
 SolutionState = List[Tuple["Constant", "Formula", "DerivationTree"]]
 Assignment = Tuple["Constant", "Formula", "DerivationTree"]
+T = TypeVar("T")
 
 language_core_logger = logging.getLogger("isla-language-core")
 
@@ -1852,6 +1854,7 @@ class QuantifiedFormula(Formula, ABC):
         in_variable: Union[Variable, DerivationTree],
         inner_formula: Formula,
         bind_expression: Optional[Union[BindExpression, BoundVariable]] = None,
+        already_matched: Optional[OrderedSet[int]] = None,
     ):
         assert inner_formula is not None
         assert isinstance(bound_variable, BoundVariable) or bind_expression is not None
@@ -1869,6 +1872,12 @@ class QuantifiedFormula(Formula, ABC):
             self.bind_expression = BindExpression(bind_expression)
         else:
             self.bind_expression = bind_expression
+
+        self.already_matched: FrozenOrderedSet[int] = (
+            FrozenOrderedSet()
+            if not already_matched
+            else FrozenOrderedSet(already_matched)
+        )
 
     def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
         return FrozenOrderedSet([self.bound_variable]) | (
@@ -1892,8 +1901,43 @@ class QuantifiedFormula(Formula, ABC):
         result.update(self.inner_formula.tree_arguments())
         return result
 
+    def add_already_matched(
+        self: T, trees: Union[DerivationTree, Iterable[DerivationTree]]
+    ) -> T:
+        return type(self)(
+            self.bound_variable,
+            self.in_variable,
+            self.inner_formula,
+            self.bind_expression,
+            (
+                self.already_matched
+                | (
+                    FrozenOrderedSet([trees.id])
+                    if isinstance(trees, DerivationTree)
+                    else FrozenOrderedSet([tree.id for tree in trees])
+                )
+            ),
+        )
+
     def is_already_matched(self, tree: DerivationTree) -> bool:
-        return False
+        return tree.id in self.already_matched
+
+    def substitute_variables(self: T, subst_map: Dict[Variable, Variable]) -> T:
+        assert not self.already_matched
+
+        return type(self)(
+            self.bound_variable
+            if self.bound_variable not in subst_map
+            else subst_map[self.bound_variable],
+            self.in_variable
+            if self.in_variable not in subst_map
+            else subst_map[self.in_variable],
+            self.inner_formula.substitute_variables(subst_map),
+            None
+            if not self.bind_expression
+            else self.bind_expression.substitute_variables(subst_map),
+            self.already_matched,
+        )
 
     def __len__(self):
         result = 1 + len(self.inner_formula)
@@ -1942,39 +1986,9 @@ class ForallFormula(QuantifiedFormula):
         inner_formula: Formula,
         bind_expression: Optional[BindExpression] = None,
         already_matched: Optional[OrderedSet[int]] = None,
-        id: Optional[int] = None,
     ):
-        super().__init__(bound_variable, in_variable, inner_formula, bind_expression)
-        self.already_matched: FrozenOrderedSet[int] = (
-            FrozenOrderedSet()
-            if not already_matched
-            else FrozenOrderedSet(already_matched)
-        )
-
-        # The id field is used by eliminate_quantifiers to avoid counting universal
-        # formulas twice when checking for vacuous satisfaction.
-        if id is None:
-            self.id = ForallFormula.__next_id
-            ForallFormula.__next_id += 1
-        else:
-            self.id = id
-
-    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
-        assert not self.already_matched
-
-        return ForallFormula(
-            self.bound_variable
-            if self.bound_variable not in subst_map
-            else subst_map[self.bound_variable],
-            self.in_variable
-            if self.in_variable not in subst_map
-            else subst_map[self.in_variable],
-            self.inner_formula.substitute_variables(subst_map),
-            None
-            if not self.bind_expression
-            else self.bind_expression.substitute_variables(subst_map),
-            self.already_matched,
-            id=self.id,
+        super().__init__(
+            bound_variable, in_variable, inner_formula, bind_expression, already_matched
         )
 
     def substitute_expressions(
@@ -1995,7 +2009,7 @@ class ForallFormula(QuantifiedFormula):
             # NOTE: We cannot remove the quantifier if there is a bind expression, not
             #       even if the variables in the bind expression do not occur in the
             #       inner formula, since there might be multiple expansion alternatives
-            #       of the bound variable nonterminal and it makes a difference whether
+            #       of the bound variable nonterminal, and it makes a difference whether
             #       a particular expansion has been chosen. Consider, e.g., an inner
             #       formula "false". Then, this formula evaluates to false IF, AND ONLY
             #       IF, the defined expansion alternative is chosen, and NOT always.
@@ -2007,28 +2021,7 @@ class ForallFormula(QuantifiedFormula):
             new_inner_formula,
             self.bind_expression,
             self.already_matched,
-            id=self.id,
         )
-
-    def add_already_matched(
-        self, trees: Union[DerivationTree, Iterable[DerivationTree]]
-    ) -> "ForallFormula":
-        return ForallFormula(
-            self.bound_variable,
-            self.in_variable,
-            self.inner_formula,
-            self.bind_expression,
-            self.already_matched
-            | (
-                FrozenOrderedSet([trees.id])
-                if isinstance(trees, DerivationTree)
-                else FrozenOrderedSet([tree.id for tree in trees])
-            ),
-            id=self.id,
-        )
-
-    def is_already_matched(self, tree: DerivationTree) -> bool:
-        return tree.id in self.already_matched
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_forall_formula(self)
@@ -2043,7 +2036,6 @@ class ForallFormula(QuantifiedFormula):
                 self.inner_formula.transform(transformer),
                 self.bind_expression,
                 self.already_matched,
-                id=self.id,
             )
         )
 
@@ -2062,21 +2054,10 @@ class ExistsFormula(QuantifiedFormula):
         in_variable: Union[Variable, DerivationTree],
         inner_formula: Formula,
         bind_expression: Optional[BindExpression] = None,
+        already_matched: Optional[OrderedSet[int]] = None,
     ):
-        super().__init__(bound_variable, in_variable, inner_formula, bind_expression)
-
-    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
-        return ExistsFormula(
-            self.bound_variable
-            if self.bound_variable not in subst_map
-            else subst_map[self.bound_variable],
-            self.in_variable
-            if self.in_variable not in subst_map
-            else subst_map[self.in_variable],
-            self.inner_formula.substitute_variables(subst_map),
-            None
-            if not self.bind_expression
-            else self.bind_expression.substitute_variables(subst_map),
+        super().__init__(
+            bound_variable, in_variable, inner_formula, bind_expression, already_matched
         )
 
     def substitute_expressions(
@@ -2093,6 +2074,7 @@ class ExistsFormula(QuantifiedFormula):
             new_in_variable,
             self.inner_formula.substitute_expressions(subst_map),
             self.bind_expression,
+            self.already_matched,
         )
 
     def accept(self, visitor: FormulaVisitor):
@@ -2107,6 +2089,7 @@ class ExistsFormula(QuantifiedFormula):
                 self.in_variable,
                 self.inner_formula.transform(transformer),
                 self.bind_expression,
+                self.already_matched,
             )
         )
 
@@ -2301,29 +2284,16 @@ def replace_formula(  # noqa: C901
             return false()
 
         return NegatedFormula(child_result)
-    elif isinstance(in_formula, ForallFormula):
-        return ForallFormula(
+    elif isinstance(in_formula, QuantifiedFormula):
+        return type(in_formula)(
             in_formula.bound_variable,
             in_formula.in_variable,
             replace_formula(in_formula.inner_formula, to_replace, replace_with),
             in_formula.bind_expression,
             in_formula.already_matched,
-            id=in_formula.id,
         )
-    elif isinstance(in_formula, ExistsFormula):
-        return ExistsFormula(
-            in_formula.bound_variable,
-            in_formula.in_variable,
-            replace_formula(in_formula.inner_formula, to_replace, replace_with),
-            in_formula.bind_expression,
-        )
-    elif isinstance(in_formula, ExistsIntFormula):
-        return ExistsIntFormula(
-            in_formula.bound_variable,
-            replace_formula(in_formula.inner_formula, to_replace, replace_with),
-        )
-    elif isinstance(in_formula, ForallIntFormula):
-        return ForallIntFormula(
+    elif isinstance(in_formula, NumericQuantifiedFormula):
+        return type(in_formula)(
             in_formula.bound_variable,
             replace_formula(in_formula.inner_formula, to_replace, replace_with),
         )
@@ -2466,9 +2436,6 @@ def convert_quantified_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[F
         if negate
         else formula.inner_formula
     )
-    already_matched: Set[int] = (
-        formula.already_matched if isinstance(formula, ForallFormula) else set()
-    )
 
     if (isinstance(formula, ForallFormula) and negate) or (
         isinstance(formula, ExistsFormula) and not negate
@@ -2479,6 +2446,7 @@ def convert_quantified_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[F
                 formula.in_variable,
                 inner_formula,
                 formula.bind_expression,
+                formula.already_matched,
             )
         )
     else:
@@ -2488,7 +2456,7 @@ def convert_quantified_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[F
                 formula.in_variable,
                 inner_formula,
                 formula.bind_expression,
-                already_matched,
+                formula.already_matched,
             )
         )
 
@@ -2524,20 +2492,13 @@ def convert_to_dnf(formula: Formula, deep: bool = True) -> Formula:
             [convert_to_dnf(subformula) for subformula in formula.args],
             false(),
         )
-    elif deep and isinstance(formula, ForallFormula):
-        return ForallFormula(
+    elif deep and isinstance(formula, QuantifiedFormula):
+        return type(formula)(
             formula.bound_variable,
             formula.in_variable,
             convert_to_dnf(formula.inner_formula),
             formula.bind_expression,
             formula.already_matched,
-        )
-    elif deep and isinstance(formula, ExistsFormula):
-        return ExistsFormula(
-            formula.bound_variable,
-            formula.in_variable,
-            convert_to_dnf(formula.inner_formula),
-            formula.bind_expression,
         )
     else:
         return formula
@@ -2595,21 +2556,13 @@ def ensure_unique_bound_variables(  # noqa: C901
 
         used_names = orig_used_names | used_names.difference(old_used_names)
 
-        if isinstance(formula, ForallFormula):
-            return ForallFormula(
-                formula.bound_variable,
-                formula.in_variable,
-                ensure_unique_bound_variables(formula.inner_formula, used_names),
-                formula.bind_expression,
-                formula.already_matched,
-            )
-        else:
-            return ExistsFormula(
-                formula.bound_variable,
-                formula.in_variable,
-                ensure_unique_bound_variables(formula.inner_formula, used_names),
-                formula.bind_expression,
-            )
+        return type(formula)(
+            formula.bound_variable,
+            formula.in_variable,
+            ensure_unique_bound_variables(formula.inner_formula, used_names),
+            formula.bind_expression,
+            formula.already_matched,
+        )
     elif isinstance(formula, NegatedFormula):
         return NegatedFormula(
             ensure_unique_bound_variables(formula.args[0], used_names)

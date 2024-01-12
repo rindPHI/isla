@@ -135,7 +135,11 @@ def tar_checksum(
 
 
 TAR_CHECKSUM_PREDICATE = language.SemanticPredicate(
-    "tar_checksum", 2, tar_checksum, binds_tree=False, order=100,
+    "tar_checksum",
+    2,
+    tar_checksum,
+    binds_tree=False,
+    order=100,
 )
 
 
