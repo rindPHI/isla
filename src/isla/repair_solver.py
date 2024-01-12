@@ -1,6 +1,5 @@
 import itertools
 import logging
-import random
 from typing import FrozenSet, Tuple, cast, Dict, Iterator, Mapping, Optional
 
 import grammar_graph.gg as gg
@@ -49,8 +48,6 @@ from isla_formalizations.xml_lang import (
     XML_NAMESPACE_CONSTRAINT,
     XML_GRAMMAR_WITH_NAMESPACE_PREFIXES,
 )
-
-random.seed(0)
 
 LOGGER = logging.getLogger(__name__)
 
