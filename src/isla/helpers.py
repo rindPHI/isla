@@ -17,7 +17,6 @@
 # along with ISLa.  If not, see <http://www.gnu.org/licenses/>.
 
 import copy
-import functools
 import importlib.resources
 import itertools
 import logging
@@ -26,7 +25,6 @@ import operator
 import random
 import re
 import sys
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import lru_cache, reduce
 from typing import (
@@ -43,10 +41,15 @@ from typing import (
     Iterable,
     Any,
     Optional,
-    Generic,
+    AbstractSet,
     Iterator,
-    Type,
 )
+
+import returns
+from frozendict import frozendict
+from orderedset import OrderedSet
+from returns.maybe import Maybe, Some
+from returns.result import safe, Success, Failure, Result
 
 from isla.global_config import GLOBAL_CONFIG
 from isla.type_defs import (
@@ -56,6 +59,8 @@ from isla.type_defs import (
     ImmutableGrammar,
     CanonicalGrammar,
     ImmutableList,
+    FrozenCanonicalGrammar,
+    FrozenGrammar,
 )
 
 HELPERS_LOGGER = logging.getLogger(__name__)
@@ -63,6 +68,28 @@ HELPERS_LOGGER = logging.getLogger(__name__)
 R = TypeVar("R")
 S = TypeVar("S")
 T = TypeVar("T")
+
+
+def singleton_iterator(elem: T) -> Iterator[T]:
+    """
+    Creates an iterator from a single element.
+
+    >>> it = singleton_iterator(1)
+    >>> next(it)
+    1
+
+    >>> deep_str(safe(lambda: next(it))())
+    '<Failure: StopIteration()>'
+
+    :param elem: The element to create an iterator from.
+    :return: The resulting iterator of one element.
+    """
+
+    return iter([elem])
+
+
+def star(f: Callable[[[Any, ...]], T]) -> Callable[[Sequence[Any]], T]:
+    return lambda x: f(*x)
 
 
 def is_path(maybe_path: Any) -> bool:
@@ -192,19 +219,102 @@ def tree_to_string(tree: ParseTree) -> str:
     return "".join(result)
 
 
+def split_expansion(expansion: str) -> List[str]:
+    """
+    Splits the given expansion alternative into tokens.
+
+    >>> str(split_expansion("a<b><b>c<d>e"))
+    "['a', '<b>', '<b>', 'c', '<d>', 'e']"
+
+    :param expansion: The expansion alternative to split at nonterminal boundaries.
+    :return: The separated terminal and nonterminal symbols in the expansion, in the
+        original order.
+    """
+
+    return [token for token in RE_NONTERMINAL.split(expansion) if token]
+
+
 def canonical(grammar: Grammar) -> CanonicalGrammar:
-    # Slightly optimized w.r.t. Fuzzing Book version: Call to split on
-    # compiled regex instead of fresh compilation every time.
+    """
+    This function converts a grammar to a "canonical" form in which terminals and
+    nonterminals in expansion alternatives are split.
+
+    Example
+    -------
+
+    >>> import string
+    >>> grammar = {
+    ...     "<start>":
+    ...         ["<stmt>"],
+    ...     "<stmt>":
+    ...         ["<assgn> ; <stmt>", "<assgn>"],
+    ...     "<assgn>":
+    ...         ["<var> := <rhs>"],
+    ...     "<rhs>":
+    ...         ["<var>", "<digit>"],
+    ...     "<var>": list(string.ascii_lowercase),
+    ...     "<digit>": list(string.digits)
+    ... }
+
+    Before conversion, there are two entries for :code:`<stmt>` including sequences
+    of (non-)terminals:
+
+    >>> print(grammar["<stmt>"])
+    ['<assgn> ; <stmt>', '<assgn>']
+
+    After conversion, the entries are lists of individual (non)-terminals:
+
+    >>> print(canonical(grammar)["<stmt>"])
+    [['<assgn>', ' ; ', '<stmt>'], ['<assgn>']]
+
+    :param grammar: The grammar to convert.
+    :return: The converted canonical grammar.
+    """
+    return {
+        k: [split_expansion(expression) for expression in alternatives]
+        for k, alternatives in grammar.items()
+    }
+
+
+def frozen_canonical(grammar: Grammar | FrozenGrammar) -> FrozenCanonicalGrammar:
+    """
+    A "frozen" version of :func:`isla.helpers.canonical`.
+
+    Example
+    -------
+
+    >>> grammar = {
+    ...     "<start>": ["<int>"],
+    ...     "<int>": ["<sign>00<leaddigit><digits>"],
+    ...     "<sign>": ["-", "+"],
+    ...     "<digits>": ["", "<digit><digits>"],
+    ...     "<digit>": list("0123456789"),
+    ...     "<leaddigit>": list("123456789"),
+    ... }
+
+    >>> result = frozen_canonical(grammar)
+
+    >>> type(result).__name__
+    'frozendict'
+    >>> result["<digits>"]
+    ((), ('<digit>', '<digits>'))
+
+    :param grammar: The grammar to convert to frozen canonical form.
+    :return: The frozen canonical grammar.
+    """
+
     def split(expansion):
         if isinstance(expansion, tuple):
             expansion = expansion[0]
 
-        return [token for token in RE_NONTERMINAL.split(expansion) if token]
+        return tuple([token for token in RE_NONTERMINAL.split(expansion) if token])
 
-    return {
-        k: [split(expression) for expression in alternatives]
-        for k, alternatives in grammar.items()
-    }
+    return frozendict(
+        {
+            k: tuple([split(expression) for expression in alternatives])
+            for k, alternatives in grammar.items()
+        }
+    )
 
 
 def dict_of_lists_to_list_of_dicts(
@@ -283,7 +393,7 @@ def split_str_with_nonterminals(expression: str) -> List[str]:
 
 
 def cluster_by_common_elements(
-    a_list: Sequence[T], f: Callable[[T], Set[S]]
+    a_list: Sequence[T], f: Callable[[T], AbstractSet[S]]
 ) -> List[List[T]]:
     """
     Clusters elements of l by shared elements. Elements of interest are obtained using f.
@@ -633,224 +743,6 @@ def list_del(ilist: Sequence[T], del_idx: int) -> Sequence[T]:
     return ilist[:del_idx] + ilist[del_idx + 1 :]
 
 
-@dataclass(frozen=True)
-class Monad(ABC, Generic[T]):
-    a: T
-
-    @abstractmethod
-    def bind(self, f: Callable[[T], "Monad[S]"]) -> "Monad[S]":
-        raise NotImplementedError()
-
-
-@dataclass(frozen=True)
-class MonadPlus(Generic[T], Monad[T]):
-    @staticmethod
-    @abstractmethod
-    def nothing() -> "MonadPlus[T]":
-        raise NotImplementedError()
-
-    @abstractmethod
-    def mplus(self, other: "MonadPlus[T]") -> "MonadPlus[T]":
-        raise NotImplementedError()
-
-    @abstractmethod
-    def lazy_mplus(self, f: Callable[[S], "MonadPlus[T]"], arg: S) -> "MonadPlus[T]":
-        raise NotImplementedError()
-
-
-@dataclass(frozen=True)
-class Maybe(Generic[T], MonadPlus[Optional[T]]):
-    """
-    A monad for working with values that may or may not be present.
-
-    Examples:
-    >>> m = Maybe(1)
-    >>> m
-    Maybe(a=1)
-    >>> m.is_present()
-    True
-    >>> Maybe.nothing().is_present()
-    False
-    >>> Maybe(None) == Maybe.nothing()
-    True
-    >>> Maybe.from_iterator(iter([])).is_present()
-    False
-    >>> m = Maybe.from_iterator(iter([1, 2, 3]))
-    >>> m
-    Maybe(a=1)
-    >>> m.map(lambda x: x * 2).get()
-    2
-    >>> m.bind(lambda x: Maybe(x + 1)).get()
-    2
-    >>> m.orelse(lambda: 0).get()
-    1
-    >>> Maybe.nothing().orelse(lambda: 0).get()
-    0
-    >>> m.if_present(print)
-    1
-    Maybe(a=1)
-    >>> Maybe(None).raise_if_not_present(lambda: ValueError("No value"))
-    Traceback (most recent call last):
-        ...
-    ValueError: No value
-    >>> m.get()
-    1
-    >>> Maybe(None).get_unsafe() is None
-    True
-    >>> m + Maybe(4)
-    Maybe(a=1)
-    >>> Maybe.nothing() + (lambda x: Maybe(x * 2), 2)
-    Maybe(a=4)
-    """
-
-    a: Optional[T]
-
-    def bind(self, f: Callable[[T], "Maybe[S]"]) -> "Maybe[S]":
-        return self if self.a is None else f(self.a)
-
-    def map(self, f: Callable[[T], S]) -> "Maybe[S]":
-        return self if self.a is None else Maybe(f(self.a))
-
-    def orelse(self, f: Callable[[], S]) -> "Maybe[S]":
-        assert callable(f)
-        return self if self.a is not None else Maybe(f())
-
-    @staticmethod
-    def nothing() -> "Maybe[T]":
-        return Maybe(None)
-
-    @staticmethod
-    def from_iterator(iterator: Iterator[T]) -> "Maybe[T]":
-        try:
-            return Maybe(next(iterator))
-        except StopIteration:
-            return Maybe.nothing()
-
-    def mplus(self, other: "Maybe[T]") -> "Maybe[T]":
-        return other if self.a is None else self
-
-    def lazy_mplus(self, f: Callable[[S, ...], "Maybe[T]"], *args: S) -> "Maybe[T]":
-        return f(*args) if self.a is None else self
-
-    def if_present(self, f: Callable[[T], None]) -> "Maybe[T]":
-        if self.a is not None:
-            f(self.a)
-        return self
-
-    def is_present(self) -> bool:
-        return self.a is not None
-
-    def raise_if_not_present(self, exc: Callable[[], Exception]) -> "Maybe[T]":
-        if self.a is None:
-            raise exc()
-
-        return self
-
-    def get(self) -> T:
-        if self.a is None:
-            raise AttributeError("No element present")
-        return self.a
-
-    def get_unsafe(self) -> Optional[T]:
-        return self.a
-
-    def __add__(
-        self,
-        other: "Maybe[T]" | Tuple[Callable[[S, ...], "Maybe[T]"], S],
-    ) -> "Maybe[T]":
-        if isinstance(other, Maybe):
-            return self.mplus(other)
-
-        assert isinstance(other, tuple)
-        assert callable(other[0])
-        return self.lazy_mplus(*other)
-
-    def __bool__(self):
-        return self.is_present()
-
-
-E = TypeVar("E", bound=Exception)
-
-
-@dataclass(frozen=True)
-class Exceptional(Generic[E, T], Monad[T]):
-    @staticmethod
-    def of(f: Callable[[], T]) -> "Exceptional[E, T]":
-        try:
-            return Success(f())
-        except Exception as exc:
-            return Failure(exc)
-
-    @abstractmethod
-    def get(self) -> T:
-        pass
-
-    @abstractmethod
-    def map(self, f: Callable[[T], S]) -> "Exceptional[S]":
-        pass
-
-    @abstractmethod
-    def recover(self, f: Callable[[E], T], *exc_types: Type[E]) -> "Exceptional[E, T]":
-        pass
-
-    @abstractmethod
-    def reraise(self) -> "Exceptional[T]":
-        pass
-
-
-@dataclass(frozen=True)
-class Success(Generic[T], Exceptional[Exception, T]):
-    a: T
-
-    def get(self) -> T:
-        return self.a
-
-    def bind(self, f: Callable[[T], "Exceptional[S]"]) -> "Exceptional[S]":
-        return f(self.a)
-
-    def map(self, f: Callable[[T], S]) -> "Exceptional[S]":
-        return Exceptional.of(lambda: f(self.a))
-
-    def recover(self, _, *__) -> "Success[T]":
-        return self
-
-    def reraise(self) -> "Success[T]":
-        return self
-
-
-@dataclass(frozen=True)
-class Failure(Generic[E], Exceptional[E, Any]):
-    a: E
-
-    def get(self) -> E:
-        raise AttributeError(f"{type(self).__name__} does not support get()")
-
-    def bind(self, _) -> "Exceptional[T]":
-        return self
-
-    def map(self, _) -> "Exceptional[S]":
-        return self
-
-    def recover(self, f: Callable[[E], T], *exc_types: Type[E]) -> "Exceptional[E, T]":
-        if not exc_types or any(isinstance(self.a, exc) for exc in exc_types):
-            return Exceptional.of(lambda: f(self.a))
-        else:
-            return self
-
-    def reraise(self) -> Exceptional[E, Any]:
-        raise self.a
-
-
-def chain_functions(
-    functions: Iterable[Callable[[S, ...], Maybe[T]]], *args: S
-) -> Maybe[T]:
-    return functools.reduce(
-        lambda monad, f: (monad + (f, *args)),
-        functions,
-        Maybe.nothing(),
-    )
-
-
 def is_float(num: Any) -> bool:
     try:
         float(num)
@@ -937,20 +829,19 @@ def get_elem_by_equivalence(
     :param equiv: An equivalence relation. Default is standard equivalence `==`.
     :return: An equivalent element from `elems`.
     """
-    return (
-        Maybe.from_iterator(
-            other_elem for other_elem in elems if equiv(elem, other_elem)
-        )
-        .raise_if_not_present(
-            lambda: AssertionError(
+
+    match safe(
+        lambda: next(other_elem for other_elem in elems if equiv(elem, other_elem))
+    )():
+        case Success(elem):
+            return elem
+        case Failure(_):
+            raise RuntimeError(
                 f"Could not find element equivalent to {elem} in container {elems}"
             )
-        )
-        .get()
-    )
 
 
-def get_expansions(leaf_value: str, grammar: CanonicalGrammar):
+def get_expansions(leaf_value: str, grammar: CanonicalGrammar | FrozenCanonicalGrammar):
     all_expansions = grammar[leaf_value]
 
     terminal_expansions = [
@@ -968,7 +859,9 @@ def get_expansions(leaf_value: str, grammar: CanonicalGrammar):
     return terminal_expansions, expansions
 
 
-def compute_nullable_nonterminals(canonical_grammar: CanonicalGrammar) -> Set[str]:
+def compute_nullable_nonterminals(
+    canonical_grammar: CanonicalGrammar | FrozenCanonicalGrammar,
+) -> Set[str]:
     result = {
         nonterminal
         for nonterminal in canonical_grammar
@@ -1014,28 +907,30 @@ def merge_dict_of_sets(
 
 def merge_intervals(
     *list_of_maybe_intervals: Maybe[List[Tuple[int, int]]]
-) -> Maybe(List[Tuple[int, int]]):
+) -> Maybe[List[Tuple[int, int]]]:
     """
     Merges a sequence of potential lists of intervals. Intervals are sorted, directly
     neighboring and overlapping ones are merged. If any list is not present, a
-    :code:`Maybe.nothing()` is returned.
+    :code:`Nothing` is returned.
 
-    >>> merge_intervals(*[Maybe([(1, 2)]), Maybe([(3, 4), (0, 1)])])
-    Maybe(a=[(0, 4)])
+    >>> merge_intervals(*[Some([(1, 2)]), Some([(3, 4), (0, 1)])])
+    <Some: [(0, 4)]>
 
-    >>> merge_intervals(*[Maybe([(1, 2)]), Maybe([(4, 5), (0, 1)])])
-    Maybe(a=[(0, 2), (4, 5)])
+    >>> merge_intervals(*[Some([(1, 2)]), Some([(4, 5), (0, 1)])])
+    <Some: [(0, 2), (4, 5)]>
 
-    >>> merge_intervals(*[Maybe([(1, 2)]), Maybe.nothing(), Maybe([(3, 4), (0, 1)])])
-    Maybe(a=None)
+    >>> from returns.maybe import Nothing
+    >>> merge_intervals(*[Some([(1, 2)]), Nothing, Some([(3, 4), (0, 1)])])
+    <Nothing>
 
     :param list_of_maybe_intervals: The sequence of potential lists of intervals.
     :return: A potential list of intervals.
     """
+
     maybe_list_of_intervals: Maybe[List[Tuple[int, int]]] = reduce(
         lambda acc, maybe_intervals: acc.bind(
             lambda list_of_intervals: maybe_intervals.bind(
-                lambda other_list_of_intervals: Maybe(
+                lambda other_list_of_intervals: Some(
                     list_of_intervals + other_list_of_intervals
                 )
             )
@@ -1069,3 +964,119 @@ def merge_intervals(
             [],
         )
     )
+
+
+def deep_str(obj: Any) -> str:
+    """
+    This function computes a "deep" string representation of :code:`obj`. This means
+    that it also (recursively) invokes :code:`__str__` on all the elements of a list,
+    tuple, set, OrderedSet, dict, or Success/Failure container (from the returns
+    library).
+
+    Example:
+    --------
+
+    We constuct a simple class with different :code:`__str__` and :code:`__repr__`
+    implementations:
+
+    >>> class X:
+    ...     def __str__(self):
+    ...         return "'An X'"
+    ...     def __repr__(self):
+    ...         return "X()"
+
+    Invoking :code:`str` returns a "shallow" string representation:
+
+    >>> str((X(), X()))
+    '(X(), X())'
+
+    Invoking :code:`deep_str` also converts the elements of the tuple to a string:
+
+    >>> deep_str((X(), X()))
+    "('An X', 'An X')"
+
+    This also works for nested collections, such as a tuple in a list:
+
+    >>> deep_str([(X(),)])
+    "[('An X',)]"
+
+    It also works for dictionaries...
+
+    >>> deep_str({X(): [X()]})
+    "{'An X': ['An X']}"
+
+    ...frozen dictionaries...
+
+    >>> deep_str(frozendict({X(): [X()]}))
+    "{'An X': ['An X']}"
+
+    ...sets...
+
+    >>> deep_str({(X(),)})
+    "{('An X',)}"
+
+    ...frozen sets...
+
+    >>> deep_str(frozenset({(X(),)}))
+    "{('An X',)}"
+
+    ...and ordered sets.
+
+    >>> deep_str(OrderedSet({(X(),)}))
+    "{('An X',)}"
+
+    As a special gimick, the function also works for the returns library's Success
+    and Failure containers:
+
+    >>> deep_str(returns.result.Success([X(), X()]))
+    "<Success: ['An X', 'An X']>"
+
+    >>> deep_str(returns.result.Failure([X(), X()]))
+    "<Failure: ['An X', 'An X']>"
+
+    If the string representation of an object is empty, its :code:`repr` is returned:
+
+    >>> str(StopIteration())
+    ''
+
+    >>> deep_str(StopIteration())
+    'StopIteration()'
+
+    :param obj: The object to recursively convert into a string.
+    :return: A "deep" string representation of :code:`obj`.
+    """
+
+    if isinstance(obj, tuple):
+        return (
+            "(" + ", ".join(map(deep_str, obj)) + ("," if len(obj) == 1 else "") + ")"
+        )
+    elif isinstance(obj, list):
+        return "[" + ", ".join(map(deep_str, obj)) + "]"
+    elif (
+        isinstance(obj, set)
+        or isinstance(obj, OrderedSet)
+        or isinstance(obj, frozenset)
+    ):
+        return "{" + ", ".join(map(deep_str, obj)) + "}"
+    elif isinstance(obj, dict) or isinstance(obj, frozendict):
+        return (
+            "{"
+            + ", ".join([f"{deep_str(a)}: {deep_str(b)}" for a, b in obj.items()])
+            + "}"
+        )
+    elif isinstance(obj, Maybe):
+        match obj:
+            case Some(elem):
+                return str(Some(deep_str(elem)))
+            case returns.maybe.Nothing:
+                return str(obj)
+    elif isinstance(obj, Result):
+        match obj:
+            case Success(inner):
+                return str(Success(deep_str(inner)))
+            case returns.result.Failure(inner):
+                return str(Failure(deep_str(inner)))
+    elif not str(obj):
+        return repr(obj)
+    else:
+        return str(obj)

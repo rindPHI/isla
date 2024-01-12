@@ -24,6 +24,7 @@ import z3
 from isla.derivation_tree import DerivationTree
 from isla.isla_predicates import (
     BEFORE_PREDICATE,
+    DIFFERENT_POSITION_PREDICATE,
 )
 from isla.language import (
     BoundVariable,
@@ -79,6 +80,24 @@ def before(
     var: Union[Variable, DerivationTree], before_var: Union[Variable, DerivationTree]
 ) -> StructuralPredicateFormula:
     return StructuralPredicateFormula(BEFORE_PREDICATE, var, before_var)
+
+
+def different_position(
+    var: Variable | DerivationTree, before_var: Variable | DerivationTree
+) -> StructuralPredicateFormula:
+    """
+    This function returns a formula that is true if the two variables/trees
+    are in different positions in the derivation tree.
+
+    >>> print(different_position(BoundVariable("x", "<A>"), BoundVariable("y", "<B>")))
+    different_position(x, y)
+
+    :param var: The first variable/tree.
+    :param before_var: The second variable/tree.
+    :return: A formula that is true if the two variables/trees are in different positions in the derivation tree.
+    """
+
+    return StructuralPredicateFormula(DIFFERENT_POSITION_PREDICATE, var, before_var)
 
 
 @cache

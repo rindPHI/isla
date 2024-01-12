@@ -50,6 +50,12 @@ from grammar_to_regex.cfg2regex import RegexConverter
 from grammar_to_regex.regex import regex_to_z3
 from orderedset import OrderedSet
 from packaging import version
+from returns.converters import result_to_maybe
+from returns.functions import compose, tap
+from returns.maybe import Nothing, Some
+from returns.pipeline import flow, is_successful
+from returns.pointfree import lash
+from returns.result import safe, Success
 
 import isla.isla_shortcuts as sc
 import isla.three_valued_truth
@@ -82,8 +88,6 @@ from isla.helpers import (
     lazyjoin,
     lazystr,
     Maybe,
-    chain_functions,
-    Exceptional,
     eliminate_suffixes,
     get_elem_by_equivalence,
     get_expansions,
@@ -291,7 +295,7 @@ class SolverDefaults:
     tree_insertion_methods: Optional[int] = None
     activate_unsat_support: bool = False
     grammar_unwinding_threshold: int = 4
-    initial_tree: Maybe[DerivationTree] = Maybe.nothing()
+    initial_tree: Maybe[DerivationTree] = Nothing
     enable_optimized_z3_queries: bool = True
     start_symbol: Optional[str] = None
 
@@ -465,8 +469,8 @@ class ISLaSolver:
         else:
             self.grammar = copy.deepcopy(grammar)
 
-        assert (
-            start_symbol is None or not initial_tree.is_present()
+        assert start_symbol is None or not is_successful(
+            initial_tree
         ), "You cannot supply a start symbol *and* an initial tree."
 
         if start_symbol is not None:
@@ -539,7 +543,7 @@ class ISLaSolver:
             + f'found {len(top_constants)}: {", ".join(map(str, top_constants))}'
         )
 
-        self.top_constant = Maybe.from_iterator(iter(top_constants))
+        self.top_constant = result_to_maybe(safe(lambda: next(iter(top_constants)))())
 
         quantifier_chains: List[Tuple[language.ForallFormula, ...]] = [
             tuple([f for f in c if isinstance(f, language.ForallFormula)])
@@ -557,27 +561,23 @@ class ISLaSolver:
 
         # Initialize Queue
         self.initial_tree = (
-            initial_tree
-            + Maybe(start_symbol)
-            .map(lambda s: eassert(s, s in self.grammar))
-            .map(lambda s: DerivationTree(s, None))
-            + Maybe(
-                DerivationTree(
-                    self.top_constant.map(lambda c: c.n_type)
-                    .orelse(lambda: "<start>")
-                    .get(),
-                    None,
+            initial_tree.lash(
+                lambda _: Maybe.from_optional(start_symbol)
+                .map(lambda s: eassert(s, s in self.grammar))
+                .map(lambda s: DerivationTree(s, None))
+            ).lash(
+                lambda _: Some(
+                    DerivationTree(
+                        self.top_constant.map(lambda c: c.n_type).value_or("<start>"),
+                        None,
+                    )
                 )
             )
-        ).get()
+        ).unwrap()
 
-        initial_formula = (
-            self.top_constant.map(
-                lambda c: self.formula.substitute_expressions({c: self.initial_tree})
-            )
-            .orelse(lambda: self.formula)
-            .get()
-        )
+        initial_formula = self.top_constant.map(
+            lambda c: self.formula.substitute_expressions({c: self.initial_tree})
+        ).value_or(self.formula)
         initial_state = SolutionState(initial_formula, self.initial_tree)
         initial_states = self.establish_invariant(initial_state)
 
@@ -678,30 +678,32 @@ class ISLaSolver:
 
             # Apply the first elimination function that is applicable.
             # The later ones are ignored.
-            monad = chain_functions(
-                [
-                    self.noop_on_false_constraint,
-                    self.eliminate_existential_integer_quantifiers,
-                    self.instantiate_universal_integer_quantifiers,
-                    self.match_all_universal_formulas,
-                    self.expand_to_match_quantifiers,
-                    self.eliminate_all_semantic_formulas,
-                    self.eliminate_all_ready_semantic_predicate_formulas,
-                    self.eliminate_and_match_first_existential_formula_and_expand,
-                    self.assert_remaining_formulas_are_lazy_binding_semantic,
-                    self.finish_unconstrained_trees,
-                    self.expand,
-                ],
-                state,
-            )
-
             def process_and_extend_solutions(
                 result_states: List[SolutionState],
-            ) -> None:
+            ) -> Nothing:
                 assert result_states is not None
                 self.solutions.extend(self.process_new_states(result_states))
+                return Nothing
 
-            monad.if_present(process_and_extend_solutions)
+            flow(
+                Nothing,
+                *map(
+                    compose(lambda f: (lambda _: f(state)), lash),
+                    [
+                        self.noop_on_false_constraint,
+                        self.eliminate_existential_integer_quantifiers,
+                        self.instantiate_universal_integer_quantifiers,
+                        self.match_all_universal_formulas,
+                        self.expand_to_match_quantifiers,
+                        self.eliminate_all_semantic_formulas,
+                        self.eliminate_all_ready_semantic_predicate_formulas,
+                        self.eliminate_and_match_first_existential_formula_and_expand,
+                        self.assert_remaining_formulas_are_lazy_binding_semantic,
+                        self.finish_unconstrained_trees,
+                        self.expand,
+                    ],
+                ),
+            ).bind(process_and_extend_solutions)
 
         if self.solutions:
             solution = self.solutions.pop(0)
@@ -801,14 +803,14 @@ class ISLaSolver:
         inp = self.parse(inp, skip_check=True) if isinstance(inp, str) else inp
 
         try:
-            if self.check(inp) or not self.top_constant.is_present():
-                return Maybe(inp)
+            if self.check(inp) or not is_successful(self.top_constant):
+                return Some(inp)
         except UnknownResultError:
             pass
 
         formula = self.top_constant.map(
             lambda c: self.formula.substitute_expressions({c: inp})
-        ).get()
+        ).unwrap()
 
         set_smt_auto_eval(formula, False)
         set_smt_auto_subst(formula, False)
@@ -830,7 +832,7 @@ class ISLaSolver:
         if semantic_only == sc.false():
             # This cannot be repaired while preserving structure; for existential
             # problems, we could try tree insertion. We leave this for future work.
-            return Maybe.nothing()
+            return Nothing
 
         # We try to satisfy any of the remaining disjunctive elements, in random order
         for formula_to_satisfy in shuffle(split_disjunction(semantic_only)):
@@ -844,22 +846,14 @@ class ISLaSolver:
             }
 
             def do_complete(tree: DerivationTree) -> Maybe[DerivationTree]:
-                return (
-                    Exceptional.of(
+                return result_to_maybe(
+                    safe(
                         self.copy_without_queue(
-                            initial_tree=Maybe(tree),
-                            timeout_seconds=Maybe(fix_timeout_seconds),
-                        ).solve
-                    )
-                    .map(Maybe)
-                    .recover(
-                        lambda _: Maybe.nothing(),
-                        UnknownResultError,
-                        TimeoutError,
-                        StopIteration,
-                    )
-                    .reraise()
-                    .get()
+                            initial_tree=Some(tree),
+                            timeout_seconds=Some(fix_timeout_seconds),
+                        ).solve,
+                        (UnknownResultError, TimeoutError, StopIteration),
+                    )()
                 )
 
             # If p1, p2 are in participating_paths, then we consider the following
@@ -867,19 +861,22 @@ class ISLaSolver:
             # {p1}, {p2}, {p1, p2}, {p1[:-1]}, {p2[:-1]}, {p1[:-1], p2}, {p1, p2[:-1]},
             # {p1[:-1], p2[:-1]}, ...
             for abstracted_tree in generate_abstracted_trees(inp, participating_paths):
-                maybe_completed: Maybe[DerivationTree] = (
-                    Exceptional.of(lambda: self.check(abstracted_tree))
-                    .map(lambda _: Maybe.nothing())
-                    .recover(lambda _: Maybe(abstracted_tree), UnknownResultError)
-                    .recover(lambda _: Maybe.nothing())
-                    .get()
+                match (
+                    safe(lambda: self.check(abstracted_tree))()
+                    .bind(lambda _: Nothing)
+                    .lash(
+                        lambda exc: Some(abstracted_tree)
+                        if isinstance(exc, UnknownResultError)
+                        else Nothing
+                    )
                     .bind(do_complete)
-                )
+                ):
+                    case Some(completed):
+                        return Some(completed)
+                    case _:
+                        pass
 
-                if maybe_completed.is_present():
-                    return maybe_completed
-
-        return Maybe.nothing()
+        return Nothing
 
     def mutate(
         self,
@@ -912,68 +909,68 @@ class ISLaSolver:
             if mutated.structurally_equal(inp):
                 continue
             maybe_fixed = self.repair(mutated, fix_timeout_seconds)
-            if maybe_fixed.is_present():
-                return maybe_fixed.get()
+            if is_successful(maybe_fixed):
+                return maybe_fixed.unwrap()
 
     def copy_without_queue(
         self,
-        grammar: Maybe[Grammar | str] = Maybe.nothing(),
-        formula: Maybe[language.Formula | str] = Maybe.nothing(),
-        max_number_free_instantiations: Maybe[int] = Maybe.nothing(),
-        max_number_smt_instantiations: Maybe[int] = Maybe.nothing(),
-        max_number_tree_insertion_results: Maybe[int] = Maybe.nothing(),
-        enforce_unique_trees_in_queue: Maybe[bool] = Maybe.nothing(),
-        debug: Maybe[bool] = Maybe.nothing(),
-        cost_computer: Maybe["CostComputer"] = Maybe.nothing(),
-        timeout_seconds: Maybe[int] = Maybe.nothing(),
-        global_fuzzer: Maybe[bool] = Maybe.nothing(),
+        grammar: Maybe[Grammar | str] = Nothing,
+        formula: Maybe[language.Formula | str] = Nothing,
+        max_number_free_instantiations: Maybe[int] = Nothing,
+        max_number_smt_instantiations: Maybe[int] = Nothing,
+        max_number_tree_insertion_results: Maybe[int] = Nothing,
+        enforce_unique_trees_in_queue: Maybe[bool] = Nothing,
+        debug: Maybe[bool] = Nothing,
+        cost_computer: Maybe["CostComputer"] = Nothing,
+        timeout_seconds: Maybe[int] = Nothing,
+        global_fuzzer: Maybe[bool] = Nothing,
         predicates_unique_in_int_arg: Maybe[
             Tuple[language.SemanticPredicate, ...]
-        ] = Maybe.nothing(),
-        fuzzer_factory: Maybe[Callable[[Grammar], GrammarFuzzer]] = Maybe.nothing(),
-        tree_insertion_methods: Maybe[int] = Maybe.nothing(),
-        activate_unsat_support: Maybe[bool] = Maybe.nothing(),
-        grammar_unwinding_threshold: Maybe[int] = Maybe.nothing(),
-        initial_tree: Maybe[DerivationTree] = Maybe.nothing(),
-        enable_optimized_z3_queries: Maybe[bool] = Maybe.nothing(),
+        ] = Nothing,
+        fuzzer_factory: Maybe[Callable[[Grammar], GrammarFuzzer]] = Nothing,
+        tree_insertion_methods: Maybe[int] = Nothing,
+        activate_unsat_support: Maybe[bool] = Nothing,
+        grammar_unwinding_threshold: Maybe[int] = Nothing,
+        initial_tree: Maybe[DerivationTree] = Nothing,
+        enable_optimized_z3_queries: Maybe[bool] = Nothing,
         start_symbol: Optional[str] = None,
     ):
         result = ISLaSolver(
-            grammar=grammar.orelse(lambda: self.grammar).get(),
-            formula=formula.orelse(lambda: self.formula).get(),
-            max_number_free_instantiations=max_number_free_instantiations.orelse(
-                lambda: self.max_number_free_instantiations
-            ).get(),
-            max_number_smt_instantiations=max_number_smt_instantiations.orelse(
-                lambda: self.max_number_smt_instantiations
-            ).get(),
-            max_number_tree_insertion_results=max_number_tree_insertion_results.orelse(
-                lambda: self.max_number_tree_insertion_results
-            ).get(),
-            enforce_unique_trees_in_queue=enforce_unique_trees_in_queue.orelse(
-                lambda: self.enforce_unique_trees_in_queue
-            ).get(),
-            debug=debug.orelse(lambda: self.debug).get(),
-            cost_computer=cost_computer.orelse(lambda: self.cost_computer).get(),
-            timeout_seconds=timeout_seconds.orelse(lambda: self.timeout_seconds).a,
-            global_fuzzer=global_fuzzer.orelse(lambda: self.global_fuzzer).get(),
-            predicates_unique_in_int_arg=predicates_unique_in_int_arg.orelse(
-                lambda: self.predicates_unique_in_int_arg
-            ).get(),
-            fuzzer_factory=fuzzer_factory.orelse(lambda: self.fuzzer_factory).get(),
-            tree_insertion_methods=tree_insertion_methods.orelse(
-                lambda: self.tree_insertion_methods
-            ).get(),
-            activate_unsat_support=activate_unsat_support.orelse(
-                lambda: self.activate_unsat_support
-            ).get(),
-            grammar_unwinding_threshold=grammar_unwinding_threshold.orelse(
-                lambda: self.grammar_unwinding_threshold
-            ).get(),
+            grammar=grammar.value_or(self.grammar),
+            formula=formula.value_or(self.formula),
+            max_number_free_instantiations=max_number_free_instantiations.value_or(
+                self.max_number_free_instantiations
+            ),
+            max_number_smt_instantiations=max_number_smt_instantiations.value_or(
+                self.max_number_smt_instantiations
+            ),
+            max_number_tree_insertion_results=max_number_tree_insertion_results.value_or(
+                self.max_number_tree_insertion_results
+            ),
+            enforce_unique_trees_in_queue=enforce_unique_trees_in_queue.value_or(
+                self.enforce_unique_trees_in_queue
+            ),
+            debug=debug.value_or(self.debug),
+            cost_computer=cost_computer.value_or(self.cost_computer),
+            timeout_seconds=timeout_seconds.value_or(self.timeout_seconds),
+            global_fuzzer=global_fuzzer.value_or(self.global_fuzzer),
+            predicates_unique_in_int_arg=predicates_unique_in_int_arg.value_or(
+                self.predicates_unique_in_int_arg
+            ),
+            fuzzer_factory=fuzzer_factory.value_or(self.fuzzer_factory),
+            tree_insertion_methods=tree_insertion_methods.value_or(
+                self.tree_insertion_methods
+            ),
+            activate_unsat_support=activate_unsat_support.value_or(
+                self.activate_unsat_support
+            ),
+            grammar_unwinding_threshold=grammar_unwinding_threshold.value_or(
+                self.grammar_unwinding_threshold
+            ),
             initial_tree=initial_tree,
-            enable_optimized_z3_queries=enable_optimized_z3_queries.orelse(
-                lambda: self.enable_optimized_z3_queries
-            ).get(),
+            enable_optimized_z3_queries=enable_optimized_z3_queries.value_or(
+                self.enable_optimized_z3_queries
+            ),
             start_symbol=start_symbol,
         )
 
@@ -987,9 +984,9 @@ class ISLaSolver:
     ) -> Maybe[List[SolutionState]]:
         if state.constraint == sc.false():
             # This state can be silently discarded.
-            return Maybe([state])
+            return Some([state])
 
-        return Maybe.nothing()
+        return Nothing
 
     def expand_to_match_quantifiers(
         self,
@@ -999,7 +996,7 @@ class ISLaSolver:
             not isinstance(conjunct, language.ForallFormula)
             for conjunct in get_conjuncts(state.constraint)
         ):
-            return Maybe.nothing()
+            return Nothing
 
         expansion_result = self.expand_tree(state)
 
@@ -1008,7 +1005,7 @@ class ISLaSolver:
             "Expanding state %s (%d successors)", state, len(expansion_result)
         )
 
-        return Maybe(expansion_result)
+        return Some(expansion_result)
 
     def eliminate_and_match_first_existential_formula_and_expand(
         self,
@@ -1016,12 +1013,12 @@ class ISLaSolver:
     ) -> Maybe[List[SolutionState]]:
         elim_result = self.eliminate_and_match_first_existential_formula(state)
         if elim_result is None:
-            return Maybe.nothing()
+            return Nothing
 
         # Also add some expansions of the original state, to create a larger
         # solution stream (otherwise, it might be possible that only a small
         # finite number of solutions are generated for existential formulas).
-        return Maybe(
+        return Some(
             elim_result + self.expand_tree(state, limit=2, only_universal=False)
         )
 
@@ -1068,7 +1065,7 @@ class ISLaSolver:
             )
         )
 
-        return Maybe.nothing()
+        return Nothing
 
     def finish_unconstrained_trees(
         self,
@@ -1082,7 +1079,7 @@ class ISLaSolver:
             fuzzer.covered_expansions.update(self.seen_coverages)
 
         if state.constraint != sc.true():
-            return Maybe.nothing()
+            return Nothing
 
         closed_results: List[SolutionState] = []
         for _ in range(self.max_number_free_instantiations):
@@ -1093,7 +1090,7 @@ class ISLaSolver:
 
             closed_results.append(SolutionState(state.constraint, result))
 
-        return Maybe(closed_results)
+        return Some(closed_results)
 
     def expand(
         self,
@@ -1121,7 +1118,7 @@ class ISLaSolver:
                     )
                 )
 
-        return Maybe(result)
+        return Some(result)
 
     def instantiate_structural_predicates(self, state: SolutionState) -> SolutionState:
         predicate_formulas = [
@@ -1163,7 +1160,7 @@ class ISLaSolver:
         ]
 
         if not existential_int_formulas:
-            return Maybe.nothing()
+            return Nothing
 
         formula = state.constraint
         for existential_int_formula in existential_int_formulas:
@@ -1186,7 +1183,7 @@ class ISLaSolver:
                     existential_int_formula,
                 )
                 # This should simplify the process after quantifier re-insertion.
-                return Maybe(
+                return Some(
                     [
                         SolutionState(
                             language.replace_formula(
@@ -1215,7 +1212,7 @@ class ISLaSolver:
                 formula, existential_int_formula, instantiation
             )
 
-        return Maybe([SolutionState(formula, state.tree)])
+        return Some([SolutionState(formula, state.tree)])
 
     def instantiate_universal_integer_quantifiers(
         self, state: SolutionState
@@ -1227,7 +1224,7 @@ class ISLaSolver:
         ]
 
         if not universal_int_formulas:
-            return Maybe.nothing()
+            return Nothing
 
         results: List[SolutionState] = [state]
         for universal_int_formula in universal_int_formulas:
@@ -1242,7 +1239,7 @@ class ISLaSolver:
                 for result in formula_list
             ]
 
-        return Maybe(results)
+        return Some(results)
 
     def instantiate_universal_integer_quantifier(
         self, state: SolutionState, universal_int_formula: language.ForallIntFormula
@@ -1660,7 +1657,7 @@ class ISLaSolver:
         ]
 
         if not semantic_formulas:
-            return Maybe.nothing()
+            return Nothing
 
         self.logger.debug(
             "Eliminating semantic formulas [%s]", lazyjoin(", ", semantic_formulas)
@@ -1673,7 +1670,7 @@ class ISLaSolver:
             sc.true(),
         )
 
-        return Maybe(
+        return Some(
             self.eliminate_semantic_formula(
                 prefix_conjunction,
                 SolutionState(new_disjunct, state.tree),
@@ -1719,7 +1716,7 @@ class ISLaSolver:
         )
 
         if not semantic_predicate_formulas:
-            return Maybe.nothing()
+            return Nothing
 
         result = state
 
@@ -1777,7 +1774,7 @@ class ISLaSolver:
             result = SolutionState(new_constraint, result.tree.substitute(substitution))
             assert self.graph.tree_is_valid(result.tree)
 
-        return Maybe([result] if changed else None)
+        return Maybe.from_optional([result] if changed else None)
 
     def eliminate_and_match_first_existential_formula(
         self, state: SolutionState
@@ -1785,72 +1782,88 @@ class ISLaSolver:
         # We produce up to two groups of output states: One where the first existential
         # formula, if it can be matched, is matched, and one where the first existential
         # formula is eliminated by tree insertion.
-        maybe_first_existential_formula_with_idx = Maybe.from_iterator(
-            (idx, conjunct)
-            for idx, conjunct in enumerate(split_conjunction(state.constraint))
-            if isinstance(conjunct, language.ExistsFormula)
-        )
 
-        if not maybe_first_existential_formula_with_idx:
-            return None
-
-        first_matched = OrderedSet(
-            self.match_existential_formula(
-                maybe_first_existential_formula_with_idx.get()[0], state
-            )
-        )
-
-        # Tree insertion can be deactivated by setting `self.tree_insertion_methods`
-        # to 0.
-        if not self.tree_insertion_methods:
-            return list(first_matched)
-
-        if first_matched:
-            self.logger.debug(
-                "Matched first existential formulas, result: [%s]",
-                lazyjoin(
-                    ", ",
-                    [lazystr(lambda: f"{s} (hash={hash(s)})") for s in first_matched],
-                ),
-            )
-
-        # 3. Eliminate first existential formula by tree insertion.
-        elimination_result = OrderedSet(
-            self.eliminate_existential_formula(
-                maybe_first_existential_formula_with_idx.get()[0], state
-            )
-        )
-        elimination_result = OrderedSet(
-            [
-                result
-                for result in elimination_result
-                if not any(
-                    other_result.tree == result.tree
-                    and self.propositionally_unsatisfiable(
-                        result.constraint & -other_result.constraint
-                    )
-                    for other_result in first_matched
+        def do_eliminate(
+            first_existential_formula_with_idx: Tuple[int, language.ExistsFormula]
+        ) -> List[SolutionState]:
+            first_matched = OrderedSet(
+                self.match_existential_formula(
+                    first_existential_formula_with_idx[0], state
                 )
+            )
+
+            # Tree insertion can be deactivated by setting `self.tree_insertion_methods`
+            # to 0.
+            if not self.tree_insertion_methods:
+                return list(first_matched)
+
+            if first_matched:
+                self.logger.debug(
+                    "Matched first existential formulas, result: [%s]",
+                    lazyjoin(
+                        ", ",
+                        [
+                            lazystr(lambda: f"{s} (hash={hash(s)})")
+                            for s in first_matched
+                        ],
+                    ),
+                )
+
+            # 3. Eliminate first existential formula by tree insertion.
+            elimination_result = OrderedSet(
+                self.eliminate_existential_formula(
+                    first_existential_formula_with_idx[0], state
+                )
+            )
+            elimination_result = OrderedSet(
+                [
+                    result
+                    for result in elimination_result
+                    if not any(
+                        other_result.tree == result.tree
+                        and self.propositionally_unsatisfiable(
+                            result.constraint & -other_result.constraint
+                        )
+                        for other_result in first_matched
+                    )
+                ]
+            )
+
+            if not elimination_result and not first_matched:
+                self.logger.warning(
+                    "Existential qfr elimination: Could not eliminate existential formula %s "
+                    "by matching or tree insertion",
+                    first_existential_formula_with_idx[1],
+                )
+
+            if elimination_result:
+                self.logger.debug(
+                    "Eliminated existential formula %s by tree insertion, %d successors",
+                    first_existential_formula_with_idx[1],
+                    len(elimination_result),
+                )
+
+            return [
+                result
+                for result in first_matched | elimination_result
+                if result != state
             ]
+
+        return (
+            result_to_maybe(
+                safe(
+                    lambda: next(
+                        (idx, conjunct)
+                        for idx, conjunct in enumerate(
+                            split_conjunction(state.constraint)
+                        )
+                        if isinstance(conjunct, language.ExistsFormula)
+                    )
+                )()
+            )
+            .map(do_eliminate)
+            .value_or(None)
         )
-
-        if not elimination_result and not first_matched:
-            self.logger.warning(
-                "Existential qfr elimination: Could not eliminate existential formula %s "
-                "by matching or tree insertion",
-                maybe_first_existential_formula_with_idx.get()[1],
-            )
-
-        if elimination_result:
-            self.logger.debug(
-                "Eliminated existential formula %s by tree insertion, %d successors",
-                maybe_first_existential_formula_with_idx.get()[1],
-                len(elimination_result),
-            )
-
-        return [
-            result for result in first_matched | elimination_result if result != state
-        ]
 
     def match_all_universal_formulas(
         self, state: SolutionState
@@ -1862,17 +1875,17 @@ class ISLaSolver:
         ]
 
         if not universal_formulas:
-            return Maybe.nothing()
+            return Nothing
 
         result = self.match_universal_formulas(state)
-        if result:
-            self.logger.debug(
-                "Matched universal formulas [%s]", lazyjoin(", ", universal_formulas)
-            )
-        else:
-            result = None
+        if not result:
+            return Nothing
 
-        return Maybe(result)
+        self.logger.debug(
+            "Matched universal formulas [%s]", lazyjoin(", ", universal_formulas)
+        )
+
+        return Some(result)
 
     def expand_tree(
         self,
@@ -2157,7 +2170,7 @@ class ISLaSolver:
                 new_formula = (
                     instantiated_formula
                     & self.formula.substitute_expressions(
-                        {self.top_constant.get(): new_tree}
+                        {self.top_constant.unwrap(): new_tree}
                     )
                     & instantiated_original_constraint
                 )
@@ -2247,7 +2260,7 @@ class ISLaSolver:
             for conjunct in get_conjuncts(semantic_formula)
         )
 
-        # NODE: We need to cluster SMT formulas by tree substitutions. If there are two
+        # NOTE: We need to cluster SMT formulas by tree substitutions. If there are two
         # formulas with a variable $var which is instantiated to different trees, we
         # need two separate solutions. If, however, $var is instantiated with the
         # *same* tree, we need one solution to both formulas together.
@@ -2528,20 +2541,22 @@ class ISLaSolver:
             regex = self.extract_regular_expression(int_var.n_type)
             maybe_intervals = numeric_intervals_from_regex(regex)
             repl_var = replacement_map[z3.StrToInt(int_var.to_smt())]
-            maybe_intervals.if_present(
-                lambda intervals: formulas.append(
-                    z3_or(
-                        [
-                            z3.And(
-                                repl_var >= z3.IntVal(interval[0])
-                                if interval[0] > -sys.maxsize
-                                else z3.BoolVal(True),
-                                repl_var <= z3.IntVal(interval[1])
-                                if interval[1] < sys.maxsize
-                                else z3.BoolVal(True),
-                            )
-                            for interval in intervals
-                        ]
+            maybe_intervals.map(
+                tap(
+                    lambda intervals: formulas.append(
+                        z3_or(
+                            [
+                                z3.And(
+                                    repl_var >= z3.IntVal(interval[0])
+                                    if interval[0] > -sys.maxsize
+                                    else z3.BoolVal(True),
+                                    repl_var <= z3.IntVal(interval[1])
+                                    if interval[1] < sys.maxsize
+                                    else z3.BoolVal(True),
+                                )
+                                for interval in intervals
+                            ]
+                        )
                     )
                 )
             )
@@ -2623,6 +2638,7 @@ class ISLaSolver:
         :param int_vars: The "int" variables.
         :return: An equation describing the previous solution.
         """
+
         if var in int_vars:
             return z3_eq(
                 fresh_var_map[var],
@@ -3271,16 +3287,13 @@ class ISLaSolver:
                     continue
 
                 # Remove states with unsatisfiable SMT-LIB formulas.
-                if (
-                    any(
-                        isinstance(f, language.SMTFormula)
-                        for f in split_conjunction(new_state.constraint)
-                    )
-                    and not self.eliminate_all_semantic_formulas(
+                if any(
+                    isinstance(f, language.SMTFormula)
+                    for f in split_conjunction(new_state.constraint)
+                ) and not is_successful(
+                    self.eliminate_all_semantic_formulas(
                         new_state, max_instantiations=1
-                    )
-                    .bind(lambda a: Maybe(a if a else None))
-                    .is_present()
+                    ).bind(lambda a: Some(a) if a else Nothing)
                 ):
                     new_states.remove(new_state)
                     self.logger.debug(
@@ -4124,10 +4137,10 @@ def implies(
     )
 
     return (
-        Exceptional.of(solver.solve)
+        safe(solver.solve, exceptions=(StopIteration,))()
         .map(lambda _: False)
-        .recover(lambda e: isinstance(e, StopIteration))
-    ).a
+        .lash(lambda _: Success(True))
+    ).unwrap()
 
 
 def equivalent(
@@ -4141,10 +4154,10 @@ def equivalent(
     )
 
     return (
-        Exceptional.of(solver.solve)
+        safe(solver.solve)()
         .map(lambda _: False)
-        .recover(lambda e: isinstance(e, StopIteration))
-    ).a
+        .lash(lambda e: Success(isinstance(e, StopIteration)))
+    ).unwrap()
 
 
 def generate_abstracted_trees(
