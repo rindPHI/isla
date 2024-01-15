@@ -34,14 +34,12 @@ import z3
 from grammar_graph import gg
 from orderedset import OrderedSet
 from returns.functions import tap
-from returns.maybe import Maybe, Some
 from returns.pipeline import is_successful
 from returns.result import safe, Success
 
 import isla.derivation_tree
 import isla.evaluator
 import isla.global_config
-from evaluations.evaluate_csv import max_number_smt_instantiations
 from isla import isla_shortcuts as sc
 from isla import language
 from isla.derivation_tree import DerivationTree
@@ -1121,9 +1119,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         solver = ISLaSolver(LANG_GRAMMAR, formula)
 
         self.assertFalse(
-            solver.repair("x := a ; y := z ; z := c")
-            .map(solver.check)
-            .value_or(False),
+            solver.repair("x := a ; y := z ; z := c").map(solver.check).value_or(False),
         )
 
     def test_repair_unbalanced_xml_tree(self):
