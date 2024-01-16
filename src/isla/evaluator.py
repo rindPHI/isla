@@ -111,6 +111,7 @@ def evaluate(
     subtrees_trie: Optional[SubtreesTrie] = None,
     graph: Optional[gg.GrammarGraph] = None,
 ) -> ThreeValuedTruth:
+    logger.debug("Evaluating formula %s", formula)
     assumptions = assumptions or set()
 
     if isinstance(grammar, str):
@@ -1204,9 +1205,6 @@ def matches_for_quantified_formula(
         node, children = tree
         if node == qfd_var.n_type:
             if bind_expr is not None:
-                maybe_match: Optional[
-                    Tuple[Tuple[BoundVariable, Tuple[Path, DerivationTree]]], ...
-                ]
                 maybe_match = bind_expr.match(tree, grammar)
 
                 if maybe_match is not None:

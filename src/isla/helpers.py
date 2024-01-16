@@ -18,6 +18,7 @@
 
 import copy
 import importlib.resources
+import inspect
 import itertools
 import logging
 import math
@@ -43,6 +44,7 @@ from typing import (
     Optional,
     AbstractSet,
     Iterator,
+    Mapping,
 )
 
 import returns
@@ -355,7 +357,7 @@ def grammar_to_immutable(grammar: Grammar) -> ImmutableGrammar:
     )
 
 
-def grammar_to_frozen(grammar: Grammar | FrozenGrammar) -> FrozenGrammar:
+def grammar_to_frozen(grammar: Mapping[str, Sequence[str]]) -> FrozenGrammar:
     """
     Converts a grammar to a frozen grammar.
 
@@ -380,6 +382,33 @@ def grammar_to_frozen(grammar: Grammar | FrozenGrammar) -> FrozenGrammar:
     """
 
     return frozendict({k: tuple(v) for k, v in grammar.items()})
+
+
+def grammar_to_unfrozen(grammar: Mapping[str, Sequence[str]]) -> Grammar:
+    """
+    Converts a frozen grammar to a mutable one.
+
+    Example
+    -------
+
+    >>> grammar = {
+    ...     "<start>": ["<A>"],
+    ...     "<A>": ["b", "c", "d"],
+    ... }
+
+    >>> grammar_to_unfrozen(grammar_to_frozen(grammar))
+    {'<start>': ['<A>'], '<A>': ['b', 'c', 'd']}
+
+    The first result of :code:`grammar_to_unfrozen` is a fixed point:
+
+    >>> grammar_to_unfrozen(grammar_to_unfrozen(grammar_to_frozen(grammar)))
+    {'<start>': ['<A>'], '<A>': ['b', 'c', 'd']}
+
+    :param grammar: The grammar to convert.
+    :return: The converted "unfrozen" (mutable) grammar.
+    """
+
+    return {k: list(v) for k, v in grammar.items()}
 
 
 def grammar_to_mutable(grammar: ImmutableGrammar) -> Grammar:
@@ -1107,3 +1136,33 @@ def deep_str(obj: Any) -> str:
         return repr(obj)
     else:
         return str(obj)
+
+def depth_indent(c = ".") -> str:
+    """
+    This function returns a string of :code:`c` characters/strings, where the
+    number of characters is equal to the depth of the current function call
+    stack (where only the calling function is considered). This is useful for
+    debugging recursive functions.
+
+    Example
+    -------
+
+    >>> def a(i=3):
+    ...     print(depth_indent() + "Hi!")
+    ...     if i > 0:
+    ...         a(i - 1)
+
+    >>> a()
+    Hi!
+    .Hi!
+    ..Hi!
+    ...Hi!
+
+    :param c: The character/string to use for indentation.
+    :return: A string of :code:`c` characters/strings corresponding to the
+        number of times the calling function occurs in the call stack.
+    """
+
+    stack = inspect.stack()
+    fname = stack[1].function
+    return c * len([fr for fr in stack[2:] if fr.function == fname])

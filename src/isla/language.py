@@ -1675,6 +1675,7 @@ class SMTFormula(Formula):
         )
 
     def __repr__(self):
+        return str(self.formula)
         return (
             f"SMTFormula('{self.formula.sexpr()}', "
             + (
