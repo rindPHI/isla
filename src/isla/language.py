@@ -118,6 +118,7 @@ language_core_logger = logging.getLogger("isla-language-core")
 # comparison, we replace the __eq__ method by AstRef's __eq__, which does perform
 # a structural comparison.
 z3.ExprRef.__eq__ = z3.AstRef.__eq__
+z3.ExprRef.__ne__ = z3.AstRef.__ne__
 
 
 class Variable:

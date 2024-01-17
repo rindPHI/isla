@@ -166,6 +166,38 @@ class DerivationTree:
             for _, subt_1 in self.paths()
         )
 
+    def ensure_unique_ids(self):
+        """
+        Ensures that all nodes in the tree have unique IDs by traversing the
+        tree and choosing values starting at :code:`DerivationTree.next_id`.
+
+        >>> DerivationTree.next_id = 0
+        >>> tree = DerivationTree("<start>", (DerivationTree("<a>"), DerivationTree("<b>")))
+        >>> tree
+        DerivationTree('<start>', (DerivationTree('<a>', None, id=0), DerivationTree('<b>', None, id=1)), id=2)
+
+        >>> tree.ensure_unique_ids()
+        DerivationTree('<start>', (DerivationTree('<a>', None, id=4), DerivationTree('<b>', None, id=5)), id=3)
+
+        >>> tree.structural_hash() == tree.ensure_unique_ids().structural_hash()
+        True
+
+        :return: A new, structurally identical tree with unique IDs.
+        """
+
+        new_id = DerivationTree.next_id
+        DerivationTree.next_id += 1
+
+        return DerivationTree(
+            self.value,
+            tuple(map(lambda c: c.ensure_unique_ids(), self.children))
+            if self.children
+            else self.children,
+            id=new_id,
+            k_paths=self.__k_paths,
+            is_open=self.__is_open,
+        )
+
     def k_coverage(
         self, graph: gg.GrammarGraph, k: int, include_potential_paths: bool = True
     ) -> float:

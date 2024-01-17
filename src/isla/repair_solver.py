@@ -1,4 +1,3 @@
-import inspect
 import itertools
 import logging
 import random
@@ -27,7 +26,6 @@ from grammar_to_regex.regex import regex_to_z3
 from orderedset import FrozenOrderedSet
 from returns.converters import result_to_maybe
 from returns.curry import partial
-from returns.functions import tap
 from returns.maybe import Maybe, Nothing, Some
 from returns.pipeline import flow
 from returns.pipeline import is_successful
@@ -93,7 +91,7 @@ from isla.z3_helpers import (
     z3_solve,
     parent_relationships_in_z3_expr,
     smt_string_val_to_string,
-    z3_eq,
+    is_z3_var,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -829,100 +827,128 @@ class RepairSolver:
         smt_formulas: Tuple[z3.BoolRef, ...],
         tree_substitutions: frozendict[Variable, DerivationTree],
     ) -> Tuple[z3.CheckSatResult, Maybe[frozendict[Variable, DerivationTree]]]:
+        length_vars: frozenset[Variable] = frozenset()
+        int_vars: frozenset[Variable] = frozenset()
+        fresh_var_map: frozendict[Variable, z3.ExprRef] = frozendict({})
+
         # We disable optimized Z3 queries if the SMT formulas contain "too concrete"
         # substitutions, that is, substitutions with a tree that is not merely an
-        # open leaf. Example: we have a constrained `str.len(<chars>) < 10` and a
-        # tree `<char><char>`; only the concrete length "10" is possible then. In fact,
-        # we could simply finish of the tree and check the constraint, or restrict the
-        # custom tree generation to admissible lengths, but we stay general here. The
-        # SMT solution is more robust.
-
-        if self.enable_optimized_z3_queries and not any(
+        # open leaf. Example: we have a constraint `str.len(<chars>) < 10` and a
+        # tree `<char><char>`; only the concrete length "2" is possible then.
+        optimized_solution_enabled = self.enable_optimized_z3_queries and not any(
             substitution.children for substitution in tree_substitutions.values()
-        ):
+        )
+
+        if optimized_solution_enabled:
+            # We first check whether `smt_formulas` are a system of equations.
+            # If so, we can assume that all participating variables must attain
+            # the same value, since this method is only called with dependent
+            # clusters of variables. We will then find the most specific
+            # nonterminal from the types of the participating variables and choose
+            # a random instantiation.
+            if all(
+                formula.decl().kind() == z3.Z3_OP_EQ
+                and all(is_z3_var(c) for c in formula.children())
+                for formula in smt_formulas
+            ):
+                most_specific_ntype: str = next(
+                    var.n_type
+                    for var in sort_variables_by_type_specificity(variables, self.graph)
+                )
+
+                value = self.fuzzer.expand_tree(
+                    DerivationTree(most_specific_ntype, None)
+                )
+                return z3.sat, Some(
+                    frozendict({var: value.ensure_unique_ids() for var in variables})
+                )
+
             vars_in_context = infer_variable_contexts(variables, smt_formulas)
             length_vars = vars_in_context["length"]
             int_vars = vars_in_context["int"]
             flexible_vars = vars_in_context["flexible"]
+
+            # Add language constraints for "flexible" variables
+            flex_language_constraints: Tuple[
+                z3.BoolRef, ...
+            ] = self.generate_language_constraints(flexible_vars, tree_substitutions)
+
+            # Create fresh variables for `str.len` and `str.to.int` variables.
+            all_variables = set(variables)
+            for var in length_vars | int_vars:
+                fresh = fresh_constant(
+                    all_variables,
+                    Constant(var.name, "NOT-NEEDED"),
+                )
+                fresh_var_map = fresh_var_map.set(var, z3.Int(fresh.name))
+
+            # In `smt_formulas`, we replace all `length(...)` terms for "length
+            # variables" with the corresponding fresh variable.
+            replacement_map: Dict[z3.ExprRef, z3.ExprRef] = {
+                expr: fresh_var_map[
+                    get_elem_by_equivalence(
+                        expr.children()[0],
+                        length_vars | int_vars,
+                        lambda e1, e2: e1 == e2.to_smt(),
+                    )
+                ]
+                for formula in smt_formulas
+                for expr in visit_z3_expr(formula)
+                if expr.decl().kind() in {z3.Z3_OP_SEQ_LENGTH, z3.Z3_OP_STR_TO_INT}
+                and expr.children()[0]
+                in {var.to_smt() for var in length_vars | int_vars}
+            }
+
+            # Perform substitution, add formulas
+            smt_formulas_no_seq_and_strtoint: Tuple[z3.BoolRef, ...] = tuple(
+                cast(z3.BoolRef, z3_subst(formula, replacement_map))
+                for formula in smt_formulas
+            )
+
+            # Lengths must be positive
+            length_constraints: Tuple[z3.BoolRef, ...] = tuple(
+                cast(
+                    z3.BoolRef,
+                    replacement_map[z3.Length(length_var.to_smt())] >= z3.IntVal(0),
+                )
+                for length_var in length_vars
+            )
+
+            # Add custom intervals for int variables
+            interval_constraints: Tuple[z3.BoolRef, ...] = ()
+            for int_var in int_vars:
+                regex = self.extract_regular_expression(int_var.n_type)
+                maybe_intervals = numeric_intervals_from_regex(regex)
+                repl_var = replacement_map[z3.StrToInt(int_var.to_smt())]
+                interval_constraints += maybe_intervals.map(
+                    lambda intervals: (
+                        z3_or(
+                            [
+                                z3.And(
+                                    repl_var >= z3.IntVal(interval[0])
+                                    if interval[0] > -sys.maxsize
+                                    else z3.BoolVal(True),
+                                    repl_var <= z3.IntVal(interval[1])
+                                    if interval[1] < sys.maxsize
+                                    else z3.BoolVal(True),
+                                )
+                                for interval in intervals
+                            ]
+                        ),
+                    )
+                ).value_or(())
+
+            sat_result, maybe_model = z3_solve(
+                flex_language_constraints
+                + length_constraints
+                + interval_constraints
+                + smt_formulas_no_seq_and_strtoint
+            )
         else:
-            length_vars = set()
-            int_vars = set()
-            flexible_vars = set(variables)
-
-        # Add language constraints for "flexible" variables
-        formulas: Tuple[z3.BoolRef, ...] = self.generate_language_constraints(
-            flexible_vars, tree_substitutions
-        )
-
-        # Create fresh variables for `str.len` and `str.to.int` variables.
-        all_variables = set(variables)
-        fresh_var_map: Dict[Variable, z3.ExprRef] = {}
-        for var in length_vars | int_vars:
-            fresh = fresh_constant(
-                all_variables,
-                Constant(var.name, "NOT-NEEDED"),
+            sat_result, maybe_model = z3_solve(
+                self.generate_language_constraints(variables, tree_substitutions)
+                + smt_formulas
             )
-            fresh_var_map[var] = z3.Int(fresh.name)
-
-        # In `smt_formulas`, we replace all `length(...)` terms for "length variables"
-        # with the corresponding fresh variable.
-        replacement_map: Dict[z3.ExprRef, z3.ExprRef] = {
-            expr: fresh_var_map[
-                get_elem_by_equivalence(
-                    expr.children()[0],
-                    length_vars | int_vars,
-                    lambda e1, e2: e1 == e2.to_smt(),
-                )
-            ]
-            for formula in smt_formulas
-            for expr in visit_z3_expr(formula)
-            if expr.decl().kind() in {z3.Z3_OP_SEQ_LENGTH, z3.Z3_OP_STR_TO_INT}
-            and expr.children()[0] in {var.to_smt() for var in length_vars | int_vars}
-        }
-
-        # Perform substitution, add formulas
-        formulas += tuple(
-            cast(z3.BoolRef, z3_subst(formula, replacement_map))
-            for formula in smt_formulas
-        )
-
-        # Lengths must be positive
-        formulas += tuple(
-            cast(
-                z3.BoolRef,
-                replacement_map[z3.Length(length_var.to_smt())] >= z3.IntVal(0),
-            )
-            for length_var in length_vars
-        )
-
-        # Add custom intervals for int variables
-        for int_var in int_vars:
-            if int_var.n_type == Variable.NUMERIC_NTYPE:
-                # "NUM" variables range over the full int domain
-                continue
-
-            regex = self.extract_regular_expression(int_var.n_type)
-            maybe_intervals = numeric_intervals_from_regex(regex)
-            repl_var = replacement_map[z3.StrToInt(int_var.to_smt())]
-            formulas += maybe_intervals.map(
-                lambda intervals: (
-                    z3_or(
-                        [
-                            z3.And(
-                                repl_var >= z3.IntVal(interval[0])
-                                if interval[0] > -sys.maxsize
-                                else z3.BoolVal(True),
-                                repl_var <= z3.IntVal(interval[1])
-                                if interval[1] < sys.maxsize
-                                else z3.BoolVal(True),
-                            )
-                            for interval in intervals
-                        ]
-                    ),
-                )
-            ).value_or(())
-
-        sat_result, maybe_model = z3_solve(formulas)
 
         if sat_result != z3.sat:
             return sat_result, Nothing
@@ -1071,6 +1097,7 @@ class RepairSolver:
 
         **"Length" Variables:**
 
+        >>> from isla.z3_helpers import z3_eq
         >>> x = Variable("x", "<X>")
         >>> x_0 = z3.Int("x_0")
         >>> f = z3_eq(x_0, z3.IntVal(3))
@@ -1330,6 +1357,31 @@ class RepairSolver:
         )
 
 
+def sort_variables_by_type_specificity(
+    variables: Iterable[Variable],
+    graph: gg.GrammarGraph,
+) -> Tuple[Variable, ...]:
+    """
+    TODO: Document, test.
+    :param variables:
+    :param graph:
+    :return:
+    """
+
+    return tuple(
+        sorted(
+            variables,
+            key=lambda v: len(
+                tuple(
+                    other_var
+                    for other_var in variables
+                    if other_var != v and graph.reachable(v.n_type, other_var.n_type)
+                )
+            ),
+        )
+    )
+
+
 def compute_pruning_substitutions(
     smt_conjuncts: Sequence[SMTFormula], tree: DerivationTree
 ) -> frozendict[DerivationTree, DerivationTree]:
@@ -1450,6 +1502,7 @@ def infer_variable_contexts(
 
     Two variables in an arbitrary context.
 
+    >>> from isla.z3_helpers import z3_eq
     >>> f = z3_eq(x.to_smt(), y.to_smt())
     >>> contexts = infer_variable_contexts({x, y}, (f,))
     >>> contexts["length"]

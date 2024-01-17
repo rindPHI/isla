@@ -136,6 +136,46 @@ def star(f: Callable[..., T], do_flatten=False) -> Callable[..., T]:
         return lambda x: f(*x)
 
 
+ListOrTuple = TypeVar("ListOrTuple", list, tuple)
+
+
+def flatten(seq: ListOrTuple) -> ListOrTuple:
+    """
+    This function one level of the passed sequence.
+
+    Flattening of a nested list:
+
+    >>> flatten([[1], [3, 4]])
+    [1, 3, 4]
+
+    Flattening of a nested tuple:
+
+    >>> flatten(((1,), (3, 4)))
+    (1, 3, 4)
+
+    Flattening of a nested tuple, where some elements are no sequences:
+
+    >>> flatten((1, (3, 4)))
+    (1, 3, 4)
+
+    Flattening of a more deeply nested sequence leaves the deeper nested elements
+    unflattened:
+
+    >>> flatten((1, ((3, 4), 5)))
+    (1, (3, 4), 5)
+
+    :param seq: The sequence to flatten.
+    :return: A sequence in which elements nested one level are inlined.
+    """
+
+    constructor = type(seq)
+    return constructor(
+        item
+        for subseq in seq
+        for item in (subseq if isinstance(subseq, (tuple, list)) else [subseq])
+    )
+
+
 def is_path(maybe_path: Any) -> bool:
     """
     >>> is_path("str")
@@ -1179,7 +1219,8 @@ def deep_str(obj: Any) -> str:
     else:
         return str(obj)
 
-def depth_indent(c = ".") -> str:
+
+def depth_indent(c=".") -> str:
     """
     This function returns a string of :code:`c` characters/strings, where the
     number of characters is equal to the depth of the current function call
