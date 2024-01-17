@@ -38,7 +38,7 @@ from isla.derivation_tree import DerivationTree
 from isla.evaluator import matches_for_quantified_formula, evaluate
 from isla.existential_helpers import insert_tree
 from isla.fuzzer import GrammarCoverageFuzzer
-from isla.helpers import deep_str, depth_indent
+from isla.helpers import deep_str, depth_indent, star
 from isla.helpers import (
     frozen_canonical,
     is_nonterminal,
@@ -294,7 +294,8 @@ class RepairSolver:
             # backtrack or fail.
             return Nothing
 
-        # 3. Replace all valid SMT expressions with `true` (considering the negation scope).
+        # 3. Replace all valid SMT expressions with `true` (considering the
+        #    negation scope).
         no_true_semantic_formulas = convert_to_dnf(
             convert_to_nnf(
                 self.eliminate_true_semantic_formulas(no_structural_predicates, tree)
@@ -327,24 +328,13 @@ class RepairSolver:
 
         conjuncts = split_conjunction(no_true_semantic_formulas)
 
-        # 4b. If the formula is an existentially quantified formula or a conjunction containing
-        #     such a formula, recursively try to satisfy those quantified formulas for different
-        #     insertions. Return the first successfully repaired tree, or Nothing.
-        maybe_first_existential_formula_and_index = next(
-            (
-                Some((idx, conjunct))
-                for idx, conjunct in enumerate(conjuncts)
-                if isinstance(conjunct, ExistsFormula)
-            ),
-            Nothing,
-        )
-
-        if is_successful(maybe_first_existential_formula_and_index):
-            (
-                idx,
-                existential_formula,
-            ) = maybe_first_existential_formula_and_index.unwrap()
-
+        def insert_and_recurse_for_existential_formula(
+            idx: int, existential_formula: ExistsFormula
+        ) -> Maybe[DerivationTree]:
+            # 4b. If the formula is an existentially quantified formula or a
+            #     conjunction containing such a formula, recursively try
+            #     to satisfy those quantified formulas for different insertions.
+            #     Return the first successfully repaired tree, or Nothing.
             for (
                 instantiated_formula,
                 tree_substitutions,
@@ -357,132 +347,106 @@ class RepairSolver:
                     & instantiated_formula
                 )
 
-                repaired_tree = self.repair_tree(
+                match self.repair_tree(
                     new_constraint,
                     tree.substitute(tree_substitutions),
-                )
-
-                if is_successful(repaired_tree):
-                    return repaired_tree
+                ):
+                    case Some(repaired_tree):
+                        return repaired_tree
 
             return Nothing
 
-        # 4c. If the formula is a single semantic formula or a conjunction of semantic formulas,
-        #     repair all semantic formulas by making all constrained tree elements abstract and
-        #     asking for a solution. If a solution exists, return the repaired tree. Otherwise,
-        #     return Nothing.
-        assert all(
-            isinstance(conjunct, SMTFormula) or isinstance(conjunct, ForallFormula)
-            for conjunct in conjuncts
-        )
+        def satisfy_smt_formulas() -> Maybe[DerivationTree]:
+            # 4c. If the formula is a single semantic formula or a conjunction of
+            #     semantic formulas, repair all semantic formulas by making all
+            #     constrained tree elements abstract and asking for a solution.
+            #     If a solution exists, return the repaired tree. Otherwise,
+            #     return Nothing.
+            assert all(
+                isinstance(conjunct, SMTFormula) or isinstance(conjunct, ForallFormula)
+                for conjunct in conjuncts
+            )
 
-        smt_conjuncts = tuple(
-            conjunct for conjunct in conjuncts if isinstance(conjunct, SMTFormula)
-        )
+            smt_conjuncts = tuple(
+                conjunct for conjunct in conjuncts if isinstance(conjunct, SMTFormula)
+            )
 
-        if not smt_conjuncts:
-            result = next(
-                (
-                    Some(closed_tree)
-                    for closed_tree in itertools.islice(
-                        self.finish_unconstrained_tree(tree), 50
+            if not smt_conjuncts:
+                # No SMT formulas => We can finish the tree by grammar fuzzing.
+                # However, we must evaluate whether the such closed trees satisfy
+                # the constraints.
+                return self.try_to_finish(tree, conjunction(*conjuncts))
+
+            pruning_substitutions = compute_pruning_substitutions(smt_conjuncts, tree)
+            pruned_smt_conjuncts = tuple(
+                conjunct.substitute_expressions(pruning_substitutions)
+                for conjunct in smt_conjuncts
+            )
+            pruned_tree = tree.substitute(pruning_substitutions)
+
+            def apply_smt_substitutions(
+                substs: Mapping[DerivationTree, DerivationTree]
+            ) -> Maybe[DerivationTree]:
+                non_smt_formula = conjunction(
+                    *(c for c in conjuncts if not isinstance(c, SMTFormula))
+                )
+
+                if substs:
+                    return self.repair_tree(
+                        non_smt_formula.substitute_expressions(substs),
+                        tree.substitute(substs),
                     )
-                    if evaluate(
-                        conjunction(*conjuncts).substitute_expressions(
-                            {
-                                tree.get_subtree(path): subtree
-                                for path, subtree in closed_tree.paths()
-                            }
-                        ),
-                        closed_tree,
-                        self.grammar,
-                    ).is_true()
+
+                # No substitutions => We can finish the tree by grammar fuzzing.
+                # However, we must evaluate whether the such closed trees satisfy
+                # the constraints.
+                return self.try_to_finish(tree, non_smt_formula)
+
+            return (
+                self.eliminate_all_semantic_formulas(pruned_smt_conjuncts, pruned_tree)
+                .map(lambda s: (LOGGER.debug("SMT solution found: %s", s), s)[-1])
+                .lash(lambda _: (LOGGER.debug("No SMT solution found"), Nothing)[-1])
+                .bind(apply_smt_substitutions)
+            )
+
+        return (
+            next(
+                (
+                    Some((idx, conjunct))
+                    for idx, conjunct in enumerate(conjuncts)
+                    if isinstance(conjunct, ExistsFormula)
                 ),
                 Nothing,
             )
+            .map(star(insert_and_recurse_for_existential_formula))
+            .lash(lambda _: satisfy_smt_formulas())
+        )
 
-            LOGGER.debug("Returning repaird result %s", result)
+    def try_to_finish(
+        self, tree: DerivationTree, validity_constraint: Formula, max_tries: int = 50
+    ) -> Maybe[DerivationTree]:
+        """
+        TODO: Document & add test cases.
 
-            return result
+        :param tree:
+        :param validity_constraint:
+        :param max_tries:
+        :return:
+        """
 
-        participating_paths = {
-            tree.find_node(arg)
-            for conjunct in smt_conjuncts
-            for arg in conjunct.tree_arguments()
-        }
-
-        pruning_substitutions = dict(
+        return next(
             (
-                cast(
-                    Tuple[DerivationTree, DerivationTree],
-                    (
-                        subtree := tree.get_subtree(path),
-                        subtree,
-                        DerivationTree(subtree.value, None, id=subtree.id),
-                    )[1:],
+                Some(closed_tree)
+                for closed_tree, closing_substs in itertools.islice(
+                    self.finish_unconstrained_tree(tree), max_tries
                 )
-                for path in participating_paths
-                if is_nonterminal(tree.get_subtree(path).value)
-                and not tree.get_subtree(path).children is None
-            )
-        )
-
-        pruned_smt_conjuncts = tuple(
-            conjunct.substitute_expressions(pruning_substitutions)
-            for conjunct in smt_conjuncts
-        )
-        pruned_tree = tree.substitute(pruning_substitutions)
-
-        return (
-            self.eliminate_all_semantic_formulas(pruned_smt_conjuncts, pruned_tree)
-            .map(lambda s: (LOGGER.debug("SMT solution found: %s", s), s)[-1])
-            .lash(lambda _: (LOGGER.debug("No SMT solution found"), Nothing)[-1])
-            .bind(
-                lambda tree_substitutions: (
-                    self.repair_tree(
-                        conjunction(
-                            *[
-                                c.substitute_expressions(tree_substitutions)
-                                for c in conjuncts
-                                if c not in smt_conjuncts
-                            ]
-                        ),
-                        tree.substitute(tree_substitutions),
-                    )
-                    if tree_substitutions
-                    else Some(
-                        # TODO: Choose a valid instantiation
-                        next(
-                            self.finish_unconstrained_tree(
-                                tree.substitute(tree_substitutions)
-                            )
-                        )
-                    )
-                )
-            )
-            # .bind(
-            #     lambda tree: next(
-            #         (
-            #             Some(closed_tree)
-            #             for closed_tree in itertools.islice(
-            #                 self.finish_unconstrained_tree(tree), 50
-            #             )
-            #             if evaluate(
-            #                 conjunction(
-            #                     *[c for c in conjuncts if not isinstance(c, SMTFormula)]
-            #                 ).substitute_expressions(
-            #                     {
-            #                         tree.get_subtree(path): subtree
-            #                         for path, subtree in closed_tree.paths()
-            #                     }
-            #                 ),
-            #                 closed_tree,
-            #                 self.grammar,
-            #             ).is_true()
-            #         ),
-            #         Nothing,
-            #     )
-            # )
+                if evaluate(
+                    validity_constraint.substitute_expressions(closing_substs),
+                    closed_tree,
+                    self.grammar,
+                ).is_true()
+            ),
+            Nothing,
         )
 
     @typechecked
@@ -560,14 +524,16 @@ class RepairSolver:
     def finish_unconstrained_tree(
         self,
         tree: DerivationTree,
-    ) -> Iterator[DerivationTree]:
+    ) -> Iterator[Tuple[DerivationTree, frozendict[DerivationTree, DerivationTree]]]:
         while True:
-            result = tree
+            result_tree = tree
+            result_substs: frozendict[DerivationTree, DerivationTree] = frozendict({})
             for path, leaf in tree.open_leaves():
                 leaf_inst = self.fuzzer.expand_tree(DerivationTree(leaf.value, None))
-                result = result.replace_path(path, leaf_inst)
+                result_tree = result_tree.replace_path(path, leaf_inst)
+                result_substs = result_substs.set(leaf, leaf_inst)
 
-            yield result
+            yield result_tree, result_substs
 
     @typechecked
     def eliminate_true_semantic_formulas(
@@ -1362,6 +1328,40 @@ class RepairSolver:
                 var.n_type,
             )
         )
+
+
+def compute_pruning_substitutions(
+    smt_conjuncts: Sequence[SMTFormula], tree: DerivationTree
+) -> frozendict[DerivationTree, DerivationTree]:
+    """
+    TODO: Document, test.
+
+    :param smt_conjuncts:
+    :param tree:
+    :return:
+    """
+
+    participating_paths = {
+        tree.find_node(arg)
+        for conjunct in smt_conjuncts
+        for arg in conjunct.tree_arguments()
+    }
+
+    return frozendict(
+        (
+            cast(
+                Tuple[DerivationTree, DerivationTree],
+                (
+                    subtree := tree.get_subtree(path),
+                    subtree,
+                    DerivationTree(subtree.value, None, id=subtree.id),
+                )[1:],
+            )
+            for path in participating_paths
+            if is_nonterminal(tree.get_subtree(path).value)
+            and not tree.get_subtree(path).children is None
+        )
+    )
 
 
 def add_already_matched(

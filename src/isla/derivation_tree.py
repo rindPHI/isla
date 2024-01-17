@@ -29,6 +29,7 @@ from typing import (
     Callable,
     Union,
     Generator,
+    Mapping,
 )
 
 import graphviz
@@ -516,7 +517,7 @@ class DerivationTree:
         return self.__len
 
     def substitute(
-        self, subst_map: Dict["DerivationTree", "DerivationTree"]
+        self, subst_map: Mapping["DerivationTree", "DerivationTree"]
     ) -> "DerivationTree":
         # We perform an iterative reverse post-order depth-first traversal and use a
         # stack to store intermediate results from lower levels.

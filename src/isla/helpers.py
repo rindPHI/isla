@@ -90,8 +90,50 @@ def singleton_iterator(elem: T) -> Iterator[T]:
     return iter([elem])
 
 
-def star(f: Callable[[[Any, ...]], T]) -> Callable[[Sequence[Any]], T]:
-    return lambda x: f(*x)
+def star(f: Callable[..., T], do_flatten=False) -> Callable[..., T]:
+    """
+    Transforms a function accepting n arguments into one accepting a sequence of n
+    elements. If :code:`do_flatten` is True, the returned function accepts multiple
+    arguments. Sequences in these arguments are flattened.
+
+    Example
+    -------
+
+    Transforming a function adding two numbers to a function adding the two elements
+    of a list of numbers:
+
+    >>> star(lambda a, b: a + b)([1, 2])
+    3
+
+    Transforming a function adding four numbers to a function adding all passed numbers
+    or their elements using flattening. There must be exactly four numbers in the
+    given arguments.
+
+    >>> star(lambda a, b, c, d: a + b + c + d, do_flatten=True)(1, [2, 3], 4)
+    10
+
+    It does not matter if the passed arguments are inside a list or not:
+
+    >>> star(lambda a, b, c, d: a + b + c + d, do_flatten=True)([1], 2, [3, 4])
+    10
+
+    But we must pass exactly five numbers:
+
+    >>> star(lambda a, b, c, d: a + b + c + d, do_flatten=True)(1, [2, 3, 4], 5)
+    Traceback (most recent call last):
+    ...
+    TypeError: <lambda>() takes 4 positional arguments but 5 were given
+
+    :param f: The function to be "starred."
+    :param do_flatten: Set to True if the returned function should accept multiple
+        arguments that are flattened before forwarding them to the original function.
+    :return: The "starred" function.
+    """
+
+    if do_flatten:
+        return lambda *x: f(*flatten(x))
+    else:
+        return lambda x: f(*x)
 
 
 def is_path(maybe_path: Any) -> bool:

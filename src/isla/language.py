@@ -1502,7 +1502,7 @@ class SMTFormula(Formula):
 
     def substitute_expressions(
         self,
-        subst_map: Dict[Union[Variable, DerivationTree], DerivationTree],
+        subst_map: Mapping[Union[Variable, DerivationTree], DerivationTree],
         force: bool = False,
     ) -> "SMTFormula":
         if not force and not self.auto_eval and not subst_map_relevant(self, subst_map):
@@ -1720,7 +1720,7 @@ class SMTFormula(Formula):
 
 def subst_map_relevant(
     formula: Formula,
-    subst_map: Dict[Union[Variable, DerivationTree], DerivationTree],
+    subst_map: Mapping[Union[Variable, DerivationTree], DerivationTree],
 ) -> bool:
     return formula.free_variables().intersection(subst_map.keys()) or any(
         tree_arg.find_node(subst_tree) is not None
