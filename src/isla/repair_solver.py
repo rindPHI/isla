@@ -31,12 +31,13 @@ from returns.pipeline import flow
 from returns.pipeline import is_successful
 from returns.result import safe
 from typeguard import typechecked
+from z3 import is_true
 
 from isla.derivation_tree import DerivationTree
 from isla.evaluator import matches_for_quantified_formula, evaluate
 from isla.existential_helpers import insert_tree
-from isla.fuzzer import GrammarCoverageFuzzer
-from isla.helpers import deep_str, depth_indent, star
+from isla.fuzzer import GrammarCoverageFuzzer, GrammarFuzzer
+from isla.helpers import deep_str, depth_indent, star, lazystr
 from isla.helpers import (
     frozen_canonical,
     is_nonterminal,
@@ -92,6 +93,9 @@ from isla.z3_helpers import (
     parent_relationships_in_z3_expr,
     smt_string_val_to_string,
     is_z3_var,
+    get_symbols,
+    z3_and,
+    is_valid,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -402,7 +406,14 @@ class RepairSolver:
 
             return (
                 self.eliminate_all_semantic_formulas(pruned_smt_conjuncts, pruned_tree)
-                .map(lambda s: (LOGGER.debug("SMT solution found: %s", s), s)[-1])
+                .map(
+                    lambda s: (
+                        LOGGER.debug(
+                            "SMT solution found: %s", lazystr(lambda: deep_str(s))
+                        ),
+                        s,
+                    )[-1]
+                )
                 .lash(lambda _: (LOGGER.debug("No SMT solution found"), Nothing)[-1])
                 .bind(apply_smt_substitutions)
             )
@@ -472,7 +483,12 @@ class RepairSolver:
                 # if not qfd_formula.is_already_matched(
                 #     match[qfd_formula.bound_variable][1]
                 # )
-                if match[qfd_formula.bound_variable][1].structural_hash()
+                if hash(
+                    (
+                        match[qfd_formula.bound_variable][1].id,
+                        match[qfd_formula.bound_variable][1].structural_hash(),
+                    )
+                )
                 not in qfd_formula.already_matched
             )
 
@@ -485,9 +501,9 @@ class RepairSolver:
                 if match[qfd_formula.bound_variable][1].structural_hash()
                 in qfd_formula.already_matched
             )
-            LOGGER.debug(
-                "Ignored matches:\n%s", "\n".join(map(deep_str, ignored_matches))
-            )
+            # LOGGER.debug(
+            #     "Ignored matches:\n%s", "\n".join(map(deep_str, ignored_matches))
+            # )
 
             # qfd_formula = qfd_formula.add_already_matched(
             #     [match[qfd_formula.bound_variable] for match in matches]
@@ -827,6 +843,18 @@ class RepairSolver:
         smt_formulas: Tuple[z3.BoolRef, ...],
         tree_substitutions: frozendict[Variable, DerivationTree],
     ) -> Tuple[z3.CheckSatResult, Maybe[frozendict[Variable, DerivationTree]]]:
+        """
+        TODO Document, test.
+
+        :param variables:
+        :param smt_formulas:
+        :param tree_substitutions:
+        :return:
+        """
+
+        # if all(is_valid(z3.simplify(f)).is_true() for f in smt_formulas):
+        #     return z3.sat, Some(frozendict())
+
         length_vars: frozenset[Variable] = frozenset()
         int_vars: frozenset[Variable] = frozenset()
         fresh_var_map: frozendict[Variable, z3.ExprRef] = frozendict({})
@@ -840,28 +868,47 @@ class RepairSolver:
         )
 
         if optimized_solution_enabled:
-            # We first check whether `smt_formulas` are a system of equations.
-            # If so, we can assume that all participating variables must attain
-            # the same value, since this method is only called with dependent
-            # clusters of variables. We will then find the most specific
-            # nonterminal from the types of the participating variables and choose
-            # a random instantiation.
-            if all(
-                formula.decl().kind() == z3.Z3_OP_EQ
-                and all(is_z3_var(c) for c in formula.children())
-                for formula in smt_formulas
-            ):
-                most_specific_ntype: str = next(
-                    var.n_type
-                    for var in sort_variables_by_type_specificity(variables, self.graph)
-                )
+            # # We first check whether `smt_formulas` are a system of equations.
+            # # If so, we can assume that all participating variables must attain
+            # # the same value, since this method is only called with dependent
+            # # clusters of variables. We will then find the most specific
+            # # nonterminal from the types of the participating variables and choose
+            # # a random instantiation.
+            # if all(
+            #     formula.decl().kind() == z3.Z3_OP_EQ
+            #     and all(is_z3_var(c) for c in formula.children())
+            #     for formula in smt_formulas
+            # ):
+            #     most_specific_ntype: str = compute_most_specific_type(
+            #         [
+            #             tree_substitutions[var].value
+            #             if var in tree_substitutions
+            #             else var.n_type
+            #             for var in variables
+            #         ],
+            #         self.graph,
+            #     )[0]
 
-                value = self.fuzzer.expand_tree(
-                    DerivationTree(most_specific_ntype, None)
-                )
-                return z3.sat, Some(
-                    frozendict({var: value.ensure_unique_ids() for var in variables})
-                )
+            #     LOGGER.debug(smt_formulas)
+            #     LOGGER.debug(tree_substitutions)
+            #     LOGGER.debug(variables)
+
+            #     value = GrammarFuzzer(self.grammar).expand_tree(
+            #         DerivationTree(most_specific_ntype, None)
+            #     )
+            #     return z3.sat, Some(
+            #         frozendict(
+            #             {
+            #                 var: (
+            #                     t := value.ensure_unique_ids(),
+            #                     DerivationTree(
+            #                         t.value, t.children, id=tree_substitutions[var].id
+            #                     ),
+            #                 )[-1]
+            #                 for var in variables
+            #             }
+            #         )
+            #     )
 
             vars_in_context = infer_variable_contexts(variables, smt_formulas)
             length_vars = vars_in_context["length"]
@@ -954,7 +1001,23 @@ class RepairSolver:
             return sat_result, Nothing
 
         assert maybe_model is not None
+        return sat_result, self.extract_model_values(
+            variables, maybe_model, fresh_var_map, length_vars, int_vars
+        )
 
+    def extract_model_values(
+        self, variables, maybe_model, fresh_var_map, length_vars, int_vars
+    ):
+        """
+        TODO: Test, Document.
+
+        :param variables:
+        :param maybe_model:
+        :param fresh_var_map:
+        :param length_vars:
+        :param int_vars:
+        :return:
+        """
         model_values: Maybe[frozendict[Variable, DerivationTree]] = reduce(
             lambda maybe_solution, var: maybe_solution.bind(
                 lambda solution: self.extract_model_value(
@@ -973,7 +1036,7 @@ class RepairSolver:
             )
         ).value_or(False)
 
-        return sat_result, model_values
+        return model_values
 
     @typechecked
     def generate_language_constraints(
@@ -1357,25 +1420,25 @@ class RepairSolver:
         )
 
 
-def sort_variables_by_type_specificity(
-    variables: Iterable[Variable],
+def compute_most_specific_type(
+    types: Iterable[str],
     graph: gg.GrammarGraph,
-) -> Tuple[Variable, ...]:
+) -> Tuple[str, ...]:
     """
     TODO: Document, test.
-    :param variables:
+    :param types:
     :param graph:
     :return:
     """
 
     return tuple(
         sorted(
-            variables,
-            key=lambda v: len(
+            types,
+            key=lambda t: len(
                 tuple(
-                    other_var
-                    for other_var in variables
-                    if other_var != v and graph.reachable(v.n_type, other_var.n_type)
+                    other_type
+                    for other_type in types
+                    if other_type != t and graph.reachable(t, other_type)
                 )
             ),
         )
@@ -1430,7 +1493,9 @@ def add_already_matched(
             | (
                 FrozenOrderedSet([trees.structural_hash()])
                 if isinstance(trees, DerivationTree)
-                else FrozenOrderedSet([tree.structural_hash() for tree in trees])
+                else FrozenOrderedSet(
+                    [hash((tree.id, tree.structural_hash())) for tree in trees]
+                )
             )
         ),
     )

@@ -111,7 +111,6 @@ def evaluate(
     subtrees_trie: Optional[SubtreesTrie] = None,
     graph: Optional[gg.GrammarGraph] = None,
 ) -> ThreeValuedTruth:
-    logger.debug("Evaluating formula %s", formula)
     assumptions = assumptions or set()
 
     if isinstance(grammar, str):
