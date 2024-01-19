@@ -220,12 +220,14 @@ def path_iterator(
             yield from path_iterator(child, path + (i,))
 
 
-def delete_unreachable(grammar: Grammar) -> Grammar:
-    return {
-        nonterminal: expansions
+def delete_unreachable(grammar: Grammar, frozen=False) -> Grammar | FrozenGrammar:
+    result = {
+        nonterminal: tuple(expansions) if frozen else expansions
         for nonterminal, expansions in grammar.items()
         if nonterminal not in unreachable_nonterminals(grammar)
     }
+
+    return frozendict(result) if frozen else result
 
 
 def is_prefix(path_1: Path, path_2: Path) -> bool:

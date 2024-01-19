@@ -3,6 +3,7 @@ import logging
 import random
 import sys
 from functools import reduce, lru_cache
+from operator import itemgetter
 from typing import (
     FrozenSet,
     Tuple,
@@ -26,12 +27,13 @@ from grammar_to_regex.regex import regex_to_z3
 from orderedset import FrozenOrderedSet
 from returns.converters import result_to_maybe
 from returns.curry import partial
+from returns.functions import tap
 from returns.maybe import Maybe, Nothing, Some
 from returns.pipeline import flow
 from returns.pipeline import is_successful
+from returns.pointfree import map_
 from returns.result import safe
 from typeguard import typechecked
-from z3 import is_true
 
 from isla.derivation_tree import DerivationTree
 from isla.evaluator import matches_for_quantified_formula, evaluate
@@ -81,6 +83,7 @@ from isla.language import (
     FormulaVisitor,
     fresh_constant,
     false,
+    parse_bnf,
 )
 from isla.parser import EarleyParser
 from isla.type_defs import FrozenGrammar, Path, Grammar, FrozenCanonicalGrammar
@@ -93,9 +96,6 @@ from isla.z3_helpers import (
     parent_relationships_in_z3_expr,
     smt_string_val_to_string,
     is_z3_var,
-    get_symbols,
-    z3_and,
-    is_valid,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -166,16 +166,19 @@ class RepairSolver:
     @typechecked
     def __init__(
         self,
-        grammar: FrozenGrammar | Grammar,
+        grammar: FrozenGrammar | Grammar | str,
         maybe_constraint: Optional[Formula | str] = None,
         structural_predicates=frozenset(STANDARD_STRUCTURAL_PREDICATES),
+        max_tries_existential_insertion: int = 4,
     ):
         # TODO: Make configurable.
         self.enable_optimized_z3_queries: bool = True
-        self.max_tries_existential_insertion: int = 2
+        self.max_tries_existential_insertion: int = max_tries_existential_insertion
         self.grammar_unwinding_threshold: int = 4
 
-        self.grammar = grammar_to_frozen(grammar)
+        self.grammar = grammar_to_frozen(
+            parse_bnf(grammar) if isinstance(grammar, str) else grammar
+        )
         self.canonical_grammar = frozen_canonical(self.grammar)
         self.graph = gg.GrammarGraph.from_grammar(self.grammar)
         self.solve_iterator = self.make_solve_iterator()
@@ -255,8 +258,6 @@ class RepairSolver:
         while True:
             tree = self.fuzzer.fuzz_tree()
 
-            LOGGER.debug("Trying to repair tree %s", tree)
-
             maybe_repaired = self.repair_tree(
                 self.instantiate_top_constant(tree),
                 tree,
@@ -274,9 +275,12 @@ class RepairSolver:
     @typechecked
     def repair_tree(
         self,
-        constraint: Formula,
+        constraint: Formula | Iterable[Formula],
         tree: DerivationTree,
     ) -> Maybe[DerivationTree]:
+        if not isinstance(constraint, Formula):
+            constraint = conjunction(*constraint)
+
         LOGGER.debug(
             "%sRepairing tree '%s' with constraint '%s'",
             depth_indent(),
@@ -326,39 +330,12 @@ class RepairSolver:
                     ),
                     Nothing,
                 ),
+                map_(tap(lambda t: isinstance(t, DerivationTree))),
             )
 
-        conjuncts = split_conjunction(no_true_semantic_formulas)
+        conjuncts = tuple(split_conjunction(no_true_semantic_formulas))
 
-        def insert_and_recurse_for_existential_formula(
-            idx: int, existential_formula: ExistsFormula
-        ) -> Maybe[DerivationTree]:
-            # 4b. If the formula is an existentially quantified formula or a
-            #     conjunction containing such a formula, recursively try
-            #     to satisfy those quantified formulas for different insertions.
-            #     Return the first successfully repaired tree, or Nothing.
-            for (
-                instantiated_formula,
-                tree_substitutions,
-            ) in self.eliminate_existential_formula(existential_formula, tree):
-                new_constraint = (
-                    conjunction(
-                        *conjuncts[:idx],
-                        *conjuncts[idx + 1 :],
-                    ).substitute_expressions(tree_substitutions)
-                    & instantiated_formula
-                )
-
-                match self.repair_tree(
-                    new_constraint,
-                    tree.substitute(tree_substitutions),
-                ):
-                    case Some(repaired_tree):
-                        return repaired_tree
-
-            return Nothing
-
-        def satisfy_smt_formulas() -> Maybe[DerivationTree]:
+        if not any(isinstance(c, ExistsFormula) for c in conjuncts):
             # 4c. If the formula is a single semantic formula or a conjunction of
             #     semantic formulas, repair all semantic formulas by making all
             #     constrained tree elements abstract and asking for a solution.
@@ -416,20 +393,108 @@ class RepairSolver:
                 )
                 .lash(lambda _: (LOGGER.debug("No SMT solution found"), Nothing)[-1])
                 .bind(apply_smt_substitutions)
+                .map(tap(lambda t: DerivationTree.__instancecheck__))
             )
 
-        return (
-            next(
-                (
-                    Some((idx, conjunct))
-                    for idx, conjunct in enumerate(conjuncts)
-                    if isinstance(conjunct, ExistsFormula)
-                ),
-                Nothing,
-            )
-            .map(star(insert_and_recurse_for_existential_formula))
-            .lash(lambda _: satisfy_smt_formulas())
+        return flow(
+            self.eliminate_all_existential_formulas(conjuncts, tree),
+            partial(map, itemgetter(0, 1)),
+            partial(map, star(self.repair_tree)),
+            partial(filter, is_successful),
+            lambda maybe_repaired_trees: next(maybe_repaired_trees, Nothing),
         )
+
+    def eliminate_all_existential_formulas(
+        self, conjuncts: Tuple[Formula, ...], tree: DerivationTree
+    ) -> Iterator[
+        Tuple[
+            Tuple[Formula, ...], DerivationTree, Mapping[DerivationTree, DerivationTree]
+        ]
+    ]:
+        r"""
+        TODO
+
+        >>> import string
+        >>> grammar = frozendict({
+        ...     "<start>": ("<stmt>",),
+        ...     "<stmt>": ("<assgn> ; <stmt>", "<assgn>"),
+        ...     "<assgn>": ("<var> := <rhs>",),
+        ...     "<rhs>": ("<var>", "<digit>"),
+        ...     "<var>": tuple(string.ascii_lowercase),
+        ...     "<digit>": tuple(string.digits)
+        ... })
+
+        >>> solver = RepairSolver(grammar, max_tries_existential_insertion=3)
+        >>> tree = solver.parse("a := 1 ; b := 2 ; c := 3").unwrap()
+
+        >>> constraint_1 = parse_isla('exists <var> in start: <var> = "x"', grammar)
+        >>> constraint_1 = constraint_1.substitute_expressions({constraint_1.in_variable: tree})
+
+        >>> constraint_2 = parse_isla('exists <digit> in start: <digit> = "1"', grammar)
+        >>> constraint_2 = constraint_2.substitute_expressions({constraint_2.in_variable: tree})
+
+        >>> print(
+        ...     "\n".join(
+        ...         [
+        ...             f"{new_conjuncts} |- {new_tree}"
+        ...             for new_conjuncts, new_tree, substs in itertools.islice(
+        ...                 solver.eliminate_all_existential_formulas(
+        ...                     (constraint_1, constraint_2), tree
+        ...                 ),
+        ...                 10,
+        ...             )
+        ...         ]
+        ...     )
+        ... )
+        (var == "x", digit == "1") |- <var> := <rhs> ; <var> := <digit> ; a := 1 ; b := 2 ; c := 3
+        (var == "x", digit == "1") |- <var> := <var> ; <var> := <digit> ; a := 1 ; b := 2 ; c := 3
+        (var == "x", digit == "1") |- <var> := <digit> ; <var> := <rhs> ; a := 1 ; b := 2 ; c := 3
+        (var == "x", digit == "1") |- <var> := <rhs> ; a := 1 ; <var> := <digit> ; b := 2 ; c := 3
+        (var == "x", digit == "1") |- <var> := <var> ; a := 1 ; <var> := <digit> ; b := 2 ; c := 3
+        (var == "x", digit == "1") |- a := 1 ; <var> := <rhs> ; <var> := <digit> ; b := 2 ; c := 3
+        (var == "x", digit == "1") |- <var> := <rhs> ; a := 1 ; b := 2 ; <var> := <digit> ; c := 3
+        (var == "x", digit == "1") |- <var> := <var> ; a := 1 ; b := 2 ; <var> := <digit> ; c := 3
+        (var == "x", digit == "1") |- a := 1 ; <var> := <rhs> ; b := 2 ; <var> := <digit> ; c := 3
+
+        :param conjuncts:
+        :param tree:
+        :return:
+        """
+
+        idx, first_existential_formula = Maybe.from_optional(
+            next(
+                filter(
+                    star(lambda idx, f: isinstance(f, ExistsFormula)),
+                    enumerate(conjuncts),
+                ),
+                None,
+            )
+        ).value_or((-1, None))
+
+        if not first_existential_formula:
+            yield conjuncts, tree, frozendict({})
+            return
+
+        for (
+            new_conjuncts,
+            new_tree,
+            new_substitutions,
+        ) in self.eliminate_all_existential_formulas(
+            conjuncts[:idx] + conjuncts[idx + 1 :], tree
+        ):
+            # TODO Continue from here.
+            for (
+                instantiated_formula,
+                tree_substitutions,
+            ) in self.eliminate_existential_formula(
+                first_existential_formula.substitute_expressions(new_substitutions),
+                new_tree,
+            ):
+                yield (instantiated_formula,) + tuple(
+                    c.substitute_expressions(tree_substitutions) for c in new_conjuncts
+                ), new_tree.substitute(
+                    tree_substitutions
+                ), new_substitutions | tree_substitutions
 
     def try_to_finish(
         self, tree: DerivationTree, validity_constraint: Formula, max_tries: int = 50
@@ -874,41 +939,65 @@ class RepairSolver:
             # # clusters of variables. We will then find the most specific
             # # nonterminal from the types of the participating variables and choose
             # # a random instantiation.
-            # if all(
-            #     formula.decl().kind() == z3.Z3_OP_EQ
-            #     and all(is_z3_var(c) for c in formula.children())
-            #     for formula in smt_formulas
-            # ):
-            #     most_specific_ntype: str = compute_most_specific_type(
-            #         [
-            #             tree_substitutions[var].value
-            #             if var in tree_substitutions
-            #             else var.n_type
-            #             for var in variables
-            #         ],
-            #         self.graph,
-            #     )[0]
+            if all(
+                formula.decl().kind() == z3.Z3_OP_EQ
+                and all(is_z3_var(c) for c in formula.children())
+                for formula in smt_formulas
+            ):
+                most_specific_ntype: str = compute_most_specific_type(
+                    [
+                        tree_substitutions[var].value
+                        if var in tree_substitutions
+                        else var.n_type
+                        for var in variables
+                    ],
+                    self.graph,
+                )[0]
 
-            #     LOGGER.debug(smt_formulas)
-            #     LOGGER.debug(tree_substitutions)
-            #     LOGGER.debug(variables)
+                # TODO: It seems to be a problem if an ID with a namespace is used. Z3
+                #       seems to be lazy and generally go for the IDs without prefix,
+                #       thus the problem does not surface; but it still exists!
+                #       This should be solved, regardless of whether we use optimized
+                #       equation solving or not.
+                grammar = delete_unreachable(
+                    self.grammar.set("<id>", ("<id-no-prefix>",)), frozen=True
+                )
+                value = GrammarFuzzer(grammar).expand_tree(
+                    DerivationTree(most_specific_ntype, None)
+                )
 
-            #     value = GrammarFuzzer(self.grammar).expand_tree(
-            #         DerivationTree(most_specific_ntype, None)
-            #     )
-            #     return z3.sat, Some(
-            #         frozendict(
-            #             {
-            #                 var: (
-            #                     t := value.ensure_unique_ids(),
-            #                     DerivationTree(
-            #                         t.value, t.children, id=tree_substitutions[var].id
-            #                     ),
-            #                 )[-1]
-            #                 for var in variables
-            #             }
-            #         )
-            #     )
+                LOGGER.debug(
+                    "Equation solving would return %s",
+                    Some(
+                        frozendict(
+                            {
+                                var: (
+                                    t := value.ensure_unique_ids(),
+                                    DerivationTree(
+                                        t.value,
+                                        t.children,
+                                        id=tree_substitutions[var].id,
+                                    ),
+                                )[-1]
+                                for var in variables
+                            }
+                        )
+                    ),
+                )
+
+                return z3.sat, Some(
+                    frozendict(
+                        {
+                            var: (
+                                t := value.ensure_unique_ids(),
+                                DerivationTree(
+                                    t.value, t.children, id=tree_substitutions[var].id
+                                ),
+                            )[-1]
+                            for var in variables
+                        }
+                    )
+                )
 
             vars_in_context = infer_variable_contexts(variables, smt_formulas)
             length_vars = vars_in_context["length"]
@@ -999,6 +1088,18 @@ class RepairSolver:
 
         if sat_result != z3.sat:
             return sat_result, Nothing
+
+        if optimized_solution_enabled and all(
+            formula.decl().kind() == z3.Z3_OP_EQ
+            and all(is_z3_var(c) for c in formula.children())
+            for formula in smt_formulas
+        ):
+            LOGGER.debug(
+                "Solver actually returned %s",
+                self.extract_model_values(
+                    variables, maybe_model, fresh_var_map, length_vars, int_vars
+                ),
+            )
 
         assert maybe_model is not None
         return sat_result, self.extract_model_values(
