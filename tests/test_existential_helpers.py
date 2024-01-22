@@ -17,6 +17,7 @@
 # along with ISLa.  If not, see <http://www.gnu.org/licenses/>.
 import unittest
 
+from frozendict import frozendict
 from grammar_graph.gg import GrammarGraph
 
 from isla.derivation_tree import DerivationTree
@@ -27,7 +28,9 @@ from isla.existential_helpers import (
     CONTEXT_ADDITION,
     DIRECT_EMBEDDING,
 )
+from isla.helpers import frozen_canonical
 from isla.parser import EarleyParser
+from isla.type_defs import Path
 from isla_formalizations import scriptsizec
 from isla_formalizations.xml_lang import (
     XML_GRAMMAR,
@@ -860,6 +863,253 @@ class TestExistentialHelpers(unittest.TestCase):
         result_trees_str = [str(t) for t in result_trees]
         self.assertIn("{int <id>;<id>;<statements>}", result_trees_str)
         self.assertIn("{<id>;int <id>;<statements>}", result_trees_str)
+
+    def test_insert_by_replacement(self):
+        grammar = frozendict(
+            {
+                "<start>": ("<xml-tree>",),
+                "<xml-tree>": ("", "<xml-open-tag><xml-tree><xml-close-tag>"),
+                "<xml-open-tag>": ("<langle><id><attrs>>",),
+                "<xml-close-tag>": ("<langle>/<id>>",),
+                "<attrs>": ("", " <attr><attrs>"),
+                "<attr>": ('<id>="XXX"',),
+                "<id>": ("<letter>:<letter>",),
+                "<letter>": ("a", "b", "c", "x"),
+                "<langle>": ("<",),
+            }
+        )
+
+        tree_to_insert = DerivationTree(
+            "<attr>",
+            (
+                DerivationTree(
+                    "<id>",
+                    (
+                        DerivationTree(
+                            "<letter>", (DerivationTree("x", (), id=1549),), id=1550
+                        ),
+                        DerivationTree(":", (), id=1551),
+                        DerivationTree("<letter>", None, id=1552),
+                    ),
+                    id=1553,
+                ),
+                DerivationTree('="XXX"', (), id=1554),
+            ),
+            id=1555,
+        )
+
+        into_tree = DerivationTree("<attr>", None, id=1351)
+
+        insertion_results = insert_tree(
+            frozen_canonical(grammar),
+            tree_to_insert,
+            into_tree,
+            graph=GrammarGraph.from_grammar(grammar),
+            max_num_solutions=3,
+        )
+
+        self.assertTrue(insertion_results)
+        self.assertEqual(1, len(insertion_results))
+
+        resulting_tree: DerivationTree = insertion_results[0][0]
+        inserted_tree_pos: Path = insertion_results[0][1]
+        context_tree_pos: Path = insertion_results[0][2]
+
+        self.assertEqual(
+            tree_to_insert.children,
+            resulting_tree.get_subtree(inserted_tree_pos).children,
+        )
+        self.assertTrue(
+            tree_to_insert.id, resulting_tree.get_subtree(inserted_tree_pos).id
+        )
+        self.assertTrue(
+            tree_to_insert.value, resulting_tree.get_subtree(inserted_tree_pos).value
+        )
+        self.assertTrue(into_tree.id, resulting_tree.get_subtree(context_tree_pos).id)
+        self.assertTrue(
+            into_tree.value, resulting_tree.get_subtree(context_tree_pos).value
+        )
+
+        self.assertTrue(
+            resulting_tree.structurally_equal(
+                DerivationTree(
+                    "<attr>",
+                    (
+                        DerivationTree(
+                            "<id>",
+                            (
+                                DerivationTree("<letter>", (DerivationTree("x", ()),)),
+                                DerivationTree(":", ()),
+                                DerivationTree("<letter>", None),
+                            ),
+                        ),
+                        DerivationTree('="XXX"', ()),
+                    ),
+                )
+            )
+        )
+        self.assertTrue(resulting_tree.find_node(into_tree) is not None)
+
+        # It's not true that we find all paths of the tree to insert in the insertion result...
+        self.assertFalse(
+            {sub for _, sub in tree_to_insert.paths()}.issubset(
+                {sub for _, sub in resulting_tree.paths()}
+            )
+        )
+
+        # ...because the root "clashes" with the existing node (we appended the children to that match).
+        self.assertTrue(
+            (
+                {sub for _, sub in tree_to_insert.paths()}.difference({tree_to_insert})
+            ).issubset({sub for _, sub in resulting_tree.paths()})
+        )
+
+    def test_xml_context_addition(self):
+        grammar = frozendict(
+            {
+                "<start>": ("<xml-tree>",),
+                "<xml-tree>": ("", "<xml-open-tag><xml-tree><xml-close-tag>"),
+                "<xml-open-tag>": ("<langle><id><attrs>>",),
+                "<xml-close-tag>": ("<langle>/<id>>",),
+                "<attrs>": ("", " <attr><attrs>"),
+                "<attr>": ('<id>="XXX"',),
+                "<id>": ("<letter>:<letter>",),
+                "<letter>": ("a", "b", "c", "x"),
+                "<langle>": ("<",),
+            }
+        )
+        b_c = (
+            "<id>",
+            [
+                ("<letter>", [("b", [])]),
+                (":", []),
+                ("<letter>", [("c", [])]),
+            ],
+        )
+        x_b = (
+            "<id>",
+            [
+                (
+                    "<letter>",
+                    [("x", [])],
+                ),
+                (":", []),
+                (
+                    "<letter>",
+                    [("b", [])],
+                ),
+            ],
+        )
+        optag_attrs = (
+            "<attrs>",
+            [
+                (" ", []),
+                (
+                    "<attr>",
+                    [
+                        b_c,
+                        ('="XXX"', []),
+                    ],
+                ),
+                (
+                    "<attrs>",
+                    [
+                        (" ", []),
+                        (
+                            "<attr>",
+                            [
+                                x_b,
+                                ('="XXX"', []),
+                            ],
+                        ),
+                        ("<attrs>", []),
+                    ],
+                ),
+            ],
+        )
+        into_tree_optag = (
+            "<xml-open-tag>",
+            [
+                ("<langle>", [("<", [])]),
+                b_c,
+                optag_attrs,
+                (">", []),
+            ],
+        )
+        b_x = (
+            "<id>",
+            [
+                ("<letter>", [("b", [])]),
+                (":", []),
+                ("<letter>", [("x", [])]),
+            ],
+        )
+        into_tree_cltag = (
+            "<xml-close-tag>",
+            [
+                ("<langle>", [("<", [])]),
+                ("/", []),
+                b_x,
+                (">", []),
+            ],
+        )
+        into_tree = DerivationTree.from_parse_tree(
+            (
+                "<start>",
+                [
+                    (
+                        "<xml-tree>",
+                        [
+                            into_tree_optag,
+                            ("<xml-tree>", []),
+                            into_tree_cltag,
+                        ],
+                    )
+                ],
+            )
+        )
+
+        tree_to_insert = DerivationTree.from_parse_tree(
+            (
+                "<xml-tree>",
+                [
+                    (
+                        "<xml-open-tag>",
+                        [
+                            ("<langle>", [("<", [])]),
+                            ("<id>", None),
+                            ("<attrs>", [(" ", []), ("<attr>", None), ("<attrs>", [])]),
+                            (">", []),
+                        ],
+                    ),
+                    ("<xml-tree>", None),
+                    (
+                        "<xml-close-tag>",
+                        [
+                            ("<langle>", [("<", [])]),
+                            ("/", []),
+                            ("<id>", None),
+                            (">", []),
+                        ],
+                    ),
+                ],
+            )
+        )
+
+        print(tree_to_insert)
+        print(into_tree)
+
+        insertion_results = insert_tree(
+            frozen_canonical(grammar),
+            tree_to_insert,
+            into_tree,
+            graph=GrammarGraph.from_grammar(grammar),
+            max_num_solutions=3,
+            methods=CONTEXT_ADDITION,  # TODO: Self-embedding fails with exception
+        )
+
+        print(insertion_results)
+        self.assertTrue(insertion_results)
 
     # Test deactivated: Should assert that no prefix trees are generated. The implemented
     # check in process_insertion_results, however, was too expensive for the JSON examples. Stalling for now.

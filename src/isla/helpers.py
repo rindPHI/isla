@@ -175,7 +175,6 @@ def flatten(seq: ListOrTuple) -> ListOrTuple:
         for item in (subseq if isinstance(subseq, (tuple, list)) else [subseq])
     )
 
-
 def is_path(maybe_path: Any) -> bool:
     """
     >>> is_path("str")

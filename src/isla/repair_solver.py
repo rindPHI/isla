@@ -37,7 +37,7 @@ from typeguard import typechecked
 
 from isla.derivation_tree import DerivationTree
 from isla.evaluator import matches_for_quantified_formula, evaluate
-from isla.existential_helpers import insert_tree
+from isla.existential_helpers import insert_tree, DIRECT_EMBEDDING, CONTEXT_ADDITION
 from isla.fuzzer import GrammarCoverageFuzzer, GrammarFuzzer
 from isla.helpers import deep_str, depth_indent, star, lazystr
 from isla.helpers import (
@@ -84,6 +84,7 @@ from isla.language import (
     fresh_constant,
     false,
     parse_bnf,
+    validate_structural_predicate_arguments,
 )
 from isla.parser import EarleyParser
 from isla.type_defs import FrozenGrammar, Path, Grammar, FrozenCanonicalGrammar
@@ -187,7 +188,7 @@ class RepairSolver:
         self.constraint = (
             Maybe.from_optional(maybe_constraint)
             .map(
-                lambda c: parse_isla(c, grammar, structural_predicates)
+                lambda c: parse_isla(c, self.grammar, structural_predicates)
                 if isinstance(c, str)
                 else c
             )
@@ -258,6 +259,11 @@ class RepairSolver:
         while True:
             tree = self.fuzzer.fuzz_tree()
 
+            # TODO test code
+            # tree = self.parse('<b:a x:b="XXX"></c:x>').unwrap()
+
+            # assert tree.structurally_equal(tree_)
+
             maybe_repaired = self.repair_tree(
                 self.instantiate_top_constant(tree),
                 tree,
@@ -303,8 +309,8 @@ class RepairSolver:
         # 3. Replace all valid SMT expressions with `true` (considering the
         #    negation scope).
         no_true_semantic_formulas = convert_to_dnf(
-            convert_to_nnf(
-                self.eliminate_true_semantic_formulas(no_structural_predicates, tree)
+            self.eliminate_true_semantic_formulas(
+                convert_to_nnf(no_structural_predicates), tree
             ),
             deep=False,
         )
@@ -397,20 +403,15 @@ class RepairSolver:
             )
 
         return flow(
-            self.eliminate_all_existential_formulas(conjuncts, tree),
-            partial(map, itemgetter(0, 1)),
+            self.eliminate_first_existential_formula(conjuncts, tree),
             partial(map, star(self.repair_tree)),
             partial(filter, is_successful),
             lambda maybe_repaired_trees: next(maybe_repaired_trees, Nothing),
         )
 
-    def eliminate_all_existential_formulas(
+    def eliminate_first_existential_formula(
         self, conjuncts: Tuple[Formula, ...], tree: DerivationTree
-    ) -> Iterator[
-        Tuple[
-            Tuple[Formula, ...], DerivationTree, Mapping[DerivationTree, DerivationTree]
-        ]
-    ]:
+    ) -> Iterator[Tuple[Tuple[Formula, ...], DerivationTree]]:
         r"""
         TODO
 
@@ -438,7 +439,7 @@ class RepairSolver:
         ...         [
         ...             f"{new_conjuncts} |- {new_tree}"
         ...             for new_conjuncts, new_tree, substs in itertools.islice(
-        ...                 solver.eliminate_all_existential_formulas(
+        ...                 solver.eliminate_first_existential_formula(
         ...                     (constraint_1, constraint_2), tree
         ...                 ),
         ...                 10,
@@ -461,6 +462,8 @@ class RepairSolver:
         :return:
         """
 
+        validate_structural_predicate_arguments(conjuncts, tree)
+
         idx, first_existential_formula = Maybe.from_optional(
             next(
                 filter(
@@ -475,26 +478,29 @@ class RepairSolver:
             yield conjuncts, tree, frozendict({})
             return
 
+        other_conjuncts = conjuncts[:idx] + conjuncts[idx + 1 :]
+
+        assert (
+            not first_existential_formula.in_variable.value == "<start>"
+            or first_existential_formula.in_variable == tree
+        )
+
         for (
-            new_conjuncts,
-            new_tree,
-            new_substitutions,
-        ) in self.eliminate_all_existential_formulas(
-            conjuncts[:idx] + conjuncts[idx + 1 :], tree
+            instantiated_formula,
+            tree_substitutions,
+        ) in self.eliminate_existential_formula(
+            first_existential_formula,
+            tree,
         ):
-            # TODO Continue from here.
-            for (
-                instantiated_formula,
-                tree_substitutions,
-            ) in self.eliminate_existential_formula(
-                first_existential_formula.substitute_expressions(new_substitutions),
-                new_tree,
-            ):
-                yield (instantiated_formula,) + tuple(
-                    c.substitute_expressions(tree_substitutions) for c in new_conjuncts
-                ), new_tree.substitute(
-                    tree_substitutions
-                ), new_substitutions | tree_substitutions
+            updated_conjuncts = tuple(
+                c.substitute_expressions(tree_substitutions) for c in other_conjuncts
+            )
+            updated_tree = tree.substitute(tree_substitutions)
+
+            validate_structural_predicate_arguments(instantiated_formula, updated_tree)
+            validate_structural_predicate_arguments(updated_conjuncts, updated_tree)
+
+            yield (instantiated_formula,) + updated_conjuncts, updated_tree
 
     def try_to_finish(
         self, tree: DerivationTree, validity_constraint: Formula, max_tries: int = 50
@@ -529,9 +535,50 @@ class RepairSolver:
         formula: Formula,
         ignore: FrozenSet[Formula] = frozenset(),
     ) -> Formula:
+        r"""
+        TODO: Document.
+
+        >>> grammar = {
+        ...     "<start>": ["<digits>"],
+        ...     "<digits>": ["<digit><digits>", "<digit>"],
+        ...     "<digit>": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+        ... }
+        >>> constraint = '''
+        ...     forall <digit> digit_1 in start: (
+        ...         digit_1 = "0" or
+        ...             exists <digit> digit_2 in start: (
+        ...                 before(digit_2, digit_1) and digit_2 = "0"
+        ...             )
+        ...     )'''
+        >>> solver = RepairSolver(grammar, constraint)
+        >>> tree = solver.parse("012").unwrap()
+        >>> print(
+        ...     "\n".join(
+        ...         map(
+        ...             str,
+        ...             split_conjunction(
+        ...                 solver.instantiate_quantifiers(
+        ...                     solver.instantiate_top_constant(tree)
+        ...                 )
+        ...             ),
+        ...         )
+        ...     )
+        ... )
+        ((digit_1 == "0", {'digit_1': '0'}) ∨ ((((before(0, 0) ∧ (digit_2 == "0", {'digit_2': '0'})) ∨ (before(1, 0) ∧ (digit_2 == "0", {'digit_2': '1'}))) ∨ (before(2, 0) ∧ (digit_2 == "0", {'digit_2': '2'}))) ∨ ∃ digit_2 ∈ 012: ((before(digit_2, 0) ∧ digit_2 == "0"))))
+        ((digit_1 == "0", {'digit_1': '1'}) ∨ ((((before(0, 1) ∧ (digit_2 == "0", {'digit_2': '0'})) ∨ (before(1, 1) ∧ (digit_2 == "0", {'digit_2': '1'}))) ∨ (before(2, 1) ∧ (digit_2 == "0", {'digit_2': '2'}))) ∨ ∃ digit_2 ∈ 012: ((before(digit_2, 1) ∧ digit_2 == "0"))))
+        ((digit_1 == "0", {'digit_1': '2'}) ∨ ((((before(0, 2) ∧ (digit_2 == "0", {'digit_2': '0'})) ∨ (before(1, 2) ∧ (digit_2 == "0", {'digit_2': '1'}))) ∨ (before(2, 2) ∧ (digit_2 == "0", {'digit_2': '2'}))) ∨ ∃ digit_2 ∈ 012: ((before(digit_2, 2) ∧ digit_2 == "0"))))
+        ∀ digit_1 ∈ 012: ((digit_1 == "0" ∨ ∃ digit_2 ∈ 012: ((before(digit_2, digit_1) ∧ digit_2 == "0"))))
+
+        :param formula:
+        :param ignore:
+        :return:
+        """
+
         # We disable the automatic evaluation and substitution of SMT expressions
         # because we want to use the # SMT expressions as-is in the formula (to
         # repair the invalid ones).
+        formula = set_auto_subst_and_eval(formula, False)
+
         top_level_qfd_formulas = extract_top_level_quantified_formulas(
             formula
         ).difference(ignore)
@@ -557,22 +604,6 @@ class RepairSolver:
                 not in qfd_formula.already_matched
             )
 
-            # TODO remove, debug hack
-            ignored_matches = tuple(
-                frozendict({var: tree for var, (_, tree) in match.items()})
-                for match in matches_for_quantified_formula(
-                    qfd_formula, self.grammar, in_tree=qfd_formula.in_variable
-                )
-                if match[qfd_formula.bound_variable][1].structural_hash()
-                in qfd_formula.already_matched
-            )
-            # LOGGER.debug(
-            #     "Ignored matches:\n%s", "\n".join(map(deep_str, ignored_matches))
-            # )
-
-            # qfd_formula = qfd_formula.add_already_matched(
-            #     [match[qfd_formula.bound_variable] for match in matches]
-            # )
             qfd_formula = add_already_matched(
                 qfd_formula, [match[qfd_formula.bound_variable] for match in matches]
             )
@@ -637,6 +668,11 @@ class RepairSolver:
         existential_formula: ExistsFormula,
         context_tree: DerivationTree,
     ) -> Iterator[Tuple[Formula, Mapping[DerivationTree, DerivationTree]]]:
+        assert (
+            not existential_formula.in_variable.value == "<start>"
+            or existential_formula.in_variable == context_tree
+        )
+
         inserted_trees_and_bind_paths: Tuple[
             Tuple[DerivationTree, Dict[BoundVariable, Path]], ...
         ] = tuple(
@@ -660,15 +696,23 @@ class RepairSolver:
                 existential_formula.in_variable,
                 graph=self.graph,
                 max_num_solutions=self.max_tries_existential_insertion,  # TODO: Convert to stream!
+                # TODO: Self embedding is currently buggy,fix & re-activate
+                methods=DIRECT_EMBEDDING + CONTEXT_ADDITION,
             )
 
-            for tree_after_insertion in insertion_results:
-                yield from self.process_insertion_result(
+            for insertion_result in insertion_results:
+                yield self.process_insertion_result(
                     bind_expr_paths,
                     context_tree,
                     existential_formula,
                     inserted_tree,
-                    tree_after_insertion,
+                    *insertion_result,
+                )
+            else:
+                LOGGER.debug(
+                    "Could not insert tree '%s' into '%s'",
+                    inserted_tree,
+                    existential_formula.in_variable,
                 )
 
     @typechecked
@@ -679,7 +723,13 @@ class RepairSolver:
         existential_formula: ExistsFormula,
         inserted_tree: DerivationTree,
         tree_after_insertion: DerivationTree,
-    ):
+        path_to_inserted_tree: Path,
+        path_to_context_tree: Path,
+    ) -> Tuple[Formula, Mapping[DerivationTree, DerivationTree]]:
+        # assert {s.id for _, s in context_tree.paths()}.issubset(
+        #     {s.id for _, s in tree_after_insertion.paths()}
+        # )
+
         replaced_path = context_tree.find_node(existential_formula.in_variable)
         resulting_tree = context_tree.replace_path(replaced_path, tree_after_insertion)
 
@@ -704,13 +754,29 @@ class RepairSolver:
                 original_tree, resulting_tree.get_subtree(original_path)
             )
 
-        assert tree_after_insertion.find_node(inserted_tree) is not None
+        assert (
+            tree_after_insertion.get_subtree(path_to_inserted_tree).value
+            == inserted_tree.value
+        )
+        assert all(
+            c in tree_after_insertion.get_subtree(path_to_inserted_tree).children
+            for c in inserted_tree.children
+        )
+        assert (
+            tree_after_insertion.get_subtree(path_to_context_tree).value
+            == context_tree.value
+        )
+
+        # TODO: Is it robust to use the bind_expr_paths in the new tree?
+        inserted_tree_in_tree_after_insertion = tree_after_insertion.get_subtree(
+            tree_after_insertion.find_node(inserted_tree)
+        )
 
         variable_substitutions = frozendict(
-            {existential_formula.bound_variable: inserted_tree}
+            {existential_formula.bound_variable: inserted_tree_in_tree_after_insertion}
             | (
                 {
-                    var: inserted_tree.get_subtree(path)
+                    var: inserted_tree_in_tree_after_insertion.get_subtree(path)
                     for var, path in bind_expr_paths.items()
                     if var in existential_formula.bind_expression.bound_variables()
                 }
@@ -719,11 +785,24 @@ class RepairSolver:
             )
         )
 
+        # variable_substitutions = frozendict(
+        #     {existential_formula.bound_variable: inserted_tree}
+        #     | (
+        #         {
+        #             var: inserted_tree.get_subtree(path)
+        #             for var, path in bind_expr_paths.items()
+        #             if var in existential_formula.bind_expression.bound_variables()
+        #         }
+        #         if bind_expr_paths
+        #         else {}
+        #     )
+        # )
+
         instantiated_formula = existential_formula.inner_formula.substitute_expressions(
             variable_substitutions
         ).substitute_expressions(tree_substitutions)
 
-        yield instantiated_formula, tree_substitutions
+        return instantiated_formula, tree_substitutions
 
     # TODO: Polish the functions below, which were copied from ISLaSolver
     @typechecked
@@ -959,10 +1038,10 @@ class RepairSolver:
                 #       thus the problem does not surface; but it still exists!
                 #       This should be solved, regardless of whether we use optimized
                 #       equation solving or not.
-                grammar = delete_unreachable(
-                    self.grammar.set("<id>", ("<id-no-prefix>",)), frozen=True
-                )
-                value = GrammarFuzzer(grammar).expand_tree(
+                # grammar = delete_unreachable(
+                #     self.grammar.set("<id>", ("<id-no-prefix>",)), frozen=True
+                # )
+                value = GrammarFuzzer(self.grammar).expand_tree(
                     DerivationTree(most_specific_ntype, None)
                 )
 

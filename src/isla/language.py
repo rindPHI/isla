@@ -28,7 +28,7 @@ import re
 import string
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from functools import reduce, lru_cache, cache
+from functools import reduce, lru_cache, cache, partial
 from typing import (
     Union,
     List,
@@ -913,17 +913,12 @@ class StructuralPredicateFormula(Formula):
         self.args: List[Variable | str | DerivationTree] = list(args)
 
     def evaluate(self, context_tree: DerivationTree) -> bool:
+        validate_structural_predicate_arguments(self, context_tree)
+
         args_with_paths: List[Union[str, Tuple[Path, DerivationTree]]] = [
             arg if isinstance(arg, str) else (context_tree.find_node(arg), arg)
             for arg in self.args
         ]
-
-        if any(arg[0] is None for arg in args_with_paths if isinstance(arg, tuple)):
-            raise RuntimeError(
-                "Could not find paths for all predicate arguments in context tree:\n"
-                + str([str(tree) for path, tree in args_with_paths if path is None])
-                + f"\nContext tree:\n{context_tree}"
-            )
 
         return self.predicate.eval_fun(
             context_tree,
@@ -1004,6 +999,46 @@ class StructuralPredicateFormula(Formula):
         return (
             f'PredicateFormula({repr(self.predicate), ", ".join(map(repr, self.args))})'
         )
+
+
+def validate_structural_predicate_arguments(
+    formulas: Formula | Iterable[Formula], context_tree: DerivationTree
+) -> None:
+    if not assertions_activated():
+        return
+
+    class FindStructuralPredFormsVisitor(FormulaVisitor):
+        def __init__(self):
+            super().__init__()
+            self.structural_predicate_formulas = ()
+
+        def visit_predicate_formula(self, formula: StructuralPredicateFormula):
+            self.structural_predicate_formulas += (formula,)
+
+    visitor = FindStructuralPredFormsVisitor()
+
+    for formula in [formulas] if isinstance(formulas, Formula) else formulas:
+        formula.accept(visitor)
+
+    for structural_predicate_formula in visitor.structural_predicate_formulas:
+        first_dangling_argument = next(
+            flow(
+                structural_predicate_formula.args,
+                partial(filter, DerivationTree.__instancecheck__),
+                partial(filter, lambda tree: context_tree.find_node(tree) is None),
+            ),
+            None,
+        )
+
+        def msg():
+            return (
+                f"The following tree argument of the structural predicate formula\n  {structural_predicate_formula}\n"
+                f"is not contained in the context tree:\n  {first_dangling_argument} "
+                f"(id: {first_dangling_argument.id}, type: {first_dangling_argument.value})\n"
+                f"where the context tree is\n  {context_tree} (id: {context_tree.id}, type: {context_tree.value})"
+            )
+
+        assert first_dangling_argument is None, msg()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -2583,12 +2618,29 @@ def ensure_unique_bound_variables(  # noqa: C901
         return formula
 
 
-def split_conjunction(formula: Formula) -> List[Formula]:
-    if not type(formula) is ConjunctiveFormula:
-        return [formula]
-    else:
-        formula: ConjunctiveFormula
-        return [elem for arg in formula.args for elem in split_conjunction(arg)]
+def split_conjunction(formulas: Formula | Iterable[Formula]) -> Tuple[Formula, ...]:
+    """
+    TODO: Document, test.
+
+    :param formulas:
+    :return:
+    """
+    if not (isinstance(formulas, Formula)):
+        return tuple(
+            conjunct
+            for formula in formulas
+            for conjunct in split_conjunction(formula)
+        )
+
+    assert isinstance(formulas, Formula)
+    if not isinstance(formulas, ConjunctiveFormula):
+        return (formulas,)
+
+    return tuple(
+        sub_conjunct
+        for conjunct in formulas.args
+        for sub_conjunct in split_conjunction(conjunct)
+    )
 
 
 def split_disjunction(formula: Formula) -> List[Formula]:

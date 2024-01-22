@@ -72,7 +72,7 @@ XML_GRAMMAR_WITH_NAMESPACE_PREFIXES.update(
 )
 
 
-def validate_xml(inp: DerivationTree, out: Optional[List[str]] = None) -> bool:
+def validate_xml(inp: DerivationTree | str, out: Optional[List[str]] = None) -> bool:
     try:
         ET.fromstring(str(inp))
         return True

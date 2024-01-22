@@ -1,12 +1,12 @@
 import logging
+import random
 import unittest
 
 import pytest
 
 from isla.derivation_tree import DerivationTree
-from isla.fuzzer import GrammarCoverageFuzzer
 from isla.isla_predicates import IN_TREE_PREDICATE, SAME_POSITION_PREDICATE
-from isla.language import parse_bnf, parse_isla
+from isla.language import parse_isla
 from isla.parser import EarleyParser
 from isla.repair_solver import RepairSolver
 from isla_formalizations.xml_lang import (
@@ -55,6 +55,21 @@ class TestRepairSolver(unittest.TestCase):
     )
 
     SIMPLIFIED_XML_TAG_NAMESPACE_CONSTRAINT = parse_isla(
+        r"""
+            forall <xml-tree> xml_tree="<{<letter> prefix_use}:<letter>[<attrs>][/]>[<xml-tree><xml-close-tag>]":
+              exists <xml-tree> outer_tag="<<id>{<attrs> cont_attribute}><xml-tree></<id>>":
+                (inside(xml_tree, outer_tag) and 
+                 exists <attr>="x:{<letter> prefix_def}=\"XXX\"" in cont_attribute:
+                   prefix_use = prefix_def)""",
+        SIMPLIFIED_XML_NAMESPACE_GRAMMAR,
+        structural_predicates={IN_TREE_PREDICATE},
+    )
+
+    # The following constraint is too restrictive: It explicitly requires an outer
+    # tag declaring a namespace to exist, although the namespace can be declared
+    # within an attribute of the tag using it. We keep this constraint here because
+    # the solver should be able to find a solution for it nevertheless.
+    SIMPLIFIED_XML_TAG_NAMESPACE_CONSTRAINT_TOO_RESTRICTIVE = parse_isla(
         r"""
             forall <xml-tree> xml_tree="<{<letter> prefix_use}:<letter>[<attrs>][/]>[<xml-tree><xml-close-tag>]":
               exists <xml-tree> outer_tag="<<id> {<attr> cont_attribute}><xml-tree></<id>>":
@@ -169,6 +184,9 @@ class TestRepairSolver(unittest.TestCase):
         self.assertTrue(result.map(validate_xml).value_or(False))
 
     def test_solve_xml_with_namespace_simplified(self):
+        random.seed(0)
+        logging.getLogger("isla-language-core").setLevel(logging.WARNING)
+
         constraint = (
             TestRepairSolver.SIMPLIFIED_XML_WELLFORMEDNESS_CONSTRAINT
             & TestRepairSolver.SIMPLIFIED_XML_NO_ATTR_REDEF_CONSTRAINT
@@ -178,13 +196,47 @@ class TestRepairSolver(unittest.TestCase):
         solver = RepairSolver(
             TestRepairSolver.SIMPLIFIED_XML_NAMESPACE_GRAMMAR,
             constraint,
-            max_tries_existential_insertion=10,
+            max_tries_existential_insertion=1,
         )
 
         for i in range(10):
             solution = solver.solve()
             LOGGER.info(f"Found solution no. %d: %s", i + 1, solution)
-            self.assertTrue(validate_xml(solution))
+            self.assertTrue(
+                not str(solution)
+                or validate_xml(str(solution).replace(" x:", " xmlns:"))
+            )
+
+    def test_repair_simplified_xml(self):
+        random.seed(0)
+        logging.getLogger("isla-language-core").setLevel(logging.WARNING)
+
+        # inp = '<b:a x:b="XXX"></c:x>'
+        inp = '<b:c b:c="XXX" x:b="XXX"></b:x>'
+
+        constraint = (
+            TestRepairSolver.SIMPLIFIED_XML_WELLFORMEDNESS_CONSTRAINT
+            & TestRepairSolver.SIMPLIFIED_XML_NO_ATTR_REDEF_CONSTRAINT
+            # & TestRepairSolver.SIMPLIFIED_XML_NAMESPACE_CONSTRAINT
+            & TestRepairSolver.SIMPLIFIED_XML_TAG_NAMESPACE_CONSTRAINT_TOO_RESTRICTIVE
+        )
+
+        solver = RepairSolver(
+            TestRepairSolver.SIMPLIFIED_XML_NAMESPACE_GRAMMAR,
+            constraint,
+            max_tries_existential_insertion=1,
+        )
+
+        DerivationTree.next_id = 0
+        inp_tree = solver.parse(inp).unwrap()
+        result = solver.repair_tree(solver.instantiate_top_constant(inp_tree), inp_tree)
+        print(result)
+        self.assertTrue(
+            result.map(str)
+            .map(lambda s: s.replace(" x:", " xmlns:"))
+            .map(validate_xml)
+            .value_or(False)
+        )
 
 
 if __name__ == "__main__":

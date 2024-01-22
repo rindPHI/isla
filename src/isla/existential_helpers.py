@@ -47,15 +47,37 @@ def insert_tree(
     graph: Optional[GrammarGraph] = None,
     max_num_solutions: Optional[int] = 50,
     methods: int = DIRECT_EMBEDDING + SELF_EMBEDDING + CONTEXT_ADDITION,
-) -> List[DerivationTree]:
-    result: List[DerivationTree] = []
+) -> List[Tuple[DerivationTree, Path, Path]]:
+    """
+    TODO: Document.
+    TODO: Turn into a generator.
+
+    In the returned tuples `(t, p1, p2)`, `t` is the resulting tree,
+    `p1` is the path to `tree` (the inserted tree) in `t`, and `p2`
+    is the path to `in_tree` (the tree into which `tree` is inserted).
+
+    :param grammar:
+    :param tree:
+    :param in_tree:
+    :param graph:
+    :param max_num_solutions:
+    :param methods:
+    :return:
+    """
+
+    result: List[Tuple[DerivationTree, Path, Path]] = []
     result_hashes: Set[int] = set()
 
-    def add_to_result(new_tree: Union[DerivationTree, List[DerivationTree]]):
-        if type(new_tree) is list:
-            for t in new_tree:
+    def add_to_result(
+        new_result: Tuple[DerivationTree, Path, Path]
+        | List[Tuple[DerivationTree, Path, Path]]
+    ):
+        if isinstance(new_result, list):
+            for t in new_result:
                 add_to_result(t)
             return
+
+        new_tree, path_to_inserted_tree, path_to_in_tree = new_result
 
         # The following alternative avoids prefixes, but is quite expensive if there are
         # many results.
@@ -65,14 +87,20 @@ def insert_tree(
         assert graph.tree_is_valid(new_tree)
         assert all(
             new_tree.find_node(node.id) is not None for _, node in in_tree.paths()
-        )
+        ), "Some nodes of the original tree were not preserved."
 
         if (
-            new_tree.find_node(tree)
-            is not None  # In rare cases things fail (see simple-tar case study)
+            (
+                new_tree.get_subtree(path_to_inserted_tree).id == tree.id
+                or all(
+                    new_tree.get_subtree(path_to_inserted_tree).find_node(c) is not None
+                    for c in (tree.children or [])
+                )
+                and new_tree.get_subtree(path_to_inserted_tree).value == tree.value
+            )  # In rare cases things fail (see simple-tar case study) (2024-01-19: Not sure any more!)
             and new_tree.structural_hash() not in result_hashes
         ):
-            result.append(new_tree)
+            result.append(new_result)
             result_hashes.add(new_tree.structural_hash())
 
     graph = graph or GrammarGraph.from_grammar(non_canonical(grammar))
@@ -129,7 +157,23 @@ def compute_context_additions(
     grammar: CanonicalGrammar,
     graph: GrammarGraph,
     max_num_solutions: Optional[int],
-) -> List[DerivationTree]:
+) -> List[Tuple[DerivationTree, Path, Path]]:
+    """
+    TODO: Document.
+    TODO: Turn into a generator.
+
+    In the returned tuples `(t, p1, p2)`, `t` is the resulting tree,
+    `p1` is the path to `tree` (the inserted tree) in `t`, and `p2`
+    is the path to `in_tree` (the tree into which `tree` is inserted).
+
+    :param tree:
+    :param in_tree:
+    :param grammar:
+    :param graph:
+    :param max_num_solutions:
+    :return:
+    """
+
     curr_tree = in_tree.get_subtree(current_path)
 
     if curr_tree.value != tree.value:
@@ -165,17 +209,18 @@ def compute_context_additions(
     #       test case test_insert_lang_3), i.e., it produced an output not containing
     #       the root of the tree that should be re-inserted. Yet, for time reasons I
     #       resorted to this hacky solution. (DS)
+    # TODO: Check if paths are correct.
     return [
-        tree
-        for tree in result
+        (new_tree, new_tree.find_node(tree), new_tree.find_node(into_tree))
+        for new_tree in result
         if (
             all(
-                tree.find_node(inserted_tree) is not None
+                new_tree.find_node(inserted_tree) is not None
                 for inserted_tree in all_in_tree_subtrees.values()
             )
-            and tree.find_node(into_tree) is not None
+            and new_tree.find_node(into_tree) is not None
         )
-        and all(tree.find_node(node.id) is not None for _, node in in_tree.paths())
+        and all(new_tree.find_node(node.id) is not None for _, node in in_tree.paths())
     ]
 
 
@@ -186,7 +231,30 @@ def compute_self_embeddings(
     grammar: CanonicalGrammar,
     graph: GrammarGraph,
     max_num_solutions: Optional[int],
-) -> List[DerivationTree]:
+) -> List[Tuple[DerivationTree, Path, Path]]:
+    """
+    TODO: Document.
+    TODO: Turn into a generator.
+
+    TODO XXX: This function does not work as intended. For the XML example,
+              It "inserted" an XML tree into an attribute, which only worked
+              by extracting only sub elements of the XML tree. This must be
+              fixed. We should only choose a self embedding if both "tree"
+              and the original subtree find their place in the embadding as
+              they are.
+
+    In the returned tuples `(t, p1, p2)`, `t` is the resulting tree,
+    `p1` is the path to `tree` (the inserted tree) in `t`, and `p2`
+    is the path to `in_tree` (the tree into which `tree` is inserted).
+
+    :param tree:
+    :param in_tree:
+    :param grammar:
+    :param graph:
+    :param max_num_solutions:
+    :return:
+    """
+
     # We try a self-embedding: embed the current node into a tree starting
     # with the same nonterminal, such that `tree` can be added somewhere before
     # the place where `current_tree` is added.
@@ -200,7 +268,7 @@ def compute_self_embeddings(
     ):
         return []
 
-    results: Dict[int, DerivationTree] = {}
+    results: Dict[int, Tuple[DerivationTree, Path, Path]] = {}
 
     self_embedding_trees = [
         self_embedding_tree
@@ -244,7 +312,12 @@ def compute_self_embeddings(
             new_tree.find_node(node.id) is not None for _, node in in_tree.paths()
         )
 
-        results[new_tree.structural_hash()] = new_tree
+        # TODO: Check if paths are correct.
+        results[new_tree.structural_hash()] = (
+            new_tree,
+            current_path + instantiated_tree.find_node(tree),
+            (),
+        )
 
     return list(results.values())
 
@@ -255,8 +328,24 @@ def compute_direct_embeddings(
     grammar: CanonicalGrammar,
     graph: GrammarGraph,
     max_num_solutions: Optional[int],
-) -> List[DerivationTree]:
-    # perfect_matches: List[Path] = []
+) -> List[Tuple[DerivationTree, Path, Path]]:
+    """
+    TODO: Document.
+    TODO: Turn into a generator.
+
+    In the returned tuples `(t, p1, p2)`, `t` is the resulting tree,
+    `p1` is the path to `tree` (the inserted tree) in `t`, and `p2`
+    is the path to `in_tree` (the tree into which `tree` is inserted).
+
+    :param tree:
+    :param in_tree:
+    :param grammar:
+    :param graph:
+    :param max_num_solutions:
+    :return:
+    """
+
+    perfect_matches: List[Path] = []
     embeddable_matches: List[Tuple[Path, DerivationTree]] = []
 
     for subtree_path, subtree in in_tree.paths():
@@ -267,13 +356,13 @@ def compute_direct_embeddings(
         if children is not None:
             continue
 
-        #  if node == to_insert_nonterminal:
-        #      perfect_matches.append(subtree_path)
+        if node == tree.value:
+            perfect_matches.append(subtree_path)
 
         if graph.reachable(graph.get_node(node), graph.get_node(tree.value)):
             embeddable_matches.append((subtree_path, subtree))
 
-    results: Dict[int, DerivationTree] = {}
+    results: Dict[int, Tuple[DerivationTree, Path, Path]] = {}
     for match_path_embeddable, match_tree in embeddable_matches:
         if len(results) >= (max_num_solutions or sys.maxsize):
             break
@@ -291,8 +380,18 @@ def compute_direct_embeddings(
         assert all(
             new_tree.find_node(node.id) is not None for _, node in in_tree.paths()
         )
-        results[new_tree.structural_hash()] = new_tree
 
+        # TODO: Check if paths are correct.
+        results[new_tree.structural_hash()] = (
+            new_tree,
+            match_path_embeddable + t.find_node(tree),
+            (),
+        )
+
+    # TODO: I re-enabled this code. Check whether it indeed breaks things! One possible reason: We
+    #       cannot retain both the IDs of the original and the inserted tree. Keeping the ID of the
+    #       inserted tree has priority, but losing the ability to locate the original tree might
+    #       break some things. Yet, we now also return paths, this can help. (DS)
     # NOTE: Removed the attempt to use existing "holes" for now. There is some kind of problem with
     #       the "declared before used" example if we use it. It works if we set tree.id = orig_node.id
     #       (with side effect!) instead of creating a new DerivationTree object with that same ID,
@@ -300,15 +399,23 @@ def compute_direct_embeddings(
     #       with same field size example, we only get rows like "a;x;x;x" since the last three fields
     #       have the same ID. Also, DerivationTrees should be immutable. If we find out what breaks the
     #       def-use example, we can reactivate this code.
-    #
-    # for match_path_perfect in perfect_matches:
-    #     orig_node = in_tree.get_subtree(match_path_perfect)
-    #     assert tree.value == orig_node.value
-    #     add_to_result(in_tree.replace_path(
-    #         match_path_perfect,
-    #         DerivationTree(tree.value, tree.children, orig_node.id),
-    #         retain_id=True
-    #     ))
+
+    for match_path_perfect in perfect_matches:
+        orig_node = in_tree.get_subtree(match_path_perfect)
+        assert tree.value == orig_node.value
+
+        new_tree = in_tree.replace_path(
+            match_path_perfect,
+            DerivationTree(tree.value, tree.children, orig_node.id),
+            retain_id=True,
+        )
+
+        assert all(
+            new_tree.find_node(node.id) is not None for _, node in in_tree.paths()
+        )
+
+        # TODO: Check if paths are correct.
+        results[new_tree.structural_hash()] = (new_tree, match_path_perfect, ())
 
     return list(results.values())
 
@@ -488,6 +595,22 @@ def connect_trees(
     canonical_grammar: CanonicalGrammar,
     graph: GrammarGraph,
 ) -> List[DerivationTree]:
+    """
+    TODO: Document.
+    TODO: Turn into a generator.
+
+    In the returned tuples `(t, p1, p2)`, `t` is the resulting tree,
+    `p1` is the path to `tree` (the inserted tree) in `t`, and `p2`
+    is the path to `in_tree` (the tree into which `tree` is inserted).
+
+    :param tree:
+    :param in_tree:
+    :param grammar:
+    :param graph:
+    :param max_num_solutions:
+    :return:
+    """
+
     result: List[DerivationTree] = []
     for connecting_tree, insert_leaf_path, insertion_path in (
         (connecting_tree, insert_leaf_path, insertion_path)
