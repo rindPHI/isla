@@ -22,6 +22,7 @@ from isla import (
     type_defs,
     z3_helpers,
     repair_solver,
+    tree_insertion,
 )
 
 
@@ -40,6 +41,10 @@ class TestDocstrings(unittest.TestCase):
 
     def test_existential_helpers(self):
         doctest_results = doctest.testmod(m=existential_helpers)
+        self.assertFalse(doctest_results.failed)
+
+    def test_tree_insertion(self):
+        doctest_results = doctest.testmod(m=tree_insertion)
         self.assertFalse(doctest_results.failed)
 
     def test_fuzzer(self):

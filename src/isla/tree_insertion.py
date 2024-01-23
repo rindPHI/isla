@@ -77,12 +77,17 @@ def graph_path_to_tree(
     path_to_end: Path = ()
     current_node: DerivationTree = resulting_tree
 
-    for symbolic_node, choice_node in more_itertools.grouper(
-        graph_path, n=2, incomplete="fill", fillvalue=None
+    for idx_of_symbolic_node_in_graph_path, (symbolic_node, choice_node) in enumerate(
+        more_itertools.grouper(graph_path, n=2, incomplete="fill", fillvalue=None)
     ):
         symbolic_node: NonterminalNode | NonterminalNode
         choice_node: ChoiceNode
 
+        # The index is incremented once for each *pair,* so we must multiply by two
+        # to obtain the actual index of the symbolic node.
+        idx_of_symbolic_node_in_graph_path *= 2
+
+        assert graph_path[idx_of_symbolic_node_in_graph_path] == symbolic_node
         assert resulting_tree.get_subtree(path_to_end).value == symbolic_node.symbol
         assert (
             not path_to_end
@@ -119,7 +124,10 @@ def graph_path_to_tree(
         #       occurs more than once in an expansion, we might pick the wrong
         #       index unless we implement some backtracking or lookahead.
         #       We should fix the grammar graph library eventually.
-        index_in_expansion = choice_node.children.index(symbolic_node)
+        assert len(graph_path) > idx_of_symbolic_node_in_graph_path + 2
+        index_in_expansion = choice_node.children.index(
+            graph_path[idx_of_symbolic_node_in_graph_path + 2]
+        )
 
         path_to_end += (index_in_expansion,)
 
@@ -171,6 +179,12 @@ def connect_nonterminals(
     >>> print(resulting_tree.get_subtree(path_to_end))
     <var>
 
+    We obtain a single node if the start and end symbols are the same:
+
+    >>> resulting_tree, path_to_end = connect_nonterminals("<stmt>", "<stmt>", graph)
+    >>> print(resulting_tree)
+    <stmt>
+
     :param start: The start symbol.
     :param end: The end symbol.
     :param graph: The grammar graph.
@@ -193,6 +207,10 @@ def connect_nonterminals(
         if start != end
         else ()
     )
+
+    if not shortest_graph_path:
+        # TODO Test this case.
+        return DerivationTree(start, None), ()
 
     return graph_path_to_tree(shortest_graph_path, graph, maybe_canonical_grammar)
 
@@ -353,7 +371,7 @@ def insert_tree_by_reverse_embedding(
     """
     The reverse embedding method attempts to
 
-    1. Find a the first node in :code:`original_tree` that fits into a hole in
+    1. Find the first node in :code:`original_tree` that fits into a hole in
        :code:`tree_to_insert`. The tree above that node must be linear, i.e.,
        each node most have exactly one child.
     2. Adds the subtree of that node in :code:`original_tree` as a subtree of
