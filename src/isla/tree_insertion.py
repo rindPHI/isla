@@ -1,4 +1,4 @@
-from typing import Iterator, Tuple
+from typing import Iterator, Tuple, Iterable
 
 import more_itertools
 from frozendict import frozendict
@@ -14,6 +14,70 @@ from isla.helpers import (
     deep_str,
 )
 from isla.type_defs import Path, FrozenCanonicalGrammar
+
+
+def validate_insertion_result(
+    graph: GrammarGraph,
+    original_tree: DerivationTree,
+    inserted_tree: DerivationTree,
+    result_tree: DerivationTree,
+    paths_to_ignore_in_inserted_tree: Iterable[Path] = (),
+) -> None:
+    """
+    This function validates a tree insertion result. In particular, it asserts that
+
+    - all identifiers in :code:`original_tree` are retained;
+    - all identifiers in :code:`inserted tree`, except those in :code:`paths_to_ignore_in_inserted_tree`;
+    - the constructed tree is valid.
+
+    :param graph: The grammar graph.
+    :param original_tree: The original tree.
+    :param inserted_tree: The tree to insert.
+    :param result_tree: The resulting tree.
+    :param paths_to_ignore_in_inserted_tree: Paths in the inserted tree that should
+        be ignored when checking whether all identifiers are retained.
+    :return: Nothing (but yields an AssertionError if assertions are activated and
+        an assumption is not met).
+    """
+
+    if not assertions_activated():
+        return
+
+    result_ids = {node.id for _, node in result_tree.paths()}
+    orig_ids = {node.id for _, node in original_tree.paths()}
+    inserted_tree_ids = {
+        node.id
+        for path, node in inserted_tree.paths()
+        if path not in paths_to_ignore_in_inserted_tree
+    }
+
+    node_diff = tuple(
+        (
+            original_tree.get_subtree(original_tree.find_node(tid)).value,
+            tid,
+        )
+        for tid in orig_ids.difference(result_ids)
+    )
+    assert orig_ids.issubset(result_ids), (
+        f"The node(s) {node_diff} from the "
+        f"original tree are not contained in the identifier set from "
+        f"the resulting tree."
+    )
+
+    node_diff = tuple(
+        (
+            inserted_tree.get_subtree(inserted_tree.find_node(tid)).value,
+            tid,
+        )
+        for tid in inserted_tree_ids.difference(result_ids)
+    )
+    assert inserted_tree_ids.issubset(result_ids), (
+        f"The node(s) {node_diff} from the "
+        f"inserted tree are not contained in the identifier set from "
+        f"the resulting tree."
+    )
+
+    assert graph.tree_is_valid(result_tree)
 
 
 def graph_path_to_tree(
@@ -209,7 +273,7 @@ def connect_nonterminals(
     )
 
     if not shortest_graph_path:
-        # TODO Test this case.
+        # Start and end symbols are the same, so we return a trivial connecting tree.
         return DerivationTree(start, None), ()
 
     return graph_path_to_tree(shortest_graph_path, graph, maybe_canonical_grammar)
@@ -222,11 +286,75 @@ def insert_tree_into_hole(
     maybe_canonical_grammar: Maybe[FrozenCanonicalGrammar] = Nothing,
 ) -> Iterator[Tuple[DerivationTree, Path]]:
     """
-    TODO: Document, test.
+    This tree insertion method inserts :code:`tree_to_insert` into :code:`original_tree`
+    by using an existing "hole" in :code:`original_tree`, i.e., an open leaf node.
+    If possible, we append the children of :code:`tree_to_insert` to :code:`original_tree`;
+    otherwise, we generate a suitable connecting tree.
 
-    :param original_tree:
-    :param tree_to_insert:
-    :param graph:
+    Example
+    -------
+
+    >>> import string
+    >>> grammar = frozendict({
+    ...     "<start>": ("<stmt>",),
+    ...     "<stmt>": ("<assgn> ; <stmt>", "<assgn>"),
+    ...     "<assgn>": ("<var> := <rhs>",),
+    ...     "<rhs>": ("<var>", "<digit>"),
+    ...     "<var>": tuple(string.ascii_lowercase),
+    ...     "<digit>": tuple(string.digits),
+    ... })
+    >>> graph = GrammarGraph.from_grammar(grammar)
+
+    >>> pre_original_inp = 'a := 1 ; b := x ; c := 3'
+
+    >>> from isla.parser import EarleyParser
+    >>> pre_original_tree = DerivationTree.from_parse_tree(
+    ...     next(EarleyParser(grammar).parse(pre_original_inp))
+    ... )
+    >>> original_tree = pre_original_tree.replace_path((0, 0), DerivationTree("<assgn>", None))
+    >>> print(original_tree)
+    <assgn> ; b := x ; c := 3
+
+    >>> declaration = DerivationTree.from_parse_tree(
+    ...     ("<assgn>", [
+    ...         ("<var>", [("x", [])]),
+    ...         (" := ", []),
+    ...         ("<rhs>", None),
+    ...     ])
+    ... )
+
+    >>> print(deep_str(list(insert_tree_into_hole(
+    ...     original_tree, declaration, graph
+    ... ))))
+    [(x := <rhs> ; b := x ; c := 3, (0, 0))]
+
+    In the following case, we need a connecting tree:
+
+    >>> original_tree = pre_original_tree.replace_path((0, 2, 2), DerivationTree("<stmt>", None))
+    >>> print(original_tree)
+    a := 1 ; b := x ; <stmt>
+
+    >>> declaration = DerivationTree.from_parse_tree(
+    ...     ("<assgn>", [
+    ...         ("<var>", [("x", [])]),
+    ...         (" := ", []),
+    ...         ("<rhs>", None),
+    ...     ])
+    ... )
+
+    If we considered the shortest path only, we would exclusively obtain
+    the first one of the results displayed below, which is not minimal.
+
+    >>> for result in insert_tree_into_hole(
+    ...     original_tree, declaration, graph
+    ... ):
+    ...     print(deep_str(result))
+    (a := 1 ; b := x ; x := <rhs> ; <stmt>, (0, 2, 2, 0))
+    (a := 1 ; b := x ; x := <rhs>, (0, 2, 2, 0))
+
+    :param original_tree: The original tree into which to insert :code:`tree_to_insert`.
+    :param tree_to_insert: The tree to insert.
+    :param graph: The graph of the underlying reference grammar.
     :param maybe_canonical_grammar: The canonical version of the grammar represented
         by :code:`graph`. If :code:`Nothing`, the canonical grammar is computed
         from :code:`graph` (with the according potential overhead).
@@ -234,7 +362,52 @@ def insert_tree_into_hole(
         to the position of the inserted tree in those resulting trees.
     """
 
-    yield from iter(())
+    for path_to_hole, hole in original_tree.open_leaves():
+        if hole.value == tree_to_insert.value:
+            result = original_tree.replace_path(
+                path_to_hole,
+                DerivationTree(tree_to_insert.value, tree_to_insert.children, hole.id),
+            )
+
+            # The root of the inserted tree is "lost" in the result, so we set
+            # `paths_to_ignore_in_inserted_tree` correspondingly.
+            validate_insertion_result(
+                graph, original_tree, tree_to_insert, result, ((),)
+            )
+            yield result, path_to_hole
+
+        if graph.reachable(hole.value, tree_to_insert.value):
+            # We consider all paths and not just the shortest one, since we want to
+            # find all possible insertions. This is necessary since the shortest path
+            # might not be the one that we want to use for the insertion (see the
+            # example in the docstring).
+            for graph_path in graph.all_paths(
+                graph.get_node(hole.value), {graph.get_node(tree_to_insert.value)}
+            ):
+                (
+                    connecting_tree,
+                    path_in_connecting_tree_to_tree_to_insert,
+                ) = graph_path_to_tree(
+                    tuple(graph_path), graph, maybe_canonical_grammar
+                )
+
+                connecting_tree = DerivationTree(
+                    hole.value,
+                    connecting_tree.children,
+                    hole.id,
+                )
+
+                connecting_tree = connecting_tree.replace_path(
+                    path_in_connecting_tree_to_tree_to_insert, tree_to_insert
+                )
+
+                result = original_tree.replace_path(path_to_hole, connecting_tree)
+                path_to_tree_to_insert = (
+                    path_to_hole + path_in_connecting_tree_to_tree_to_insert
+                )
+
+                validate_insertion_result(graph, original_tree, tree_to_insert, result)
+                yield result, path_to_tree_to_insert
 
 
 def insert_tree_by_self_embedding(
@@ -340,25 +513,9 @@ def insert_tree_by_self_embedding(
                     result_tree = original_tree.replace_path(node_path, new_subtree)
                     path_to_inserted_tree_in_result = node_path + path_in_tree_from_path
 
-                    if assertions_activated():
-                        result_ids = {node.id for _, node in result_tree.paths()}
-                        orig_ids = {node.id for _, node in original_tree.paths()}
-                        node_diff = tuple(
-                            (
-                                original_tree.get_subtree(
-                                    original_tree.find_node(tid)
-                                ).value,
-                                tid,
-                            )
-                            for tid in orig_ids.difference(result_ids)
-                        )
-                        assert orig_ids.issubset(result_ids), (
-                            f"The node(s) {node_diff} from the "
-                            f"original tree are not contained in the identifier set from "
-                            f"the resulting tree."
-                        )
-                        assert graph.tree_is_valid(result_tree)
-
+                    validate_insertion_result(
+                        graph, original_tree, tree_to_insert, result_tree
+                    )
                     yield result_tree, path_to_inserted_tree_in_result
 
 
@@ -600,22 +757,18 @@ def insert_tree_by_reverse_embedding(
                 orig_tree_subtree,
             )
 
-            if assertions_activated():
-                result_ids = {node.id for _, node in result.paths()}
-                orig_ids = {node.id for _, node in original_tree.paths()}
-                node_diff = tuple(
-                    (original_tree.get_subtree(original_tree.find_node(tid)).value, tid)
-                    for tid in orig_ids.difference(result_ids)
-                )
-                assert orig_ids.issubset(result_ids), (
-                    f"The node(s) {node_diff} from the "
-                    f"original tree are not contained in the identifier set from "
-                    f"the resulting tree."
-                )
-                assert graph.tree_is_valid(result)
-
             path_to_inserted_tree = parent_path + path_in_connecting_tree_1_to_tti_root
 
+            # In the validation, we permit the path to the hole in the inserted
+            # tree to not appear in the result if the second connecting tree is
+            # trivial. In that case, the hole is replaced by `orig_tree_subtree`.
+            validate_insertion_result(
+                graph,
+                original_tree,
+                tree_to_insert,
+                result,
+                (path_to_hole,) if len(connecting_tree_2) == 1 else (),
+            )
             yield result, path_to_inserted_tree
 
         if len(orig_tree_subtree.children or []) > 1:
@@ -629,10 +782,17 @@ def insert_tree(
     maybe_canonical_grammar: Maybe[FrozenCanonicalGrammar] = Nothing,
 ) -> Iterator[Tuple[DerivationTree, Path]]:
     """
-    TODO: Document, test.
+    This function inserts :code:`tree_to_insert` into :code:`original_tree` in three
+    possible ways using the following functions:
+
+    1. :func:`~isla.tree_insertion.insert_tree_into_hole`
+    2. :func:`~isla.tree_insertion.insert_tree_by_self_embedding`
+    3. :func:`~isla.tree_insertion.insert_tree_by_reverse_embedding`
 
     Example
     -------
+
+    Consider the following, simplified XML grammar:
 
     >>> from frozendict import frozendict
     >>> grammar = frozendict(
@@ -649,13 +809,16 @@ def insert_tree(
     ...     }
     ... )
 
-    >>> from isla.parser import EarleyParser
+    We want to embed the following input into an additional context:
+
     >>> original_inp = '<b:c b:c="XXX" x:b="XXX"></b:x>'
+
+    >>> from isla.parser import EarleyParser
     >>> original_tree = DerivationTree.from_parse_tree(
     ...     next(EarleyParser(grammar).parse(original_inp))
     ... )
 
-    :code:`<<id> <attr>><xml-tree></<id>>`
+    The context to insert is the abstract input :code:`<<id> <attr>><xml-tree></<id>>`:
 
     >>> tree_to_insert = DerivationTree.from_parse_tree(
     ...     (
@@ -684,13 +847,16 @@ def insert_tree(
     ...     )
     ... )
 
+    In this case, the function :func:`~isla.tree_insertion.insert_tree_by_reverse_embedding`
+    is the only one that can be used to insert the tree:
+
     >>> graph = GrammarGraph.from_grammar(grammar)
     >>> deep_str(list(insert_tree(original_tree, tree_to_insert, graph)))
     '[(<<id> <attr>><b:c b:c="XXX" x:b="XXX"></b:x></<id>>, (0,))]'
 
-    :param original_tree:
-    :param tree_to_insert:
-    :param graph:
+    :param original_tree: The original tree into which to insert :code:`tree_to_insert`.
+    :param tree_to_insert: The tree to insert.
+    :param graph: The graph of the underlying reference grammar.
     :param maybe_canonical_grammar: The canonical version of the grammar represented
         by :code:`graph`. If :code:`Nothing`, the canonical grammar is computed
         from :code:`graph` (with the according potential overhead).
