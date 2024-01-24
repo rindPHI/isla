@@ -346,66 +346,77 @@ class RepairSolver:
             #     constrained tree elements abstract and asking for a solution.
             #     If a solution exists, return the repaired tree. Otherwise,
             #     return Nothing.
-            assert all(
-                isinstance(conjunct, SMTFormula) or isinstance(conjunct, ForallFormula)
-                for conjunct in conjuncts
-            )
-
-            smt_conjuncts = tuple(
-                conjunct for conjunct in conjuncts if isinstance(conjunct, SMTFormula)
-            )
-
-            if not smt_conjuncts:
-                # No SMT formulas => We can finish the tree by grammar fuzzing.
-                # However, we must evaluate whether the such closed trees satisfy
-                # the constraints.
-                return self.try_to_finish(tree, conjunction(*conjuncts))
-
-            pruning_substitutions = compute_pruning_substitutions(smt_conjuncts, tree)
-            pruned_smt_conjuncts = tuple(
-                conjunct.substitute_expressions(pruning_substitutions)
-                for conjunct in smt_conjuncts
-            )
-            pruned_tree = tree.substitute(pruning_substitutions)
-
-            def apply_smt_substitutions(
-                substs: Mapping[DerivationTree, DerivationTree]
-            ) -> Maybe[DerivationTree]:
-                non_smt_formula = conjunction(
-                    *(c for c in conjuncts if not isinstance(c, SMTFormula))
-                )
-
-                if substs:
-                    return self.repair_tree(
-                        non_smt_formula.substitute_expressions(substs),
-                        tree.substitute(substs),
-                    )
-
-                # No substitutions => We can finish the tree by grammar fuzzing.
-                # However, we must evaluate whether the such closed trees satisfy
-                # the constraints.
-                return self.try_to_finish(tree, non_smt_formula)
-
-            return (
-                self.eliminate_all_semantic_formulas(pruned_smt_conjuncts, pruned_tree)
-                .map(
-                    lambda s: (
-                        LOGGER.debug(
-                            "SMT solution found: %s", lazystr(lambda: deep_str(s))
-                        ),
-                        s,
-                    )[-1]
-                )
-                .lash(lambda _: (LOGGER.debug("No SMT solution found"), Nothing)[-1])
-                .bind(apply_smt_substitutions)
-                .map(tap(lambda t: DerivationTree.__instancecheck__))
-            )
+            return self.repair_semantic_formulas(conjuncts, tree)
 
         return flow(
             self.eliminate_first_existential_formula(conjuncts, tree),
             partial(map, star(self.repair_tree)),
             partial(filter, is_successful),
             lambda maybe_repaired_trees: next(maybe_repaired_trees, Nothing),
+        )
+
+    def repair_semantic_formulas(
+        self, conjuncts: Tuple[SMTFormula | ForallFormula, ...], tree: DerivationTree
+    ) -> Maybe[DerivationTree]:
+        """
+        TODO: Document, test.
+
+        :param conjuncts:
+        :param tree:
+        :return:
+        """
+
+        assert all(
+            isinstance(conjunct, SMTFormula) or isinstance(conjunct, ForallFormula)
+            for conjunct in conjuncts
+        )
+
+        smt_conjuncts = tuple(
+            conjunct for conjunct in conjuncts if isinstance(conjunct, SMTFormula)
+        )
+
+        if not smt_conjuncts:
+            # No SMT formulas => We can finish the tree by grammar fuzzing.
+            # However, we must evaluate whether the such closed trees satisfy
+            # the constraints.
+            return self.try_to_finish(tree, conjunction(*conjuncts))
+
+        pruning_substitutions = compute_pruning_substitutions(smt_conjuncts, tree)
+        pruned_smt_conjuncts = tuple(
+            conjunct.substitute_expressions(pruning_substitutions)
+            for conjunct in smt_conjuncts
+        )
+        pruned_tree = tree.substitute(pruning_substitutions)
+
+        def apply_smt_substitutions(
+            substs: Mapping[DerivationTree, DerivationTree]
+        ) -> Maybe[DerivationTree]:
+            non_smt_formula = conjunction(
+                *(c for c in conjuncts if not isinstance(c, SMTFormula))
+            )
+
+            if substs:
+                return self.repair_tree(
+                    non_smt_formula.substitute_expressions(substs),
+                    tree.substitute(substs),
+                )
+
+            # No substitutions => We can finish the tree by grammar fuzzing.
+            # However, we must evaluate whether the such closed trees satisfy
+            # the constraints.
+            return self.try_to_finish(tree, non_smt_formula)
+
+        def log_solution(s: Mapping[DerivationTree, DerivationTree]):
+            LOGGER.debug("SMT solution found: %s", lazystr(lambda: deep_str(s)))
+
+        def log_no_solution(_: Nothing):
+            LOGGER.debug("No SMT solution found")
+
+        return (
+            self.eliminate_all_semantic_formulas(pruned_smt_conjuncts, pruned_tree)
+            .map(tap(log_solution))
+            .lash(tap(log_no_solution))
+            .bind(apply_smt_substitutions)
         )
 
     def eliminate_first_existential_formula(
@@ -1010,77 +1021,6 @@ class RepairSolver:
         )
 
         if optimized_solution_enabled:
-            # # We first check whether `smt_formulas` are a system of equations.
-            # # If so, we can assume that all participating variables must attain
-            # # the same value, since this method is only called with dependent
-            # # clusters of variables. We will then find the most specific
-            # # nonterminal from the types of the participating variables and choose
-            # # a random instantiation.
-            if all(
-                formula.decl().kind() == z3.Z3_OP_EQ
-                and all(is_z3_var(c) for c in formula.children())
-                for formula in smt_formulas
-            ):
-                most_specific_ntype: str = compute_most_specific_type(
-                    [
-                        tree_substitutions[var].value
-                        if var in tree_substitutions
-                        else var.n_type
-                        for var in variables
-                    ],
-                    self.graph,
-                )[0]
-
-                # TODO: It seems to be a problem if an ID with a namespace is used. Z3
-                #       seems to be lazy and generally go for the IDs without prefix,
-                #       thus the problem does not surface; but it still exists!
-                #       This should be solved, regardless of whether we use optimized
-                #       equation solving or not.
-                # grammar = delete_unreachable(
-                #     self.grammar.set("<id>", ("<id-no-prefix>",)), frozen=True
-                # )
-
-                value = GrammarFuzzer(self.grammar).expand_tree(
-                    DerivationTree(most_specific_ntype, None)
-                )
-
-                equation_solving_result = Some(
-                    frozendict(
-                        {
-                            var: (
-                                t := value.ensure_unique_ids(),
-                                DerivationTree(
-                                    t.value,
-                                    t.children,
-                                    id=tree_substitutions[var].id,
-                                ),
-                            )[-1]
-                            for var in variables
-                        }
-                    )
-                )
-
-                # return z3.sat, equation_solving_result
-
-                LOGGER.debug(
-                    "Equation solving would return %s",
-                    equation_solving_result,
-                )
-
-                return z3.sat, Some(
-                    frozendict(
-                        {
-                            var: (
-                                t := value.ensure_unique_ids(),
-                                DerivationTree(
-                                    t.value, t.children, id=tree_substitutions[var].id
-                                ),
-                            )[-1]
-                            for var in variables
-                        }
-                    )
-                )
-
             vars_in_context = infer_variable_contexts(variables, smt_formulas)
             length_vars = vars_in_context["length"]
             int_vars = vars_in_context["int"]
@@ -1708,6 +1648,7 @@ def rename_instantiated_variables_in_smt_formulas(
 
         for subst_var, subst_tree in subformula.substitutions.items():
             new_name = f"{subst_tree.value}_{subst_tree.id}"
+            assert subst_var.n_type == subst_tree.value
             new_var = BoundVariable(new_name, subst_var.n_type)
 
             new_smt_formula = cast(
