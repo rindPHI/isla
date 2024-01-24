@@ -1976,6 +1976,34 @@ class QuantifiedFormula(Formula, ABC):
             self.already_matched,
         )
 
+    def substitute_expressions(
+        self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]
+    ) -> Formula:
+        new_in_variable = self.in_variable
+        if self.in_variable in subst_map:
+            assert (
+                self.in_variable.n_type
+                if isinstance(self.in_variable, Variable)
+                else self.in_variable.value
+            ) == subst_map[new_in_variable].value
+
+            new_in_variable = subst_map[new_in_variable]
+        elif isinstance(new_in_variable, DerivationTree):
+            new_in_variable = new_in_variable.substitute(subst_map)
+            assert new_in_variable.value == (
+                self.in_variable.n_type
+                if isinstance(self.in_variable, Variable)
+                else self.in_variable.value
+            )
+
+        return type(self)(
+            self.bound_variable,
+            new_in_variable,
+            self.inner_formula.substitute_expressions(subst_map),
+            self.bind_expression,
+            self.already_matched,
+        )
+
     def __len__(self):
         result = 1 + len(self.inner_formula)
         if self.bind_expression:
@@ -2031,16 +2059,10 @@ class ForallFormula(QuantifiedFormula):
     def substitute_expressions(
         self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]
     ) -> Formula:
-        new_in_variable = self.in_variable
-        if self.in_variable in subst_map:
-            new_in_variable = subst_map[new_in_variable]
-        elif isinstance(new_in_variable, DerivationTree):
-            new_in_variable = new_in_variable.substitute(subst_map)
-
-        new_inner_formula = self.inner_formula.substitute_expressions(subst_map)
+        result = cast(ForallFormula, super().substitute_expressions(subst_map))
 
         if (
-            self.bound_variable not in new_inner_formula.free_variables()
+            result.bound_variable not in result.inner_formula.free_variables()
             and self.bind_expression is None
         ):
             # NOTE: We cannot remove the quantifier if there is a bind expression, not
@@ -2050,15 +2072,9 @@ class ForallFormula(QuantifiedFormula):
             #       a particular expansion has been chosen. Consider, e.g., an inner
             #       formula "false". Then, this formula evaluates to false IF, AND ONLY
             #       IF, the defined expansion alternative is chosen, and NOT always.
-            return new_inner_formula
+            return result.inner_formula
 
-        return ForallFormula(
-            self.bound_variable,
-            new_in_variable,
-            new_inner_formula,
-            self.bind_expression,
-            self.already_matched,
-        )
+        return result
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_forall_formula(self)
@@ -2095,23 +2111,6 @@ class ExistsFormula(QuantifiedFormula):
     ):
         super().__init__(
             bound_variable, in_variable, inner_formula, bind_expression, already_matched
-        )
-
-    def substitute_expressions(
-        self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]
-    ) -> Formula:
-        new_in_variable = self.in_variable
-        if self.in_variable in subst_map:
-            new_in_variable = subst_map[new_in_variable]
-        elif isinstance(new_in_variable, DerivationTree):
-            new_in_variable = new_in_variable.substitute(subst_map)
-
-        return ExistsFormula(
-            self.bound_variable,
-            new_in_variable,
-            self.inner_formula.substitute_expressions(subst_map),
-            self.bind_expression,
-            self.already_matched,
         )
 
     def accept(self, visitor: FormulaVisitor):
@@ -2627,9 +2626,7 @@ def split_conjunction(formulas: Formula | Iterable[Formula]) -> Tuple[Formula, .
     """
     if not (isinstance(formulas, Formula)):
         return tuple(
-            conjunct
-            for formula in formulas
-            for conjunct in split_conjunction(formula)
+            conjunct for formula in formulas for conjunct in split_conjunction(formula)
         )
 
     assert isinstance(formulas, Formula)
@@ -4425,6 +4422,18 @@ def match(
             for leaf_path, _ in t.leaves()
         )
 
+    # TODO: If this assertion succeeds, we should replace the first expression
+    #       by the second one below.
+    assert (
+        safe(lambda: len(mexpr_tree.children) == 0 and t.children is None)()
+        .lash(lambda _: Success(False))
+        .unwrap()
+    ) == (
+        mexpr_tree.children is not None
+        and len(mexpr_tree.children) == 0
+        and t.children is None
+    )
+
     if (
         t.value != mexpr_tree.value
         or safe(lambda: len(mexpr_tree.children) == 0 and t.children is None)()
@@ -4432,6 +4441,19 @@ def match(
         .unwrap()
     ):
         return None
+
+    # TODO: If this assertion succeeds, we should replace the first expression
+    #       by the second one below.
+    assert (
+        safe(lambda: len(mexpr_tree.children) == 0 and len(t.children) == 0)()
+        .lash(lambda _: Success(False))
+        .unwrap()
+    ) == (
+        mexpr_tree.children is not None
+        and t.children is not None
+        and len(mexpr_tree.children) == 0
+        and len(t.children) == 0
+    )
 
     # If the match expression tree is "open," we have a match!
     if (

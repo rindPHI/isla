@@ -697,9 +697,9 @@ def insert_tree_by_reverse_embedding(
 
             # Retain the original identifier of `hole`.
             connecting_tree_2 = DerivationTree(
-                orig_tree_subtree.value,
+                connecting_tree_2.value,
                 connecting_tree_2.children,
-                orig_tree_subtree.id,
+                hole.id,
             )
 
             #       <start>
@@ -886,5 +886,6 @@ def insert_tree(
             yield next(iterators[idx])
         except StopIteration:
             iterators = iterators[:idx] + iterators[idx + 1 :]
-        else:
+
+        if iterators:
             idx = (idx + 1) % len(iterators)

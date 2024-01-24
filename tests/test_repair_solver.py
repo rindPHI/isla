@@ -65,21 +65,6 @@ class TestRepairSolver(unittest.TestCase):
         structural_predicates={IN_TREE_PREDICATE},
     )
 
-    # The following constraint is too restrictive: It explicitly requires an outer
-    # tag declaring a namespace to exist, although the namespace can be declared
-    # within an attribute of the tag using it. We keep this constraint here because
-    # the solver should be able to find a solution for it nevertheless.
-    SIMPLIFIED_XML_TAG_NAMESPACE_CONSTRAINT_TOO_RESTRICTIVE = parse_isla(
-        r"""
-            forall <xml-tree> xml_tree="<{<letter> prefix_use}:<letter>[<attrs>][/]>[<xml-tree><xml-close-tag>]":
-              exists <xml-tree> outer_tag="<<id> {<attr> cont_attribute}><xml-tree></<id>>":
-                (inside(xml_tree, outer_tag) and 
-                 exists <attr>="x:{<letter> prefix_def}=\"XXX\"" in cont_attribute:
-                   prefix_use = prefix_def)""",
-        SIMPLIFIED_XML_NAMESPACE_GRAMMAR,
-        structural_predicates={IN_TREE_PREDICATE},
-    )
-
     SIMPLIFIED_XML_NAMESPACE_CONSTRAINT = (
         SIMPLIFIED_XML_TAG_NAMESPACE_CONSTRAINT
         & SIMPLIFIED_XML_ATTRIBUTE_NAMESPACE_CONSTRAINT
@@ -87,7 +72,7 @@ class TestRepairSolver(unittest.TestCase):
 
     SIMPLIFIED_XML_NO_ATTR_REDEF_CONSTRAINT = parse_isla(
         r"""
-            forall <attr> attr_outer in start:
+            forall <attrs> attr_outer in start:
               forall <attr> attr_inner_1="{<id> id_1}=\"XXX\"" in attr_outer:
                 forall <attr> attr_inner_2="{<id> id_2}=\"XXX\"" in attr_outer: 
                   (same_position(attr_inner_1, attr_inner_2) xor
@@ -208,6 +193,22 @@ class TestRepairSolver(unittest.TestCase):
             )
 
     def test_repair_simplified_xml(self):
+        # The following constraint is too restrictive: It explicitly requires an outer
+        # tag declaring a namespace to exist, although the namespace can be declared
+        # within an attribute of the tag using it. We keep this constraint here because
+        # the solver should be able to find a solution for it nevertheless.
+        simplified_xml_tag_namespace_constraint_too_restrictive = parse_isla(
+            r"""
+                forall <xml-tree> xml_tree="<{<letter> prefix_use}:<letter>[<attrs>][/]>[<xml-tree><xml-close-tag>]":
+                  exists <xml-tree> outer_tag=
+                      "<<id> {<attr> cont_attribute}><xml-tree></<id>>":  # is <attr> in the less restrictive constraint
+                    (inside(xml_tree, outer_tag) and 
+                     exists <attr>="x:{<letter> prefix_def}=\"XXX\"" in cont_attribute:
+                       prefix_use = prefix_def)""",
+            TestRepairSolver.SIMPLIFIED_XML_NAMESPACE_GRAMMAR,
+            structural_predicates={IN_TREE_PREDICATE},
+        )
+
         random.seed(0)
         logging.getLogger("isla-language-core").setLevel(logging.WARNING)
 
@@ -217,14 +218,14 @@ class TestRepairSolver(unittest.TestCase):
         constraint = (
             TestRepairSolver.SIMPLIFIED_XML_WELLFORMEDNESS_CONSTRAINT
             & TestRepairSolver.SIMPLIFIED_XML_NO_ATTR_REDEF_CONSTRAINT
-            # & TestRepairSolver.SIMPLIFIED_XML_NAMESPACE_CONSTRAINT
-            & TestRepairSolver.SIMPLIFIED_XML_TAG_NAMESPACE_CONSTRAINT_TOO_RESTRICTIVE
+            & TestRepairSolver.SIMPLIFIED_XML_ATTRIBUTE_NAMESPACE_CONSTRAINT
+            & simplified_xml_tag_namespace_constraint_too_restrictive
         )
 
         solver = RepairSolver(
             TestRepairSolver.SIMPLIFIED_XML_NAMESPACE_GRAMMAR,
             constraint,
-            max_tries_existential_insertion=1,
+            max_tries_existential_insertion=3,
         )
 
         DerivationTree.next_id = 0
