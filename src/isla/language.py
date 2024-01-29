@@ -1518,7 +1518,7 @@ class SMTFormula(Formula):
         )
 
         new_free_variables = [
-            variable if variable not in subst_map else subst_map[variable]
+            subst_map.get(variable, variable)
             for variable in self.free_variables_
         ]
 

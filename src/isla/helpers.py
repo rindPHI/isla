@@ -49,7 +49,7 @@ from typing import (
 
 import returns
 from frozendict import frozendict
-from orderedset import OrderedSet
+from orderedset import OrderedSet, FrozenOrderedSet
 from returns.maybe import Maybe, Some
 from returns.result import safe, Success, Failure, Result
 
@@ -174,6 +174,7 @@ def flatten(seq: ListOrTuple) -> ListOrTuple:
         for subseq in seq
         for item in (subseq if isinstance(subseq, (tuple, list)) else [subseq])
     )
+
 
 def is_path(maybe_path: Any) -> bool:
     """
@@ -532,45 +533,55 @@ def split_str_with_nonterminals(expression: str) -> List[str]:
 
 
 def cluster_by_common_elements(
-    a_list: Sequence[T], f: Callable[[T], AbstractSet[S]]
-) -> List[List[T]]:
+    a_list: Iterable[T], f: Callable[[T], AbstractSet[S]]
+) -> Tuple[Tuple[T, ...], ...]:
     """
     Clusters elements of l by shared elements. Elements of interest are obtained using f.
     For instance, to cluster a list of lists based on common list elements:
 
     >>> cluster_by_common_elements([[1,2], [2,3], [3,4], [5,6]], lambda l: {e for e in l})
-    [[[2, 3], [3, 4], [1, 2]], [[5, 6]]]
+    (((2, 3), (3, 4), (1, 2)), ((5, 6),))
 
     >>> cluster_by_common_elements([1,2,3,4,5,6,7], lambda e: {e, e+3})
-    [[2, 5], [3, 6], [4, 7, 1]]
+    ((2, 5), (3, 6), (4, 7, 1))
 
     :param a_list: The list to cluster.
     :param f: The function to determine commonality.
     :return: The clusters w.r.t. f.
     """
-    clusters = [[e2 for e2 in a_list if not f(e1).isdisjoint(f(e2))] for e1 in a_list]
 
-    result = []
+    clusters = tuple(
+        tuple(
+            tuple(e2) if isinstance(e2, Iterable) else e2
+            for e2 in a_list
+            if not f(e1).isdisjoint(f(e2))
+        )
+        for e1 in a_list
+    )
+
+    result = ()
     for c in clusters:
         # Merge clusters with common elements...
-        clusters_with_common_elements = [
-            c1
-            for c1 in result
+        clusters_with_common_elements = tuple(
+            (idx, c1)
+            for idx, c1 in enumerate(result)
             if any(not f(e).isdisjoint(f(e1)) for e in c for e1 in c1)
-        ]
-        for c1 in clusters_with_common_elements:
-            result.remove(c1)
+        )
+        for idx, _ in clusters_with_common_elements:
+            result = result[:idx] + result[idx + 1 :]
 
-        merged_cluster = c + [e for c1 in clusters_with_common_elements for e in c1]
+        merged_cluster = c + tuple(
+            e for _, c1 in clusters_with_common_elements for e in c1
+        )
 
         # ...and remove duplicate elements from the merged cluster.
-        no_dupl_cluster = []
+        no_dupl_cluster = ()
         for cluster in merged_cluster:
             if cluster in no_dupl_cluster:
                 continue
-            no_dupl_cluster.append(cluster)
+            no_dupl_cluster += (cluster,)
 
-        result.append(no_dupl_cluster)
+        result += (no_dupl_cluster,)
 
     return result
 
@@ -1194,6 +1205,7 @@ def deep_str(obj: Any) -> str:
     elif (
         isinstance(obj, set)
         or isinstance(obj, OrderedSet)
+        or isinstance(obj, FrozenOrderedSet)
         or isinstance(obj, frozenset)
     ):
         return "{" + ", ".join(map(deep_str, obj)) + "}"

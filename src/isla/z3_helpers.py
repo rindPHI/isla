@@ -601,7 +601,9 @@ def construct_result(
 
 
 def z3_solve(
-    formulas: Iterable[z3.BoolRef], timeout_ms=500
+    formulas: Iterable[z3.BoolRef],
+    timeout_ms=50,
+    value_suggestions: Iterable[z3.BoolRef] = (),
 ) -> Tuple[z3.CheckSatResult, Optional[z3.ModelRef]]:
     logger = logging.getLogger("z3_solve")
     formulas = list(formulas)
@@ -611,11 +613,15 @@ def z3_solve(
     parallel = False
 
     for _ in range(20):
-        solver = z3.Solver()
+        solver = z3.Solver() if not value_suggestions else z3.Optimize()
+
         if timeout_ms is not None:
             solver.set("timeout", timeout_ms)
         for formula in formulas:
             solver.add(formula)
+        for suggestion in value_suggestions:
+            solver.add_soft(suggestion)
+
         result = solver.check()
 
         if result == z3.sat:
@@ -695,10 +701,39 @@ def z3_eq(formula_1: z3.ExprRef, formula_2: z3.ExprRef | str | int) -> z3.BoolRe
 
 def z3_and(formulas: Sequence[z3.BoolRef]) -> z3.BoolRef:
     if not formulas:
-        return z3.BoolRef(True)
+        return z3.BoolVal(True)
     if len(formulas) == 1:
         return formulas[0]
     return z3.And(*formulas)
+
+
+def z3_concat(formulas: Sequence[z3.SeqRef]) -> z3.SeqRef:
+    """
+    Concatenates the given formulas using the z3 Concat operator.
+    Handles the special case of a single formula by returning it directly.
+
+    >>> x, y = z3.Strings("x y")
+    >>> z3_concat([x, z3.StringVal("abc"), y])
+    Concat(x, Concat("abc", y))
+
+    >>> z3_concat([x])
+    x
+
+    >>> z3_concat([])
+    Traceback (most recent call last):
+    ...
+    AssertionError: Cannot concatenate an empty sequence of formulas.
+
+    :param formulas: The formulas to concatenate.
+    :return: The concatenation of the given formulas.
+    """
+
+    assert formulas, "Cannot concatenate an empty sequence of formulas."
+
+    if len(formulas) == 1:
+        return formulas[0]
+
+    return z3.Concat(*formulas)
 
 
 def z3_or(formulas: Sequence[z3.BoolRef]) -> z3.BoolRef:
