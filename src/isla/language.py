@@ -1518,8 +1518,7 @@ class SMTFormula(Formula):
         )
 
         new_free_variables = [
-            subst_map.get(variable, variable)
-            for variable in self.free_variables_
+            subst_map.get(variable, variable) for variable in self.free_variables_
         ]
 
         assert all(
@@ -4422,45 +4421,19 @@ def match(
             for leaf_path, _ in t.leaves()
         )
 
-    # TODO: If this assertion succeeds, we should replace the first expression
-    #       by the second one below.
-    assert (
-        safe(lambda: len(mexpr_tree.children) == 0 and t.children is None)()
-        .lash(lambda _: Success(False))
-        .unwrap()
-    ) == (
+    if t.value != mexpr_tree.value or (
         mexpr_tree.children is not None
         and len(mexpr_tree.children) == 0
         and t.children is None
-    )
-
-    if (
-        t.value != mexpr_tree.value
-        or safe(lambda: len(mexpr_tree.children) == 0 and t.children is None)()
-        .lash(lambda _: Success(False))
-        .unwrap()
     ):
         return None
 
-    # TODO: If this assertion succeeds, we should replace the first expression
-    #       by the second one below.
-    assert (
-        safe(lambda: len(mexpr_tree.children) == 0 and len(t.children) == 0)()
-        .lash(lambda _: Success(False))
-        .unwrap()
-    ) == (
+    # If the match expression tree is "open," we have a match!
+    if mexpr_tree.children is None or (
         mexpr_tree.children is not None
         and t.children is not None
         and len(mexpr_tree.children) == 0
         and len(t.children) == 0
-    )
-
-    # If the match expression tree is "open," we have a match!
-    if (
-        mexpr_tree.children is None
-        or safe(lambda: len(mexpr_tree.children) == 0 and len(t.children) == 0)()
-        .lash(lambda _: Success(False))
-        .unwrap()
     ):
         assert not mexpr_var_paths or all(not path for path in mexpr_var_paths.values())
 

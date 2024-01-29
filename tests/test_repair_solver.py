@@ -3,6 +3,7 @@ import random
 import unittest
 
 import pytest
+from frozendict import frozendict
 from orderedset import FrozenOrderedSet
 
 from isla.derivation_tree import DerivationTree
@@ -52,7 +53,8 @@ class TestRepairSolver(unittest.TestCase):
                 not prefix_use = "x" or not maybe_def = "x" 
             ) and
             forall <attr> attribute="{<letter> prefix_use}:{<letter> maybe_def}=\"XXX\"": (
-              not prefix_use = "x" implies
+              prefix_use = "x" or
+                not prefix_use = "x" and
                 exists <xml-tree> outer_tag="<<tag-id>{<attrs> cont_attribute}><xml-tree></<tag-id>>":
                   (inside(attribute, outer_tag) and
                    exists <attr> def_attribute="x:{<letter> prefix_def}=\"XXX\"" in cont_attribute:
@@ -346,11 +348,11 @@ class TestRepairSolver(unittest.TestCase):
 
         smt_constraints = (smt_constraint_1, smt_constraint_2)
 
-        bound_tree_paths = {
+        bound_tree_paths = frozendict({
             tree.find_node(subtree): variable
             for smt_formula in smt_constraints
             for variable, subtree in smt_formula.substitutions.items()
-        }
+        })
 
         prefix_def_0_fresh_vars, prefix_def_0_structure = describe_subtree_structure(
             tree, bound_tree_paths, current_path=prefix_def_0_path

@@ -918,10 +918,28 @@ def eassert(
     return expr
 
 
-def shuffle(a_list: List[T]) -> List[T]:
-    result: List[T] = list(a_list)
+def shuffle(an_iterable: Iterable[T]) -> Tuple[T, ...]:
+    """
+    Shuffles the given iterable and returns a tuple of the shuffled elements.
+
+    >>> random.seed(0)
+    >>> l = [1, 2, 3]
+
+    >>> shuffle(l)
+    (1, 3, 2)
+
+    The original list is not modified:
+
+    >>> l
+    [1, 2, 3]
+
+    :param an_iterable: The iterable to shuffle.
+    :return: A tuple of the shuffled elements.
+    """
+
+    result = list(an_iterable)
     random.shuffle(result)
-    return result
+    return tuple(result)
 
 
 Seq = TypeVar("Seq", bound=Sequence)

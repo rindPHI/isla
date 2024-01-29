@@ -1,5 +1,6 @@
 import itertools
 import logging
+import operator
 import random
 import sys
 from functools import reduce, lru_cache
@@ -39,7 +40,7 @@ from typeguard import typechecked
 from isla.derivation_tree import DerivationTree
 from isla.evaluator import matches_for_quantified_formula, evaluate
 from isla.fuzzer import GrammarCoverageFuzzer, GrammarFuzzer
-from isla.helpers import deep_str, depth_indent, star, lazystr, eassert
+from isla.helpers import deep_str, depth_indent, star, lazystr, eassert, shuffle
 from isla.helpers import (
     frozen_canonical,
     is_nonterminal,
@@ -428,7 +429,7 @@ def value_suggestion_constraints(
             tree, bound_tree_paths, current_path=path, fresh_vars=fresh_variables
         )
 
-        assert structure or not new_fresh_vars
+        assert structure or new_fresh_vars == fresh_variables
         if not structure:
             continue
 
@@ -657,9 +658,20 @@ class RepairSolver:
         # 4a. If the formula is a disjunction, recursively try to satisfy each disjunct.
         #     Return the first successfully repaired tree, or Nothing.
         if isinstance(no_true_semantic_formulas, DisjunctiveFormula):
+            # TODO: We should
+            #       - Shuffle the disjuncts.
+            #       - Implement meaningful backtracking, e.g., based on a maximum number of instantiations of
+            #         the same existential quantifier.
+            # disjuncts = shuffle(split_disjunction(no_true_semantic_formulas))
+
+            disjuncts = split_disjunction(no_true_semantic_formulas)
+
+            # To optimize the search, we first try to repair the disjuncts that
+            # are most likely to be satisfiable. We estimate this by calculating
+            # the proportion of unsatisfied conjuncts in each disjunct.
+
             return flow(
-                no_true_semantic_formulas,
-                split_disjunction,
+                disjuncts,
                 partial(
                     map,
                     lambda disjunct: self.repair_tree(
@@ -721,37 +733,6 @@ class RepairSolver:
             # the constraints.
             return self.try_to_finish(tree, conjunction(*conjuncts))
 
-        # TODO: We should prune less aggressively:
-        #       - Focus on one formula cluster at a time.
-        #       - If a cluster A addresses a subtree of the tree addressed by
-        #         a cluster B, we should first focus on cluster A and prune
-        #         the subtree, not directly the tree higher-up.
-
-        pruning_substitutions = compute_pruning_substitutions(
-            smt_conjuncts, tree, self.grammar
-        )
-        pruned_tree = tree.substitute(pruning_substitutions)
-        LOGGER.debug("Pruned tree: %s", pruned_tree)
-        pruned_smt_conjuncts_and_value_suggestions: Tuple[
-            Tuple[SMTFormula, frozendict[Variable, str]], ...
-        ] = tuple(
-            (
-                conjunct.substitute_expressions(pruning_substitutions),
-                frozendict(
-                    {
-                        var: str(substituted_tree)
-                        for var, substituted_tree in conjunct.substitutions.items()
-                        if not substituted_tree.is_open()
-                    }
-                ),
-            )
-            for conjunct in smt_conjuncts
-            if all(
-                pruned_tree.find_node(t) is not None
-                for t in conjunct.substitutions.values()
-            )
-        )
-
         def apply_smt_substitutions(
             substs: Mapping[DerivationTree, DerivationTree]
         ) -> Maybe[DerivationTree]:
@@ -777,9 +758,7 @@ class RepairSolver:
             LOGGER.debug("No SMT solution found")
 
         return (
-            self.eliminate_all_semantic_formulas(
-                pruned_smt_conjuncts_and_value_suggestions, pruned_tree
-            )
+            self.eliminate_all_semantic_formulas(smt_conjuncts, tree)
             .map(tap(log_solution))
             .lash(tap(log_no_solution))
             .bind(apply_smt_substitutions)
@@ -1158,9 +1137,7 @@ class RepairSolver:
     @typechecked
     def eliminate_all_semantic_formulas(
         self,
-        smt_formulas_and_value_suggestions: Sequence[
-            Tuple[SMTFormula, frozendict[Variable, str]]
-        ],
+        smt_formulas: Sequence[SMTFormula],
         tree: DerivationTree,
     ) -> Maybe[Mapping[DerivationTree, DerivationTree]]:
         """
@@ -1174,30 +1151,14 @@ class RepairSolver:
         >>> solver.eliminate_all_semantic_formulas([false()], DerivationTree("<start>", None))
         <Nothing>
 
-        :param smt_formulas_and_value_suggestions: A sequence of SMT-LIB formulas
+        :param smt_formulas: A sequence of SMT-LIB formulas
             to solve and suggestions for the values of their variables.
         :param tree: The reference tree.
         :return: A mapping from old to new trees, if a solution exists.
         """
 
-        if not smt_formulas_and_value_suggestions:
+        if not smt_formulas:
             return Some(tree)
-
-        smt_formulas: Tuple[SMTFormula, ...] = tuple(
-            map(itemgetter(0), smt_formulas_and_value_suggestions)
-        )
-        value_suggestions: Tuple[SMTFormula, ...] = tuple(
-            SMTFormula(
-                z3_and(
-                    tuple(
-                        z3_eq(var.to_smt(), z3.StringVal(val))
-                        for var, val in suggestion.items()
-                    )
-                ),
-                *suggestion.keys(),
-            )
-            for _, suggestion in smt_formulas_and_value_suggestions
-        )
 
         LOGGER.debug("Eliminating semantic formulas [%s]", lazyjoin(", ", smt_formulas))
 
@@ -1205,9 +1166,7 @@ class RepairSolver:
         # formulas with a variable $var which is instantiated to different trees, we
         # need two separate solutions. If, however, $var is instantiated with the
         # *same* tree, we need one solution to both formulas together.
-        smt_formulas, value_suggestions = rename_instantiated_variables_in_smt_formulas(
-            smt_formulas, value_suggestions
-        )
+        smt_formulas = rename_instantiated_variables_in_smt_formulas(smt_formulas)
 
         # Now, we also cluster formulas by common variables (and instantiated subtrees:
         # One formula might yield an instantiation of a subtree of the instantiation of
@@ -1239,41 +1198,13 @@ class RepairSolver:
             for smt_formula in smt_formulas
         )
 
-        suggestion_clusters: Tuple[Tuple[SMTFormula, ...], ...] = tuple(
-            map(
-                lambda cluster: tuple(map(itemgetter(1), cluster)),
-                filter(
-                    None,
-                    cluster_by_common_elements(
-                        tuple(enumerate(value_suggestions)),
-                        star(lambda idx, suggestion: cluster_keys(smt_formulas[idx])),
-                    ),
-                ),
-            )
-        )
-
-        assert all(
-            not cluster_keys(smt_formulas[idx])
-            or any(suggestion in cluster for cluster in suggestion_clusters)
-            for idx, suggestion in enumerate(value_suggestions)
-        )
-
         match tuple(
-            (smt_formula, value_suggestion)
-            for smt_formula, value_suggestion in zip(smt_formulas, value_suggestions)
-            if not cluster_keys(smt_formula)
+            smt_formula for smt_formula in smt_formulas if not cluster_keys(smt_formula)
         ):
             case ():
                 pass
-            case clusters:
-                (
-                    remaining_smt_formulas_cluster,
-                    remaining_value_suggestions_cluster,
-                ) = zip(*clusters)
+            case remaining_smt_formulas_cluster:
                 formula_clusters += (remaining_smt_formulas_cluster,)
-                suggestion_clusters += (remaining_value_suggestions_cluster,)
-
-        assert len(formula_clusters) == len(suggestion_clusters)
 
         # These solutions are all independent, such that we can combine each solution
         # with all others.
@@ -1287,10 +1218,7 @@ class RepairSolver:
                     )
                 )
             ),
-            map(
-                star(self.solve_quantifier_free_formula),
-                zip(formula_clusters, suggestion_clusters),
-            ),
+            map(partial(self.solve_quantifier_free_formula, tree), formula_clusters),
             Some(frozendict()),
         )
 
@@ -1300,8 +1228,8 @@ class RepairSolver:
     @typechecked
     def solve_quantifier_free_formula(
         self,
+        tree: DerivationTree,
         smt_formulas: Tuple[SMTFormula, ...],
-        value_suggestions: Tuple[SMTFormula, ...],
     ) -> Maybe[frozendict[DerivationTree, DerivationTree]]:
         """
         Attempts to solve the given SMT-LIB formulas by calling Z3.
@@ -1316,83 +1244,50 @@ class RepairSolver:
         :return: A (possibly empty) list of solutions.
         """
 
-        suggestion_to_formula: frozendict[SMTFormula, SMTFormula] = frozendict(
-            zip(value_suggestions, smt_formulas)
-        )
+        # TODO: I disabled priority formulas since this should now be addressed with
+        #       structural constraints. Check if that works.
+        # # If any SMT formula refers to *sub*trees in the instantiations of other SMT
+        # # formulas, we have to instantiate those first.
+        # priority_formulas = smt_formulas_referring_to_subtrees(smt_formulas)
 
-        # If any SMT formula refers to *sub*trees in the instantiations of other SMT
-        # formulas, we have to instantiate those first.
-        priority_formulas = smt_formulas_referring_to_subtrees(smt_formulas)
+        # if priority_formulas:
+        #     LOGGER.debug("Focusing on priority formulas %s", priority_formulas)
 
-        if priority_formulas:
-            LOGGER.debug("Focusing on priority formulas %s", priority_formulas)
-
-            smt_formulas = priority_formulas
-            assert not smt_formulas_referring_to_subtrees(smt_formulas)
-
-            value_suggestions = tuple(
-                suggestion_to_formula[smt_formula] for smt_formula in smt_formulas
-            )
-
-        tree_substitutions = reduce(
-            lambda d1, d2: cast(
-                frozendict[Variable, DerivationTree], frozendict(d1 | d2)
-            ),
-            [smt_formula.substitutions for smt_formula in smt_formulas],
-            frozendict({}),
-        )
-
-        variables_in_smt_formulas = reduce(
-            lambda d1, d2: d1 | d2,
-            [
-                smt_formula.free_variables() | smt_formula.instantiated_variables
-                for smt_formula in smt_formulas
-            ],
-            set(),
-        )
+        #     smt_formulas = priority_formulas
+        #     assert not smt_formulas_referring_to_subtrees(smt_formulas)
 
         (
             solver_result,
             maybe_model,
-        ) = self.solve_smt_formulas_with_language_constraints(
-            variables_in_smt_formulas,
-            tuple(smt_formula.formula for smt_formula in smt_formulas),
-            tree_substitutions,
-            tuple(
-                suggestion.formula
-                for suggestion in value_suggestions
-                # TODO: Check if it's a problem (or indicates a problem) when a suggestion
-                #       addresses variables that don't occur in the formula. This could,
-                #       e.g., occur when pruning generalizes the type of a substitution in
-                #       an SMT formula.
-                if variables_in_smt_formulas.intersection(
-                    suggestion.free_variables() | suggestion.instantiated_variables
-                )
-            ),
-        )
+        ) = self.solve_smt_formulas_with_language_constraints(tree, smt_formulas)
 
         if solver_result != z3.sat:
             return Nothing
 
-        assert maybe_model is not None
+        tree_substitutions_in_smt_formulas = collect_tree_substitutions_in_smt_formulas(
+            smt_formulas
+        )
+        variables_in_smt_formulas = collect_variables_in_smt_formulas(smt_formulas)
 
-        result: Maybe[frozendict[DerivationTree, DerivationTree]] = reduce(
-            lambda maybe_solution, constant: maybe_solution.bind(
-                lambda solution: maybe_model.map(
-                    lambda model: (
-                        solution
-                        + (
-                            (
-                                tree_substitutions.get(constant, constant),
-                                model[constant],
-                            ),
-                        )
-                    )
-                )
-            ),
-            variables_in_smt_formulas,
-            Some(()),
-        ).map(frozendict)
+        def integrate_model_for_variable(
+            model: frozendict[Variable, DerivationTree],
+            variable: Variable,
+            solution: frozendict[Variable, DerivationTree],
+        ) -> frozendict[Variable, DerivationTree]:
+            return solution.set(
+                tree_substitutions_in_smt_formulas.get(variable, variable),
+                model[variable],
+            )
+
+        result: Maybe[frozendict[DerivationTree, DerivationTree]] = maybe_model.bind(
+            lambda model: reduce(
+                lambda maybe_solution, variable: maybe_solution.map(
+                    partial(integrate_model_for_variable, model, variable)
+                ),
+                variables_in_smt_formulas,
+                Some(frozendict({})),
+            )
+        )
 
         assert result.map(
             lambda r: isinstance(r, frozendict)
@@ -1407,10 +1302,8 @@ class RepairSolver:
     @typechecked
     def solve_smt_formulas_with_language_constraints(
         self,
-        variables: Set[Variable],
-        smt_formulas: Tuple[z3.BoolRef, ...],
-        tree_substitutions: frozendict[Variable, DerivationTree],
-        value_suggestions: Tuple[z3.BoolRef, ...] = (),
+        tree: DerivationTree,
+        smt_formulas: Tuple[SMTFormula, ...],
     ) -> Tuple[z3.CheckSatResult, Maybe[frozendict[Variable, DerivationTree]]]:
         """
         TODO Document, test.
@@ -1421,9 +1314,14 @@ class RepairSolver:
         :return:
         """
 
-        length_vars: frozenset[Variable] = frozenset()
-        int_vars: frozenset[Variable] = frozenset()
-        fresh_var_map: frozendict[Variable, z3.ExprRef] = frozendict({})
+        (
+            fresh_variables,
+            value_suggestions,
+            structural_suggestions,
+        ) = value_suggestion_constraints(tree, smt_formulas)
+
+        tree_substitutions = collect_tree_substitutions_in_smt_formulas(smt_formulas)
+        variables = collect_variables_in_smt_formulas(smt_formulas)
 
         # We disable optimized Z3 queries if the SMT formulas contain "too concrete"
         # substitutions, that is, substitutions with a tree that is not merely an
@@ -1433,15 +1331,34 @@ class RepairSolver:
             substitution.children for substitution in tree_substitutions.values()
         )
 
+        optimized_solution_enabled = False  # TODO Re-enable
         if optimized_solution_enabled:
-            fresh_var_map, sat_result, maybe_model = self.compute_solution_optimized(
-                smt_formulas, variables, tree_substitutions, value_suggestions
-            )
+            raise NotImplementedError(
+                "TODO: Update optimized solution to integrate value suggestions."
+            )  # TODO
+            # (
+            #     length_vars,
+            #     int_vars,
+            #     fresh_var_map,
+            #     sat_result,
+            #     maybe_model,
+            # ) = self.compute_solution_optimized(
+            #     smt_formulas, variables, tree_substitutions
+            # )
         else:
+            length_vars, int_vars, fresh_var_map = (
+                frozenset(),
+                frozenset(),
+                frozendict({}),
+            )
+
             sat_result, maybe_model = z3_solve(
-                self.generate_language_constraints(variables, tree_substitutions)
-                + smt_formulas,
-                value_suggestions=value_suggestions,
+                self.generate_language_constraints(
+                    variables | fresh_variables, tree_substitutions
+                )
+                + tuple(map(lambda f: f.formula, smt_formulas)),
+                structural_suggestions,
+                value_suggestions,
             )
 
         if sat_result != z3.sat:
@@ -1459,7 +1376,11 @@ class RepairSolver:
         tree_substitutions: Mapping[Variable, DerivationTree],
         value_suggestions: Tuple[z3.BoolRef, ...] = (),
     ) -> Tuple[
-        frozendict[Variable, z3.ExprRef], z3.CheckSatResult, Optional[z3.ModelRef]
+        FrozenSet[Variable],
+        FrozenSet[Variable],
+        frozendict[Variable, z3.ExprRef],
+        z3.CheckSatResult,
+        Optional[z3.ModelRef],
     ]:
         """
         TODO: Document, test.
@@ -1532,7 +1453,7 @@ class RepairSolver:
             + length_constraints
             + interval_constraints
             + smt_formulas_no_seq_and_strtoint,
-            value_suggestions=value_suggestions,
+            soft_constraints=value_suggestions,
         )
 
         return fresh_var_map, sat_result, maybe_model
@@ -1614,26 +1535,33 @@ class RepairSolver:
         variables_in_smt_formulas: Iterable[Variable],
         tree_substitutions: Mapping[Variable, DerivationTree],
     ) -> Tuple[z3.BoolRef, ...]:
-        formulas: Tuple[z3.BoolRef, ...] = ()
-        for constant in variables_in_smt_formulas:
-            if constant in tree_substitutions:
-                # We have a more concrete shape of the desired instantiation available
-                regexes = [
-                    self.extract_regular_expression(t)
-                    if is_nonterminal(t)
-                    else z3.Re(t)
-                    for t in split_str_with_nonterminals(
-                        str(tree_substitutions[constant])
-                    )
-                ]
-                assert regexes
-                regex = z3.Concat(*regexes) if len(regexes) > 1 else regexes[0]
-            else:
-                regex = self.extract_regular_expression(constant.n_type)
+        return tuple(
+            z3.InRe(var.to_smt(), self.extract_regular_expression(var.n_type))
+            for var in variables_in_smt_formulas
+        )
 
-            formulas += (z3.InRe(z3.String(constant.name), regex),)
+        # TODO: I disabled the consideration of tree structure here since I it is
+        #       considered in the "medium soft" structural constraints.
+        # formulas: Tuple[z3.BoolRef, ...] = ()
+        # for constant in variables_in_smt_formulas:
+        #     if constant in tree_substitutions:
+        #         # We have a more concrete shape of the desired instantiation available
+        #         regexes = [
+        #             self.extract_regular_expression(t)
+        #             if is_nonterminal(t)
+        #             else z3.Re(t)
+        #             for t in split_str_with_nonterminals(
+        #                 str(tree_substitutions[constant])
+        #             )
+        #         ]
+        #         assert regexes
+        #         regex = z3.Concat(*regexes) if len(regexes) > 1 else regexes[0]
+        #     else:
+        #         regex = self.extract_regular_expression(constant.n_type)
 
-        return formulas
+        #     formulas += (z3.InRe(z3.String(constant.name), regex),)
+
+        # return formulas
 
     @lru_cache(maxsize=128)
     @typechecked
@@ -2075,8 +2003,7 @@ def add_already_matched(
 @typechecked
 def rename_instantiated_variables_in_smt_formulas(
     smt_formulas: Iterable[SMTFormula],
-    value_suggestions: Iterable[SMTFormula],
-) -> Tuple[Tuple[SMTFormula, ...], Tuple[SMTFormula, ...]]:
+) -> Tuple[SMTFormula, ...]:
     """
     TODO: Document, polish.
 
@@ -2086,9 +2013,8 @@ def rename_instantiated_variables_in_smt_formulas(
     """
 
     resulting_smt_formulas = ()
-    resulting_value_suggestions = ()
 
-    for smt_formula, value_suggestion in zip(smt_formulas, value_suggestions):
+    for smt_formula in smt_formulas:
         variable_substitution: frozendict[Variable, BoundVariable] = frozendict(
             {
                 var: BoundVariable(
@@ -2135,9 +2061,8 @@ def rename_instantiated_variables_in_smt_formulas(
             )
 
         resulting_smt_formulas += (apply_substitution(smt_formula),)
-        resulting_value_suggestions += (apply_substitution(value_suggestion),)
 
-    return resulting_smt_formulas, resulting_value_suggestions
+    return resulting_smt_formulas
 
 
 @typechecked
@@ -2467,6 +2392,44 @@ def smt_formulas_referring_to_subtrees(
         for idx, formula in enumerate(smt_formulas)
         if refers_to_subtree_of_other_formula(idx, formula)
         and independent_from_solutions_of_other_formula(idx, formula)
+    )
+
+
+def collect_tree_substitutions_in_smt_formulas(
+    smt_formulas: Iterable[SMTFormula],
+) -> frozendict[Variable, DerivationTree]:
+    """
+    Collects all tree substitutions from the given SMT formulas.
+
+    :param smt_formulas: The SMT formulas to collect the substitutions from.
+    :return: A mapping from variables to their corresponding derivation
+        trees collected from the given SMT formulas.
+    """
+
+    return reduce(
+        operator.or_,
+        (smt_formula.substitutions for smt_formula in smt_formulas),
+        frozendict({}),
+    )
+
+
+def collect_variables_in_smt_formulas(
+    smt_formulas: Iterable[SMTFormula],
+) -> FrozenOrderedSet[Variable]:
+    """
+    Collects all (free and instantiated) variables in the given SMT formulas.
+
+    :param smt_formulas: The SMT formulas to collect the variables from.
+    :return: A set of variables collected from the given SMT formulas.
+    """
+
+    return reduce(
+        operator.or_,
+        (
+            smt_formula.free_variables() | smt_formula.instantiated_variables
+            for smt_formula in smt_formulas
+        ),
+        FrozenOrderedSet(),
     )
 
 
