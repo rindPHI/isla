@@ -142,8 +142,8 @@ def describe_subtree_structure(
     current_path: Path = (),
     current_node: Optional[DerivationTree] = None,
     first_call: bool = True,
-    fresh_vars: FrozenOrderedSet[Variable] = FrozenOrderedSet(),
-) -> Tuple[FrozenOrderedSet[Variable], Tuple[Variable | str, ...]]:
+    fresh_vars: frozendict[Variable, str] = frozendict({}),
+) -> Tuple[frozendict[Variable, str], Tuple[Variable | str, ...]]:
     r"""
     TODO: Document.
 
@@ -221,6 +221,12 @@ def describe_subtree_structure(
     >>> print(deep_str(bound_tree_paths))
     {(0, 0, 1, 0): prefix_use_1, (0, 0, 2, 1, 0, 2): prefix_def_0, (0, 0, 1): opid, (0, 2, 2): clid}
 
+    The interesting case of the output below is the structure of "opid."
+    Observe how the last element of the returned tuple is a fresh variable
+    :code:`letter` that is introduced to generalize the structure of the
+    substitution. The original value of the subtree represented by this
+    variable ("x") is also returned.
+
     >>> print(
     ...     "\n".join(
     ...         map(
@@ -237,10 +243,10 @@ def describe_subtree_structure(
     ...         )
     ...     )
     ... )
-    (prefix_use_1, ({}, (b,)))
+    (prefix_use_1, ({}, ('b',)))
     (prefix_def_0, ({}, ()))
-    (opid, ({letter}, (prefix_use_1, :, letter)))
-    (clid, ({}, (a:x,)))
+    (opid, ({letter: 'x'}, (prefix_use_1, ':', letter)))
+    (clid, ({}, ('a:x',)))
 
     :param tree:
     :param bound_tree_paths:
@@ -267,11 +273,13 @@ def describe_subtree_structure(
     ):
         if is_nonterminal(current_node.value) and not first_call:
             fresh_var = fresh_bound_variable(
-                fresh_vars | FrozenOrderedSet(bound_tree_paths.values()),
+                FrozenOrderedSet(fresh_vars.keys())
+                | FrozenOrderedSet(bound_tree_paths.values()),
                 BoundVariable(current_node.value[1:-1], current_node.value),
                 add=False,
             )
-            return fresh_vars | {fresh_var}, (fresh_var,)
+
+            return fresh_vars.set(fresh_var, str(current_node)), (fresh_var,)
 
         return fresh_vars, (str(current_node),)
 
@@ -286,7 +294,7 @@ def describe_subtree_structure(
             fresh_vars=fresh_vars,
         )
 
-        fresh_vars = fresh_vars | new_fresh_vars
+        fresh_vars = frozendict(fresh_vars | new_fresh_vars)
         resulting_structures += sub_result
 
     return fresh_vars, resulting_structures
@@ -403,7 +411,7 @@ def value_suggestion_constraints(
     {letter}
 
     >>> print(deep_str(literal_constraints))
-    (prefix_use_1 == "b", clid == "a:x")
+   (prefix_use_1 == "b", letter == "x", clid == "a:x")
 
     >>> print(deep_str(structural_constraints))
     (opid == Concat(prefix_use_1, Concat(":", letter)),)
@@ -420,7 +428,7 @@ def value_suggestion_constraints(
 
     bound_tree_paths = compute_bound_tree_paths(tree, smt_constraints)
 
-    fresh_variables: FrozenOrderedSet[Variable] = FrozenOrderedSet()
+    fresh_variables: frozendict[Variable, str] = frozendict({})
     literal_constraints: Tuple[z3.BoolRef, ...] = ()
     structural_constraints: Tuple[z3.BoolRef, ...] = ()
 
@@ -433,7 +441,7 @@ def value_suggestion_constraints(
         if not structure:
             continue
 
-        fresh_variables = fresh_variables | new_fresh_vars
+        fresh_variables = frozendict(fresh_variables | new_fresh_vars)
 
         constraint = z3_eq(
             var.to_smt(),
@@ -447,10 +455,18 @@ def value_suggestion_constraints(
 
         if any(isinstance(elem, Variable) for elem in structure):
             structural_constraints += (constraint,)
+            literal_constraints += tuple(
+                z3_eq(fresh_variable.to_smt(), z3.StringVal(value))
+                for fresh_variable, value in new_fresh_vars.items()
+            )
         else:
             literal_constraints += (constraint,)
 
-    return fresh_variables, literal_constraints, structural_constraints
+    return (
+        FrozenOrderedSet(fresh_variables.keys()),
+        literal_constraints,
+        structural_constraints,
+    )
 
 
 @typechecked
@@ -659,9 +675,11 @@ class RepairSolver:
         #     Return the first successfully repaired tree, or Nothing.
         if isinstance(no_true_semantic_formulas, DisjunctiveFormula):
             # TODO: We should
-            #       - Shuffle the disjuncts.
-            #       - Implement meaningful backtracking, e.g., based on a maximum number of instantiations of
-            #         the same existential quantifier.
+            #       - Shuffle the disjuncts (?).
+            #       - Implement meaningful backtracking (e.g., based on the maximum
+            #         number of tree insertion solutions for the same existential
+            #         quantifier).
+            #       - Implement finding multiple repairs.
             # disjuncts = shuffle(split_disjunction(no_true_semantic_formulas))
 
             disjuncts = split_disjunction(no_true_semantic_formulas)

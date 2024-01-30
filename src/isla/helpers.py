@@ -1247,6 +1247,8 @@ def deep_str(obj: Any) -> str:
                 return str(Failure(deep_str(inner)))
     elif not str(obj):
         return repr(obj)
+    elif isinstance(obj, str):
+        return repr(str(obj))
     else:
         return str(obj)
 

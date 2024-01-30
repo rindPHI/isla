@@ -50,7 +50,8 @@ class TestRepairSolver(unittest.TestCase):
     SIMPLIFIED_XML_ATTRIBUTE_NAMESPACE_CONSTRAINT = parse_isla(
         r"""
             forall <attr> attribute="{<letter> prefix_use}:{<letter> maybe_def}=\"XXX\"": (
-                not prefix_use = "x" or not maybe_def = "x" 
+                not maybe_def = "x" or
+                not prefix_use = "x"
             ) and
             forall <attr> attribute="{<letter> prefix_use}:{<letter> maybe_def}=\"XXX\"": (
               prefix_use = "x" or
@@ -207,10 +208,7 @@ class TestRepairSolver(unittest.TestCase):
         random.seed(0)
         logging.getLogger("isla-language-core").setLevel(logging.WARNING)
 
-        # inp = '<b:a x:b="XXX"></c:x>'
-        inp = '<b:c b:c="XXX" x:b="XXX"></b:x>'
-        inp = "<a:b><x:x></c:a></a:b>"
-        inp = "<b:x></a:x>"
+        inp = "<a:b><b:x></c:a></a:b>"
 
         constraint = (
             TestRepairSolver.SIMPLIFIED_XML_WELLFORMEDNESS_CONSTRAINT
@@ -238,6 +236,8 @@ class TestRepairSolver(unittest.TestCase):
             .value_or(False),
             "\n".join(out),
         )
+
+        self.assertEqual('<a:b x:a="XXX" x:b="XXX"><b:x></b:x></a:b>', str(result.unwrap()))
 
     def test_repair_simplified_xml_more_restrictive(self):
         # The following constraint is too restrictive: It explicitly requires an outer
