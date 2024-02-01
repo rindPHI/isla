@@ -1002,8 +1002,15 @@ class StructuralPredicateFormula(Formula):
 
 
 def validate_structural_predicate_arguments(
-    formulas: Formula | Iterable[Formula], context_tree: DerivationTree
+        formulas: Formula | Iterable[Formula], context_tree: DerivationTree
 ) -> None:
+    """
+    TODO: Document.
+
+    :param formulas:
+    :param context_tree:
+    :return:
+    """
     if not assertions_activated():
         return
 
@@ -1033,6 +1040,52 @@ def validate_structural_predicate_arguments(
         def msg():
             return (
                 f"The following tree argument of the structural predicate formula\n  {structural_predicate_formula}\n"
+                f"is not contained in the context tree:\n  {first_dangling_argument} "
+                f"(id: {first_dangling_argument.id}, type: {first_dangling_argument.value})\n"
+                f"where the context tree is\n  {context_tree} (id: {context_tree.id}, type: {context_tree.value})"
+            )
+
+        assert first_dangling_argument is None, msg()
+def validate_smt_formula_substitutions(
+    formulas: Formula | Iterable[Formula], context_tree: DerivationTree
+) -> None:
+    """
+    TODO: Document.
+
+    :param formulas:
+    :param context_tree:
+    :return:
+    """
+
+    if not assertions_activated():
+        return
+
+    class FindSMTFormsVisitor(FormulaVisitor):
+        def __init__(self):
+            super().__init__()
+            self.smt_formulas = ()
+
+        def visit_smt_formula(self, formula: SMTFormula):
+            self.smt_formulas += (formula,)
+
+    visitor = FindSMTFormsVisitor()
+
+    for formula in [formulas] if isinstance(formulas, Formula) else formulas:
+        formula.accept(visitor)
+
+    for smt_formula in visitor.smt_formulas:
+        first_dangling_argument = next(
+            flow(
+                tuple(smt_formula.substitutions.values()),
+                partial(filter, DerivationTree.__instancecheck__),
+                partial(filter, lambda tree: context_tree.find_node(tree) is None),
+            ),
+            None,
+        )
+
+        def msg():
+            return (
+                f"The following tree argument of the smt formula\n  {smt_formula}\n"
                 f"is not contained in the context tree:\n  {first_dangling_argument} "
                 f"(id: {first_dangling_argument.id}, type: {first_dangling_argument.value})\n"
                 f"where the context tree is\n  {context_tree} (id: {context_tree.id}, type: {context_tree.value})"

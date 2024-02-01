@@ -135,8 +135,7 @@ class TestRepairSolver(unittest.TestCase):
 
         solver = RepairSolver(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, constraint)
 
-        # TODO: Increase numbert to 20. Some repair actions take far too long, suspicious!
-        for i in range(10):
+        for i in range(20):
             solution = solver.solve()
             LOGGER.info(f"Found solution no. %d: %s", i + 1, solution)
             self.assertTrue(validate_xml(solution))
@@ -164,6 +163,9 @@ class TestRepairSolver(unittest.TestCase):
 
     def test_repair_xml_namespace(self):
         inp = '<ns1:A ns3:attr="X">Hello</ns2:B>'
+
+        # TODO: This input causes a TypeError.
+        inp = '<E><X:B><_/><J/>K</J:z><h:f1/></v0>'
 
         inp_tree = DerivationTree.from_parse_tree(
             next(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))

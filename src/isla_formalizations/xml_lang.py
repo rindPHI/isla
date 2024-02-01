@@ -92,12 +92,17 @@ XML_WELLFORMEDNESS_CONSTRAINT = parse_isla(
 )
 
 xml_attribute_namespace_constraint = r"""
-forall <xml-attribute> attribute="{<id-no-prefix> prefix_use}:{<id-no-prefix> maybe_def}=\"<text>\"":
-  ((not prefix_use = "xmlns" or maybe_def = "xmlns") implies
+forall <xml-attribute> attribute="{<id-no-prefix> prefix_use}:{<id-no-prefix> maybe_def}=\"<text>\"": (
+  not maybe_def = "xmlns" or
+  not prefix_use = "xmlns"
+) and
+forall <xml-attribute> attribute="{<id-no-prefix> prefix_use}:{<id-no-prefix> maybe_def}=\"<text>\"": (
+  prefix_use = "xmlns" or
+    not prefix_use = "xmlns" and
     exists <xml-tree> outer_tag="<<id> {<xml-attribute> cont_attribute}><inner-xml-tree></<id>>":
       (inside(attribute, outer_tag) and
        exists <xml-attribute> def_attribute="xmlns:{<id-no-prefix> prefix_def}=\"<text>\"" in cont_attribute:
-         (not (= prefix_def "xmlns") and (= prefix_use prefix_def))))"""
+         (= prefix_use prefix_def)))"""
 
 XML_ATTRIBUTE_NAMESPACE_CONSTRAINT = parse_isla(
     xml_attribute_namespace_constraint,
