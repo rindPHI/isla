@@ -64,6 +64,7 @@ class TestDocstrings(unittest.TestCase):
         self.assertFalse(doctest_results.failed)
 
     def test_language(self):
+        logging.getLogger("isla-language-core").setLevel(logging.ERROR)
         doctest_results = doctest.testmod(m=language)
         self.assertFalse(doctest_results.failed)
 
@@ -90,6 +91,7 @@ class TestDocstrings(unittest.TestCase):
         self.assertFalse(doctest_results.failed)
 
     def test_solver(self):
+        logging.getLogger("ISLaSolver").setLevel(logging.ERROR)
         logging.getLogger("RegexConverter").setLevel(logging.ERROR)
         doctest_results = doctest.testmod(m=solver)
         self.assertFalse(doctest_results.failed)

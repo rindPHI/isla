@@ -155,7 +155,9 @@ def evaluate_z3_string_value(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
     if not z3.is_string_value(expr):
         return Nothing
     expr: z3.StringVal
-    return Some(((), expr.as_string().replace(r"\u{}", "\x00")))
+    return Some(
+        ((), expr.as_string().replace(r"\u{0}", "\x00").replace(r"\u{}", "\x00"))
+    )
 
 
 def evaluate_z3_int_value(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
@@ -953,13 +955,13 @@ def smt_string_val_to_string(smt_val: z3.StringVal) -> str:
     r"""
     Converts `smt_val` to its string representation. Handles the special case of
     null-bytes characters in `smt_val`: Those are represented as `\u{}` by `as_string()`
-    and get converted to `\x00`.
+    in older Z3 versions and `\u{0}` in newer versions. They are replaced by `\x00`.
 
     :param smt_val: The `z3.StringVal` to convert to a Python string.
     :return: The Python string representation of `smt_val`.
     """
 
-    return smt_val.as_string().replace(r"\u{}", "\x00")
+    return smt_val.as_string().replace(r"\u{0}", "\x00").replace(r"\u{}", "\x00")
 
 
 def parent_relationships_in_z3_expr(

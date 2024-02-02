@@ -67,7 +67,6 @@ from isla.language import (
     StructuralPredicateFormula,
     SMTFormula,
     true,
-    split_conjunction,
     BoundVariable,
     convert_to_nnf,
     VariablesCollector,
@@ -863,7 +862,7 @@ class RepairSolver:
         :param conjuncts:
         :param tree:
         :return:
-        """
+        """  # noqa: E501
 
         validate_structural_predicate_arguments(conjuncts, tree)
         validate_smt_formula_substitutions(conjuncts, tree)
@@ -961,6 +960,8 @@ class RepairSolver:
         ...     )'''
         >>> solver = RepairSolver(grammar, constraint)
         >>> tree = solver.parse("012").unwrap()
+
+        >>> from isla.language import split_conjunction
         >>> print(
         ...     "\n".join(
         ...         map(
@@ -981,7 +982,7 @@ class RepairSolver:
         :param formula:
         :param ignore:
         :return:
-        """
+        """  # noqa: E501
 
         # We disable the automatic evaluation and substitution of SMT expressions
         # because we want to use the # SMT expressions as-is in the formula (to

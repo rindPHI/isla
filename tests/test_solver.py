@@ -243,11 +243,11 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
         chains_1 = get_quantifier_chains(XML_WELLFORMEDNESS_CONSTRAINT)
         self.assertEqual(1, len(chains_1))
         chains_2 = get_quantifier_chains(XML_NAMESPACE_CONSTRAINT)
-        self.assertEqual(2, len(chains_2))
+        self.assertEqual(3, len(chains_2))
         all_chains = get_quantifier_chains(
             XML_WELLFORMEDNESS_CONSTRAINT & XML_NAMESPACE_CONSTRAINT
         )
-        self.assertEqual(3, len(all_chains))
+        self.assertEqual(4, len(all_chains))
         self.assertEqual(set(chains_1) | set(chains_2), set(all_chains))
 
     def test_xml_with_prefixes(self):

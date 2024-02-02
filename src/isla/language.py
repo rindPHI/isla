@@ -2563,7 +2563,8 @@ def to_dnf_clauses(formula: Formula) -> Tuple[Tuple[Formula, ...], ...]:
     """
 
     assert not isinstance(formula, NegatedFormula) or isinstance(
-        formula, SMTFormula | StructuralPredicateFormula | SemanticPredicateFormula
+        formula.args[0],
+        SMTFormula | StructuralPredicateFormula | SemanticPredicateFormula,
     ), "Convert to NNF before converting to DNF"
 
     if isinstance(formula, DisjunctiveFormula):
@@ -4654,7 +4655,7 @@ def parse_match_expression(
     ...     "x := 0 ; y := x",
     ...     "<start>",
     ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value))))
-    <Some: (x := 0 ; y := x, <start>)>
+    <Some: (x := 0 ; y := x, '<start>')>
 
     Now, we parse a single assignment with the :code:`<assgn>` start nonterminal:
 
@@ -4662,7 +4663,7 @@ def parse_match_expression(
     ...     "x := 0",
     ...     "<assgn>",
     ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value))))
-    <Some: (x := 0, <assgn>)>
+    <Some: (x := 0, '<assgn>')>
 
     In case of an error, Nothing is returned:
 

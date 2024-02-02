@@ -11,8 +11,8 @@ from isla.helpers import (
     canonical,
     frozen_canonical,
     assertions_activated,
-    deep_str,
 )
+from isla.helpers import deep_str  # noqa: F401
 from isla.type_defs import Path, FrozenCanonicalGrammar
 
 

@@ -95,6 +95,7 @@ from isla.helpers import (
     compute_nullable_nonterminals,
     eassert,
     merge_dict_of_sets,
+    list_set,
 )
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
@@ -543,11 +544,23 @@ class ISLaSolver:
             + f'found {len(top_constants)}: {", ".join(map(str, top_constants))}'
         )
 
-        self.top_constant = result_to_maybe(safe(lambda: next(iter(top_constants)))())
+        only_top_constant = Maybe.from_optional(next(iter(top_constants), None))
+        self.top_constant = only_top_constant.map(
+            lambda c: language.Constant(
+                c.name, Maybe.from_optional(start_symbol).value_or(c.n_type)
+            )
+        )
+
+        if only_top_constant != self.top_constant:
+            assert is_successful(only_top_constant)
+            assert is_successful(self.top_constant)
+            self.formula = self.formula.substitute_variables(
+                {only_top_constant.unwrap(): self.top_constant.unwrap()}
+            )
 
         quantifier_chains: List[Tuple[language.ForallFormula, ...]] = [
             tuple([f for f in c if isinstance(f, language.ForallFormula)])
-            for c in get_quantifier_chains(formula)
+            for c in get_quantifier_chains(self.formula)
         ]
         # TODO: Remove?
         self.quantifier_chains: List[Tuple[language.ForallFormula, ...]] = [
@@ -2014,7 +2027,7 @@ class ISLaSolver:
                 )
 
                 instantiated_formulas.append(inst_formula)
-                conjuncts[idx] = universal_formula_with_matches
+                conjuncts = list_set(conjuncts, idx, universal_formula_with_matches)
 
         if instantiated_formulas:
             return [
