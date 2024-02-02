@@ -2,9 +2,7 @@ import logging
 import random
 import unittest
 
-import pytest
 from frozendict import frozendict
-from orderedset import FrozenOrderedSet
 
 from isla.derivation_tree import DerivationTree
 from isla.isla_predicates import IN_TREE_PREDICATE, SAME_POSITION_PREDICATE
