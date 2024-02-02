@@ -115,11 +115,43 @@ def graph_path_to_tree(
 
     >>> resulting_tree, path_to_end = graph_path_to_tree(graph_path, graph)
 
+    >>> graph.tree_is_valid(resulting_tree)
+    True
+
     >>> print(resulting_tree)
     <var> := <rhs> ; <stmt>
 
     >>> print(resulting_tree.value)
     <stmt>
+
+    >>> print(resulting_tree.get_subtree(path_to_end))
+    <var>
+
+    Let us have a look at the path connecting a :code:`<assgn>` node with a
+    :code:`<var>` node on the right-hand side:
+
+    >>> graph_path: Tuple[Node, ...] = tuple(
+    ...     tuple(
+    ...         graph.all_paths(
+    ...             graph.get_node("<assgn>"),
+    ...             {graph.get_node("<var>")}
+    ...         )
+    ...     )[1]
+    ... )
+
+    >>> resulting_tree, path_to_end = graph_path_to_tree(graph_path, graph)
+
+    >>> graph.tree_is_valid(resulting_tree)
+    True
+
+    >>> print(resulting_tree)
+    <var> := <var>
+
+    >>> print(resulting_tree.value)
+    <assgn>
+
+    >>> print(path_to_end)
+    (2, 0)
 
     >>> print(resulting_tree.get_subtree(path_to_end))
     <var>
@@ -153,10 +185,7 @@ def graph_path_to_tree(
 
         assert graph_path[idx_of_symbolic_node_in_graph_path] == symbolic_node
         assert resulting_tree.get_subtree(path_to_end).value == symbolic_node.symbol
-        assert (
-            not path_to_end
-            or current_node.children[path_to_end[-1]].value == symbolic_node.symbol
-        )
+        assert current_node.value == symbolic_node.symbol
         assert (
             choice_node is not None
             or resulting_tree.get_subtree(path_to_end).value == end
@@ -177,8 +206,10 @@ def graph_path_to_tree(
             for symbol in expansion
         )
 
-        current_node = DerivationTree(current_node.value, new_children)
-        resulting_tree = resulting_tree.replace_path(path_to_end, current_node)
+        resulting_tree = resulting_tree.replace_path(
+            path_to_end, DerivationTree(current_node.value, new_children)
+        )
+        assert graph.tree_is_valid(resulting_tree)
 
         # To determine the next path element, we must choose the index of the next
         # node in the graph path in the children of the current choice node.
@@ -192,6 +223,7 @@ def graph_path_to_tree(
         index_in_expansion = choice_node.children.index(
             graph_path[idx_of_symbolic_node_in_graph_path + 2]
         )
+        current_node = new_children[index_in_expansion]
 
         path_to_end += (index_in_expansion,)
 
@@ -472,6 +504,18 @@ def insert_tree_by_self_embedding(
     (a := 1 ; x := <rhs> ; b := x ; c := 3, (0, 2, 0))
     (a := 1 ; b := x ; x := <rhs> ; c := 3, (0, 2, 2, 0))
 
+    >>> new_variable_node = DerivationTree("<var>")
+    >>> for result in insert_tree_by_self_embedding(
+    ...     original_tree, new_variable_node, graph
+    ... ):
+    ...    print(deep_str(result))
+    (<var> := <rhs> ; a := 1 ; b := x ; c := 3, (0, 0, 0))
+    (<var> := <var> ; a := 1 ; b := x ; c := 3, (0, 0, 2, 0))
+    (a := 1 ; <var> := <rhs> ; b := x ; c := 3, (0, 2, 0, 0))
+    (a := 1 ; <var> := <var> ; b := x ; c := 3, (0, 2, 0, 2, 0))
+    (a := 1 ; b := x ; <var> := <rhs> ; c := 3, (0, 2, 2, 0, 0))
+    (a := 1 ; b := x ; <var> := <var> ; c := 3, (0, 2, 2, 0, 2, 0))
+
     :param original_tree: The original tree into which to insert :code:`tree_to_insert`
         using the self embedding method.
     :param tree_to_insert: The tree to insert.
@@ -500,15 +544,11 @@ def insert_tree_by_self_embedding(
                 if path_in_tree_from_path == path_to_final_node:
                     continue
 
-                if (
-                    tree_from_path_leaf.value == tree_to_insert.value
-                    or graph.reachable(tree_from_path_leaf.value, tree_to_insert.value)
-                ):
+                if tree_from_path_leaf.value == tree_to_insert.value:
                     # We can use this tree to insert `tree_to_insert`.
                     new_subtree = tree_from_path.replace_path(
                         path_in_tree_from_path, tree_to_insert
-                    )
-                    new_subtree = new_subtree.replace_path(path_to_final_node, node)
+                    ).replace_path(path_to_final_node, node)
 
                     result_tree = original_tree.replace_path(node_path, new_subtree)
                     path_to_inserted_tree_in_result = node_path + path_in_tree_from_path
@@ -517,6 +557,42 @@ def insert_tree_by_self_embedding(
                         graph, original_tree, tree_to_insert, result_tree
                     )
                     yield result_tree, path_to_inserted_tree_in_result
+
+                elif graph.reachable(tree_from_path_leaf.value, tree_to_insert.value):
+                    # We must use a connecting tree to insert `tree_to_insert`.
+                    for connecting_graph_path in graph.all_paths(
+                        graph.get_node(tree_from_path_leaf.value),
+                        {graph.get_node(tree_to_insert.value)},
+                    ):
+                        (
+                            connecting_tree_from_path,
+                            path_to_final_node_in_connecting_tree,
+                        ) = graph_path_to_tree(
+                            tuple(connecting_graph_path), graph, maybe_canonical_grammar
+                        )
+
+                        instantiated_connecting_tree = (
+                            connecting_tree_from_path.replace_path(
+                                path_to_final_node_in_connecting_tree, tree_to_insert
+                            )
+                        )
+
+                        new_subtree = tree_from_path.replace_path(
+                            path_in_tree_from_path, instantiated_connecting_tree
+                        ).replace_path(path_to_final_node, node)
+
+                        result_tree = original_tree.replace_path(node_path, new_subtree)
+                        path_to_inserted_tree_in_result = (
+                            node_path
+                            + path_in_tree_from_path
+                            + path_to_final_node_in_connecting_tree
+                        )
+
+                        validate_insertion_result(
+                            graph, original_tree, tree_to_insert, result_tree
+                        )
+
+                        yield result_tree, path_to_inserted_tree_in_result
 
 
 def insert_tree_by_reverse_embedding(

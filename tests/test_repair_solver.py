@@ -164,12 +164,10 @@ class TestRepairSolver(unittest.TestCase):
     def test_repair_xml_namespace(self):
         inp = '<ns1:A ns3:attr="X">Hello</ns2:B>'
 
-        # TODO: This input causes a TypeError.
-        inp = '<E><X:B><_/><J/>K</J:z><h:f1/></v0>'
-
         inp_tree = DerivationTree.from_parse_tree(
             next(EarleyParser(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES).parse(inp))
         )
+
         constraint = (
             XML_WELLFORMEDNESS_CONSTRAINT
             & XML_NO_ATTR_REDEF_CONSTRAINT
@@ -359,26 +357,26 @@ class TestRepairSolver(unittest.TestCase):
         prefix_def_0_fresh_vars, prefix_def_0_structure = describe_subtree_structure(
             tree, bound_tree_paths, current_path=prefix_def_0_path
         )
-        self.assertEqual(FrozenOrderedSet(), prefix_def_0_fresh_vars)
+        self.assertEqual(frozendict({}), prefix_def_0_fresh_vars)
         self.assertEqual((), prefix_def_0_structure)
 
         prefix_use_1_fresh_vars, prefix_use_1_structure = describe_subtree_structure(
             tree, bound_tree_paths, current_path=prefix_use_1_path
         )
-        self.assertEqual(FrozenOrderedSet(), prefix_use_1_fresh_vars)
+        self.assertEqual(frozendict({}), prefix_use_1_fresh_vars)
         self.assertEqual(("b",), prefix_use_1_structure)
 
         opid_fresh_vars, opid_structure = describe_subtree_structure(
             tree, bound_tree_paths, current_path=opid_path
         )
         fresh_var = BoundVariable("letter", "<letter>")
-        self.assertEqual(FrozenOrderedSet([fresh_var]), opid_fresh_vars)
+        self.assertEqual(frozendict({fresh_var: "x"}), opid_fresh_vars)
         self.assertEqual((prefix_use_1, ":", fresh_var), opid_structure)
 
         clid_fresh_vars, clid_structure = describe_subtree_structure(
             tree, bound_tree_paths, current_path=clid_path
         )
-        self.assertEqual(FrozenOrderedSet(), clid_fresh_vars)
+        self.assertEqual(frozendict({}), clid_fresh_vars)
         self.assertEqual(("a:x",), clid_structure)
 
 

@@ -83,13 +83,15 @@ class TestDocstrings(unittest.TestCase):
         doctest_results = doctest.testmod(m=performance_evaluator)
         self.assertFalse(doctest_results.failed)
 
+    def test_repair_solver(self):
+        logging.getLogger("RegexConverter").setLevel(logging.ERROR)
+        logging.getLogger("isla.repair_solver").setLevel(logging.ERROR)
+        doctest_results = doctest.testmod(m=repair_solver)
+        self.assertFalse(doctest_results.failed)
+
     def test_solver(self):
         logging.getLogger("RegexConverter").setLevel(logging.ERROR)
         doctest_results = doctest.testmod(m=solver)
-        self.assertFalse(doctest_results.failed)
-
-    def test_repair_solver(self):
-        doctest_results = doctest.testmod(m=repair_solver)
         self.assertFalse(doctest_results.failed)
 
     def test_three_valued_truth(self):

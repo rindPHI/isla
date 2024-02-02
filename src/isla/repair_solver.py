@@ -4,7 +4,6 @@ import operator
 import random
 import sys
 from functools import reduce, lru_cache
-from operator import itemgetter
 from typing import (
     FrozenSet,
     Tuple,
@@ -21,7 +20,6 @@ from typing import (
 )
 
 import grammar_graph.gg as gg
-import more_itertools
 import z3
 from frozendict import frozendict
 from grammar_to_regex.cfg2regex import RegexConverter
@@ -39,8 +37,8 @@ from typeguard import typechecked
 
 from isla.derivation_tree import DerivationTree
 from isla.evaluator import matches_for_quantified_formula, evaluate
-from isla.fuzzer import GrammarCoverageFuzzer, GrammarFuzzer
-from isla.helpers import deep_str, depth_indent, star, lazystr, eassert, shuffle
+from isla.fuzzer import GrammarCoverageFuzzer
+from isla.helpers import deep_str, depth_indent, star, lazystr, eassert
 from isla.helpers import (
     frozen_canonical,
     is_nonterminal,
@@ -49,7 +47,6 @@ from isla.helpers import (
     cluster_by_common_elements,
     get_elem_by_equivalence,
     merge_dict_of_sets,
-    split_str_with_nonterminals,
     get_expansions,
     compute_nullable_nonterminals,
     delete_unreachable,
@@ -100,9 +97,7 @@ from isla.z3_helpers import (
     z3_solve,
     parent_relationships_in_z3_expr,
     smt_string_val_to_string,
-    is_z3_var,
     z3_eq,
-    z3_and,
     z3_concat,
 )
 
@@ -313,125 +308,125 @@ def value_suggestion_constraints(
     smt_constraints: Iterable[SMTFormula],
 ) -> Tuple[FrozenOrderedSet[Variable], Tuple[z3.BoolRef, ...], Tuple[z3.BoolRef, ...]]:
     r"""
-     This function extracts constraints describing the values and structures of
-     the tree substitutions in the given SMT constraints. It returns a triple of
+    This function extracts constraints describing the values and structures of
+    the tree substitutions in the given SMT constraints. It returns a triple of
 
-     1. A set of fresh variables use to generalize the structural constraints.
-     2. A sequence of "value constraints" describing precise string values for
-        substitution elements that are independent of the values of other
-        substitutions.
-     3. A sequence of "structural" constraints describing the structure of
-        substitutions that depend on other substitutions in terms of these
-        other substitutions and string literals. To facilitate an as general
-        usage of this class of constraints as possible, the structural
-        constraints can contain fresh variables whose values are constrained
-        by formulas returned as part of the value constraints.
+    1. A set of fresh variables use to generalize the structural constraints.
+    2. A sequence of "value constraints" describing precise string values for
+       substitution elements that are independent of the values of other
+       substitutions.
+    3. A sequence of "structural" constraints describing the structure of
+       substitutions that depend on other substitutions in terms of these
+       other substitutions and string literals. To facilitate an as general
+       usage of this class of constraints as possible, the structural
+       constraints can contain fresh variables whose values are constrained
+       by formulas returned as part of the value constraints.
 
-     Example
-     -------
+    Example
+    -------
 
-     Consider the following simplificed XML grammar with namespaces that are
-     declared by attributes prefixed with :code:`x:`:
+    Consider the following simplificed XML grammar with namespaces that are
+    declared by attributes prefixed with :code:`x:`:
 
-     >>> simplified_xml_grammar = '''
-     ...     <start> ::= <xml-tree>
-     ...     <xml-tree> ::= "" | <xml-open-tag> <xml-tree> <xml-close-tag>
-     ...     <xml-open-tag> ::= "<" <tag-id> <attrs> ">"
-     ...     <xml-close-tag> ::= "</" <tag-id> ">"
-     ...     <attrs> ::= "" | " " <attr> <attrs>
-     ...     <attr> ::= <attr-id> "=\\"XXX\\""
-     ...     <tag-id> ::= <letter-no-x> ":" <letter>
-     ...     <attr-id> ::= <letter> ":" <letter>
-     ...     <letter> ::= "a" | "b" | "c" | "x"
-     ...     <letter-no-x> ::= "a" | "b" | "c"
-     ... '''
+    >>> simplified_xml_grammar = '''
+    ...     <start> ::= <xml-tree>
+    ...     <xml-tree> ::= "" | <xml-open-tag> <xml-tree> <xml-close-tag>
+    ...     <xml-open-tag> ::= "<" <tag-id> <attrs> ">"
+    ...     <xml-close-tag> ::= "</" <tag-id> ">"
+    ...     <attrs> ::= "" | " " <attr> <attrs>
+    ...     <attr> ::= <attr-id> "=\\"XXX\\""
+    ...     <tag-id> ::= <letter-no-x> ":" <letter>
+    ...     <attr-id> ::= <letter> ":" <letter>
+    ...     <letter> ::= "a" | "b" | "c" | "x"
+    ...     <letter-no-x> ::= "a" | "b" | "c"
+    ... '''
 
-     Our reference tree will be :code:`<b:x x:<letter>="XXX"></a:x>`.
+    Our reference tree will be :code:`<b:x x:<letter>="XXX"></a:x>`.
 
-     >>> solver = RepairSolver(simplified_xml_grammar)
-     >>> prefix_def_0_path = (0, 0, 2, 1, 0, 2)
-     >>> tree: DerivationTree = (
-     ...     solver.parse('<b:x x:c="XXX"></a:x>')
-     ...     .unwrap()
-     ...     .replace_path(prefix_def_0_path, DerivationTree("<letter>", None))
-     ... )
+    >>> solver = RepairSolver(simplified_xml_grammar)
+    >>> prefix_def_0_path = (0, 0, 2, 1, 0, 2)
+    >>> tree: DerivationTree = (
+    ...     solver.parse('<b:x x:c="XXX"></a:x>')
+    ...     .unwrap()
+    ...     .replace_path(prefix_def_0_path, DerivationTree("<letter>", None))
+    ... )
 
-     >>> print(tree)
-     <b:x x:<letter>="XXX"></a:x>
+    >>> print(tree)
+    <b:x x:<letter>="XXX"></a:x>
 
-     We declare two constraints: The first one, :code:`prefix_use_1 == prefix_def_0`
-     stipulates that :code:`letter` equals :code:`b`. The second one,
-     :code:`opid == clid` stipulates that the tag IDs of the opening and closing
-     tags, currently :code:`b:x` and :code:`a:x`, are equal. The important part is
-     that these constraints are not independent: The value of :code:`opid` depends
-     on the value of :code:`prefix_use_1`. This dependency is a "structural constraint."
+    We declare two constraints: The first one, :code:`prefix_use_1 == prefix_def_0`
+    stipulates that :code:`letter` equals :code:`b`. The second one,
+    :code:`opid == clid` stipulates that the tag IDs of the opening and closing
+    tags, currently :code:`b:x` and :code:`a:x`, are equal. The important part is
+    that these constraints are not independent: The value of :code:`opid` depends
+    on the value of :code:`prefix_use_1`. This dependency is a "structural constraint."
 
-     >>> prefix_def_0 = BoundVariable("prefix_def_0", "<letter>")
-     >>> prefix_use_1 = BoundVariable("prefix_use_1", "<letter_no_x>")
-     >>> prefix_use_1_path = (0, 0, 1, 0)
-     >>> opid = BoundVariable("opid", "<tag-id>")
-     >>> opid_path = (0, 0, 1)
-     >>> clid = BoundVariable("clid", "<tag-id>")
-     >>> clid_path = (0, 2, 2)
+    >>> prefix_def_0 = BoundVariable("prefix_def_0", "<letter>")
+    >>> prefix_use_1 = BoundVariable("prefix_use_1", "<letter_no_x>")
+    >>> prefix_use_1_path = (0, 0, 1, 0)
+    >>> opid = BoundVariable("opid", "<tag-id>")
+    >>> opid_path = (0, 0, 1)
+    >>> clid = BoundVariable("clid", "<tag-id>")
+    >>> clid_path = (0, 2, 2)
 
-     >>> smt_constraint_1 = SMTFormula(
-     ...     z3_eq(prefix_use_1.to_smt(), prefix_def_0.to_smt()),
-     ...     prefix_use_1,
-     ...     prefix_def_0,
-     ...     auto_eval=False,
-     ...     auto_subst=False,
-     ... ).substitute_expressions(
-     ...     {
-     ...         prefix_use_1: tree.get_subtree(prefix_use_1_path),
-     ...         prefix_def_0: tree.get_subtree(prefix_def_0_path),
-     ...     }
-     ... )
+    >>> smt_constraint_1 = SMTFormula(
+    ...     z3_eq(prefix_use_1.to_smt(), prefix_def_0.to_smt()),
+    ...     prefix_use_1,
+    ...     prefix_def_0,
+    ...     auto_eval=False,
+    ...     auto_subst=False,
+    ... ).substitute_expressions(
+    ...     {
+    ...         prefix_use_1: tree.get_subtree(prefix_use_1_path),
+    ...         prefix_def_0: tree.get_subtree(prefix_def_0_path),
+    ...     }
+    ... )
 
-     >>> print(smt_constraint_1)
-     (prefix_use_1 == prefix_def_0, {'prefix_use_1': 'b', 'prefix_def_0': '<letter>'})
+    >>> print(smt_constraint_1)
+    (prefix_use_1 == prefix_def_0, {'prefix_use_1': 'b', 'prefix_def_0': '<letter>'})
 
-     >>> smt_constraint_2 = SMTFormula(
-     ...     z3_eq(opid.to_smt(), clid.to_smt()),
-     ...     opid,
-     ...     clid,
-     ...     auto_eval=False,
-     ...     auto_subst=False,
-     ... ).substitute_expressions(
-     ...     {
-     ...         opid: tree.get_subtree(opid_path),
-     ...         clid: tree.get_subtree(clid_path),
-     ...     }
-     ... )
+    >>> smt_constraint_2 = SMTFormula(
+    ...     z3_eq(opid.to_smt(), clid.to_smt()),
+    ...     opid,
+    ...     clid,
+    ...     auto_eval=False,
+    ...     auto_subst=False,
+    ... ).substitute_expressions(
+    ...     {
+    ...         opid: tree.get_subtree(opid_path),
+    ...         clid: tree.get_subtree(clid_path),
+    ...     }
+    ... )
 
-     >>> print(smt_constraint_2)
-     (opid == clid, {'opid': 'b:x', 'clid': 'a:x'})
+    >>> print(smt_constraint_2)
+    (opid == clid, {'opid': 'b:x', 'clid': 'a:x'})
 
-     >>> (
-     ...     fresh_variables,
-     ...     literal_constraints,
-     ...     structural_constraints,
-     ... ) = value_suggestion_constraints(tree, (smt_constraint_1, smt_constraint_2))
+    >>> (
+    ...     fresh_variables,
+    ...     literal_constraints,
+    ...     structural_constraints,
+    ... ) = value_suggestion_constraints(tree, (smt_constraint_1, smt_constraint_2))
 
-     We obtain two value constraints for :code:`prefix_use_1` and :code:`clid`,
-     and one structural constraint for :code:`opid` and :code:`prefix_use_1`:
+    We obtain two value constraints for :code:`prefix_use_1` and :code:`clid`,
+    and one structural constraint for :code:`opid` and :code:`prefix_use_1`:
 
-     >>> print(deep_str(fresh_variables))
-     {letter}
+    >>> print(deep_str(fresh_variables))
+    {letter}
 
-     >>> print(deep_str(literal_constraints))
+    >>> print(deep_str(literal_constraints))
     (prefix_use_1 == "b", letter == "x", clid == "a:x")
 
-     >>> print(deep_str(structural_constraints))
-     (opid == Concat(prefix_use_1, Concat(":", letter)),)
+    >>> print(deep_str(structural_constraints))
+    (opid == Concat(prefix_use_1, Concat(":", letter)),)
 
-     In constraint solving, the structural constraint should be given a higher
-     priority than the value constraints.
+    In constraint solving, the structural constraint should be given a higher
+    priority than the value constraints.
 
-     :param tree: The reference tree for the SMT constraints' substitutions.
-     :param smt_constraints: The SMT constraints to extract value suggestions
-         from.
-     :return: A triple of a set of fresh variables, a sequence of value
-         constraints, and a sequence of structural constraints.
+    :param tree: The reference tree for the SMT constraints' substitutions.
+    :param smt_constraints: The SMT constraints to extract value suggestions
+        from.
+    :return: A triple of a set of fresh variables, a sequence of value
+        constraints, and a sequence of structural constraints.
     """
 
     bound_tree_paths = compute_bound_tree_paths(tree, smt_constraints)
@@ -825,28 +820,48 @@ class RepairSolver:
         >>> constraint_2 = parse_isla('exists <digit> in start: <digit> = "1"', grammar)
         >>> constraint_2 = constraint_2.substitute_expressions({constraint_2.in_variable: tree})
 
-        >>> print(
-        ...     "\n".join(
-        ...         [
-        ...             f"{new_conjuncts} |- {new_tree}"
-        ...             for new_conjuncts, new_tree, substs in itertools.islice(
-        ...                 solver.eliminate_first_existential_formula(
-        ...                     (constraint_1, constraint_2), tree
-        ...                 ),
-        ...                 10,
-        ...             )
-        ...         ]
+        >>> from isla.language import unparse_isla
+        >>> def conjuncts_tree_pair_to_str(conjuncts, tree):
+        ...     return (
+        ...         f"{', '.join(unparse_isla(c).replace(chr(10), '') for c in conjuncts)} |- {tree}"
+        ...     )
+
+        >>> ten_solutions = tuple(itertools.islice(
+        ...     solver.eliminate_first_existential_formula(
+        ...         (constraint_1, constraint_2), tree
+        ...     ),
+        ...     10,
+        ... ))
+
+        >>> print("\n".join(map(star(conjuncts_tree_pair_to_str), ten_solutions)))
+        (= var "x"), exists <digit> digit in <var> := <rhs> ; a := 1 ; b := 2 ; c := 3:  (= digit "1") |- <var> := <rhs> ; a := 1 ; b := 2 ; c := 3
+        (= var "x"), exists <digit> digit in <var> := <var> ; a := 1 ; b := 2 ; c := 3:  (= digit "1") |- <var> := <var> ; a := 1 ; b := 2 ; c := 3
+        (= var "x"), exists <digit> digit in a := 1 ; <var> := <rhs> ; b := 2 ; c := 3:  (= digit "1") |- a := 1 ; <var> := <rhs> ; b := 2 ; c := 3
+        (= var "x"), exists <digit> digit in a := 1 ; <var> := <var> ; b := 2 ; c := 3:  (= digit "1") |- a := 1 ; <var> := <var> ; b := 2 ; c := 3
+        (= var "x"), exists <digit> digit in a := 1 ; b := 2 ; <var> := <rhs> ; c := 3:  (= digit "1") |- a := 1 ; b := 2 ; <var> := <rhs> ; c := 3
+        (= var "x"), exists <digit> digit in a := 1 ; b := 2 ; <var> := <var> ; c := 3:  (= digit "1") |- a := 1 ; b := 2 ; <var> := <var> ; c := 3
+
+        >>> ten_subsequent_solutions = tuple(
+        ...     (c, t)
+        ...     for constraints, tree in ten_solutions
+        ...     for c, t in itertools.islice(
+        ...         solver.eliminate_first_existential_formula(constraints, tree), 2
         ...     )
         ... )
-        (var == "x", digit == "1") |- <var> := <rhs> ; <var> := <digit> ; a := 1 ; b := 2 ; c := 3
-        (var == "x", digit == "1") |- <var> := <var> ; <var> := <digit> ; a := 1 ; b := 2 ; c := 3
-        (var == "x", digit == "1") |- <var> := <digit> ; <var> := <rhs> ; a := 1 ; b := 2 ; c := 3
-        (var == "x", digit == "1") |- <var> := <rhs> ; a := 1 ; <var> := <digit> ; b := 2 ; c := 3
-        (var == "x", digit == "1") |- <var> := <var> ; a := 1 ; <var> := <digit> ; b := 2 ; c := 3
-        (var == "x", digit == "1") |- a := 1 ; <var> := <rhs> ; <var> := <digit> ; b := 2 ; c := 3
-        (var == "x", digit == "1") |- <var> := <rhs> ; a := 1 ; b := 2 ; <var> := <digit> ; c := 3
-        (var == "x", digit == "1") |- <var> := <var> ; a := 1 ; b := 2 ; <var> := <digit> ; c := 3
-        (var == "x", digit == "1") |- a := 1 ; <var> := <rhs> ; b := 2 ; <var> := <digit> ; c := 3
+
+        >>> print("\n".join(map(star(conjuncts_tree_pair_to_str), ten_subsequent_solutions)))
+        (= digit "1"), (= var "x") |- <var> := <digit> ; a := 1 ; b := 2 ; c := 3
+        (= digit "1"), (= var "x") |- <var> := <digit> ; <var> := <rhs> ; a := 1 ; b := 2 ; c := 3
+        (= digit "1"), (= var "x") |- <var> := <digit> ; <var> := <var> ; a := 1 ; b := 2 ; c := 3
+        (= digit "1"), (= var "x") |- <var> := <var> ; <var> := <digit> ; a := 1 ; b := 2 ; c := 3
+        (= digit "1"), (= var "x") |- a := 1 ; <var> := <digit> ; b := 2 ; c := 3
+        (= digit "1"), (= var "x") |- <var> := <digit> ; a := 1 ; <var> := <rhs> ; b := 2 ; c := 3
+        (= digit "1"), (= var "x") |- <var> := <digit> ; a := 1 ; <var> := <var> ; b := 2 ; c := 3
+        (= digit "1"), (= var "x") |- a := 1 ; <var> := <digit> ; <var> := <var> ; b := 2 ; c := 3
+        (= digit "1"), (= var "x") |- a := 1 ; b := 2 ; <var> := <digit> ; c := 3
+        (= digit "1"), (= var "x") |- <var> := <digit> ; a := 1 ; b := 2 ; <var> := <rhs> ; c := 3
+        (= digit "1"), (= var "x") |- <var> := <digit> ; a := 1 ; b := 2 ; <var> := <var> ; c := 3
+        (= digit "1"), (= var "x") |- a := 1 ; <var> := <digit> ; b := 2 ; <var> := <var> ; c := 3
 
         :param conjuncts:
         :param tree:
@@ -879,6 +894,7 @@ class RepairSolver:
 
         for (
             instantiated_formula,
+            resulting_tree,
             tree_substitutions,
         ) in self.eliminate_existential_formula(
             first_existential_formula,
@@ -887,14 +903,16 @@ class RepairSolver:
             updated_conjuncts = tuple(
                 c.substitute_expressions(tree_substitutions) for c in other_conjuncts
             )
-            updated_tree = tree.substitute(tree_substitutions)
 
-            validate_structural_predicate_arguments(instantiated_formula, updated_tree)
-            validate_structural_predicate_arguments(updated_conjuncts, updated_tree)
-            validate_smt_formula_substitutions(conjuncts, tree)
-            validate_smt_formula_substitutions(updated_conjuncts, updated_tree)
+            validate_structural_predicate_arguments(
+                instantiated_formula, resulting_tree
+            )
+            validate_structural_predicate_arguments(updated_conjuncts, resulting_tree)
+            validate_smt_formula_substitutions(updated_conjuncts, tree)
+            validate_smt_formula_substitutions(updated_conjuncts, resulting_tree)
+            validate_smt_formula_substitutions(instantiated_formula, resulting_tree)
 
-            yield (instantiated_formula,) + updated_conjuncts, updated_tree
+            yield (instantiated_formula,) + updated_conjuncts, resulting_tree
 
     def try_to_finish(
         self, tree: DerivationTree, validity_constraint: Formula, max_tries: int = 50
@@ -1061,9 +1079,37 @@ class RepairSolver:
         self,
         existential_formula: ExistsFormula,
         context_tree: DerivationTree,
-    ) -> Iterator[Tuple[Formula, Mapping[DerivationTree, DerivationTree]]]:
+    ) -> Iterator[
+        Tuple[Formula, DerivationTree, Mapping[DerivationTree, DerivationTree]]
+    ]:
         """
         TODO: Document.
+
+        >>> import string
+        >>> grammar = frozendict({
+        ...     "<start>": ("<stmt>",),
+        ...     "<stmt>": ("<assgn> ; <stmt>", "<assgn>"),
+        ...     "<assgn>": ("<var> := <rhs>",),
+        ...     "<rhs>": ("<var>", "<digit>"),
+        ...     "<var>": tuple(string.ascii_lowercase),
+        ...     "<digit>": tuple(string.digits)
+        ... })
+
+        >>> solver = RepairSolver(grammar, max_tries_existential_insertion=3)
+        >>> tree = solver.parse("a := 1 ; b := 2 ; c := 3").unwrap()
+
+        >>> existential_formula = parse_isla(
+        ...     'exists <var> var in start: (= var "x")', grammar
+        ... ).substitute_expressions({Constant("start", "<start>"): tree})
+
+        >>> f, t, m = next(solver.eliminate_existential_formula(existential_formula, tree))
+
+        >>> print(f)
+        (var == "x", {'var': '<var>'})
+
+        >>> print(t)
+        <var> := <rhs> ; a := 1 ; b := 2 ; c := 3
+
         :param existential_formula:
         :param context_tree:
         :return:
@@ -1098,7 +1144,9 @@ class RepairSolver:
                 Some(self.canonical_grammar),
             )
 
+            has_result = False
             for insertion_result in insertion_results:
+                has_result = True
                 assert len(insertion_result) == 2
                 assert isinstance(insertion_result[0], DerivationTree)
                 assert isinstance(insertion_result[1], tuple)
@@ -1108,7 +1156,8 @@ class RepairSolver:
                     existential_formula,
                     *insertion_result,
                 )
-            else:
+
+            if not has_result:
                 LOGGER.debug(
                     "Could not insert tree '%s' (%s) into '%s' (%s)",
                     inserted_tree,
@@ -1125,7 +1174,7 @@ class RepairSolver:
         existential_formula: ExistsFormula,
         inserted_tree: DerivationTree,
         path_to_inserted_tree: Path,
-    ) -> Tuple[Formula, Mapping[DerivationTree, DerivationTree]]:
+    ) -> Tuple[Formula, DerivationTree, Mapping[DerivationTree, DerivationTree]]:
         """
         TODO: Document.
 
@@ -1140,33 +1189,41 @@ class RepairSolver:
         replaced_path = context_tree.find_node(existential_formula.in_variable)
         resulting_tree = context_tree.replace_path(replaced_path, inserted_tree)
 
-        tree_substitutions = cast(
-            frozendict[DerivationTree, DerivationTree], frozendict()
+        # TODO: Make this more efficient; only consider paths that can have changed.
+        tree_substitutions = frozendict(
+            {
+                subtree: resulting_tree.get_subtree(resulting_tree.find_node(subtree))
+                for _, subtree in context_tree.paths()
+            }
         )
 
-        for idx in range(len(replaced_path) + 1):
-            # TODO: This seems hacky & bug-prone. We should assemble the
-            #       mapping between original and resulting subtrees during
-            #       tree insertion. Furthermore, we should only consider
-            #       subtrees that are actually affected by the insertion.
-            # TODO: Do we even *need* the substitutions? Our new tree insertion
-            #       procedures should retain all original identifiers.
-            original_path = replaced_path[: idx - 1]
-            original_tree = context_tree.get_subtree(original_path)
+        # tree_substitutions = cast(
+        #     frozendict[DerivationTree, DerivationTree], frozendict()
+        # )
 
-            if not resulting_tree.is_valid_path(original_path):
-                continue
+        # for idx in range(len(replaced_path) + 1):
+        #     # TODO: This seems hacky & bug-prone. We should assemble the
+        #     #       mapping between original and resulting subtrees during
+        #     #       tree insertion. Furthermore, we should only consider
+        #     #       subtrees that are actually affected by the insertion.
+        #     # TODO: Do we even *need* the substitutions? Our new tree insertion
+        #     #       procedures should retain all original identifiers.
+        #     original_path = replaced_path[: idx - 1]
+        #     original_tree = context_tree.get_subtree(original_path)
 
-            if original_tree.value != resulting_tree.get_subtree(original_path).value:
-                continue
+        #     if not resulting_tree.is_valid_path(original_path):
+        #         continue
 
-            if resulting_tree.get_subtree(original_path) == original_tree:
-                continue
+        #     if original_tree.value != resulting_tree.get_subtree(original_path).value:
+        #         continue
 
-            tree_substitutions = tree_substitutions.set(
-                original_tree,
-                resulting_tree.get_subtree(original_path),
-            )
+        #     if resulting_tree.get_subtree(original_path) == original_tree:
+        #         continue
+
+        #     tree_substitutions = tree_substitutions.set(
+        #         original_tree,
+        #         resulting_tree.get_subtree(original_path),
+        #     )
 
         inserted_tree_in_tree_after_insertion = inserted_tree.get_subtree(
             path_to_inserted_tree
@@ -1194,7 +1251,7 @@ class RepairSolver:
         validate_structural_predicate_arguments(instantiated_formula, resulting_tree)
         validate_smt_formula_substitutions(instantiated_formula, resulting_tree)
 
-        return instantiated_formula, tree_substitutions
+        return instantiated_formula, resulting_tree, tree_substitutions
 
     # TODO: Polish the functions below, which were copied from ISLaSolver
     @typechecked
@@ -2160,13 +2217,13 @@ def infer_variable_contexts(
     ...     z3.Length(x.to_smt()) > z3.IntVal(10),
     ...     z3_eq(y.to_smt(), z3.StringVal("y")))
     >>> print(deep_str(infer_variable_contexts({x, y}, (f,))))
-    {length: {x}, int: {}, flexible: {y}}
+    {'length': {x}, 'int': {}, 'flexible': {y}}
 
     Variable x occurs in a length context, y does not occur.
 
     >>> f = z3.Length(x.to_smt()) > z3.IntVal(10)
     >>> print(deep_str(infer_variable_contexts({x, y}, (f,))))
-    {length: {x}, int: {}, flexible: {y}}
+    {'length': {x}, 'int': {}, 'flexible': {y}}
 
     Variables x and y both occur in a length context.
 
@@ -2183,7 +2240,7 @@ def infer_variable_contexts(
 
     >>> f = z3.StrToInt(x.to_smt()) > z3.IntVal(17)
     >>> print(deep_str(infer_variable_contexts({x}, (f,))))
-    {length: {}, int: {x}, flexible: {}}
+    {'length': {}, 'int': {x}, 'flexible': {}}
 
     Now, x also occurs in a different context; it's "flexible" now.
 
@@ -2191,7 +2248,7 @@ def infer_variable_contexts(
     ...     z3.StrToInt(x.to_smt()) > z3.IntVal(17),
     ...     z3_eq(x.to_smt(), z3.StringVal("17")))
     >>> print(deep_str(infer_variable_contexts({x}, (f,))))
-    {length: {}, int: {}, flexible: {x}}
+    {'length': {}, 'int': {}, 'flexible': {x}}
 
     :param variables: The constants to divide/filter from.
     :param smt_formulas: The SMT formulas to consider in the filtering.
