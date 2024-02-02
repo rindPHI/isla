@@ -121,7 +121,6 @@ class TestRepairSolver(unittest.TestCase):
         solver = RepairSolver(LANG_GRAMMAR, constraint)
 
         result = solver.repair_tree(solver.instantiate_top_constant(inp_tree), inp_tree)
-        print(result)
         self.assertTrue(result.value_or(False))
 
     def test_xml_with_prefixes_full_constraint(self):
@@ -174,7 +173,6 @@ class TestRepairSolver(unittest.TestCase):
         solver = RepairSolver(XML_GRAMMAR_WITH_NAMESPACE_PREFIXES, constraint)
 
         result = solver.repair_tree(solver.instantiate_top_constant(inp_tree), inp_tree)
-        print(result)
         self.assertTrue(result.map(validate_xml).value_or(False))
 
     def test_solve_xml_with_namespace_simplified(self):
@@ -224,7 +222,6 @@ class TestRepairSolver(unittest.TestCase):
         DerivationTree.next_id = 0
         inp_tree = solver.parse(inp).unwrap()
         result = solver.repair_tree(solver.instantiate_top_constant(inp_tree), inp_tree)
-        print(result)
 
         out = []
         self.assertTrue(
@@ -276,7 +273,6 @@ class TestRepairSolver(unittest.TestCase):
         DerivationTree.next_id = 0
         inp_tree = solver.parse(inp).unwrap()
         result = solver.repair_tree(solver.instantiate_top_constant(inp_tree), inp_tree)
-        print(result)
         self.assertTrue(
             result.map(str)
             .map(lambda s: s.replace(" x:", " xmlns:"))
