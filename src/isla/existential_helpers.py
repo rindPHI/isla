@@ -635,9 +635,11 @@ def path_to_tree(
                 ]
                 for nonterminal_position in nonterminal_positions:
                     next_children = [
-                        DerivationTree(nonterm, [])
-                        if idx != nonterminal_position
-                        else DerivationTree(nonterm, None)
+                        (
+                            DerivationTree(nonterm, [])
+                            if idx != nonterminal_position
+                            else DerivationTree(nonterm, None)
+                        )
                         for idx, nonterm in enumerate(matching_expansion)
                     ]
 
@@ -681,9 +683,11 @@ def paths_between(
 
     prefixes: List[Tuple[Set[Node], List[Node]]] = [
         (
-            set()
-            if start_node == dest_node and graph.reachable(start_node, start_node)
-            else {start_node},
+            (
+                set()
+                if start_node == dest_node and graph.reachable(start_node, start_node)
+                else {start_node}
+            ),
             [start_node],
         )
     ]

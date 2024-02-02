@@ -1367,9 +1367,11 @@ def numeric_intervals_from_concat(
                 lambda option_or_union: numeric_intervals_from_regex(
                     z3.Concat(option_or_union, *children[1:])
                 ),
-                first_child.children()
-                if first_child.decl().kind() == z3.Z3_OP_RE_UNION
-                else [z3.Re("+"), z3.Re("-")],
+                (
+                    first_child.children()
+                    if first_child.decl().kind() == z3.Z3_OP_RE_UNION
+                    else [z3.Re("+"), z3.Re("-")]
+                ),
             )
         )
     elif first_child in [z3.Re("+"), z3.Option(z3.Re("+"))]:

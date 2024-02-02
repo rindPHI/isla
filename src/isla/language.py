@@ -303,9 +303,11 @@ class BindExpression:
     ) -> Maybe[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
         flattened_bind_expr_str = "".join(
             map(
-                lambda elem: f"{{{elem.n_type} {elem.name}}}"
-                if type(elem) is BoundVariable
-                else str(elem),
+                lambda elem: (
+                    f"{{{elem.n_type} {elem.name}}}"
+                    if type(elem) is BoundVariable
+                    else str(elem)
+                ),
                 bound_elements,
             )
         )
@@ -390,7 +392,7 @@ class BindExpression:
                     path,
                     DerivationTree(
                         child.value,
-                        ()
+                        (),
                         # None if is_nonterminal(child.value) else ()
                     ),
                 )
@@ -466,14 +468,18 @@ class BindExpression:
     def __str__(self):
         return "".join(
             map(
-                lambda e: f"{str(e)}"
-                if isinstance(e, str)
-                else ("[" + "".join(map(str, e)) + "]")
-                if isinstance(e, list)
-                else (
-                    f"{{{e.n_type} {str(e)}}}"
-                    if not isinstance(e, DummyVariable)
-                    else str(e)
+                lambda e: (
+                    f"{str(e)}"
+                    if isinstance(e, str)
+                    else (
+                        ("[" + "".join(map(str, e)) + "]")
+                        if isinstance(e, list)
+                        else (
+                            f"{{{e.n_type} {str(e)}}}"
+                            if not isinstance(e, DummyVariable)
+                            else str(e)
+                        )
+                    )
                 ),
                 self.bound_elements,
             )
@@ -1296,12 +1302,14 @@ class SemanticPredicateFormula(Formula):
 
     def __str__(self):
         arg_strings = [
-            f'"{arg}"'
-            if isinstance(arg, str)
-            else (
-                arg.to_string(show_open_leaves=True, show_ids=True)
-                if isinstance(arg, DerivationTree)
-                else str(arg)
+            (
+                f'"{arg}"'
+                if isinstance(arg, str)
+                else (
+                    arg.to_string(show_open_leaves=True, show_ids=True)
+                    if isinstance(arg, DerivationTree)
+                    else str(arg)
+                )
             )
             for arg in self.args
         ]
@@ -2017,16 +2025,22 @@ class QuantifiedFormula(Formula, ABC):
         assert not self.already_matched
 
         return type(self)(
-            self.bound_variable
-            if self.bound_variable not in subst_map
-            else subst_map[self.bound_variable],
-            self.in_variable
-            if self.in_variable not in subst_map
-            else subst_map[self.in_variable],
+            (
+                self.bound_variable
+                if self.bound_variable not in subst_map
+                else subst_map[self.bound_variable]
+            ),
+            (
+                self.in_variable
+                if self.in_variable not in subst_map
+                else subst_map[self.in_variable]
+            ),
             self.inner_formula.substitute_variables(subst_map),
-            None
-            if not self.bind_expression
-            else self.bind_expression.substitute_variables(subst_map),
+            (
+                None
+                if not self.bind_expression
+                else self.bind_expression.substitute_variables(subst_map)
+            ),
             self.already_matched,
         )
 
@@ -3030,9 +3044,11 @@ def univ_close_over_var_push_in(
             if other_formulas:
                 result_elements += [
                     univ_close_over_var_push_in(
-                        type(formula)(*other_formulas)
-                        if len(other_formulas) > 1
-                        else other_formulas[0],
+                        (
+                            type(formula)(*other_formulas)
+                            if len(other_formulas) > 1
+                            else other_formulas[0]
+                        ),
                         var,
                         in_var,
                         mexpr,
@@ -3349,9 +3365,11 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             [
                 tuple(
                     [
-                        (elem, 0)
-                        if "[" not in elem
-                        else (elem.split("[")[0], int(elem.split("[")[1][:-1]) - 1)
+                        (
+                            (elem, 0)
+                            if "[" not in elem
+                            else (elem.split("[")[0], int(elem.split("[")[1][:-1]) - 1)
+                        )
                         for elem in seg.split(".")
                     ]
                 )
@@ -3628,9 +3646,11 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                             DerivationTree(
                                 partial_tree.get_subtree(path_to_expand).value,
                                 [
-                                    DerivationTree(elem)
-                                    if is_nonterminal(elem)
-                                    else DerivationTree(elem, [])
+                                    (
+                                        DerivationTree(elem)
+                                        if is_nonterminal(elem)
+                                        else DerivationTree(elem, [])
+                                    )
                                     for elem in expansion
                                 ],
                             ),
@@ -3707,10 +3727,12 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
     def exitQfdFormula(
         self,
-        ctx: IslaLanguageParser.ForallContext
-        | IslaLanguageParser.ExistsContext
-        | IslaLanguageParser.ForallMexprContext
-        | IslaLanguageParser.ExistsMexprContext,
+        ctx: (
+            IslaLanguageParser.ForallContext
+            | IslaLanguageParser.ExistsContext
+            | IslaLanguageParser.ForallMexprContext
+            | IslaLanguageParser.ExistsMexprContext
+        ),
         mexpr=False,
     ):
         is_forall = str(ctx.children[0]) == "forall"
@@ -3922,31 +3944,31 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         if not ctx.sexpr():
             self.smt_expressions[ctx] = parse_tree_text(ctx.op)
         else:
-            self.smt_expressions[
-                ctx
-            ] = f'({parse_tree_text(ctx.op)} {" ".join([self.smt_expressions[child] for child in ctx.sexpr()])})'
+            self.smt_expressions[ctx] = (
+                f'({parse_tree_text(ctx.op)} {" ".join([self.smt_expressions[child] for child in ctx.sexpr()])})'
+            )
 
     def exitSexprInfixReStr(self, ctx: IslaLanguageParser.SexprInfixReStrContext):
-        self.smt_expressions[
-            ctx
-        ] = f"({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})"
+        self.smt_expressions[ctx] = (
+            f"({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})"
+        )
 
     def exitSexprInfixPlusMinus(
         self, ctx: IslaLanguageParser.SexprInfixPlusMinusContext
     ):
-        self.smt_expressions[
-            ctx
-        ] = f"({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})"
+        self.smt_expressions[ctx] = (
+            f"({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})"
+        )
 
     def exitSexprInfixMulDiv(self, ctx: IslaLanguageParser.SexprInfixMulDivContext):
-        self.smt_expressions[
-            ctx
-        ] = f"({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})"
+        self.smt_expressions[ctx] = (
+            f"({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})"
+        )
 
     def exitSexprInfixEq(self, ctx: IslaLanguageParser.SexprInfixEqContext):
-        self.smt_expressions[
-            ctx
-        ] = f"({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})"
+        self.smt_expressions[ctx] = (
+            f"({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})"
+        )
 
     # def exitSepxrParen(self, ctx: IslaLanguageParser.SepxrParenContext):
     #     self.smt_expressions[ctx] = self.smt_expressions[ctx.sexpr()]
@@ -4239,11 +4261,13 @@ def unparse_grammar(grammar: Grammar) -> str:
     return "\n".join(
         f"{symbol} ::= "
         + " | ".join(
-            '""'
-            if not expansion
-            else " ".join(
-                (elem if is_nonterminal(elem) else f'"{escape_string(elem)}"')
-                for elem in expansion
+            (
+                '""'
+                if not expansion
+                else " ".join(
+                    (elem if is_nonterminal(elem) else f'"{escape_string(elem)}"')
+                    for elem in expansion
+                )
             )
             for expansion in expansions
         )
@@ -4389,9 +4413,11 @@ def is_valid_combination(
         for _ in range(3):
             inp = "".join(
                 [
-                    str(fuzzer.expand_tree(DerivationTree(v.n_type)))
-                    if is_nonterminal(v.n_type)
-                    else v.n_type
+                    (
+                        str(fuzzer.expand_tree(DerivationTree(v.n_type)))
+                        if is_nonterminal(v.n_type)
+                        else v.n_type
+                    )
                     for v in combination
                 ]
             )

@@ -190,9 +190,11 @@ class DerivationTree:
 
         return DerivationTree(
             self.value,
-            tuple(map(lambda c: c.ensure_unique_ids(), self.children))
-            if self.children
-            else self.children,
+            (
+                tuple(map(lambda c: c.ensure_unique_ids(), self.children))
+                if self.children
+                else self.children
+            ),
             id=new_id,
             k_paths=self.__k_paths,
             is_open=self.__is_open,
@@ -537,9 +539,11 @@ class DerivationTree:
     def new_ids(self) -> "DerivationTree":
         return DerivationTree(
             self.value,
-            None
-            if self.children is None
-            else [child.new_ids() for child in self.children],
+            (
+                None
+                if self.children is None
+                else [child.new_ids() for child in self.children]
+            ),
         )
 
     def __len__(self):
@@ -669,9 +673,9 @@ class DerivationTree:
         if not nonterminal_expansions:
             return []
 
-        possible_expansions: List[
-            Dict[Path, List[DerivationTree]]
-        ] = dict_of_lists_to_list_of_dicts(nonterminal_expansions)
+        possible_expansions: List[Dict[Path, List[DerivationTree]]] = (
+            dict_of_lists_to_list_of_dicts(nonterminal_expansions)
+        )
 
         assert (
             len(possible_expansions) > 1

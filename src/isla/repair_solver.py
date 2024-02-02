@@ -544,9 +544,11 @@ class RepairSolver:
         self.constraint = (
             Maybe.from_optional(maybe_constraint)
             .map(
-                lambda c: parse_isla(c, self.grammar, structural_predicates)
-                if isinstance(c, str)
-                else c
+                lambda c: (
+                    parse_isla(c, self.grammar, structural_predicates)
+                    if isinstance(c, str)
+                    else c
+                )
             )
             .map(ensure_unique_bound_variables)
             .value_or(true())
@@ -1517,9 +1519,9 @@ class RepairSolver:
         fresh_var_map: frozendict[Variable, z3.ExprRef] = frozendict({})
 
         # Add language constraints for "flexible" variables
-        flex_language_constraints: Tuple[
-            z3.BoolRef, ...
-        ] = self.generate_language_constraints(flexible_vars, tree_substitutions)
+        flex_language_constraints: Tuple[z3.BoolRef, ...] = (
+            self.generate_language_constraints(flexible_vars, tree_substitutions)
+        )
 
         # Create fresh variables for `str.len` and `str.to.int` variables.
         all_variables = set(variables)
@@ -1599,12 +1601,16 @@ class RepairSolver:
                     z3_or(
                         [
                             z3.And(
-                                repl_var >= z3.IntVal(interval[0])
-                                if interval[0] > -sys.maxsize
-                                else z3.BoolVal(True),
-                                repl_var <= z3.IntVal(interval[1])
-                                if interval[1] < sys.maxsize
-                                else z3.BoolVal(True),
+                                (
+                                    repl_var >= z3.IntVal(interval[0])
+                                    if interval[0] > -sys.maxsize
+                                    else z3.BoolVal(True)
+                                ),
+                                (
+                                    repl_var <= z3.IntVal(interval[1])
+                                    if interval[1] < sys.maxsize
+                                    else z3.BoolVal(True)
+                                ),
                             )
                             for interval in intervals
                         ]
@@ -1715,9 +1721,11 @@ class RepairSolver:
             )
         ):
             result_elements: List[z3.ReRef] = [
-                z3.Re(elem)
-                if not is_nonterminal(elem)
-                else self.extract_regular_expression(elem)
+                (
+                    z3.Re(elem)
+                    if not is_nonterminal(elem)
+                    else self.extract_regular_expression(elem)
+                )
                 for elem in canonical_expansions[0]
             ]
             return z3.Concat(*result_elements)
@@ -2386,9 +2394,11 @@ def create_fixed_length_tree(
                         curr_len
                         + sum(
                             [
-                                len(child.value)
-                                if child.children == ()
-                                else (1 if child.value not in nullable else 0)
+                                (
+                                    len(child.value)
+                                    if child.children == ()
+                                    else (1 if child.value not in nullable else 0)
+                                )
                                 for child in new_children
                             ]
                         )
