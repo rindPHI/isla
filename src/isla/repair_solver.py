@@ -67,11 +67,8 @@ from isla.language import (
     StructuralPredicateFormula,
     SMTFormula,
     true,
-    DisjunctiveFormula,
-    split_disjunction,
     split_conjunction,
     BoundVariable,
-    convert_to_dnf,
     convert_to_nnf,
     VariablesCollector,
     Constant,
@@ -85,6 +82,7 @@ from isla.language import (
     validate_structural_predicate_arguments,
     fresh_bound_variable,
     validate_smt_formula_substitutions,
+    to_dnf_clauses,
 )
 from isla.parser import EarleyParser
 from isla.tree_insertion import insert_tree
@@ -666,37 +664,35 @@ class RepairSolver:
             return Nothing
 
         # 3. Replace all valid SMT expressions with `true` (considering the
-        #    negation scope).
-        no_true_semantic_formulas = convert_to_dnf(
+        #    negation scope); convert to DNF (in clause form).
+        no_true_semantic_formulas: Tuple[Tuple[Formula, ...], ...] = to_dnf_clauses(
             self.eliminate_true_semantic_formulas(
                 convert_to_nnf(no_structural_predicates), tree
             ),
-            deep=False,
         )
 
         # 4a. If the formula is a disjunction, recursively try to satisfy each disjunct.
         #     Return the first successfully repaired tree, or Nothing.
-        if isinstance(no_true_semantic_formulas, DisjunctiveFormula):
-            # TODO: We should
-            #       - Shuffle the disjuncts (?).
-            #       - Implement meaningful backtracking (e.g., based on the maximum
-            #         number of tree insertion solutions for the same existential
-            #         quantifier).
-            #       - Implement finding multiple repairs.
-            # disjuncts = shuffle(split_disjunction(no_true_semantic_formulas))
-
-            disjuncts = split_disjunction(no_true_semantic_formulas)
+        if len(no_true_semantic_formulas) > 1:
+            # TODO: Should we shuffle the disjuncts? Problem: We want to first address
+            #       the instantiations *matching* an existential quantifier, and only
+            #       later those where the quantifier is retained. In the original order,
+            #       this property is retained; *naive* shuffling could destroy it.
+            # TODO: Should we add a depth bound (e.g., based on the number of times an
+            #       existential formula was solved by insertion) to avoid infinite loops?
+            #       This is particularly critical if we add shuffling.
+            # TODO: Make repair produce a *stream* of repaired trees.
 
             # To optimize the search, we first try to repair the disjuncts that
             # are most likely to be satisfiable. We estimate this by calculating
             # the proportion of unsatisfied conjuncts in each disjunct.
 
             return flow(
-                disjuncts,
+                no_true_semantic_formulas,
                 partial(
                     map,
-                    lambda disjunct: self.repair_tree(
-                        disjunct,
+                    lambda conjuncts: self.repair_tree(
+                        conjuncts,
                         tree,
                     ),
                 ),
@@ -711,7 +707,8 @@ class RepairSolver:
                 map_(tap(lambda t: isinstance(t, DerivationTree))),
             )
 
-        conjuncts = tuple(split_conjunction(no_true_semantic_formulas))
+        assert len(no_true_semantic_formulas) == 1
+        conjuncts = no_true_semantic_formulas[0]
         validate_structural_predicate_arguments(conjuncts, tree)
         validate_smt_formula_substitutions(conjuncts, tree)
 

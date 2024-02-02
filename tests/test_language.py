@@ -42,7 +42,6 @@ from isla.language import (
     BoundVariable,
     Formula,
     BindExpression,
-    convert_to_dnf,
     ensure_unique_bound_variables,
     VariableManager,
     DummyVariable,
@@ -52,8 +51,8 @@ from isla.language import (
     ExistsFormula,
     match,
     unparse_isla,
-    start_constant,
     true,
+    to_dnf_clauses,
 )
 from isla.parser import EarleyParser
 from isla.z3_helpers import z3_eq
@@ -324,13 +323,13 @@ class TestLanguage(unittest.TestCase):
         z = language.StructuralPredicateFormula(pred, "z")
 
         formula = (w | x) & (y | z)
-        self.assertEqual((w & y) | (w & z) | (x & y) | (x & z), convert_to_dnf(formula))
+        self.assertEqual(((w, y), (w, z), (x, y), (x, z)), to_dnf_clauses(formula))
 
         formula = w & (y | z)
-        self.assertEqual((w & y) | (w & z), convert_to_dnf(formula))
+        self.assertEqual(((w, y), (w, z)), to_dnf_clauses(formula))
 
         formula = w & (x | y | z)
-        self.assertEqual((w & x) | (w & y) | (w & z), convert_to_dnf(formula))
+        self.assertEqual(((w, x), (w, y), (w, z)), to_dnf_clauses(formula))
 
     def test_push_in_negation(self):
         a = Constant("$a", "<var>")

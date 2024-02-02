@@ -92,7 +92,6 @@ class TestRepairSolver(unittest.TestCase):
         structural_predicates={IN_TREE_PREDICATE, SAME_POSITION_PREDICATE},
     )
 
-    @pytest.mark.skip(reason="currently takes too long")
     def test_assgn_lang_def_use(self):
         constraint = """
         forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
@@ -107,7 +106,6 @@ class TestRepairSolver(unittest.TestCase):
             solution = solver.solve()
             LOGGER.info(f"Found solution no. %d: %s", i + 1, solution)
 
-    @pytest.mark.skip(reason="currently takes too long")
     def test_repair_assgn_lang_def_use(self):
         inp = "z := 1 ; e := j ; o := n ; p := s ; l := k ; x := d"
 

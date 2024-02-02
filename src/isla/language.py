@@ -1002,7 +1002,7 @@ class StructuralPredicateFormula(Formula):
 
 
 def validate_structural_predicate_arguments(
-        formulas: Formula | Iterable[Formula], context_tree: DerivationTree
+    formulas: Formula | Iterable[Formula], context_tree: DerivationTree
 ) -> None:
     """
     TODO: Document.
@@ -1046,6 +1046,8 @@ def validate_structural_predicate_arguments(
             )
 
         assert first_dangling_argument is None, msg()
+
+
 def validate_smt_formula_substitutions(
     formulas: Formula | Iterable[Formula], context_tree: DerivationTree
 ) -> None:
@@ -2549,47 +2551,29 @@ def convert_quantified_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[F
         )
 
 
-def convert_to_dnf(formula: Formula, deep: bool = True) -> Formula:
-    assert not isinstance(formula, NegatedFormula) or not isinstance(
-        formula.args[0], PropositionalCombinator
+def to_dnf_clauses(formula: Formula) -> Tuple[Tuple[Formula, ...], ...]:
+    """
+    Converts a formula to a list of disjunctive clauses. A clause represents a
+    list of conjunctive formulas.
+
+    This function expects that the input formula is in NNF.
+
+    :param formula: The formula to convert to DNF (disjunctive clauses).
+    :return: A list of disjunctive clauses.
+    """
+
+    assert not isinstance(formula, NegatedFormula) or isinstance(
+        formula, SMTFormula | StructuralPredicateFormula | SemanticPredicateFormula
     ), "Convert to NNF before converting to DNF"
 
-    if isinstance(formula, ConjunctiveFormula):
-        disjuncts_list = [
-            split_disjunction(convert_to_dnf(arg)) for arg in formula.args
-        ]
-
-        if all(len(elem) == 1 for elem in disjuncts_list):
-            return formula
-
-        return reduce(
-            lambda a, b: a | b,
-            [
-                reduce(
-                    lambda a, b: a & b,
-                    FrozenOrderedSet(split_conjunction(left & right)),
-                    true(),
-                )
-                for left, right in itertools.product(*disjuncts_list)
-            ],
-            false(),
-        )
-    elif isinstance(formula, DisjunctiveFormula):
-        return reduce(
-            lambda a, b: a | b,
-            [convert_to_dnf(subformula) for subformula in formula.args],
-            false(),
-        )
-    elif deep and isinstance(formula, QuantifiedFormula):
-        return type(formula)(
-            formula.bound_variable,
-            formula.in_variable,
-            convert_to_dnf(formula.inner_formula),
-            formula.bind_expression,
-            formula.already_matched,
-        )
+    if isinstance(formula, DisjunctiveFormula):
+        return to_dnf_clauses(formula.args[0]) + to_dnf_clauses(formula.args[1])
+    elif isinstance(formula, ConjunctiveFormula):
+        left_clauses = to_dnf_clauses(formula.args[0])
+        right_clauses = to_dnf_clauses(formula.args[1])
+        return tuple(c_1 + c_2 for c_1 in left_clauses for c_2 in right_clauses)
     else:
-        return formula
+        return ((formula,),)
 
 
 def fresh_vars(

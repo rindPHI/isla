@@ -105,7 +105,6 @@ from isla.language import (
     VariablesCollector,
     split_conjunction,
     split_disjunction,
-    convert_to_dnf,
     convert_to_nnf,
     ensure_unique_bound_variables,
     parse_isla,
@@ -116,6 +115,7 @@ from isla.language import (
     NoopFormulaTransformer,
     set_smt_auto_subst,
     fresh_constant,
+    to_dnf_clauses,
 )
 from isla.mutator import Mutator
 from isla.parser import EarleyParser
@@ -3501,10 +3501,10 @@ class ISLaSolver:
         # return solver.check() == z3.unsat
 
     def establish_invariant(self, state: SolutionState) -> List[SolutionState]:
-        formula = convert_to_dnf(convert_to_nnf(state.constraint), deep=False)
+        clauses = to_dnf_clauses(convert_to_nnf(state.constraint))
         return [
-            SolutionState(disjunct, state.tree)
-            for disjunct in split_disjunction(formula)
+            SolutionState(reduce(lambda a, b: a & b, clause, sc.true()), state.tree)
+            for clause in clauses
         ]
 
     def compute_cost(self, state: SolutionState) -> float:
