@@ -230,7 +230,9 @@ class TestRepairSolver(unittest.TestCase):
             "\n".join(out),
         )
 
-        self.assertEqual('<a:b x:a="XXX" x:b="XXX"><b:x></b:x></a:b>', str(result.unwrap()))
+        self.assertEqual(
+            '<a:b x:a="XXX" x:b="XXX"><b:x></b:x></a:b>', str(result.unwrap())
+        )
 
     def test_repair_simplified_xml_more_restrictive(self):
         # The following constraint is too restrictive: It explicitly requires an outer
@@ -340,33 +342,39 @@ class TestRepairSolver(unittest.TestCase):
 
         smt_constraints = (smt_constraint_1, smt_constraint_2)
 
-        bound_tree_paths = frozendict({
-            tree.find_node(subtree): variable
-            for smt_formula in smt_constraints
-            for variable, subtree in smt_formula.substitutions.items()
-        })
+        bound_tree_paths = frozendict(
+            {
+                tree.find_node(subtree): variable
+                for smt_formula in smt_constraints
+                for variable, subtree in smt_formula.substitutions.items()
+            }
+        )
 
         prefix_def_0_fresh_vars, prefix_def_0_structure = describe_subtree_structure(
-            tree, bound_tree_paths, current_path=prefix_def_0_path
+            tree.get_subtree(prefix_def_0_path),
+            bound_tree_paths,
+            current_path=prefix_def_0_path,
         )
         self.assertEqual(frozendict({}), prefix_def_0_fresh_vars)
         self.assertEqual((), prefix_def_0_structure)
 
         prefix_use_1_fresh_vars, prefix_use_1_structure = describe_subtree_structure(
-            tree, bound_tree_paths, current_path=prefix_use_1_path
+            tree.get_subtree(prefix_use_1_path),
+            bound_tree_paths,
+            current_path=prefix_use_1_path,
         )
         self.assertEqual(frozendict({}), prefix_use_1_fresh_vars)
         self.assertEqual(("b",), prefix_use_1_structure)
 
         opid_fresh_vars, opid_structure = describe_subtree_structure(
-            tree, bound_tree_paths, current_path=opid_path
+            tree.get_subtree(opid_path), bound_tree_paths, current_path=opid_path
         )
         fresh_var = BoundVariable("letter", "<letter>")
         self.assertEqual(frozendict({fresh_var: "x"}), opid_fresh_vars)
         self.assertEqual((prefix_use_1, ":", fresh_var), opid_structure)
 
         clid_fresh_vars, clid_structure = describe_subtree_structure(
-            tree, bound_tree_paths, current_path=clid_path
+            tree.get_subtree(clid_path), bound_tree_paths, current_path=clid_path
         )
         self.assertEqual(frozendict({}), clid_fresh_vars)
         self.assertEqual(("a:x",), clid_structure)
@@ -391,10 +399,17 @@ class TestRepairSolver(unittest.TestCase):
 
         solver = RepairSolver(heartbeat_request_grammar, length_constraint)
 
-        for i in range(20):
+        for i in range(10):
             solution = solver.solve()
             LOGGER.info(f"Found solution no. %d: %s", i, solution)
-            # TODO: Check solution
+
+            payload = str(solution.get_subtree((0, 2)))
+            length_msb = ord(str(solution.get_subtree((0, 1, 0))))
+            length_lsb = ord(str(solution.get_subtree((0, 1, 1))))
+
+            self.assertEqual(1, length_msb)
+            self.assertEqual(len(payload), 256 * length_msb + length_lsb)
+
 
 if __name__ == "__main__":
     unittest.main()

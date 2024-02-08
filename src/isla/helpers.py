@@ -1011,20 +1011,16 @@ def get_elem_by_equivalence(
 
 def get_expansions(leaf_value: str, grammar: CanonicalGrammar | FrozenCanonicalGrammar):
     all_expansions = grammar[leaf_value]
+    terminal_expansions = []
+    nonterminal_expansions = []
 
-    terminal_expansions = [
-        expansion
-        for expansion in all_expansions
-        if len(expansion) == 1 and not is_nonterminal(expansion[0])
-    ]
+    for expansion in all_expansions:
+        if len(expansion) == 1 and not is_nonterminal(expansion[0]):
+            terminal_expansions.append(expansion)
+        else:
+            nonterminal_expansions.append(expansion)
 
-    expansions = [
-        expansion
-        for expansion in all_expansions
-        if expansion not in terminal_expansions
-    ]
-
-    return terminal_expansions, expansions
+    return terminal_expansions, nonterminal_expansions
 
 
 def compute_nullable_nonterminals(

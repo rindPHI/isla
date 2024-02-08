@@ -198,6 +198,32 @@ class DerivationTree:
     def __getstate__(self) -> bytes:
         return zlib.compress(self.to_json().encode("UTF-8"))
 
+    def __copy__(self) -> "DerivationTree":
+        """
+        Derivation trees are immutable objects except some private fields
+        only used for caching. Therefore, the deep copy function returns
+        this object itself.
+
+        :param memo: The memo dictionary, intended to be treated as an
+            opaque object.
+        :return: This derivation tree object itself.
+        """
+
+        return self
+
+    def __deepcopy__(self, memo) -> "DerivationTree":
+        """
+        Derivation trees are immutable objects except some private fields
+        only used for caching. Therefore, the deep copy function returns
+        this object itself.
+
+        :param memo: The memo dictionary, intended to be treated as an
+            opaque object.
+        :return: This derivation tree object itself.
+        """
+
+        return self
+
     @staticmethod
     def from_json(
         json_str: str, tree: Optional["DerivationTree"] = None

@@ -137,10 +137,9 @@ def compute_bound_tree_paths(
 
 
 def describe_subtree_structure(
-    tree: DerivationTree,
+    current_node: DerivationTree,
     bound_tree_paths: frozendict[Path, Variable],
     current_path: Path = (),
-    current_node: Optional[DerivationTree] = None,
     first_call: bool = True,
     fresh_vars: frozendict[Variable, str] = frozendict({}),
 ) -> Tuple[frozendict[Variable, str], Tuple[Variable | str, ...]]:
@@ -235,7 +234,7 @@ def describe_subtree_structure(
     ...                 (
     ...                     var,
     ...                     describe_subtree_structure(
-    ...                         tree, bound_tree_paths, current_path=path
+    ...                         tree.get_subtree(path), bound_tree_paths, current_path=path
     ...                     ),
     ...                 )
     ...                 for path, var in bound_tree_paths.items()
@@ -248,17 +247,13 @@ def describe_subtree_structure(
     (opid, ({letter: 'x'}, (prefix_use_1, ':', letter)))
     (clid, ({}, ('a:x',)))
 
-    :param tree:
+    :param current_node:
     :param bound_tree_paths:
     :param current_path:
-    :param current_node:
     :param first_call:
     :param fresh_vars:
     :return:
     """
-
-    if current_node is None:
-        current_node = tree.get_subtree(current_path)
 
     if current_path in bound_tree_paths:
         if first_call and not current_node.children:
@@ -286,10 +281,9 @@ def describe_subtree_structure(
     resulting_structures = ()
     for i, child in enumerate(current_node.children):
         new_fresh_vars, sub_result = describe_subtree_structure(
-            tree,
+            child,
             bound_tree_paths,
             current_path + (i,),
-            child,
             first_call=False,
             fresh_vars=fresh_vars,
         )
@@ -426,24 +420,19 @@ def value_suggestion_constraints(
         constraints, and a sequence of structural constraints.
     """
 
-    bound_tree_paths = compute_bound_tree_paths(tree, smt_constraints)
+    (
+        fresh_variables,
+        structural_values,
+        literal_values,
+    ) = shape_relations_from_smt_constraints(tree, smt_constraints)
 
-    fresh_variables: frozendict[Variable, str] = frozendict({})
-    literal_constraints: Tuple[z3.BoolRef, ...] = ()
-    structural_constraints: Tuple[z3.BoolRef, ...] = ()
+    value_constraints = tuple(
+        z3_eq(var.to_smt(), z3.StringVal(value))
+        for var, value in literal_values.items()
+    )
 
-    for path, var in bound_tree_paths.items():
-        new_fresh_vars, structure = describe_subtree_structure(
-            tree, bound_tree_paths, current_path=path, fresh_vars=fresh_variables
-        )
-
-        assert structure or new_fresh_vars == fresh_variables
-        if not structure:
-            continue
-
-        fresh_variables = frozendict(fresh_variables | new_fresh_vars)
-
-        constraint = z3_eq(
+    structural_constraints = tuple(
+        z3_eq(
             var.to_smt(),
             z3_concat(
                 tuple(
@@ -452,20 +441,173 @@ def value_suggestion_constraints(
                 )
             ),
         )
+        for var, structure in structural_values.items()
+    )
+
+    return fresh_variables, value_constraints, structural_constraints
+
+
+def shape_relations_from_smt_constraints(
+    tree: DerivationTree,
+    smt_constraints: Iterable[SMTFormula],
+) -> Tuple[
+    FrozenOrderedSet[Variable],
+    frozendict[Variable, Tuple[str | Variable, ...]],
+    frozendict[Variable, str],
+]:
+    r"""
+    This function extracts values and structures from the tree substitutions
+    in the given SMT constraints. It returns a triple of
+
+    1. A set of fresh variables use to generalize the structural constraints.
+    2. A dictionary of "structural" relations describing the structure of
+       substitutions that depend on other substitutions in terms of these
+       other substitutions and string literals. To facilitate an as general
+       usage of this class of constraints as possible, the structural
+       constraints can contain fresh variables whose values appear in the
+       "value relations."
+    3. A sequence of "value" relations describing precise string values for
+       substitution elements that are independent of the values of other
+       substitutions.
+
+    Example
+    -------
+
+    Consider the following simplificed XML grammar with namespaces that are
+    declared by attributes prefixed with :code:`x:`:
+
+    >>> simplified_xml_grammar = '''
+    ...     <start> ::= <xml-tree>
+    ...     <xml-tree> ::= "" | <xml-open-tag> <xml-tree> <xml-close-tag>
+    ...     <xml-open-tag> ::= "<" <tag-id> <attrs> ">"
+    ...     <xml-close-tag> ::= "</" <tag-id> ">"
+    ...     <attrs> ::= "" | " " <attr> <attrs>
+    ...     <attr> ::= <attr-id> "=\\"XXX\\""
+    ...     <tag-id> ::= <letter-no-x> ":" <letter>
+    ...     <attr-id> ::= <letter> ":" <letter>
+    ...     <letter> ::= "a" | "b" | "c" | "x"
+    ...     <letter-no-x> ::= "a" | "b" | "c"
+    ... '''
+
+    Our reference tree will be :code:`<b:x x:<letter>="XXX"></a:x>`.
+
+    >>> solver = RepairSolver(simplified_xml_grammar)
+    >>> prefix_def_0_path = (0, 0, 2, 1, 0, 2)
+    >>> tree: DerivationTree = (
+    ...     solver.parse('<b:x x:c="XXX"></a:x>')
+    ...     .unwrap()
+    ...     .replace_path(prefix_def_0_path, DerivationTree("<letter>", None))
+    ... )
+
+    >>> print(tree)
+    <b:x x:<letter>="XXX"></a:x>
+
+    We declare two constraints: The first one, :code:`prefix_use_1 == prefix_def_0`
+    stipulates that :code:`letter` equals :code:`b`. The second one,
+    :code:`opid == clid` stipulates that the tag IDs of the opening and closing
+    tags, currently :code:`b:x` and :code:`a:x`, are equal. The important part is
+    that these constraints are not independent: The value of :code:`opid` depends
+    on the value of :code:`prefix_use_1`. This dependency is a "structural relation."
+
+    >>> prefix_def_0 = BoundVariable("prefix_def_0", "<letter>")
+    >>> prefix_use_1 = BoundVariable("prefix_use_1", "<letter_no_x>")
+    >>> prefix_use_1_path = (0, 0, 1, 0)
+    >>> opid = BoundVariable("opid", "<tag-id>")
+    >>> opid_path = (0, 0, 1)
+    >>> clid = BoundVariable("clid", "<tag-id>")
+    >>> clid_path = (0, 2, 2)
+
+    >>> smt_constraint_1 = SMTFormula(
+    ...     z3_eq(prefix_use_1.to_smt(), prefix_def_0.to_smt()),
+    ...     prefix_use_1,
+    ...     prefix_def_0,
+    ...     auto_eval=False,
+    ...     auto_subst=False,
+    ... ).substitute_expressions(
+    ...     {
+    ...         prefix_use_1: tree.get_subtree(prefix_use_1_path),
+    ...         prefix_def_0: tree.get_subtree(prefix_def_0_path),
+    ...     }
+    ... )
+
+    >>> print(smt_constraint_1)
+    (prefix_use_1 == prefix_def_0, {'prefix_use_1': 'b', 'prefix_def_0': '<letter>'})
+
+    >>> smt_constraint_2 = SMTFormula(
+    ...     z3_eq(opid.to_smt(), clid.to_smt()),
+    ...     opid,
+    ...     clid,
+    ...     auto_eval=False,
+    ...     auto_subst=False,
+    ... ).substitute_expressions(
+    ...     {
+    ...         opid: tree.get_subtree(opid_path),
+    ...         clid: tree.get_subtree(clid_path),
+    ...     }
+    ... )
+
+    >>> print(smt_constraint_2)
+    (opid == clid, {'opid': 'b:x', 'clid': 'a:x'})
+
+    >>> (
+    ...     fresh_variables,
+    ...     structural_values,
+    ...     literal_values,
+    ... ) = shape_relations_from_smt_constraints(tree, (smt_constraint_1, smt_constraint_2))
+
+    We obtain two value relations for :code:`prefix_use_1` and :code:`clid`,
+    and one structural relation for :code:`opid` and :code:`prefix_use_1`:
+
+    >>> print(deep_str(fresh_variables))
+    {letter}
+
+    >>> print(deep_str(literal_values))
+    {prefix_use_1: 'b', letter: 'x', clid: 'a:x'}
+
+    >>> print(deep_str(structural_values))
+    {opid: (prefix_use_1, ':', letter)}
+
+    In constraint solving, the structural relation should be given a higher
+    priority than the value relations.
+
+    :param tree: The reference tree for the SMT constraints' substitutions.
+    :param smt_constraints: The SMT constraints to extract value suggestions
+        from.
+    :return: A triple of a set of fresh variables, a sequence of structural
+        relations, and a sequence of value relations.
+    """
+
+    bound_tree_paths = compute_bound_tree_paths(tree, smt_constraints)
+
+    fresh_variables: frozendict[Variable, str] = frozendict({})
+    structural_values: frozendict[Variable, Tuple[str | Variable, ...]] = frozendict({})
+    literal_values: frozendict[Variable, str] = frozendict({})
+
+    for path, var in bound_tree_paths.items():
+        new_fresh_vars, structure = describe_subtree_structure(
+            tree.get_subtree(path),
+            bound_tree_paths,
+            current_path=path,
+            fresh_vars=fresh_variables,
+        )
+
+        assert structure or new_fresh_vars == fresh_variables
+        if not structure:
+            continue
+
+        fresh_variables = frozendict(fresh_variables | new_fresh_vars)
 
         if any(isinstance(elem, Variable) for elem in structure):
-            structural_constraints += (constraint,)
-            literal_constraints += tuple(
-                z3_eq(fresh_variable.to_smt(), z3.StringVal(value))
-                for fresh_variable, value in new_fresh_vars.items()
-            )
+            structural_values = structural_values.set(var, structure)
+            literal_values = frozendict(literal_values | new_fresh_vars)
         else:
-            literal_constraints += (constraint,)
+            assert len(structure) == 1
+            literal_values = literal_values.set(var, structure[0])
 
     return (
         FrozenOrderedSet(fresh_variables.keys()),
-        literal_constraints,
-        structural_constraints,
+        structural_values,
+        literal_values,
     )
 
 
@@ -783,13 +925,14 @@ class RepairSolver:
         def log_solution(s: Mapping[DerivationTree, DerivationTree]):
             LOGGER.debug("SMT solution found: %s", lazystr(lambda: deep_str(s)))
 
-        def log_no_solution(_: Nothing):
+        def log_no_solution(_: Nothing) -> Nothing:
             LOGGER.debug("No SMT solution found")
+            return Nothing
 
         return (
             self.eliminate_all_semantic_formulas(smt_conjuncts, tree)
             .map(tap(log_solution))
-            .lash(tap(log_no_solution))
+            .lash(log_no_solution)
             .bind(apply_smt_substitutions)
         )
 
@@ -1434,37 +1577,16 @@ class RepairSolver:
         :return:
         """
 
-        (
-            fresh_variables,
-            value_suggestions,
-            structural_suggestions,
-        ) = value_suggestion_constraints(tree, smt_formulas)
-
-        tree_substitutions = collect_tree_substitutions_in_smt_formulas(smt_formulas)
         variables = collect_variables_in_smt_formulas(smt_formulas)
 
-        # We disable optimized Z3 queries if the SMT formulas contain "too concrete"
-        # substitutions, that is, substitutions with a tree that is not merely an
-        # open leaf. Example: we have a constraint `str.len(<chars>) < 10` and a
-        # tree `<char><char>`; only the concrete length "2" is possible then.
-        optimized_solution_enabled = self.enable_optimized_z3_queries and not any(
-            substitution.children for substitution in tree_substitutions.values()
-        )
-
-        if optimized_solution_enabled:
-            raise NotImplementedError(
-                "TODO: Update optimized solution to integrate value suggestions.\n" +
-                deep_str(smt_formulas)
-            )  # TODO
-            # (
-            #     length_vars,
-            #     int_vars,
-            #     fresh_var_map,
-            #     sat_result,
-            #     maybe_model,
-            # ) = self.compute_solution_optimized(
-            #     smt_formulas, variables, tree_substitutions
-            # )
+        if self.enable_optimized_z3_queries:
+            (
+                length_vars,
+                int_vars,
+                fresh_var_map,
+                sat_result,
+                maybe_model,
+            ) = self.compute_solution_optimized(smt_formulas, tree, variables)
         else:
             length_vars, int_vars, fresh_var_map = (
                 frozenset(),
@@ -1472,9 +1594,15 @@ class RepairSolver:
                 frozendict({}),
             )
 
+            (
+                fresh_variables,
+                value_suggestions,
+                structural_suggestions,
+            ) = value_suggestion_constraints(tree, smt_formulas)
+
             sat_result, maybe_model = z3_solve(
                 self.generate_language_constraints(
-                    variables | fresh_variables, tree_substitutions
+                    variables | fresh_variables,
                 )
                 + tuple(map(lambda f: f.formula, smt_formulas)),
                 structural_suggestions,
@@ -1491,46 +1619,152 @@ class RepairSolver:
 
     def compute_solution_optimized(
         self,
-        smt_formulas: Tuple[z3.BoolRef, ...],
-        variables: Set[Variable],
-        tree_substitutions: Mapping[Variable, DerivationTree],
-        value_suggestions: Tuple[z3.BoolRef, ...] = (),
+        smt_formulas: Tuple[SMTFormula, ...],
+        tree: DerivationTree,
+        variables: Optional[FrozenOrderedSet[Variable]] = None,
     ) -> Tuple[
-        FrozenSet[Variable],
-        FrozenSet[Variable],
+        FrozenOrderedSet[Variable],
+        FrozenOrderedSet[Variable],
         frozendict[Variable, z3.ExprRef],
         z3.CheckSatResult,
         Optional[z3.ModelRef],
     ]:
         """
-        TODO: Document, test.
+        This function attempts to solve the given SMT-LIB formulas. It contains
+        optimizations for variables occurring exclusively in :code:`str.len` and
+        :code:`str.to.int` contexts, which it passes to the SMT solver as integer
+        variables. The returned model will then provide assignments for these
+        fresh integer variables, that then must be converted to suitable strings.
 
-        :param smt_formulas:
-        :param variables:
-        :param tree_substitutions:
+        Example
+        -------
+
+        Consider the following grammar of a TLS heartbeat request:
+
+        >>> heartbeat_request_grammar = {
+        ...     "<start>": ["<heartbeat-request>"],
+        ...     "<heartbeat-request>": ["\x01<payload-length><payload><padding>"],
+        ...     "<payload-length>": ["<byte><byte>"],
+        ...     "<payload>": ["<bytes>"],
+        ...     "<padding>": ["<bytes>"],
+        ...     "<bytes>": ["<byte><bytes>", "<byte>"],
+        ...     "<byte>": [chr(i) for i in range(256)],
+        ... }
+
+        >>> solver = RepairSolver(heartbeat_request_grammar)
+
+        We regard a heartbeat request an invalid combination of the length and payload fields.
+
+        >>> tree = DerivationTree.from_parse_tree((
+        ...     "<start>",
+        ...     [
+        ...         (
+        ...             "<heartbeat-request>",
+        ...             [
+        ...                 ("\x01", []),
+        ...                 (
+        ...                     "<payload-length>",
+        ...                     [("<byte>", [("î", [])]), ("<byte>", [("¶", [])])],
+        ...                 ),
+        ...                 ("<payload>", [("<bytes>", [("<byte>", [("¼", [])])])]),
+        ...                 (
+        ...                     "<padding>",
+        ...                     [
+        ...                         (
+        ...                             "<bytes>",
+        ...                             [
+        ...                                 ("<byte>", [("Ï", [])]),
+        ...                                 ("<bytes>", [("<byte>", [("µ", [])])]),
+        ...                             ],
+        ...                         )
+        ...                     ],
+        ...                 ),
+        ...             ],
+        ...         )
+        ...     ],
+        ... ))
+
+        >>> byte_1 = BoundVariable("byte_1", "<byte>")
+        >>> byte_2 = BoundVariable("byte_2", "<byte>")
+        >>> payload = BoundVariable("payload", "<payload>")
+
+        >>> byte_1_tree = tree.get_subtree((0, 1, 0))
+        >>> byte_2_tree = tree.get_subtree((0, 1, 1))
+        >>> payload_tree = tree.get_subtree((0, 2))
+
+        We stipulate the constraints that (1) the most significant byte must be
+        equal to 1 and (2) the length of the payload must be equal to 256 times
+        the most significant byte plus the least significant byte.
+
+        >>> formula_1 = SMTFormula(
+        ...     z3_eq(byte_1.to_smt(), z3.StringVal("\x01")),
+        ...     byte_1,
+        ...     auto_eval=False,
+        ...     auto_subst=False,
+        ... ).substitute_expressions({byte_1: byte_1_tree})
+
+        >>> formula_2 = SMTFormula(
+        ...     z3_eq(
+        ...         z3.IntVal(256) * z3.StrToCode(byte_1.to_smt()) + z3.StrToCode(byte_2.to_smt()),
+        ...         z3.Length(payload.to_smt())
+        ...     ),
+        ...     byte_1,
+        ...     byte_2,
+        ...     payload,
+        ...     auto_eval=False,
+        ...     auto_subst=False,
+        ... ).substitute_expressions({
+        ...     byte_1: byte_1_tree,
+        ...     byte_2: byte_2_tree,
+        ...     payload: payload_tree
+        ... })
+
+        We see that in the returned result, (1) the value of the most significant byte is
+        chosen as defined, (2) the value of the least significant byte from the substitutions
+        in second formula is retained, and (3) the payload is represented as an integer variable
+        of value 438 (256 * 1 + 182).
+
+        >>> print(deep_str(
+        ...     solver.compute_solution_optimized(
+        ...         (formula_1, formula_2),
+        ...         tree,
+        ...         FrozenOrderedSet((byte_1, byte_2, payload)),
+        ...     )
+        ... ))
+        ({payload}, {}, {payload: payload_0}, sat, [byte_2 = "¶", payload_0 = 438, byte_1 = ""])
+
+        :param smt_formulas: The SMT-LIB formulas to solve.
+        :param tree: The reference tree.
+        :param variables: The variables to consider. If not given, all variables in
+            `smt_formulas` are considered.
         :return:
         """
+
+        if variables is None:
+            variables = collect_variables_in_smt_formulas(smt_formulas)
 
         vars_in_context = infer_variable_contexts(variables, smt_formulas)
         length_vars = vars_in_context["length"]
         int_vars = vars_in_context["int"]
         flexible_vars = vars_in_context["flexible"]
 
-        fresh_var_map: frozendict[Variable, z3.ExprRef] = frozendict({})
-
         # Add language constraints for "flexible" variables
         flex_language_constraints: Tuple[z3.BoolRef, ...] = (
-            self.generate_language_constraints(flexible_vars, tree_substitutions)
+            self.generate_language_constraints(flexible_vars)
         )
 
+        fresh_var_map: frozendict[Variable, z3.ExprRef] = frozendict({})
+
         # Create fresh variables for `str.len` and `str.to.int` variables.
-        all_variables = set(variables)
+        all_variables = variables
         for var in length_vars | int_vars:
             fresh = fresh_constant(
                 all_variables,
                 Constant(var.name, "NOT-NEEDED"),
+                add=False,
             )
             fresh_var_map = fresh_var_map.set(var, z3.Int(fresh.name))
+            all_variables = all_variables.union((fresh,))
 
         # In `smt_formulas`, we replace all `length(...)` terms for "length
         # variables" with the corresponding fresh variable.
@@ -1543,14 +1777,14 @@ class RepairSolver:
                 )
             ]
             for formula in smt_formulas
-            for expr in visit_z3_expr(formula)
+            for expr in visit_z3_expr(formula.formula)
             if expr.decl().kind() in {z3.Z3_OP_SEQ_LENGTH, z3.Z3_OP_STR_TO_INT}
             and expr.children()[0] in {var.to_smt() for var in length_vars | int_vars}
         }
 
         # Perform substitution, add formulas
         smt_formulas_no_seq_and_strtoint: Tuple[z3.BoolRef, ...] = tuple(
-            cast(z3.BoolRef, z3_subst(formula, replacement_map))
+            cast(z3.BoolRef, z3_subst(formula.formula, replacement_map))
             for formula in smt_formulas
         )
 
@@ -1568,15 +1802,57 @@ class RepairSolver:
             int_vars, replacement_map
         )
 
+        # Compute constraints on existing values
+        (
+            fresh_variables,
+            structural_relations,
+            value_relations,
+        ) = shape_relations_from_smt_constraints(tree, smt_formulas)
+
+        assert all(int_var not in structural_relations for int_var in int_vars)
+        assert all(length_var not in structural_relations for length_var in length_vars)
+
+        structural_constraints: Tuple[z3.BoolRef, ...] = tuple(
+            z3_eq(
+                var.to_smt(),
+                z3_concat(
+                    tuple(
+                        z3.StringVal(elem) if isinstance(elem, str) else elem.to_smt()
+                        for elem in structure
+                    )
+                ),
+            )
+            for var, structure in structural_relations.items()
+        )
+
+        value_constraints: Tuple[z3.BoolRef, ...] = (
+            tuple(
+                z3_eq(var.to_smt(), z3.StringVal(value))
+                for var, value in value_relations.items()
+                if var in flexible_vars
+            )
+            + tuple(
+                z3_eq(fresh_var_map[var], z3.IntVal(int(value)))
+                for var, value in value_relations.items()
+                if var in int_vars
+            )
+            + tuple(
+                z3_eq(fresh_var_map[var], z3.Length(z3.StringVal(value)))
+                for var, value in value_relations.items()
+                if var in length_vars
+            )
+        )
+
         sat_result, maybe_model = z3_solve(
             flex_language_constraints
             + length_constraints
             + interval_constraints
             + smt_formulas_no_seq_and_strtoint,
-            soft_constraints=value_suggestions,
+            medium_constraints=structural_constraints,
+            soft_constraints=value_constraints,
         )
 
-        return fresh_var_map, sat_result, maybe_model
+        return length_vars, int_vars, fresh_var_map, sat_result, maybe_model
 
     def compute_interval_constraints(
         self,
@@ -1657,35 +1933,11 @@ class RepairSolver:
     def generate_language_constraints(
         self,
         variables_in_smt_formulas: Iterable[Variable],
-        tree_substitutions: Mapping[Variable, DerivationTree],
     ) -> Tuple[z3.BoolRef, ...]:
         return tuple(
             z3.InRe(var.to_smt(), self.extract_regular_expression(var.n_type))
             for var in variables_in_smt_formulas
         )
-
-        # TODO: I disabled the consideration of tree structure here since I it is
-        #       considered in the "medium soft" structural constraints.
-        # formulas: Tuple[z3.BoolRef, ...] = ()
-        # for constant in variables_in_smt_formulas:
-        #     if constant in tree_substitutions:
-        #         # We have a more concrete shape of the desired instantiation available
-        #         regexes = [
-        #             self.extract_regular_expression(t)
-        #             if is_nonterminal(t)
-        #             else z3.Re(t)
-        #             for t in split_str_with_nonterminals(
-        #                 str(tree_substitutions[constant])
-        #             )
-        #         ]
-        #         assert regexes
-        #         regex = z3.Concat(*regexes) if len(regexes) > 1 else regexes[0]
-        #     else:
-        #         regex = self.extract_regular_expression(constant.n_type)
-
-        #     formulas += (z3.InRe(z3.String(constant.name), regex),)
-
-        # return formulas
 
     @lru_cache(maxsize=128)
     @typechecked
@@ -2193,8 +2445,8 @@ def rename_instantiated_variables_in_smt_formulas(
 
 @typechecked
 def infer_variable_contexts(
-    variables: Set[Variable], smt_formulas: Sequence[z3.BoolRef]
-) -> frozendict[str, FrozenSet[Variable]]:
+    variables: FrozenOrderedSet[Variable], smt_formulas: Sequence[SMTFormula]
+) -> frozendict[str, FrozenOrderedSet[Variable]]:
     """
     Divides the given variables into
 
@@ -2208,52 +2460,56 @@ def infer_variable_contexts(
     Two variables in an arbitrary context.
 
     >>> from isla.z3_helpers import z3_eq
-    >>> f = z3_eq(x.to_smt(), y.to_smt())
-    >>> contexts = infer_variable_contexts({x, y}, (f,))
-    >>> contexts["length"]
-    frozenset()
-    >>> contexts["int"]
-    frozenset()
+    >>> f = SMTFormula(z3_eq(x.to_smt(), y.to_smt()), x, y)
+    >>> contexts = infer_variable_contexts(FrozenOrderedSet((x, y)), (f,))
+    >>> deep_str(contexts["length"])
+    '{}'
+    >>> deep_str(contexts["int"])
+    '{}'
     >>> contexts["flexible"] == {Variable("x", "<X>"), Variable("y", "<Y>")}
     True
 
     Variable x occurs in a length context, variable y in an arbitrary one.
 
-    >>> f = z3.And(
-    ...     z3.Length(x.to_smt()) > z3.IntVal(10),
-    ...     z3_eq(y.to_smt(), z3.StringVal("y")))
-    >>> print(deep_str(infer_variable_contexts({x, y}, (f,))))
+    >>> f = SMTFormula(
+    ...     z3.And(
+    ...         z3.Length(x.to_smt()) > z3.IntVal(10),
+    ...         z3_eq(y.to_smt(), z3.StringVal("y"))),
+    ...     x, y)
+    >>> print(deep_str(infer_variable_contexts(FrozenOrderedSet((x, y)), (f,))))
     {'length': {x}, 'int': {}, 'flexible': {y}}
 
     Variable x occurs in a length context, y does not occur.
 
-    >>> f = z3.Length(x.to_smt()) > z3.IntVal(10)
-    >>> print(deep_str(infer_variable_contexts({x, y}, (f,))))
+    >>> f = SMTFormula(z3.Length(x.to_smt()) > z3.IntVal(10), x)
+    >>> print(deep_str(infer_variable_contexts(FrozenOrderedSet((x, y)), (f,))))
     {'length': {x}, 'int': {}, 'flexible': {y}}
 
     Variables x and y both occur in a length context.
 
-    >>> f = z3.Length(x.to_smt()) > z3.Length(y.to_smt())
-    >>> contexts = infer_variable_contexts({x, y}, (f,))
+    >>> f = SMTFormula(z3.Length(x.to_smt()) > z3.Length(y.to_smt()), x, y)
+    >>> contexts = infer_variable_contexts(FrozenOrderedSet((x, y)), (f,))
     >>> contexts["length"] == {Variable("x", "<X>"), Variable("y", "<Y>")}
     True
-    >>> contexts["int"]
-    frozenset()
-    >>> contexts["flexible"]
-    frozenset()
+    >>> deep_str(contexts["int"])
+    '{}'
+    >>> deep_str(contexts["flexible"])
+    '{}'
 
     Variable x occurs in a :code:`str.to.int` context.
 
-    >>> f = z3.StrToInt(x.to_smt()) > z3.IntVal(17)
-    >>> print(deep_str(infer_variable_contexts({x}, (f,))))
+    >>> f = SMTFormula(z3.StrToInt(x.to_smt()) > z3.IntVal(17), x)
+    >>> print(deep_str(infer_variable_contexts(FrozenOrderedSet((x,)), (f,))))
     {'length': {}, 'int': {x}, 'flexible': {}}
 
     Now, x also occurs in a different context; it's "flexible" now.
 
-    >>> f = z3.And(
-    ...     z3.StrToInt(x.to_smt()) > z3.IntVal(17),
-    ...     z3_eq(x.to_smt(), z3.StringVal("17")))
-    >>> print(deep_str(infer_variable_contexts({x}, (f,))))
+    >>> f = SMTFormula(
+    ...     z3.And(
+    ...         z3.StrToInt(x.to_smt()) > z3.IntVal(17),
+    ...         z3_eq(x.to_smt(), z3.StringVal("17"))),
+    ...     x)
+    >>> print(deep_str(infer_variable_contexts(FrozenOrderedSet((x,)), (f,))))
     {'length': {}, 'int': {}, 'flexible': {x}}
 
     :param variables: The constants to divide/filter from.
@@ -2265,17 +2521,17 @@ def infer_variable_contexts(
 
     parent_relationships = reduce(
         merge_dict_of_sets,
-        [parent_relationships_in_z3_expr(formula) for formula in smt_formulas],
+        [parent_relationships_in_z3_expr(formula.formula) for formula in smt_formulas],
         {},
     )
 
-    contexts: frozendict[Variable, FrozenSet[int]] = frozendict(
+    contexts: frozendict[Variable, FrozenOrderedSet[int]] = frozendict(
         {
-            var: frozenset(
-                {
+            var: FrozenOrderedSet(
+                tuple(
                     expr.decl().kind()
                     for expr in parent_relationships.get(var.to_smt(), set())
-                }
+                )
             )
             or {-1}
             for var in variables
@@ -2284,26 +2540,26 @@ def infer_variable_contexts(
 
     # The set `length_vars` consists of all variables that only occur in
     # `str.len(...)` context.
-    length_vars: FrozenSet[Variable] = frozenset(
-        {
+    length_vars: FrozenOrderedSet[Variable] = FrozenOrderedSet(
+        tuple(
             var
             for var in variables
             if all(context == z3.Z3_OP_SEQ_LENGTH for context in contexts[var])
-        }
+        )
     )
 
     # The set `int_vars` consists of all variables that only occur in
     # `str.to.int(...)` context.
-    int_vars: FrozenSet[Variable] = frozenset(
-        {
+    int_vars: FrozenOrderedSet[Variable] = FrozenOrderedSet(
+        tuple(
             var
             for var in variables
             if all(context == z3.Z3_OP_STR_TO_INT for context in contexts[var])
-        }
+        )
     )
 
     # "Flexible" variables are the remaining ones.
-    flexible_vars = frozenset(variables.difference(length_vars).difference(int_vars))
+    flexible_vars = variables.difference(length_vars).difference(int_vars)
 
     return frozendict(
         {"length": length_vars, "int": int_vars, "flexible": flexible_vars}
