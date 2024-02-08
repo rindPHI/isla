@@ -1451,10 +1451,10 @@ class RepairSolver:
             substitution.children for substitution in tree_substitutions.values()
         )
 
-        optimized_solution_enabled = False  # TODO Re-enable
         if optimized_solution_enabled:
             raise NotImplementedError(
-                "TODO: Update optimized solution to integrate value suggestions."
+                "TODO: Update optimized solution to integrate value suggestions.\n" +
+                deep_str(smt_formulas)
             )  # TODO
             # (
             #     length_vars,

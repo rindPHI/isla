@@ -371,6 +371,30 @@ class TestRepairSolver(unittest.TestCase):
         self.assertEqual(frozendict({}), clid_fresh_vars)
         self.assertEqual(("a:x",), clid_structure)
 
+    def test_solve_complex_numeric_formula_heartbeat(self):
+        heartbeat_request_grammar = {
+            "<start>": ["<heartbeat-request>"],
+            "<heartbeat-request>": ["\x01<payload-length><payload><padding>"],
+            "<payload-length>": ["<byte><byte>"],
+            "<payload>": ["<bytes>"],
+            "<padding>": ["<bytes>"],
+            "<bytes>": ["<byte><bytes>", "<byte>"],
+            "<byte>": [chr(i) for i in range(256)],
+        }
+
+        length_constraint = """
+  256 * str.to_code(<payload-length>.<byte>[1])
++ str.to_code(<payload-length>.<byte>[2]) 
+= str.len(<payload>) and
+<payload-length>.<byte> = "\x01"
+"""
+
+        solver = RepairSolver(heartbeat_request_grammar, length_constraint)
+
+        for i in range(20):
+            solution = solver.solve()
+            LOGGER.info(f"Found solution no. %d: %s", i, solution)
+            # TODO: Check solution
 
 if __name__ == "__main__":
     unittest.main()

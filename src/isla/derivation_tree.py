@@ -37,6 +37,7 @@ import ijson
 import zlib
 from grammar_graph import gg
 from graphviz import Digraph
+from returns.maybe import Maybe
 
 from isla.helpers import (
     is_nonterminal,
@@ -90,12 +91,109 @@ class DerivationTree:
             self.__is_open = True
 
     def to_json(self) -> str:
-        the_dict = self.__dict__
-        if "_DerivationTree__k_paths" in the_dict:
-            del the_dict["_DerivationTree__k_paths"]
-        if "_DerivationTree__concrete_k_paths" in the_dict:
-            del the_dict["_DerivationTree__concrete_k_paths"]
-        return json.dumps(the_dict, default=lambda o: o.__dict__)
+        """
+        Serializes the tree to a JSON string.
+
+        Example
+        -------
+
+        >>> tree = DerivationTree(
+        ...     "<start>",
+        ...     (
+        ...         DerivationTree(
+        ...             "<a>", (DerivationTree("<b>"), DerivationTree("<c>", ()))
+        ...         ),
+        ...     ),
+        ... )
+
+        >>> print(json.dumps(json.loads(tree.to_json()), indent=4))
+        {
+            "_DerivationTree__value": "<start>",
+            "_DerivationTree__children": [
+                {
+                    "_DerivationTree__value": "<a>",
+                    "_DerivationTree__children": [
+                        {
+                            "_DerivationTree__value": "<b>",
+                            "_DerivationTree__children": null,
+                            "_id": 0,
+                            "_DerivationTree__len": 1,
+                            "_DerivationTree__hash": null,
+                            "_DerivationTree__structural_hash": null,
+                            "_DerivationTree__is_open": true
+                        },
+                        {
+                            "_DerivationTree__value": "<c>",
+                            "_DerivationTree__children": [],
+                            "_id": 1,
+                            "_DerivationTree__len": 1,
+                            "_DerivationTree__hash": null,
+                            "_DerivationTree__structural_hash": null,
+                            "_DerivationTree__is_open": false
+                        }
+                    ],
+                    "_id": 2,
+                    "_DerivationTree__len": null,
+                    "_DerivationTree__hash": null,
+                    "_DerivationTree__structural_hash": null,
+                    "_DerivationTree__is_open": true
+                }
+            ],
+            "_id": 3,
+            "_DerivationTree__len": null,
+            "_DerivationTree__hash": null,
+            "_DerivationTree__structural_hash": null,
+            "_DerivationTree__is_open": true
+        }
+
+
+        :return: A JSON string representing the tree.
+        """
+
+        stack: List[str] = []
+
+        def atom_to_json(atom: Union[str, int, float, bool, None]) -> str:
+            if atom is None:
+                return "null"
+            elif isinstance(atom, bool):
+                return "true" if atom else "false"
+            elif isinstance(atom, (int, float)):
+                return str(atom)
+            elif isinstance(atom, str):
+                return json.dumps(atom)
+
+            raise NotImplementedError(
+                f"Unexpected atom {atom} (type: {type(atom).__name__})"
+            )
+
+        def action(_, subtree: DerivationTree) -> None:
+            result = f'{{"_DerivationTree__value": {atom_to_json(subtree.value)},'
+
+            children = (
+                "null"
+                if subtree.children is None
+                else (
+                    "[]"
+                    if not subtree.children
+                    else "[" + ", ".join(stack[-len(subtree.children) :]) + "]"
+                )
+            )
+            result += f'"_DerivationTree__children": {children},'
+            for _ in range(len(subtree.children or [])):
+                stack.pop()
+
+            result += f'"_id": {atom_to_json(subtree.id)},'
+            result += f'"_DerivationTree__len": {atom_to_json(subtree.__len)},'
+            result += f'"_DerivationTree__hash": {atom_to_json(subtree.__hash)},'
+            result += f'"_DerivationTree__structural_hash": {atom_to_json(subtree.__structural_hash)},'
+            result += f'"_DerivationTree__is_open": {atom_to_json(subtree.__is_open)}'
+            result += "}"
+
+            stack.append(result)
+
+        self.traverse(action, kind=DerivationTree.TRAVERSE_POSTORDER)
+        assert len(stack) == 1
+        return stack[0]
 
     def __getstate__(self) -> bytes:
         return zlib.compress(self.to_json().encode("UTF-8"))

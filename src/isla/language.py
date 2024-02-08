@@ -54,10 +54,9 @@ from antlr4.Token import CommonToken
 from grammar_graph import gg
 from orderedset import FrozenOrderedSet, OrderedSet
 from returns.converters import result_to_maybe
-from returns.functions import compose, tap, raise_exception
+from returns.functions import tap, raise_exception
 from returns.maybe import Nothing, Some
 from returns.pipeline import flow, is_successful
-from returns.pointfree import lash
 from returns.result import safe
 from z3 import Z3Exception
 
@@ -1321,6 +1320,7 @@ class SemanticPredicateFormula(Formula):
 
 
 class PropositionalCombinator(Formula, ABC):
+    __match_args__ = ("args",)
     def __init__(self, *args: Formula):
         self.args = args
 
@@ -2405,164 +2405,104 @@ def replace_formula(  # noqa: C901
     return in_formula
 
 
-def convert_to_nnf(formula: Formula, negate=False) -> Formula:
-    """Pushes negations inside the formula."""
+def convert_to_nnf(formula: Formula) -> Formula:
+    """
+    This function converts the given formula to negation normal form (NNF).
+    This is a prerequisite for conversion to disjunctive normal form (DNF),
+    e.g., by :func:`~isla.language.to_dnf_clauses`.
 
-    def raise_not_implemented_error(_=Nothing) -> Maybe[Formula]:
-        raise NotImplementedError(f"Unexpected formula type {type(formula).__name__}")
+    Example
+    -------
 
-    return (
-        flow(
-            Nothing,
-            *map(
-                compose(lambda f: lambda _: f(formula, negate), lash),
-                [
-                    convert_negated_formula_to_nnf,
-                    convert_conjunctive_formula_to_nnf,
-                    convert_disjunctive_formula_to_nnf,
-                    convert_structural_predicate_formula_to_nnf,
-                    convert_smt_formula_to_nnf,
-                    convert_exists_int_formula_to_nnf,
-                    convert_quantified_formula_to_nnf,
-                ],
-            ),
-        )
-        .lash(raise_not_implemented_error)
-        .unwrap()
-    )
+    >>> formula = parse_isla('''
+    ...     not forall <A> a:
+    ...         exists <B> b:
+    ...             forall <C> c: (
+    ...                 not (a = b and b = c) or
+    ...                 (a = c and b = c)
+    ...             )''')
 
+    >>> print(unparse_isla(convert_to_nnf(formula)))
+    exists <A> a in start:
+      forall <B> b in start:
+        exists <C> c in start:
+          (((= a b) and
+           (= b c)) and
+          ((not (= a c)) or
+          (not (= b c))))
 
-def convert_negated_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
-    if not isinstance(formula, NegatedFormula):
-        return Nothing
+    :param formula: The formula to convert to NNF.
+    :return: The converted formula.
+    """
 
-    return Some(convert_to_nnf(formula.args[0], not negate))
-
-
-def convert_conjunctive_formula_to_nnf(
-    formula: Formula, negate: bool
-) -> Maybe[Formula]:
-    if not isinstance(formula, ConjunctiveFormula):
-        return Nothing
-
-    args = [convert_to_nnf(arg, negate) for arg in formula.args]
-    if negate:
-        return Some(reduce(lambda a, b: a | b, args))
-    else:
-        return Some(reduce(lambda a, b: a & b, args))
-
-
-def convert_disjunctive_formula_to_nnf(
-    formula: Formula, negate: bool
-) -> Maybe[Formula]:
-    if not isinstance(formula, DisjunctiveFormula):
-        return Nothing
-
-    args = [convert_to_nnf(arg, negate) for arg in formula.args]
-    if negate:
-        return Some(reduce(lambda a, b: a & b, args))
-    else:
-        return Some(reduce(lambda a, b: a | b, args))
-
-
-def convert_structural_predicate_formula_to_nnf(
-    formula: Formula, negate: bool
-) -> Maybe[Formula]:
-    if not isinstance(formula, StructuralPredicateFormula) and not isinstance(
-        formula, SemanticPredicateFormula
-    ):
-        return Nothing
-
-    return Some(-formula if negate else formula)
-
-
-def convert_smt_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
-    if not isinstance(formula, SMTFormula):
-        return Nothing
-
-    negated_smt_formula = z3_push_in_negations(formula.formula, negate)
-    # Automatic simplification can remove free variables from the formula!
-    actual_symbols = get_symbols(negated_smt_formula)
-    free_variables = [
-        var for var in formula.free_variables() if var.to_smt() in actual_symbols
-    ]
-    instantiated_variables = FrozenOrderedSet(
-        [
-            var
-            for var in formula.instantiated_variables
-            if var.to_smt() in actual_symbols
-        ]
-    )
-    substitutions = {
-        var: repl
-        for var, repl in formula.substitutions.items()
-        if var.to_smt() in actual_symbols
-    }
-
-    return Some(
-        SMTFormula(
-            negated_smt_formula,
-            *free_variables,
-            instantiated_variables=instantiated_variables,
-            substitutions=substitutions,
-            auto_eval=formula.auto_eval,
-            auto_subst=formula.auto_subst,
-        )
-    )
-
-
-def convert_exists_int_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
-    if not isinstance(formula, ExistsIntFormula) and not isinstance(
-        formula, ForallIntFormula
-    ):
-        return Nothing
-
-    inner_formula = (
-        convert_to_nnf(formula.inner_formula, negate)
-        if negate
-        else formula.inner_formula
-    )
-
-    if (isinstance(formula, ForallIntFormula) and negate) or (
-        isinstance(formula, ExistsIntFormula) and not negate
-    ):
-        return Some(ExistsIntFormula(formula.bound_variable, inner_formula))
-    else:
-        return Some(ForallIntFormula(formula.bound_variable, inner_formula))
-
-
-def convert_quantified_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
-    if not isinstance(formula, QuantifiedFormula):
-        return Nothing
-
-    inner_formula = (
-        convert_to_nnf(formula.inner_formula, negate)
-        if negate
-        else formula.inner_formula
-    )
-
-    if (isinstance(formula, ForallFormula) and negate) or (
-        isinstance(formula, ExistsFormula) and not negate
-    ):
-        return Some(
-            ExistsFormula(
+    match formula:
+        case SMTFormula() | StructuralPredicateFormula() | SemanticPredicateFormula():
+            return formula
+        case ConjunctiveFormula() | DisjunctiveFormula():
+            return type(formula)(*map(convert_to_nnf, formula.args))
+        case QuantifiedFormula():
+            return type(formula)(
                 formula.bound_variable,
                 formula.in_variable,
-                inner_formula,
+                convert_to_nnf(formula.inner_formula),
                 formula.bind_expression,
                 formula.already_matched,
             )
-        )
-    else:
-        return Some(
-            ForallFormula(
+        case NumericQuantifiedFormula():
+            return type(formula)(
                 formula.bound_variable,
-                formula.in_variable,
-                inner_formula,
-                formula.bind_expression,
-                formula.already_matched,
+                convert_to_nnf(formula.inner_formula),
             )
-        )
+        case (
+            NegatedFormula((SMTFormula(),))
+            | NegatedFormula((StructuralPredicateFormula(),))
+            | NegatedFormula((SemanticPredicateFormula(),))
+        ):
+            return formula
+        case NegatedFormula((ConjunctiveFormula(),)):
+            return DisjunctiveFormula(*(-convert_to_nnf(arg) for arg in formula.args))
+        case NegatedFormula((DisjunctiveFormula(),)):
+            return ConjunctiveFormula(*(-convert_to_nnf(arg) for arg in formula.args))
+        case NegatedFormula((ForallFormula(),)):
+            return convert_to_nnf(
+                ExistsFormula(
+                    formula.bound_variable,
+                    formula.in_variable,
+                    -formula.inner_formula,
+                    formula.bind_expression,
+                    formula.already_matched,
+                )
+            )
+        case NegatedFormula((ExistsFormula(),)):
+            return convert_to_nnf(
+                ForallFormula(
+                    formula.bound_variable,
+                    formula.in_variable,
+                    -formula.inner_formula,
+                    formula.bind_expression,
+                    formula.already_matched,
+                )
+            )
+        case NegatedFormula((ForallIntFormula(),)):
+            return convert_to_nnf(
+                ExistsIntFormula(
+                    formula.bound_variable,
+                    -formula.inner_formula,
+                )
+            )
+        case NegatedFormula((ExistsIntFormula(),)):
+            return convert_to_nnf(
+                ForallIntFormula(
+                    formula.bound_variable,
+                    -formula.inner_formula,
+                )
+            )
+        case NegatedFormula((NegatedFormula(),)):
+            return convert_to_nnf(formula.args[0])
+        case _:
+            raise NotImplementedError(
+                f"Unsupported formula {formula} (type {type(formula).__name__})"
+            )
 
 
 def to_dnf_clauses(formula: Formula) -> Tuple[Tuple[Formula, ...], ...]:
