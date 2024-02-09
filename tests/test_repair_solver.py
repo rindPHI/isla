@@ -2,11 +2,12 @@ import logging
 import random
 import unittest
 
+import z3
 from frozendict import frozendict
 
 from isla.derivation_tree import DerivationTree
 from isla.isla_predicates import IN_TREE_PREDICATE, SAME_POSITION_PREDICATE
-from isla.language import parse_isla, SMTFormula, BoundVariable
+from isla.language import parse_isla, SMTFormula, BoundVariable, Variable
 from isla.parser import EarleyParser
 from isla.repair_solver import RepairSolver, describe_subtree_structure
 from isla.z3_helpers import z3_eq
@@ -409,6 +410,137 @@ class TestRepairSolver(unittest.TestCase):
 
             self.assertEqual(1, length_msb)
             self.assertEqual(len(payload), 256 * length_msb + length_lsb)
+
+    def test_compare_optimize_and_vanilla_solver_for_simpl_xml_example(self):
+        solver = RepairSolver(TestRepairSolver.SIMPLIFIED_XML_NAMESPACE_GRAMMAR)
+
+        tree = solver.parse('<a:b x:c="XXX" x:c="XXX"><b:x></c:a></a:b>').unwrap()
+        tree = tree.replace_path((0, 0, 2, 1, 0, 2), DerivationTree("<letter>"))
+        tree = tree.replace_path((0, 0, 2, 2, 1, 0, 2), DerivationTree("<letter>"))
+
+        self.assertEqual(
+            '<a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>', str(tree)
+        )
+
+        letter_no_x_1 = Variable("letter_no_x_1", "<letter-no-x>")
+        letter_no_x_2 = Variable("letter_no_x_2", "<letter-no-x>")
+        letter_1 = Variable("letter_1", "<letter>")
+        letter_2 = Variable("letter_2", "<letter>")
+        attr_id_1 = Variable("attr_id_1", "<attr-id>")
+        attr_id_2 = Variable("attr_id_2", "<attr-id>")
+        tag_id_1 = Variable("tag_id_1", "<tag-id>")
+        tag_id_2 = Variable("tag_id_2", "<tag-id>")
+
+        # <a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>
+        # ^
+        letter_no_x_1_tree = tree.get_subtree((0, 1, 0, 1, 0))
+
+        # <a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>
+        # ^
+        letter_no_x_2_tree = tree.get_subtree((0, 0, 1, 0))
+
+        # <a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>
+        # ^
+        letter_1_tree = tree.get_subtree((0, 0, 2, 1, 0, 2))
+
+        # <a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>
+        # ^
+        letter_2_tree = tree.get_subtree((0, 0, 2, 2, 1, 0, 2))
+
+        # <a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>
+        # ^
+        attr_id_1_tree = tree.get_subtree((0, 0, 2, 1, 0))
+
+        # <a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>
+        # ^
+        attr_id_2_tree = tree.get_subtree((0, 0, 2, 2, 1, 0))
+
+        # <a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>
+        # ^
+        tag_id_1_tree = tree.get_subtree((0, 1, 0, 1))
+
+        # <a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>
+        # ^
+        tag_id_2_tree = tree.get_subtree((0, 1, 2, 2))
+
+        # - letter_no_x_1 == letter_1
+        # - Not(attr_id_2 == attr_id_1)
+        # - Not(letter_1 == "x")
+        # - letter_no_x_2 == letter_2
+        # - Not(letter_2 == "x")
+        # - tag_id_1 == tag_id_2
+
+        formula_1 = SMTFormula(
+            z3_eq(letter_no_x_1.to_smt(), letter_1.to_smt()),
+            letter_no_x_1,
+            letter_1,
+            auto_eval=False,
+            auto_subst=False,
+        ).substitute_expressions(
+            {letter_no_x_1: letter_no_x_1_tree, letter_1: letter_1_tree}
+        )
+
+        formula_2 = SMTFormula(
+            z3.Not(z3_eq(attr_id_2.to_smt(), attr_id_1.to_smt())),
+            attr_id_2,
+            attr_id_1,
+            auto_eval=False,
+            auto_subst=False,
+        ).substitute_expressions({attr_id_2: attr_id_2_tree, attr_id_1: attr_id_1_tree})
+
+        formula_3 = SMTFormula(
+            z3.Not(z3_eq(letter_1.to_smt(), z3.StringVal("x"))),
+            letter_1,
+            auto_eval=False,
+            auto_subst=False,
+        ).substitute_expressions({letter_1: letter_1_tree})
+
+        formula_4 = SMTFormula(
+            z3_eq(letter_no_x_2.to_smt(), letter_2.to_smt()),
+            letter_no_x_2,
+            letter_2,
+            auto_eval=False,
+            auto_subst=False,
+        ).substitute_expressions(
+            {letter_no_x_2: letter_no_x_2_tree, letter_2: letter_2_tree}
+        )
+
+        formula_5 = SMTFormula(
+            z3.Not(z3_eq(letter_2.to_smt(), z3.StringVal("x"))),
+            letter_2,
+            auto_eval=False,
+            auto_subst=False,
+        ).substitute_expressions({letter_2: letter_2_tree})
+
+        formula_6 = SMTFormula(
+            z3_eq(tag_id_1.to_smt(), tag_id_2.to_smt()),
+            tag_id_1,
+            tag_id_2,
+            auto_eval=False,
+            auto_subst=False,
+        ).substitute_expressions({tag_id_1: tag_id_1_tree, tag_id_2: tag_id_2_tree})
+
+        # First: vanilla solutions
+        _1, _2, _3, res, model = solver.compute_solution_vanilla(
+            (formula_1, formula_2, formula_3, formula_4, formula_5, formula_6), tree
+        )
+
+        self.assertEqual(z3.sat, res)
+        self.assertEqual('"x:b"', str(model[attr_id_1.to_smt()]))
+        self.assertEqual('"x:a"', str(model[attr_id_2.to_smt()]))
+        self.assertEqual('"b:x"', str(model[tag_id_1.to_smt()]))
+        self.assertEqual('"b:x"', str(model[tag_id_2.to_smt()]))
+
+        # Second: optimized solutions
+        _1, _2, _3, res, model = solver.compute_solution_optimized(
+            (formula_1, formula_2, formula_3, formula_4, formula_5, formula_6), tree
+        )
+
+        self.assertEqual(z3.sat, res)
+        self.assertEqual('"x:b"', str(model[attr_id_1.to_smt()]))
+        self.assertEqual('"x:a"', str(model[attr_id_2.to_smt()]))
+        self.assertEqual('"b:x"', str(model[tag_id_1.to_smt()]))
+        self.assertEqual('"b:x"', str(model[tag_id_2.to_smt()]))
 
 
 if __name__ == "__main__":

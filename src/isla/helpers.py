@@ -1278,3 +1278,51 @@ def depth_indent(c=".") -> str:
     stack = inspect.stack()
     fname = stack[1].function
     return c * len([fr for fr in stack[2:] if fr.function == fname])
+
+
+def sum_of_maybes(maybes: Iterable[Maybe[T]], neutral: Optional[T] = None) -> Maybe[T]:
+    """
+    Sums the given maybes. If any of the maybes is :code:`Nothing`, the result is
+    :code:`Nothing`. Otherwise, the result is the sum of the values of the maybes.
+
+    Example
+    -------
+
+    >>> sum_of_maybes(map(Some, range(4)))
+    <Some: 6>
+
+    >>> sum_of_maybes(map(Some, [(1, 2), (3,)]))
+    <Some: (1, 2, 3)>
+
+    >>> from returns.maybe import Nothing
+    >>> sum_of_maybes([Some(1), Nothing, Some(3)])
+    <Nothing>
+
+    >>> sum_of_maybes(())
+    Traceback (most recent call last):
+    ...
+    TypeError: reduce() of empty iterable with no initial value
+
+    >>> sum_of_maybes((), neutral=0)
+    <Some: 0>
+
+    :param maybes: The maybes to sum.
+    :return: The sum of the maybes.
+    """
+
+    if neutral is not None:
+        return reduce(
+            lambda acc, maybe: acc.bind(
+                lambda acc_val: maybe.bind(lambda val: Some(acc_val + val))
+            ),
+            maybes,
+            Some(neutral),
+        )
+    else:
+
+        return reduce(
+            lambda acc, maybe: acc.bind(
+                lambda acc_val: maybe.bind(lambda val: Some(acc_val + val))
+            ),
+            maybes,
+        )

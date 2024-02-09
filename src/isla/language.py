@@ -1321,6 +1321,7 @@ class SemanticPredicateFormula(Formula):
 
 class PropositionalCombinator(Formula, ABC):
     __match_args__ = ("args",)
+
     def __init__(self, *args: Formula):
         self.args = args
 

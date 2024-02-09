@@ -38,7 +38,7 @@ from typeguard import typechecked
 from isla.derivation_tree import DerivationTree
 from isla.evaluator import matches_for_quantified_formula, evaluate
 from isla.fuzzer import GrammarCoverageFuzzer
-from isla.helpers import deep_str, depth_indent, star, lazystr, eassert
+from isla.helpers import deep_str, depth_indent, star, lazystr, eassert, sum_of_maybes
 from isla.helpers import (
     frozen_canonical,
     is_nonterminal,
@@ -83,7 +83,7 @@ from isla.language import (
     validate_smt_formula_substitutions,
     to_dnf_clauses,
 )
-from isla.parser import EarleyParser
+from isla.parser import EarleyParser, PEGParser
 from isla.tree_insertion import insert_tree
 from isla.type_defs import FrozenGrammar, Path, Grammar, FrozenCanonicalGrammar
 from isla.z3_helpers import (
@@ -450,6 +450,7 @@ def value_suggestion_constraints(
 def shape_relations_from_smt_constraints(
     tree: DerivationTree,
     smt_constraints: Iterable[SMTFormula],
+    initial_fresh_variables: FrozenOrderedSet[Variable] = FrozenOrderedSet(),
 ) -> Tuple[
     FrozenOrderedSet[Variable],
     frozendict[Variable, Tuple[str | Variable, ...]],
@@ -573,13 +574,17 @@ def shape_relations_from_smt_constraints(
     :param tree: The reference tree for the SMT constraints' substitutions.
     :param smt_constraints: The SMT constraints to extract value suggestions
         from.
+    :param initial_fresh_variables: A dictionary of variables that will not be chosen
+        as fresh variables.
     :return: A triple of a set of fresh variables, a sequence of structural
         relations, and a sequence of value relations.
     """
 
     bound_tree_paths = compute_bound_tree_paths(tree, smt_constraints)
 
-    fresh_variables: frozendict[Variable, str] = frozendict({})
+    fresh_variables: frozendict[Variable, str] = frozendict(
+        {var: "" for var in initial_fresh_variables}
+    )
     structural_values: frozendict[Variable, Tuple[str | Variable, ...]] = frozendict({})
     literal_values: frozendict[Variable, str] = frozendict({})
 
@@ -595,6 +600,15 @@ def shape_relations_from_smt_constraints(
         if not structure:
             continue
 
+        if initial_fresh_variables:
+            new_fresh_vars = frozendict(
+                {
+                    var: val
+                    for var, val in new_fresh_vars.items()
+                    if var not in initial_fresh_variables
+                }
+            )
+
         fresh_variables = frozendict(fresh_variables | new_fresh_vars)
 
         if any(isinstance(elem, Variable) for elem in structure):
@@ -605,7 +619,7 @@ def shape_relations_from_smt_constraints(
             literal_values = literal_values.set(var, structure[0])
 
     return (
-        FrozenOrderedSet(fresh_variables.keys()),
+        FrozenOrderedSet(fresh_variables.keys()).difference(initial_fresh_variables),
         structural_values,
         literal_values,
     )
@@ -669,9 +683,33 @@ class RepairSolver:
         maybe_constraint: Optional[Formula | str] = None,
         structural_predicates=frozenset(STANDARD_STRUCTURAL_PREDICATES),
         max_tries_existential_insertion: int = 4,
+        enable_optimized_z3_queries: bool = True,
     ):
-        # TODO: Make configurable.
-        self.enable_optimized_z3_queries: bool = True
+        """
+        An ISLa solver based on semantic repair of syntactically correct solutions.
+        Its main methods are :meth:`~isla.repair_solver.RepairSolver.repair_tree`,
+        :meth:`~isla.repair_solver.RepairSolver.solve`, and
+        :meth:`~isla.repair_solver.RepairSolver.parse`.
+
+        :param grammar: The grammar defining the syntactic constraints of the
+            solutions to be produced.
+        :param maybe_constraint: An optional constraint specifying the semantic
+            restrictions of the solutions to be produced. It can be a string
+            representing a formula in ISLa's syntax, a formula object, or None.
+        :param structural_predicates: A set of structural predicates to be used
+            when parsing the optional constraint if it is a string. This parameter
+            is not required if no constraint is given, the constraint is a formula
+            object, or it uses only standard structural predicates.
+        :param max_tries_existential_insertion: The number of different insertions
+            that are tried as solutions of an existential quantifier before giving
+            up the repair process.
+        :param enable_optimized_z3_queries: If true, SMT formulas are preprocessed
+            before passing them to the SMT solver. This affects formulas with
+            variables solely occurring in :code:`str.to.int` or :code:`str.len`
+            contexts.
+        """
+
+        self.enable_optimized_z3_queries: bool = enable_optimized_z3_queries
         self.max_tries_existential_insertion: int = max_tries_existential_insertion
         self.grammar_unwinding_threshold: int = 4
 
@@ -733,22 +771,32 @@ class RepairSolver:
         grammar = self.grammar
         if nonterminal != "<start>":
             grammar = grammar.set("<start>", (nonterminal,))
-            grammar = grammar_to_frozen(
-                delete_unreachable(grammar)
-            )  # TODO: Directly frozen
+            grammar = delete_unreachable(grammar)
 
-        parser = EarleyParser(grammar)
+        peg_parser = PEGParser(grammar)
         try:
-            parse_tree = next(parser.parse(inp))
+            parse_tree = next(iter(peg_parser.parse(inp)))
             if nonterminal != "<start>":
                 parse_tree = parse_tree[1][0]
-            tree = DerivationTree.from_parse_tree(parse_tree)
-        except SyntaxError as err:
+        except SyntaxError as peg_err:
             if not silent:
-                LOGGER.error(f'Error parsing "{inp}" starting with "{nonterminal}"')
-            raise err
+                LOGGER.info(
+                    f'PEGParser: Error parsing "{inp}" starting with "{nonterminal}":\n{peg_err}'
+                )
 
-        return tree
+            earley_parser = EarleyParser(grammar)
+            try:
+                parse_tree = next(earley_parser.parse(inp))
+                if nonterminal != "<start>":
+                    parse_tree = parse_tree[1][0]
+            except SyntaxError as earley_err:
+                if not silent:
+                    LOGGER.error(
+                        f'Error parsing "{inp}" starting with "{nonterminal}":\n{earley_err}'
+                    )
+                raise earley_err
+
+        return DerivationTree.from_parse_tree(parse_tree)
 
     @typechecked
     def solve(self) -> DerivationTree:
@@ -758,11 +806,6 @@ class RepairSolver:
     def make_solve_iterator(self) -> Iterator[DerivationTree]:
         while True:
             tree = self.fuzzer.fuzz_tree()
-
-            # TODO test code
-            # tree = self.parse('<b:a x:b="XXX"></c:x>').unwrap()
-
-            # assert tree.structurally_equal(tree_)
 
             maybe_repaired = self.repair_tree(
                 self.instantiate_top_constant(tree),
@@ -1340,34 +1383,6 @@ class RepairSolver:
             }
         )
 
-        # tree_substitutions = cast(
-        #     frozendict[DerivationTree, DerivationTree], frozendict()
-        # )
-
-        # for idx in range(len(replaced_path) + 1):
-        #     # TODO: This seems hacky & bug-prone. We should assemble the
-        #     #       mapping between original and resulting subtrees during
-        #     #       tree insertion. Furthermore, we should only consider
-        #     #       subtrees that are actually affected by the insertion.
-        #     # TODO: Do we even *need* the substitutions? Our new tree insertion
-        #     #       procedures should retain all original identifiers.
-        #     original_path = replaced_path[: idx - 1]
-        #     original_tree = context_tree.get_subtree(original_path)
-
-        #     if not resulting_tree.is_valid_path(original_path):
-        #         continue
-
-        #     if original_tree.value != resulting_tree.get_subtree(original_path).value:
-        #         continue
-
-        #     if resulting_tree.get_subtree(original_path) == original_tree:
-        #         continue
-
-        #     tree_substitutions = tree_substitutions.set(
-        #         original_tree,
-        #         resulting_tree.get_subtree(original_path),
-        #     )
-
         inserted_tree_in_tree_after_insertion = inserted_tree.get_subtree(
             path_to_inserted_tree
         )
@@ -1507,18 +1522,6 @@ class RepairSolver:
         :return: A (possibly empty) list of solutions.
         """
 
-        # TODO: I disabled priority formulas since this should now be addressed with
-        #       structural constraints. Check if that works.
-        # # If any SMT formula refers to *sub*trees in the instantiations of other SMT
-        # # formulas, we have to instantiate those first.
-        # priority_formulas = smt_formulas_referring_to_subtrees(smt_formulas)
-
-        # if priority_formulas:
-        #     LOGGER.debug("Focusing on priority formulas %s", priority_formulas)
-
-        #     smt_formulas = priority_formulas
-        #     assert not smt_formulas_referring_to_subtrees(smt_formulas)
-
         (
             solver_result,
             maybe_model,
@@ -1569,12 +1572,8 @@ class RepairSolver:
         smt_formulas: Tuple[SMTFormula, ...],
     ) -> Tuple[z3.CheckSatResult, Maybe[frozendict[Variable, DerivationTree]]]:
         """
-        TODO Document, test.
+        Attempts to solve the given SMT-LIB formulas by calling Z3.
 
-        :param variables:
-        :param smt_formulas:
-        :param tree_substitutions:
-        :return:
         """
 
         variables = collect_variables_in_smt_formulas(smt_formulas)
@@ -1588,26 +1587,13 @@ class RepairSolver:
                 maybe_model,
             ) = self.compute_solution_optimized(smt_formulas, tree, variables)
         else:
-            length_vars, int_vars, fresh_var_map = (
-                frozenset(),
-                frozenset(),
-                frozendict({}),
-            )
-
             (
-                fresh_variables,
-                value_suggestions,
-                structural_suggestions,
-            ) = value_suggestion_constraints(tree, smt_formulas)
-
-            sat_result, maybe_model = z3_solve(
-                self.generate_language_constraints(
-                    variables | fresh_variables,
-                )
-                + tuple(map(lambda f: f.formula, smt_formulas)),
-                structural_suggestions,
-                value_suggestions,
-            )
+                length_vars,
+                int_vars,
+                fresh_var_map,
+                sat_result,
+                maybe_model,
+            ) = self.compute_solution_vanilla(smt_formulas, tree, variables)
 
         if sat_result != z3.sat:
             return sat_result, Nothing
@@ -1615,6 +1601,193 @@ class RepairSolver:
         assert maybe_model is not None
         return sat_result, self.extract_model_values(
             variables, maybe_model, fresh_var_map, length_vars, int_vars
+        )
+
+    def compute_solution_vanilla(
+        self,
+        smt_formulas: Tuple[SMTFormula, ...],
+        tree: DerivationTree,
+        variables: Optional[FrozenOrderedSet[Variable]] = None,
+    ) -> Tuple[
+        FrozenOrderedSet[Variable],
+        FrozenOrderedSet[Variable],
+        frozendict[Variable, z3.ExprRef],
+        z3.CheckSatResult,
+        Optional[z3.ModelRef],
+    ]:
+        r"""
+        This function computes a solution to the given SMT-LIB formulas using the
+        Z3 SMT solver. It does not perform any optimizations (e.g., for numeric
+        variables).
+
+        Example
+        -------
+
+        >>> simplified_xml_grammar = '''
+        ...     <start> ::= <xml-tree>
+        ...     <xml-tree> ::= "" | <xml-open-tag> <xml-tree> <xml-close-tag>
+        ...     <xml-open-tag> ::= "<" <tag-id> <attrs> ">"
+        ...     <xml-close-tag> ::= "</" <tag-id> ">"
+        ...     <attrs> ::= "" | " " <attr> <attrs>
+        ...     <attr> ::= <attr-id> "=\\"XXX\\""
+        ...     <tag-id> ::= <letter-no-x> ":" <letter>
+        ...     <attr-id> ::= <letter> ":" <letter>
+        ...     <letter> ::= "a" | "b" | "c" | "x"
+        ...     <letter-no-x> ::= "a" | "b" | "c"
+        ... '''
+
+        >>> solver = RepairSolver(simplified_xml_grammar)
+
+        >>> tree = solver.parse('<a:b x:c="XXX" x:c="XXX"><b:x></c:a></a:b>').unwrap()
+        >>> tree = tree.replace_path((0, 0, 2, 1, 0, 2), DerivationTree("<letter>"))
+        >>> tree = tree.replace_path((0, 0, 2, 2, 1, 0, 2), DerivationTree("<letter>"))
+        >>> print(tree)
+        <a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>
+
+        >>> letter_no_x_1 = Variable("letter_no_x_1", "<letter-no-x>")
+        >>> letter_no_x_2 = Variable("letter_no_x_2", "<letter-no-x>")
+        >>> letter_1 = Variable("letter_1", "<letter>")
+        >>> letter_2 = Variable("letter_2", "<letter>")
+        >>> attr_id_1 = Variable("attr_id_1", "<attr-id>")
+        >>> attr_id_2 = Variable("attr_id_2", "<attr-id>")
+        >>> tag_id_1 = Variable("tag_id_1", "<tag-id>")
+        >>> tag_id_2 = Variable("tag_id_2", "<tag-id>")
+
+        <a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>
+                                                ^
+        >>> letter_no_x_1_tree = tree.get_subtree((0, 1, 0, 1, 0))
+
+        <a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>
+         ^
+        >>> letter_no_x_2_tree = tree.get_subtree((0, 0, 1, 0))
+
+        <a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>
+               ^
+        >>> letter_1_tree = tree.get_subtree((0, 0, 2, 1, 0, 2))
+
+        <a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>
+                                ^
+        >>> letter_2_tree = tree.get_subtree((0, 0, 2, 2, 1, 0, 2))
+
+        <a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>
+             ^
+        >>> attr_id_1_tree = tree.get_subtree((0, 0, 2, 1, 0))
+
+        <a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>
+                              ^
+        >>> attr_id_2_tree = tree.get_subtree((0, 0, 2, 2, 1, 0))
+
+        <a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>
+         ^
+        >>> tag_id_1_tree = tree.get_subtree((0, 1, 0, 1))
+
+        <a:b x:<letter>="XXX" x:<letter>="XXX"><b:x></c:a></a:b>
+                                                            ^
+        >>> tag_id_2_tree = tree.get_subtree((0, 1, 2, 2))
+
+        - letter_no_x_1 == letter_1
+        - Not(attr_id_2 == attr_id_1)
+        - Not(letter_1 == "x")
+        - letter_no_x_2 == letter_2
+        - Not(letter_2 == "x")
+        - tag_id_1 == tag_id_2
+
+        >>> formula_1 = SMTFormula(
+        ...     z3_eq(letter_no_x_1.to_smt(), letter_1.to_smt()),
+        ...     letter_no_x_1, letter_1,
+        ...     auto_eval=False, auto_subst=False,
+        ... ).substitute_expressions(
+        ...     {letter_no_x_1: letter_no_x_1_tree, letter_1: letter_1_tree}
+        ... )
+
+        >>> formula_2 = SMTFormula(
+        ...     z3.Not(z3_eq(attr_id_2.to_smt(), attr_id_1.to_smt())),
+        ...     attr_id_2, attr_id_1,
+        ...     auto_eval=False, auto_subst=False,
+        ... ).substitute_expressions({attr_id_2: attr_id_2_tree, attr_id_1: attr_id_1_tree})
+
+        >>> formula_3 = SMTFormula(
+        ...     z3.Not(z3_eq(letter_1.to_smt(), z3.StringVal("x"))),
+        ...     letter_1,
+        ...     auto_eval=False, auto_subst=False,
+        ... ).substitute_expressions({letter_1: letter_1_tree})
+
+        >>> formula_4 = SMTFormula(
+        ...     z3_eq(letter_no_x_2.to_smt(), letter_2.to_smt()),
+        ...     letter_no_x_2, letter_2,
+        ...     auto_eval=False, auto_subst=False,
+        ... ).substitute_expressions(
+        ...     {letter_no_x_2: letter_no_x_2_tree, letter_2: letter_2_tree}
+        ... )
+
+        >>> formula_5 = SMTFormula(
+        ...     z3.Not(z3_eq(letter_2.to_smt(), z3.StringVal("x"))),
+        ...     letter_2,
+        ...     auto_eval=False, auto_subst=False,
+        ... ).substitute_expressions({letter_2: letter_2_tree})
+
+        >>> formula_6 = SMTFormula(
+        ...     z3_eq(tag_id_1.to_smt(), tag_id_2.to_smt()),
+        ...     tag_id_1, tag_id_2,
+        ...     auto_eval=False, auto_subst=False,
+        ... ).substitute_expressions({tag_id_1: tag_id_1_tree, tag_id_2: tag_id_2_tree})
+
+        >>> random.seed(0)
+        >>> z3.set_param("smt.random_seed", 0)
+
+        >>> _1, _2, _3, res, model = solver.compute_solution_vanilla(
+        ...     (formula_1, formula_2, formula_3, formula_4, formula_5, formula_6), tree
+        ... )
+
+        >>> res
+        sat
+
+        >>> model[attr_id_1.to_smt()]
+        "x:b"
+
+        >>> model[attr_id_2.to_smt()]
+        "x:a"
+
+        >>> model[tag_id_1.to_smt()]
+        "b:x"
+
+        >>> model[tag_id_2.to_smt()]
+        "b:x"
+
+        :param smt_formulas: The SMT-LIB formulas to solve.
+        :param tree: The reference tree.
+        :param variables: The variables occurring in the SMT-LIB formulas. If not
+            provided, they are computed from the formulas.
+        :return: A tuple containing the set of length variables (here empty), the
+            set of integer variables (here empty), a mapping from fresh variables
+            to their Z3 expressions (here empty), the result of the Z3 solver, and
+            the model returned by the Z3 solver.
+        """
+
+        if variables is None:
+            variables = collect_variables_in_smt_formulas(smt_formulas)
+
+        (
+            fresh_variables,
+            value_suggestions,
+            structural_suggestions,
+        ) = value_suggestion_constraints(tree, smt_formulas)
+
+        sat_result, maybe_model = z3_solve(
+            self.generate_language_constraints(
+                variables | fresh_variables,
+            )
+            + tuple(map(lambda f: f.formula, smt_formulas)),
+            structural_suggestions,
+            value_suggestions,
+        )
+
+        return (
+            FrozenOrderedSet(),
+            FrozenOrderedSet(),
+            frozendict({}),
+            sat_result,
+            maybe_model,
         )
 
     def compute_solution_optimized(
@@ -1807,7 +1980,9 @@ class RepairSolver:
             fresh_variables,
             structural_relations,
             value_relations,
-        ) = shape_relations_from_smt_constraints(tree, smt_formulas)
+        ) = shape_relations_from_smt_constraints(
+            tree, smt_formulas, initial_fresh_variables=all_variables
+        )
 
         assert all(int_var not in structural_relations for int_var in int_vars)
         assert all(length_var not in structural_relations for length_var in length_vars)
@@ -1829,7 +2004,7 @@ class RepairSolver:
             tuple(
                 z3_eq(var.to_smt(), z3.StringVal(value))
                 for var, value in value_relations.items()
-                if var in flexible_vars
+                if var in flexible_vars or var in fresh_variables
             )
             + tuple(
                 z3_eq(fresh_var_map[var], z3.IntVal(int(value)))
@@ -1837,7 +2012,7 @@ class RepairSolver:
                 if var in int_vars
             )
             + tuple(
-                z3_eq(fresh_var_map[var], z3.Length(z3.StringVal(value)))
+                z3_eq(fresh_var_map[var], z3.IntVal(len(value)))
                 for var, value in value_relations.items()
                 if var in length_vars
             )
@@ -1909,15 +2084,20 @@ class RepairSolver:
         :param int_vars:
         :return:
         """
-        model_values: Maybe[frozendict[Variable, DerivationTree]] = reduce(
-            lambda maybe_solution, var: maybe_solution.bind(
-                lambda solution: self.extract_model_value(
-                    var, maybe_model, fresh_var_map, length_vars, int_vars
-                ).map(lambda model_value: solution + ((var, model_value),))
-            ),
+
+        model_values: Maybe[frozendict[Variable, DerivationTree]] = flow(
             variables,
-            Some(()),
-        ).map(frozendict)
+            partial(
+                map,
+                lambda var: (
+                    self.extract_model_value(
+                        var, maybe_model, fresh_var_map, length_vars, int_vars
+                    ).map(lambda model_value: ((var, model_value),))
+                ),
+            ),
+            partial(sum_of_maybes, neutral=()),
+            map_(frozendict),
+        )
 
         assert model_values.map(
             lambda r: isinstance(r, frozendict)

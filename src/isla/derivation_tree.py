@@ -18,6 +18,7 @@
 
 import html
 import json
+import zlib
 from functools import lru_cache, cache
 from typing import (
     Optional,
@@ -34,10 +35,8 @@ from typing import (
 
 import graphviz
 import ijson
-import zlib
 from grammar_graph import gg
 from graphviz import Digraph
-from returns.maybe import Maybe
 
 from isla.helpers import (
     is_nonterminal,
@@ -101,9 +100,14 @@ class DerivationTree:
         ...     "<start>",
         ...     (
         ...         DerivationTree(
-        ...             "<a>", (DerivationTree("<b>"), DerivationTree("<c>", ()))
+        ...             "<a>", (
+        ...                 DerivationTree("<b>", id=2),
+        ...                 DerivationTree("<c>", (), id=3),
+        ...             ),
+        ...             id=1,
         ...         ),
         ...     ),
+        ...     id=0,
         ... )
 
         >>> print(json.dumps(json.loads(tree.to_json()), indent=4))
@@ -116,7 +120,7 @@ class DerivationTree:
                         {
                             "_DerivationTree__value": "<b>",
                             "_DerivationTree__children": null,
-                            "_id": 0,
+                            "_id": 2,
                             "_DerivationTree__len": 1,
                             "_DerivationTree__hash": null,
                             "_DerivationTree__structural_hash": null,
@@ -125,21 +129,21 @@ class DerivationTree:
                         {
                             "_DerivationTree__value": "<c>",
                             "_DerivationTree__children": [],
-                            "_id": 1,
+                            "_id": 3,
                             "_DerivationTree__len": 1,
                             "_DerivationTree__hash": null,
                             "_DerivationTree__structural_hash": null,
                             "_DerivationTree__is_open": false
                         }
                     ],
-                    "_id": 2,
+                    "_id": 1,
                     "_DerivationTree__len": null,
                     "_DerivationTree__hash": null,
                     "_DerivationTree__structural_hash": null,
                     "_DerivationTree__is_open": true
                 }
             ],
-            "_id": 3,
+            "_id": 0,
             "_DerivationTree__len": null,
             "_DerivationTree__hash": null,
             "_DerivationTree__structural_hash": null,

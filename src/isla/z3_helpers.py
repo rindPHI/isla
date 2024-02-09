@@ -141,8 +141,6 @@ def evaluate_z3_expression(
                     evaluate_z3_seq_at,
                     evaluate_z3_seq_extract,
                     evaluate_z3_str_to_code,
-                    # Fallback
-                    not_implemented_failure,
                 ],
             ),
         )
@@ -656,10 +654,10 @@ def z3_solve(
 
         if result == z3.sat:
             model = solver.model()
-            return result, model
+            return z3.sat, model
 
         if result == z3.unsat:
-            return result, None
+            return z3.unsat, None
 
         assert result == z3.unknown
 
@@ -690,7 +688,7 @@ def z3_solve(
     if result == z3.unknown:
         logger.warning("Satisfiability of %s could not be decided", deep_str(formulas))
 
-    return result, model
+    return z3.unknown, None
 
 
 class DomainError(RuntimeError):
