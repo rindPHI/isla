@@ -91,6 +91,11 @@ XML_WELLFORMEDNESS_CONSTRAINT = parse_isla(
     xml_wellformedness_constraint, XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 )
 
+# Note: The namespace constraints ignore the "aliasing" property which lets
+#       you use different namespace prefixes for the same namespace.
+#       For example, `xmlns:a="XXX"` and `xmlns:b="XXX"` are referring to
+#       the same namespace, and having `a:a` and `b:a` in the same tag is
+#       not allowed.
 xml_attribute_namespace_constraint = r"""
 forall <xml-attribute> attribute="{<id-no-prefix> prefix_use}:{<id-no-prefix> maybe_def}=\"<text>\"": (
   not maybe_def = "xmlns" or

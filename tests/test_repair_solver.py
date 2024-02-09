@@ -31,11 +31,16 @@ class TestRepairSolver(unittest.TestCase):
 <xml-open-tag> ::= "<" <tag-id> <attrs> ">"
 <xml-close-tag> ::= "</" <tag-id> ">"
 <attrs> ::= "" | " " <attr> <attrs>
-<attr> ::= <attr-id> "=\\"XXX\\""
+<attr> ::= <attr-id> "=\\"" <randstr> "\\""
 <tag-id> ::= <letter-no-x> ":" <letter>
 <attr-id> ::= <letter> ":" <letter>
 <letter> ::= "a" | "b" | "c" | "x"
 <letter-no-x> ::= "a" | "b" | "c"
+<randstr> ::= <char> <randstr> | <char>
+<char> ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | 
+           "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" |
+           "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" |
+           "Y" | "Z"
     """
 
     SIMPLIFIED_XML_WELLFORMEDNESS_CONSTRAINT = parse_isla(
@@ -46,18 +51,23 @@ class TestRepairSolver(unittest.TestCase):
         SIMPLIFIED_XML_NAMESPACE_GRAMMAR,
     )
 
+    # Note: The namespace constraints ignore the "aliasing" property which lets
+    #       you use different namespace prefixes for the same namespace.
+    #       For example, `xmlns:a="XXX"` and `xmlns:b="XXX"` are referring to
+    #       the same namespace, and having `a:a` and `b:a` in the same tag is
+    #       not allowed.
     SIMPLIFIED_XML_ATTRIBUTE_NAMESPACE_CONSTRAINT = parse_isla(
         r"""
-            forall <attr> attribute="{<letter> prefix_use}:{<letter> maybe_def}=\"XXX\"": (
+            forall <attr> attribute="{<letter> prefix_use}:{<letter> maybe_def}=\"<randstr>\"": (
                 not maybe_def = "x" or
                 not prefix_use = "x"
             ) and
-            forall <attr> attribute="{<letter> prefix_use}:{<letter> maybe_def}=\"XXX\"": (
+            forall <attr> attribute="{<letter> prefix_use}:{<letter> maybe_def}=\"<randstr>\"": (
               prefix_use = "x" or
                 not prefix_use = "x" and
                 exists <xml-tree> outer_tag="<<tag-id>{<attrs> cont_attribute}><xml-tree></<tag-id>>":
                   (inside(attribute, outer_tag) and
-                   exists <attr> def_attribute="x:{<letter> prefix_def}=\"XXX\"" in cont_attribute:
+                   exists <attr> def_attribute="x:{<letter> prefix_def}=\"<randstr>\"" in cont_attribute:
                      prefix_use = prefix_def)
             )""",
         SIMPLIFIED_XML_NAMESPACE_GRAMMAR,
@@ -69,7 +79,7 @@ class TestRepairSolver(unittest.TestCase):
             forall <xml-tree> xml_tree="<{<letter-no-x> prefix_use}:<letter>[<attrs>][/]>[<xml-tree><xml-close-tag>]":
               exists <xml-tree> outer_tag="<<tag-id>{<attrs> cont_attribute}><xml-tree></<tag-id>>":
                 (inside(xml_tree, outer_tag) and 
-                 exists <attr>="x:{<letter> prefix_def}=\"XXX\"" in cont_attribute:
+                 exists <attr>="x:{<letter> prefix_def}=\"<randstr>\"" in cont_attribute:
                    prefix_use = prefix_def)""",
         SIMPLIFIED_XML_NAMESPACE_GRAMMAR,
         structural_predicates={IN_TREE_PREDICATE},
@@ -83,8 +93,8 @@ class TestRepairSolver(unittest.TestCase):
     SIMPLIFIED_XML_NO_ATTR_REDEF_CONSTRAINT = parse_isla(
         r"""
             forall <attrs> attr_outer in start:
-              forall <attr> attr_inner_1="{<attr-id> id_1}=\"XXX\"" in attr_outer:
-                forall <attr> attr_inner_2="{<attr-id> id_2}=\"XXX\"" in attr_outer: 
+              forall <attr> attr_inner_1="{<attr-id> id_1}=\"<randstr>\"" in attr_outer:
+                forall <attr> attr_inner_2="{<attr-id> id_2}=\"<randstr>\"" in attr_outer: 
                   (same_position(attr_inner_1, attr_inner_2) xor
                    not (= id_1 id_2))""",
         SIMPLIFIED_XML_NAMESPACE_GRAMMAR,
@@ -246,7 +256,7 @@ class TestRepairSolver(unittest.TestCase):
                   exists <xml-tree> outer_tag=
                       "<<tag-id> {<attr> cont_attribute}><xml-tree></<tag-id>>":  # is <attrs> in less restrictive form
                     (inside(xml_tree, outer_tag) and 
-                     exists <attr>="x:{<letter> prefix_def}=\"XXX\"" in cont_attribute:
+                     exists <attr>="x:{<letter> prefix_def}=\"<randstr>\"" in cont_attribute:
                        prefix_use = prefix_def)""",
             TestRepairSolver.SIMPLIFIED_XML_NAMESPACE_GRAMMAR,
             structural_predicates={IN_TREE_PREDICATE},
