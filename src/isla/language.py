@@ -1429,7 +1429,7 @@ class ConjunctiveFormula(PropositionalCombinator):
         return hash((type(self).__name__, self.args))
 
     def __eq__(self, other):
-        return split_conjunction(self) == split_conjunction(other)
+        return isinstance(other, ConjunctiveFormula) and other.args == self.args
 
     def __str__(self):
         return f"({' ∧ '.join(map(str, self.args))})"
@@ -1472,7 +1472,7 @@ class DisjunctiveFormula(PropositionalCombinator):
         return hash((type(self).__name__, self.args))
 
     def __eq__(self, other):
-        return split_disjunction(self) == split_disjunction(other)
+        return isinstance(other, DisjunctiveFormula) and other.args == self.args
 
     def __str__(self):
         return f"({' ∨ '.join(map(str, self.args))})"
@@ -2616,6 +2616,7 @@ def split_conjunction(formulas: Formula | Iterable[Formula]) -> Tuple[Formula, .
     :param formulas:
     :return:
     """
+
     if not (isinstance(formulas, Formula)):
         return tuple(
             conjunct for formula in formulas for conjunct in split_conjunction(formula)
