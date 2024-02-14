@@ -31,6 +31,7 @@ dependencies = [
     "grammar_to_regex>=0.0.4",
     "grammar_graph>=0.2.0",
     "ijson>=3.1.4",
+    "more-itertools>=10.1.0",
     "packaging>=21.3",
     "pathos>=0.2.9",
     "proxyorderedset>=0.3.5",
