@@ -4,7 +4,8 @@ from grammar_graph.gg import GrammarGraph
 
 from isla.derivation_tree import DerivationTree
 from isla.parser import EarleyParser
-from isla.tree_insertion import insert_tree_by_reverse_embedding, insert_tree
+from isla.tree_insertion import insert_tree_by_reverse_embedding, insert_tree, \
+    insert_tree_by_self_embedding
 from isla_formalizations.scriptsizec import SCRIPTSIZE_C_GRAMMAR
 from isla_formalizations.xml_lang import XML_GRAMMAR_WITH_NAMESPACE_PREFIXES
 
@@ -53,6 +54,7 @@ class TestTreeInsertion(unittest.TestCase):
         context_tree = DerivationTree.from_parse_tree(
             next(EarleyParser(SCRIPTSIZE_C_GRAMMAR).parse(context_inp))
         )
+        print(context_tree.to_dot())
 
         decl = DerivationTree(
             "<declaration>",
@@ -65,7 +67,7 @@ class TestTreeInsertion(unittest.TestCase):
 
         graph = GrammarGraph.from_grammar(SCRIPTSIZE_C_GRAMMAR)
 
-        results = list(insert_tree(context_tree, decl, graph))
+        results = list(insert_tree_by_self_embedding(context_tree, decl, graph))
         print("\n".join(map(lambda p: str(p[0]), results)))
         self.assertTrue(any(str(r).startswith("{int <id>;") for r in results))
 
