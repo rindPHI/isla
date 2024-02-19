@@ -556,7 +556,6 @@ class TestRepairSolver(unittest.TestCase):
         self.assertEqual('"b:x"', str(model[tag_id_2.to_smt()]))
 
     def test_rest(self):
-        random.seed(10)
         solver = RepairSolver(
             rest.REST_GRAMMAR,
             rest.LENGTH_UNDERLINE
@@ -565,7 +564,7 @@ class TestRepairSolver(unittest.TestCase):
             & rest.LIST_NUMBERING_CONSECUTIVE,
         )
 
-        for i in range(10):
+        for i in range(50):
             solution = solver.solve()
             LOGGER.info(f"Found solution no. %d: %s", i, solution)
             result = rest.render_rst(solution)
