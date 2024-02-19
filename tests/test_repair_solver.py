@@ -11,6 +11,7 @@ from isla.language import parse_isla, SMTFormula, BoundVariable, Variable
 from isla.parser import EarleyParser
 from isla.repair_solver import RepairSolver, describe_subtree_structure
 from isla.z3_helpers import z3_eq
+from isla_formalizations import rest
 from isla_formalizations.xml_lang import (
     XML_WELLFORMEDNESS_CONSTRAINT,
     XML_NO_ATTR_REDEF_CONSTRAINT,
@@ -392,6 +393,7 @@ class TestRepairSolver(unittest.TestCase):
         self.assertEqual(("a:x",), clid_structure)
 
     def test_solve_complex_numeric_formula_heartbeat(self):
+        random.seed(9876)
         heartbeat_request_grammar = {
             "<start>": ["<heartbeat-request>"],
             "<heartbeat-request>": ["\x01<payload-length><payload><padding>"],
@@ -552,6 +554,22 @@ class TestRepairSolver(unittest.TestCase):
         self.assertEqual('"x:a"', str(model[attr_id_2.to_smt()]))
         self.assertEqual('"b:x"', str(model[tag_id_1.to_smt()]))
         self.assertEqual('"b:x"', str(model[tag_id_2.to_smt()]))
+
+    def test_rest(self):
+        random.seed(10)
+        solver = RepairSolver(
+            rest.REST_GRAMMAR,
+            rest.LENGTH_UNDERLINE
+            & rest.DEF_LINK_TARGETS
+            & rest.NO_LINK_TARGET_REDEF
+            & rest.LIST_NUMBERING_CONSECUTIVE,
+        )
+
+        for i in range(10):
+            solution = solver.solve()
+            LOGGER.info(f"Found solution no. %d: %s", i, solution)
+            result = rest.render_rst(solution)
+            self.assertIsInstance(result, bool, result)
 
 
 if __name__ == "__main__":

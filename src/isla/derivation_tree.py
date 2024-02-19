@@ -692,6 +692,9 @@ class DerivationTree:
         # We remove "nested" replacements since removing elements in replacements is not
         # intended.
 
+        # TODO: This is a performance bottleneck. For each element in the substitution
+        #       map, the code below searches the complete derivation tree (`find_node`).
+        #       This should be prevented! (DS, 2024/02/19)
         id_subst_map = {
             tree.id: repl
             for tree, repl in subst_map.items()
