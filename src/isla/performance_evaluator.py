@@ -735,7 +735,7 @@ def make_input_generator(
             while True:
                 try:
                     yield generator.solve()
-                except TimeoutError | StopIteration:
+                except (TimeoutError, StopIteration):
                     return
 
         return gen()
