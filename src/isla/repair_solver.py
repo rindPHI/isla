@@ -2476,88 +2476,6 @@ class RepairSolver:
         )
 
 
-def compute_most_specific_type(
-    types: Iterable[str],
-    graph: gg.GrammarGraph,
-) -> Tuple[str, ...]:
-    """
-    TODO: Document, test.
-    :param types:
-    :param graph:
-    :return:
-    """
-
-    return tuple(
-        sorted(
-            types,
-            key=lambda t: len(
-                tuple(
-                    other_type
-                    for other_type in types
-                    if other_type != t and graph.reachable(t, other_type)
-                )
-            ),
-        )
-    )
-
-
-def compute_pruning_substitutions(
-    smt_conjuncts: Sequence[SMTFormula], tree: DerivationTree, grammar: FrozenGrammar
-) -> frozendict[DerivationTree, DerivationTree]:
-    """
-    TODO: Document, test.
-
-    :param smt_conjuncts:
-    :param tree:
-    :return:
-    """
-
-    participating_paths = {
-        tree.find_node(arg)
-        for conjunct in smt_conjuncts
-        if evaluate(conjunct, tree, grammar).is_false()
-        for arg in conjunct.tree_arguments()
-    }
-
-    return frozendict(
-        (
-            cast(
-                Tuple[DerivationTree, DerivationTree],
-                (
-                    subtree := tree.get_subtree(path),
-                    subtree,
-                    DerivationTree(subtree.value, None, id=subtree.id),
-                )[1:],
-            )
-            for path in participating_paths
-            if is_nonterminal(tree.get_subtree(path).value)
-            and not tree.get_subtree(path).children is None
-        )
-    )
-
-
-def add_already_matched(
-    f: QuantifiedFormula, trees: DerivationTree | Iterable[DerivationTree]
-) -> QuantifiedFormula:
-    # TODO this is a hack
-    return type(f)(
-        f.bound_variable,
-        f.in_variable,
-        f.inner_formula,
-        f.bind_expression,
-        (
-            f.already_matched
-            | (
-                FrozenOrderedSet([trees.structural_hash()])
-                if isinstance(trees, DerivationTree)
-                else FrozenOrderedSet(
-                    [hash((tree.id, tree.structural_hash())) for tree in trees]
-                )
-            )
-        ),
-    )
-
-
 @typechecked
 def rename_instantiated_variables_in_smt_formulas(
     smt_formulas: Iterable[SMTFormula],
@@ -2892,73 +2810,6 @@ def subtree_solutions(
     return solution_with_subtrees
 
 
-@typechecked
-def smt_formulas_referring_to_subtrees(
-    smt_formulas: Sequence[SMTFormula],
-) -> Tuple[SMTFormula, ...]:
-    """
-    Returns a list of SMT formulas whose solutions address subtrees of other SMT
-    formulas, but whose own substitution subtrees are in turn *not* referred by
-    top-level substitution trees of other formulas. Those must be solved first to avoid
-    inconsistencies.
-
-    # TODO: Document better, polish.
-
-    :param smt_formulas: The formulas to search for references to subtrees.
-    :return: The list of conflicting formulas that must be solved first.
-    """
-
-    @typechecked
-    def subtree_ids(formula: SMTFormula) -> Set[int]:
-        return {
-            subtree.id
-            for tree in formula.substitutions.values()
-            for _, subtree in tree.paths()
-            if subtree.id != tree.id
-        }
-
-    @typechecked
-    def tree_ids(formula: SMTFormula) -> Set[int]:
-        return {tree.id for tree in formula.substitutions.values()}
-
-    subtree_ids_for_formula: Dict[SMTFormula, Set[int]] = {
-        formula: subtree_ids(formula) for formula in smt_formulas
-    }
-
-    tree_ids_for_formula: Dict[SMTFormula, Set[int]] = {
-        formula: tree_ids(formula) for formula in smt_formulas
-    }
-
-    @typechecked
-    def independent_from_solutions_of_other_formula(
-        idx: int, formula: SMTFormula
-    ) -> bool:
-        return all(
-            not tree_ids_for_formula[other_formula].intersection(
-                subtree_ids_for_formula[formula]
-            )
-            for other_idx, other_formula in enumerate(smt_formulas)
-            if other_idx != idx
-        )
-
-    @typechecked
-    def refers_to_subtree_of_other_formula(idx: int, formula: SMTFormula) -> bool:
-        return any(
-            tree_ids_for_formula[formula].intersection(
-                subtree_ids_for_formula[other_formula]
-            )
-            for other_idx, other_formula in enumerate(smt_formulas)
-            if other_idx != idx
-        )
-
-    return tuple(
-        formula
-        for idx, formula in enumerate(smt_formulas)
-        if refers_to_subtree_of_other_formula(idx, formula)
-        and independent_from_solutions_of_other_formula(idx, formula)
-    )
-
-
 def collect_tree_substitutions_in_smt_formulas(
     smt_formulas: Iterable[SMTFormula],
 ) -> frozendict[Variable, DerivationTree]:
@@ -3020,3 +2871,30 @@ def auto_subst_and_eval_is_false(formula: Formula) -> bool:
         )
 
     return not len(visitor.problems)
+
+
+def add_already_matched(
+    f: QuantifiedFormula, trees: DerivationTree | Iterable[DerivationTree]
+) -> QuantifiedFormula:
+    # TODO this is a hack: We unify trees by the root's ID and structure.
+    #      The implemented standard is to register tree IDs. Either, we
+    #      don't need this hack, or we should investigate if we should
+    #      change something so that we no longer need this hack, or we
+    #      should consider turning the hack into the proper standard.
+
+    return type(f)(
+        f.bound_variable,
+        f.in_variable,
+        f.inner_formula,
+        f.bind_expression,
+        (
+            f.already_matched
+            | (
+                FrozenOrderedSet([trees.structural_hash()])
+                if isinstance(trees, DerivationTree)
+                else FrozenOrderedSet(
+                    [hash((tree.id, tree.structural_hash())) for tree in trees]
+                )
+            )
+        ),
+    )
