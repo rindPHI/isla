@@ -786,7 +786,7 @@ class RepairSolver:
             parse_tree = next(iter(peg_parser.parse(inp)))
             if nonterminal != "<start>":
                 parse_tree = parse_tree[1][0]
-        except SyntaxError as peg_err:
+        except (SyntaxError, RecursionError) as peg_err:
             if not silent:
                 LOGGER.info(
                     f'PEGParser: Error parsing "{inp}" starting with "{nonterminal}":\n{peg_err}'
@@ -860,7 +860,8 @@ class RepairSolver:
             "%sRepairing tree '%s' with constraint '%s'",
             depth_indent(),
             tree,
-            constraint,
+            # constraint,
+            "TEMPORARILY DEACTIVATED"  # TODO
         )
         constraint = set_auto_subst_and_eval(constraint, False)
 

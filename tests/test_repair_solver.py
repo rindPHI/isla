@@ -12,7 +12,7 @@ from isla.language import parse_isla, SMTFormula, BoundVariable, Variable
 from isla.parser import EarleyParser
 from isla.repair_solver import RepairSolver, describe_subtree_structure
 from isla.z3_helpers import z3_eq
-from isla_formalizations import rest
+from isla_formalizations import rest, scriptsizec
 from isla_formalizations.xml_lang import (
     XML_WELLFORMEDNESS_CONSTRAINT,
     XML_NO_ATTR_REDEF_CONSTRAINT,
@@ -590,6 +590,37 @@ class TestRepairSolver(unittest.TestCase):
                 break
 
         self.assertLess(time.time() - start_time, 8)
+
+    def test_scriptsize_c_def_use(self):
+        solver = RepairSolver(
+            scriptsizec.SCRIPTSIZE_C_GRAMMAR,
+            scriptsizec.SCRIPTSIZE_C_DEF_USE_CONSTR
+            & scriptsizec.SCRIPTSIZE_C_NO_REDEF_CONSTR,
+        )
+
+        for i in range(20):
+            solution = solver.solve()
+            LOGGER.info(f"Found solution no. %d: %s", i + 1, solution)
+            result = scriptsizec.compile_scriptsizec_clang(solution)
+            self.assertIsInstance(result, bool, result)
+
+    def test_repair_scriptsize_c_def_use(self):
+        inp = "if(f = m < 10) if(t = i = z - q + 9 < x + r - o - t) while(o = y - m) do {} while(w);"
+        inp = "if(f < 10) ;"
+        # '{do while(g < (l = j = n) + k - (y < m) - q + 732) {int u;} while(e = w - 60727 + d - (x - 6) + 1 - n);}'
+
+        solver = RepairSolver(
+            scriptsizec.SCRIPTSIZE_C_GRAMMAR,
+            scriptsizec.SCRIPTSIZE_C_DEF_USE_CONSTR
+            & scriptsizec.SCRIPTSIZE_C_NO_REDEF_CONSTR,
+        )
+
+        inp_tree = solver.parse(inp).unwrap()
+
+        result = solver.repair_tree(solver.instantiate_top_constant(inp_tree), inp_tree)
+        self.assertTrue(
+            result.map(scriptsizec.compile_scriptsizec_clang).value_or(False) == True
+        )
 
 
 if __name__ == "__main__":
