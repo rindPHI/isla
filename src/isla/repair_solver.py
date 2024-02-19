@@ -3,6 +3,7 @@ import logging
 import operator
 import random
 import sys
+import time
 from functools import reduce, lru_cache
 from typing import (
     FrozenSet,
@@ -684,6 +685,7 @@ class RepairSolver:
         structural_predicates=frozenset(STANDARD_STRUCTURAL_PREDICATES),
         max_tries_existential_insertion: int = 4,
         enable_optimized_z3_queries: bool = True,
+        timeout_seconds: Optional[int] = None,
     ):
         """
         An ISLa solver based on semantic repair of syntactically correct solutions.
@@ -707,6 +709,9 @@ class RepairSolver:
             before passing them to the SMT solver. This affects formulas with
             variables solely occurring in :code:`str.to.int` or :code:`str.len`
             contexts.
+        :param timeout_seconds: The timeout in seconds for this solver. The solver's iterator
+            will stop producing solutions after this time has passed, counting from
+            the first :meth:`~isla.repair_solver.RepairSolver.solve` call.
         """
 
         self.enable_optimized_z3_queries: bool = enable_optimized_z3_queries
@@ -746,6 +751,9 @@ class RepairSolver:
         )
 
         self.top_constant = Maybe.from_optional(next(iter(top_constants), None))
+
+        self.timeout_seconds = timeout_seconds
+        self.end_time: Optional[int] = None
 
     @safe
     @typechecked
@@ -802,9 +810,24 @@ class RepairSolver:
     def solve(self) -> DerivationTree:
         return next(self.solve_iterator)
 
+    def init_end_time(self) -> None:
+        if self.timeout_seconds is not None and self.end_time is None:
+            self.end_time = time.time() + self.timeout_seconds
+
+    def end_time_passed(self) -> bool:
+        if self.end_time is None:
+            return False
+
+        return time.time() > self.end_time
+
     @typechecked
     def make_solve_iterator(self) -> Iterator[DerivationTree]:
+        self.init_end_time()
+
         while True:
+            if self.end_time_passed():
+                return
+
             tree = self.fuzzer.fuzz_tree()
 
             maybe_repaired = self.repair_tree(
@@ -827,6 +850,9 @@ class RepairSolver:
         constraint: Formula | Iterable[Formula],
         tree: DerivationTree,
     ) -> Maybe[DerivationTree]:
+        if self.end_time_passed():
+            return Nothing
+
         if not isinstance(constraint, Formula):
             constraint = conjunction(*constraint)
 

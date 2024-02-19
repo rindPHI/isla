@@ -1,5 +1,6 @@
 import logging
 import random
+import time
 import unittest
 
 import z3
@@ -569,6 +570,26 @@ class TestRepairSolver(unittest.TestCase):
             LOGGER.info(f"Found solution no. %d: %s", i, solution)
             result = rest.render_rst(solution)
             self.assertIsInstance(result, bool, result)
+
+    def test_timeout(self):
+        constraint = """
+        forall <assgn> assgn_1="{<var> lhs_1} := {<rhs> rhs_1}" in start:
+          forall <var> var in rhs_1:
+            exists <assgn> assgn_2="{<var> lhs_2} := {<rhs> rhs_2}" in start:
+              (before(assgn_2, assgn_1) and (= lhs_2 var))
+        """
+
+        solver = RepairSolver(LANG_GRAMMAR, constraint, timeout_seconds=4)
+        start_time = time.time()
+
+        for i in range(2000):
+            try:
+                solution = solver.solve()
+                LOGGER.info(f"Found solution no. %d: %s", i + 1, solution)
+            except StopIteration:
+                break
+
+        self.assertLess(time.time() - start_time, 8)
 
 
 if __name__ == "__main__":
