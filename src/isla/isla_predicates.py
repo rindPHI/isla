@@ -125,7 +125,24 @@ NTH_PREDICATE = StructuralPredicate("nth", 3, is_nth)
 
 
 def in_tree(_: Optional[DerivationTree], path_1: Path, path_2: Path) -> bool:
-    # path_1 is inside path_2
+    """
+    Returns true iff `path_2` is a prefix of `path_1`.
+
+    >>> in_tree(None, (1, 2, 3), (1, 2))
+    True
+
+    >>> in_tree(None, (1, 2, 3), (1, 2, 3))
+    True
+
+    >>> in_tree(None, (1, 2), (1, 2, 3))
+    False
+
+    :param _: Not needed.
+    :param path_1: The path to check.
+    :param path_2: The prefix to check.
+    :return:
+    """
+
     return path_1[: len(path_2)] == path_2
 
 

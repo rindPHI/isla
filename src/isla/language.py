@@ -28,7 +28,7 @@ import re
 import string
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from functools import reduce, lru_cache, cache
+from functools import reduce, lru_cache, cache, partial
 from typing import (
     Union,
     List,
@@ -54,10 +54,9 @@ from antlr4.Token import CommonToken
 from grammar_graph import gg
 from orderedset import FrozenOrderedSet, OrderedSet
 from returns.converters import result_to_maybe
-from returns.functions import compose, tap, raise_exception
+from returns.functions import tap, raise_exception
 from returns.maybe import Nothing, Some
 from returns.pipeline import flow, is_successful
-from returns.pointfree import lash
 from returns.result import safe
 from z3 import Z3Exception
 
@@ -108,6 +107,7 @@ from isla.z3_helpers import (
 
 SolutionState = List[Tuple["Constant", "Formula", "DerivationTree"]]
 Assignment = Tuple["Constant", "Formula", "DerivationTree"]
+T = TypeVar("T")
 
 language_core_logger = logging.getLogger("isla-language-core")
 
@@ -117,6 +117,7 @@ language_core_logger = logging.getLogger("isla-language-core")
 # comparison, we replace the __eq__ method by AstRef's __eq__, which does perform
 # a structural comparison.
 z3.ExprRef.__eq__ = z3.AstRef.__eq__
+z3.ExprRef.__ne__ = z3.AstRef.__ne__
 
 
 class Variable:
@@ -301,9 +302,11 @@ class BindExpression:
     ) -> Maybe[Tuple[DerivationTree, Dict[BoundVariable, Path]]]:
         flattened_bind_expr_str = "".join(
             map(
-                lambda elem: f"{{{elem.n_type} {elem.name}}}"
-                if type(elem) is BoundVariable
-                else str(elem),
+                lambda elem: (
+                    f"{{{elem.n_type} {elem.name}}}"
+                    if type(elem) is BoundVariable
+                    else str(elem)
+                ),
                 bound_elements,
             )
         )
@@ -388,7 +391,7 @@ class BindExpression:
                     path,
                     DerivationTree(
                         child.value,
-                        ()
+                        (),
                         # None if is_nonterminal(child.value) else ()
                     ),
                 )
@@ -464,14 +467,18 @@ class BindExpression:
     def __str__(self):
         return "".join(
             map(
-                lambda e: f"{str(e)}"
-                if isinstance(e, str)
-                else ("[" + "".join(map(str, e)) + "]")
-                if isinstance(e, list)
-                else (
-                    f"{{{e.n_type} {str(e)}}}"
-                    if not isinstance(e, DummyVariable)
-                    else str(e)
+                lambda e: (
+                    f"{str(e)}"
+                    if isinstance(e, str)
+                    else (
+                        ("[" + "".join(map(str, e)) + "]")
+                        if isinstance(e, list)
+                        else (
+                            f"{{{e.n_type} {str(e)}}}"
+                            if not isinstance(e, DummyVariable)
+                            else str(e)
+                        )
+                    )
                 ),
                 self.bound_elements,
             )
@@ -911,17 +918,12 @@ class StructuralPredicateFormula(Formula):
         self.args: List[Variable | str | DerivationTree] = list(args)
 
     def evaluate(self, context_tree: DerivationTree) -> bool:
+        validate_structural_predicate_arguments(self, context_tree)
+
         args_with_paths: List[Union[str, Tuple[Path, DerivationTree]]] = [
             arg if isinstance(arg, str) else (context_tree.find_node(arg), arg)
             for arg in self.args
         ]
-
-        if any(arg[0] is None for arg in args_with_paths if isinstance(arg, tuple)):
-            raise RuntimeError(
-                "Could not find paths for all predicate arguments in context tree:\n"
-                + str([str(tree) for path, tree in args_with_paths if path is None])
-                + f"\nContext tree:\n{context_tree}"
-            )
 
         return self.predicate.eval_fun(
             context_tree,
@@ -1002,6 +1004,101 @@ class StructuralPredicateFormula(Formula):
         return (
             f'PredicateFormula({repr(self.predicate), ", ".join(map(repr, self.args))})'
         )
+
+
+def validate_structural_predicate_arguments(
+    formulas: Formula | Iterable[Formula], context_tree: DerivationTree
+) -> None:
+    """
+    TODO: Document.
+
+    :param formulas:
+    :param context_tree:
+    :return:
+    """
+    if not assertions_activated():
+        return
+
+    class FindStructuralPredFormsVisitor(FormulaVisitor):
+        def __init__(self):
+            super().__init__()
+            self.structural_predicate_formulas = ()
+
+        def visit_predicate_formula(self, formula: StructuralPredicateFormula):
+            self.structural_predicate_formulas += (formula,)
+
+    visitor = FindStructuralPredFormsVisitor()
+
+    for formula in [formulas] if isinstance(formulas, Formula) else formulas:
+        formula.accept(visitor)
+
+    for structural_predicate_formula in visitor.structural_predicate_formulas:
+        first_dangling_argument = next(
+            flow(
+                structural_predicate_formula.args,
+                partial(filter, DerivationTree.__instancecheck__),
+                partial(filter, lambda tree: context_tree.find_node(tree) is None),
+            ),
+            None,
+        )
+
+        def msg():
+            return (
+                f"The following tree argument of the structural predicate formula\n  {structural_predicate_formula}\n"
+                f"is not contained in the context tree:\n  {first_dangling_argument} "
+                f"(id: {first_dangling_argument.id}, type: {first_dangling_argument.value})\n"
+                f"where the context tree is\n  {context_tree} (id: {context_tree.id}, type: {context_tree.value})"
+            )
+
+        assert first_dangling_argument is None, msg()
+
+
+def validate_smt_formula_substitutions(
+    formulas: Formula | Iterable[Formula], context_tree: DerivationTree
+) -> None:
+    """
+    TODO: Document.
+
+    :param formulas:
+    :param context_tree:
+    :return:
+    """
+
+    if not assertions_activated():
+        return
+
+    class FindSMTFormsVisitor(FormulaVisitor):
+        def __init__(self):
+            super().__init__()
+            self.smt_formulas = ()
+
+        def visit_smt_formula(self, formula: SMTFormula):
+            self.smt_formulas += (formula,)
+
+    visitor = FindSMTFormsVisitor()
+
+    for formula in [formulas] if isinstance(formulas, Formula) else formulas:
+        formula.accept(visitor)
+
+    for smt_formula in visitor.smt_formulas:
+        first_dangling_argument = next(
+            flow(
+                tuple(smt_formula.substitutions.values()),
+                partial(filter, DerivationTree.__instancecheck__),
+                partial(filter, lambda tree: context_tree.find_node(tree) is None),
+            ),
+            None,
+        )
+
+        def msg():
+            return (
+                f"The following tree argument of the smt formula\n  {smt_formula}\n"
+                f"is not contained in the context tree:\n  {first_dangling_argument} "
+                f"(id: {first_dangling_argument.id}, type: {first_dangling_argument.value})\n"
+                f"where the context tree is\n  {context_tree} (id: {context_tree.id}, type: {context_tree.value})"
+            )
+
+        assert first_dangling_argument is None, msg()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1204,12 +1301,14 @@ class SemanticPredicateFormula(Formula):
 
     def __str__(self):
         arg_strings = [
-            f'"{arg}"'
-            if isinstance(arg, str)
-            else (
-                arg.to_string(show_open_leaves=True, show_ids=True)
-                if isinstance(arg, DerivationTree)
-                else str(arg)
+            (
+                f'"{arg}"'
+                if isinstance(arg, str)
+                else (
+                    arg.to_string(show_open_leaves=True, show_ids=True)
+                    if isinstance(arg, DerivationTree)
+                    else str(arg)
+                )
             )
             for arg in self.args
         ]
@@ -1221,6 +1320,8 @@ class SemanticPredicateFormula(Formula):
 
 
 class PropositionalCombinator(Formula, ABC):
+    __match_args__ = ("args",)
+
     def __init__(self, *args: Formula):
         self.args = args
 
@@ -1328,7 +1429,7 @@ class ConjunctiveFormula(PropositionalCombinator):
         return hash((type(self).__name__, self.args))
 
     def __eq__(self, other):
-        return split_conjunction(self) == split_conjunction(other)
+        return isinstance(other, ConjunctiveFormula) and other.args == self.args
 
     def __str__(self):
         return f"({' ∧ '.join(map(str, self.args))})"
@@ -1371,7 +1472,7 @@ class DisjunctiveFormula(PropositionalCombinator):
         return hash((type(self).__name__, self.args))
 
     def __eq__(self, other):
-        return split_disjunction(self) == split_disjunction(other)
+        return isinstance(other, DisjunctiveFormula) and other.args == self.args
 
     def __str__(self):
         return f"({' ∨ '.join(map(str, self.args))})"
@@ -1481,8 +1582,7 @@ class SMTFormula(Formula):
         )
 
         new_free_variables = [
-            variable if variable not in subst_map else subst_map[variable]
-            for variable in self.free_variables_
+            subst_map.get(variable, variable) for variable in self.free_variables_
         ]
 
         assert all(
@@ -1501,7 +1601,7 @@ class SMTFormula(Formula):
 
     def substitute_expressions(
         self,
-        subst_map: Dict[Union[Variable, DerivationTree], DerivationTree],
+        subst_map: Mapping[Union[Variable, DerivationTree], DerivationTree],
         force: bool = False,
     ) -> "SMTFormula":
         if not force and not self.auto_eval and not subst_map_relevant(self, subst_map):
@@ -1674,6 +1774,7 @@ class SMTFormula(Formula):
         )
 
     def __repr__(self):
+        return str(self.formula)
         return (
             f"SMTFormula('{self.formula.sexpr()}', "
             + (
@@ -1718,7 +1819,7 @@ class SMTFormula(Formula):
 
 def subst_map_relevant(
     formula: Formula,
-    subst_map: Dict[Union[Variable, DerivationTree], DerivationTree],
+    subst_map: Mapping[Union[Variable, DerivationTree], DerivationTree],
 ) -> bool:
     return formula.free_variables().intersection(subst_map.keys()) or any(
         tree_arg.find_node(subst_tree) is not None
@@ -1853,6 +1954,7 @@ class QuantifiedFormula(Formula, ABC):
         in_variable: Union[Variable, DerivationTree],
         inner_formula: Formula,
         bind_expression: Optional[Union[BindExpression, BoundVariable]] = None,
+        already_matched: Optional[OrderedSet[int]] = None,
     ):
         assert inner_formula is not None
         assert isinstance(bound_variable, BoundVariable) or bind_expression is not None
@@ -1870,6 +1972,12 @@ class QuantifiedFormula(Formula, ABC):
             self.bind_expression = BindExpression(bind_expression)
         else:
             self.bind_expression = bind_expression
+
+        self.already_matched: FrozenOrderedSet[int] = (
+            FrozenOrderedSet()
+            if not already_matched
+            else FrozenOrderedSet(already_matched)
+        )
 
     def bound_variables(self) -> FrozenOrderedSet[BoundVariable]:
         return FrozenOrderedSet([self.bound_variable]) | (
@@ -1893,8 +2001,77 @@ class QuantifiedFormula(Formula, ABC):
         result.update(self.inner_formula.tree_arguments())
         return result
 
+    def add_already_matched(
+        self: T, trees: Union[DerivationTree, Iterable[DerivationTree]]
+    ) -> T:
+        return type(self)(
+            self.bound_variable,
+            self.in_variable,
+            self.inner_formula,
+            self.bind_expression,
+            (
+                self.already_matched
+                | (
+                    FrozenOrderedSet([trees.id])
+                    if isinstance(trees, DerivationTree)
+                    else FrozenOrderedSet([tree.id for tree in trees])
+                )
+            ),
+        )
+
     def is_already_matched(self, tree: DerivationTree) -> bool:
-        return False
+        return tree.id in self.already_matched
+
+    def substitute_variables(self: T, subst_map: Dict[Variable, Variable]) -> T:
+        assert not self.already_matched
+
+        return type(self)(
+            (
+                self.bound_variable
+                if self.bound_variable not in subst_map
+                else subst_map[self.bound_variable]
+            ),
+            (
+                self.in_variable
+                if self.in_variable not in subst_map
+                else subst_map[self.in_variable]
+            ),
+            self.inner_formula.substitute_variables(subst_map),
+            (
+                None
+                if not self.bind_expression
+                else self.bind_expression.substitute_variables(subst_map)
+            ),
+            self.already_matched,
+        )
+
+    def substitute_expressions(
+        self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]
+    ) -> Formula:
+        new_in_variable = self.in_variable
+        if self.in_variable in subst_map:
+            assert (
+                self.in_variable.n_type
+                if isinstance(self.in_variable, Variable)
+                else self.in_variable.value
+            ) == subst_map[new_in_variable].value
+
+            new_in_variable = subst_map[new_in_variable]
+        elif isinstance(new_in_variable, DerivationTree):
+            new_in_variable = new_in_variable.substitute(subst_map)
+            assert new_in_variable.value == (
+                self.in_variable.n_type
+                if isinstance(self.in_variable, Variable)
+                else self.in_variable.value
+            )
+
+        return type(self)(
+            self.bound_variable,
+            new_in_variable,
+            self.inner_formula.substitute_expressions(subst_map),
+            self.bind_expression,
+            self.already_matched,
+        )
 
     def __len__(self):
         result = 1 + len(self.inner_formula)
@@ -1943,93 +2120,30 @@ class ForallFormula(QuantifiedFormula):
         inner_formula: Formula,
         bind_expression: Optional[BindExpression] = None,
         already_matched: Optional[OrderedSet[int]] = None,
-        id: Optional[int] = None,
     ):
-        super().__init__(bound_variable, in_variable, inner_formula, bind_expression)
-        self.already_matched: FrozenOrderedSet[int] = (
-            FrozenOrderedSet()
-            if not already_matched
-            else FrozenOrderedSet(already_matched)
-        )
-
-        # The id field is used by eliminate_quantifiers to avoid counting universal
-        # formulas twice when checking for vacuous satisfaction.
-        if id is None:
-            self.id = ForallFormula.__next_id
-            ForallFormula.__next_id += 1
-        else:
-            self.id = id
-
-    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
-        assert not self.already_matched
-
-        return ForallFormula(
-            self.bound_variable
-            if self.bound_variable not in subst_map
-            else subst_map[self.bound_variable],
-            self.in_variable
-            if self.in_variable not in subst_map
-            else subst_map[self.in_variable],
-            self.inner_formula.substitute_variables(subst_map),
-            None
-            if not self.bind_expression
-            else self.bind_expression.substitute_variables(subst_map),
-            self.already_matched,
-            id=self.id,
+        super().__init__(
+            bound_variable, in_variable, inner_formula, bind_expression, already_matched
         )
 
     def substitute_expressions(
         self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]
     ) -> Formula:
-        new_in_variable = self.in_variable
-        if self.in_variable in subst_map:
-            new_in_variable = subst_map[new_in_variable]
-        elif isinstance(new_in_variable, DerivationTree):
-            new_in_variable = new_in_variable.substitute(subst_map)
-
-        new_inner_formula = self.inner_formula.substitute_expressions(subst_map)
+        result = cast(ForallFormula, super().substitute_expressions(subst_map))
 
         if (
-            self.bound_variable not in new_inner_formula.free_variables()
+            result.bound_variable not in result.inner_formula.free_variables()
             and self.bind_expression is None
         ):
             # NOTE: We cannot remove the quantifier if there is a bind expression, not
             #       even if the variables in the bind expression do not occur in the
             #       inner formula, since there might be multiple expansion alternatives
-            #       of the bound variable nonterminal and it makes a difference whether
+            #       of the bound variable nonterminal, and it makes a difference whether
             #       a particular expansion has been chosen. Consider, e.g., an inner
             #       formula "false". Then, this formula evaluates to false IF, AND ONLY
             #       IF, the defined expansion alternative is chosen, and NOT always.
-            return new_inner_formula
+            return result.inner_formula
 
-        return ForallFormula(
-            self.bound_variable,
-            new_in_variable,
-            new_inner_formula,
-            self.bind_expression,
-            self.already_matched,
-            id=self.id,
-        )
-
-    def add_already_matched(
-        self, trees: Union[DerivationTree, Iterable[DerivationTree]]
-    ) -> "ForallFormula":
-        return ForallFormula(
-            self.bound_variable,
-            self.in_variable,
-            self.inner_formula,
-            self.bind_expression,
-            self.already_matched
-            | (
-                FrozenOrderedSet([trees.id])
-                if isinstance(trees, DerivationTree)
-                else FrozenOrderedSet([tree.id for tree in trees])
-            ),
-            id=self.id,
-        )
-
-    def is_already_matched(self, tree: DerivationTree) -> bool:
-        return tree.id in self.already_matched
+        return result
 
     def accept(self, visitor: FormulaVisitor):
         visitor.visit_forall_formula(self)
@@ -2044,7 +2158,6 @@ class ForallFormula(QuantifiedFormula):
                 self.inner_formula.transform(transformer),
                 self.bind_expression,
                 self.already_matched,
-                id=self.id,
             )
         )
 
@@ -2063,37 +2176,10 @@ class ExistsFormula(QuantifiedFormula):
         in_variable: Union[Variable, DerivationTree],
         inner_formula: Formula,
         bind_expression: Optional[BindExpression] = None,
+        already_matched: Optional[OrderedSet[int]] = None,
     ):
-        super().__init__(bound_variable, in_variable, inner_formula, bind_expression)
-
-    def substitute_variables(self, subst_map: Dict[Variable, Variable]):
-        return ExistsFormula(
-            self.bound_variable
-            if self.bound_variable not in subst_map
-            else subst_map[self.bound_variable],
-            self.in_variable
-            if self.in_variable not in subst_map
-            else subst_map[self.in_variable],
-            self.inner_formula.substitute_variables(subst_map),
-            None
-            if not self.bind_expression
-            else self.bind_expression.substitute_variables(subst_map),
-        )
-
-    def substitute_expressions(
-        self, subst_map: Dict[Union[Variable, DerivationTree], DerivationTree]
-    ) -> Formula:
-        new_in_variable = self.in_variable
-        if self.in_variable in subst_map:
-            new_in_variable = subst_map[new_in_variable]
-        elif isinstance(new_in_variable, DerivationTree):
-            new_in_variable = new_in_variable.substitute(subst_map)
-
-        return ExistsFormula(
-            self.bound_variable,
-            new_in_variable,
-            self.inner_formula.substitute_expressions(subst_map),
-            self.bind_expression,
+        super().__init__(
+            bound_variable, in_variable, inner_formula, bind_expression, already_matched
         )
 
     def accept(self, visitor: FormulaVisitor):
@@ -2108,6 +2194,7 @@ class ExistsFormula(QuantifiedFormula):
                 self.in_variable,
                 self.inner_formula.transform(transformer),
                 self.bind_expression,
+                self.already_matched,
             )
         )
 
@@ -2302,29 +2389,16 @@ def replace_formula(  # noqa: C901
             return false()
 
         return NegatedFormula(child_result)
-    elif isinstance(in_formula, ForallFormula):
-        return ForallFormula(
+    elif isinstance(in_formula, QuantifiedFormula):
+        return type(in_formula)(
             in_formula.bound_variable,
             in_formula.in_variable,
             replace_formula(in_formula.inner_formula, to_replace, replace_with),
             in_formula.bind_expression,
             in_formula.already_matched,
-            id=in_formula.id,
         )
-    elif isinstance(in_formula, ExistsFormula):
-        return ExistsFormula(
-            in_formula.bound_variable,
-            in_formula.in_variable,
-            replace_formula(in_formula.inner_formula, to_replace, replace_with),
-            in_formula.bind_expression,
-        )
-    elif isinstance(in_formula, ExistsIntFormula):
-        return ExistsIntFormula(
-            in_formula.bound_variable,
-            replace_formula(in_formula.inner_formula, to_replace, replace_with),
-        )
-    elif isinstance(in_formula, ForallIntFormula):
-        return ForallIntFormula(
+    elif isinstance(in_formula, NumericQuantifiedFormula):
+        return type(in_formula)(
             in_formula.bound_variable,
             replace_formula(in_formula.inner_formula, to_replace, replace_with),
         )
@@ -2332,216 +2406,130 @@ def replace_formula(  # noqa: C901
     return in_formula
 
 
-def convert_to_nnf(formula: Formula, negate=False) -> Formula:
-    """Pushes negations inside the formula."""
+def convert_to_nnf(formula: Formula) -> Formula:
+    """
+    This function converts the given formula to negation normal form (NNF).
+    This is a prerequisite for conversion to disjunctive normal form (DNF),
+    e.g., by :func:`~isla.language.to_dnf_clauses`.
 
-    def raise_not_implemented_error(_=Nothing) -> Maybe[Formula]:
-        raise NotImplementedError(f"Unexpected formula type {type(formula).__name__}")
+    Example
+    -------
 
-    return (
-        flow(
-            Nothing,
-            *map(
-                compose(lambda f: lambda _: f(formula, negate), lash),
-                [
-                    convert_negated_formula_to_nnf,
-                    convert_conjunctive_formula_to_nnf,
-                    convert_disjunctive_formula_to_nnf,
-                    convert_structural_predicate_formula_to_nnf,
-                    convert_smt_formula_to_nnf,
-                    convert_exists_int_formula_to_nnf,
-                    convert_quantified_formula_to_nnf,
-                ],
-            ),
-        )
-        .lash(raise_not_implemented_error)
-        .unwrap()
-    )
+    >>> formula = parse_isla('''
+    ...     not forall <A> a:
+    ...         exists <B> b:
+    ...             forall <C> c: (
+    ...                 not (a = b and b = c) or
+    ...                 (a = c and b = c)
+    ...             )''')
 
+    >>> print(unparse_isla(convert_to_nnf(formula)))
+    exists <A> a in start:
+      forall <B> b in start:
+        exists <C> c in start:
+          (((= a b) and
+           (= b c)) and
+          ((not (= a c)) or
+          (not (= b c))))
 
-def convert_negated_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
-    if not isinstance(formula, NegatedFormula):
-        return Nothing
+    :param formula: The formula to convert to NNF.
+    :return: The converted formula.
+    """
 
-    return Some(convert_to_nnf(formula.args[0], not negate))
-
-
-def convert_conjunctive_formula_to_nnf(
-    formula: Formula, negate: bool
-) -> Maybe[Formula]:
-    if not isinstance(formula, ConjunctiveFormula):
-        return Nothing
-
-    args = [convert_to_nnf(arg, negate) for arg in formula.args]
-    if negate:
-        return Some(reduce(lambda a, b: a | b, args))
-    else:
-        return Some(reduce(lambda a, b: a & b, args))
-
-
-def convert_disjunctive_formula_to_nnf(
-    formula: Formula, negate: bool
-) -> Maybe[Formula]:
-    if not isinstance(formula, DisjunctiveFormula):
-        return Nothing
-
-    args = [convert_to_nnf(arg, negate) for arg in formula.args]
-    if negate:
-        return Some(reduce(lambda a, b: a & b, args))
-    else:
-        return Some(reduce(lambda a, b: a | b, args))
-
-
-def convert_structural_predicate_formula_to_nnf(
-    formula: Formula, negate: bool
-) -> Maybe[Formula]:
-    if not isinstance(formula, StructuralPredicateFormula) and not isinstance(
-        formula, SemanticPredicateFormula
-    ):
-        return Nothing
-
-    return Some(-formula if negate else formula)
-
-
-def convert_smt_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
-    if not isinstance(formula, SMTFormula):
-        return Nothing
-
-    negated_smt_formula = z3_push_in_negations(formula.formula, negate)
-    # Automatic simplification can remove free variables from the formula!
-    actual_symbols = get_symbols(negated_smt_formula)
-    free_variables = [
-        var for var in formula.free_variables() if var.to_smt() in actual_symbols
-    ]
-    instantiated_variables = FrozenOrderedSet(
-        [
-            var
-            for var in formula.instantiated_variables
-            if var.to_smt() in actual_symbols
-        ]
-    )
-    substitutions = {
-        var: repl
-        for var, repl in formula.substitutions.items()
-        if var.to_smt() in actual_symbols
-    }
-
-    return Some(
-        SMTFormula(
-            negated_smt_formula,
-            *free_variables,
-            instantiated_variables=instantiated_variables,
-            substitutions=substitutions,
-            auto_eval=formula.auto_eval,
-            auto_subst=formula.auto_subst,
-        )
-    )
-
-
-def convert_exists_int_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
-    if not isinstance(formula, ExistsIntFormula) and not isinstance(
-        formula, ForallIntFormula
-    ):
-        return Nothing
-
-    inner_formula = (
-        convert_to_nnf(formula.inner_formula, negate)
-        if negate
-        else formula.inner_formula
-    )
-
-    if (isinstance(formula, ForallIntFormula) and negate) or (
-        isinstance(formula, ExistsIntFormula) and not negate
-    ):
-        return Some(ExistsIntFormula(formula.bound_variable, inner_formula))
-    else:
-        return Some(ForallIntFormula(formula.bound_variable, inner_formula))
-
-
-def convert_quantified_formula_to_nnf(formula: Formula, negate: bool) -> Maybe[Formula]:
-    if not isinstance(formula, QuantifiedFormula):
-        return Nothing
-
-    inner_formula = (
-        convert_to_nnf(formula.inner_formula, negate)
-        if negate
-        else formula.inner_formula
-    )
-    already_matched: Set[int] = (
-        formula.already_matched if isinstance(formula, ForallFormula) else set()
-    )
-
-    if (isinstance(formula, ForallFormula) and negate) or (
-        isinstance(formula, ExistsFormula) and not negate
-    ):
-        return Some(
-            ExistsFormula(
+    match formula:
+        case SMTFormula() | StructuralPredicateFormula() | SemanticPredicateFormula():
+            return formula
+        case ConjunctiveFormula() | DisjunctiveFormula():
+            return type(formula)(*map(convert_to_nnf, formula.args))
+        case QuantifiedFormula():
+            return type(formula)(
                 formula.bound_variable,
                 formula.in_variable,
-                inner_formula,
+                convert_to_nnf(formula.inner_formula),
                 formula.bind_expression,
+                formula.already_matched,
             )
-        )
-    else:
-        return Some(
-            ForallFormula(
+        case NumericQuantifiedFormula():
+            return type(formula)(
                 formula.bound_variable,
-                formula.in_variable,
-                inner_formula,
-                formula.bind_expression,
-                already_matched,
+                convert_to_nnf(formula.inner_formula),
             )
-        )
+        case (
+            NegatedFormula((SMTFormula(),))
+            | NegatedFormula((StructuralPredicateFormula(),))
+            | NegatedFormula((SemanticPredicateFormula(),))
+        ):
+            return formula
+        case NegatedFormula((ConjunctiveFormula(),)):
+            return DisjunctiveFormula(*(-convert_to_nnf(arg) for arg in formula.args))
+        case NegatedFormula((DisjunctiveFormula(),)):
+            return ConjunctiveFormula(*(-convert_to_nnf(arg) for arg in formula.args))
+        case NegatedFormula((ForallFormula(),)):
+            return convert_to_nnf(
+                ExistsFormula(
+                    formula.bound_variable,
+                    formula.in_variable,
+                    -formula.inner_formula,
+                    formula.bind_expression,
+                    formula.already_matched,
+                )
+            )
+        case NegatedFormula((ExistsFormula(),)):
+            return convert_to_nnf(
+                ForallFormula(
+                    formula.bound_variable,
+                    formula.in_variable,
+                    -formula.inner_formula,
+                    formula.bind_expression,
+                    formula.already_matched,
+                )
+            )
+        case NegatedFormula((ForallIntFormula(),)):
+            return convert_to_nnf(
+                ExistsIntFormula(
+                    formula.bound_variable,
+                    -formula.inner_formula,
+                )
+            )
+        case NegatedFormula((ExistsIntFormula(),)):
+            return convert_to_nnf(
+                ForallIntFormula(
+                    formula.bound_variable,
+                    -formula.inner_formula,
+                )
+            )
+        case NegatedFormula((NegatedFormula(),)):
+            return convert_to_nnf(formula.args[0])
+        case _:
+            raise NotImplementedError(
+                f"Unsupported formula {formula} (type {type(formula).__name__})"
+            )
 
 
-def convert_to_dnf(formula: Formula, deep: bool = True) -> Formula:
-    assert not isinstance(formula, NegatedFormula) or not isinstance(
-        formula.args[0], PropositionalCombinator
+def to_dnf_clauses(formula: Formula) -> Tuple[Tuple[Formula, ...], ...]:
+    """
+    Converts a formula to a list of disjunctive clauses. A clause represents a
+    list of conjunctive formulas.
+
+    This function expects that the input formula is in NNF.
+
+    :param formula: The formula to convert to DNF (disjunctive clauses).
+    :return: A list of disjunctive clauses.
+    """
+
+    assert not isinstance(formula, NegatedFormula) or isinstance(
+        formula.args[0],
+        SMTFormula | StructuralPredicateFormula | SemanticPredicateFormula,
     ), "Convert to NNF before converting to DNF"
 
-    if isinstance(formula, ConjunctiveFormula):
-        disjuncts_list = [
-            split_disjunction(convert_to_dnf(arg)) for arg in formula.args
-        ]
-
-        if all(len(elem) == 1 for elem in disjuncts_list):
-            return formula
-
-        return reduce(
-            lambda a, b: a | b,
-            [
-                reduce(
-                    lambda a, b: a & b,
-                    FrozenOrderedSet(split_conjunction(left & right)),
-                    true(),
-                )
-                for left, right in itertools.product(*disjuncts_list)
-            ],
-            false(),
-        )
-    elif isinstance(formula, DisjunctiveFormula):
-        return reduce(
-            lambda a, b: a | b,
-            [convert_to_dnf(subformula) for subformula in formula.args],
-            false(),
-        )
-    elif deep and isinstance(formula, ForallFormula):
-        return ForallFormula(
-            formula.bound_variable,
-            formula.in_variable,
-            convert_to_dnf(formula.inner_formula),
-            formula.bind_expression,
-            formula.already_matched,
-        )
-    elif deep and isinstance(formula, ExistsFormula):
-        return ExistsFormula(
-            formula.bound_variable,
-            formula.in_variable,
-            convert_to_dnf(formula.inner_formula),
-            formula.bind_expression,
-        )
+    if isinstance(formula, DisjunctiveFormula):
+        return to_dnf_clauses(formula.args[0]) + to_dnf_clauses(formula.args[1])
+    elif isinstance(formula, ConjunctiveFormula):
+        left_clauses = to_dnf_clauses(formula.args[0])
+        right_clauses = to_dnf_clauses(formula.args[1])
+        return tuple(c_1 + c_2 for c_1 in left_clauses for c_2 in right_clauses)
     else:
-        return formula
+        return ((formula,),)
 
 
 def fresh_vars(
@@ -2596,21 +2584,13 @@ def ensure_unique_bound_variables(  # noqa: C901
 
         used_names = orig_used_names | used_names.difference(old_used_names)
 
-        if isinstance(formula, ForallFormula):
-            return ForallFormula(
-                formula.bound_variable,
-                formula.in_variable,
-                ensure_unique_bound_variables(formula.inner_formula, used_names),
-                formula.bind_expression,
-                formula.already_matched,
-            )
-        else:
-            return ExistsFormula(
-                formula.bound_variable,
-                formula.in_variable,
-                ensure_unique_bound_variables(formula.inner_formula, used_names),
-                formula.bind_expression,
-            )
+        return type(formula)(
+            formula.bound_variable,
+            formula.in_variable,
+            ensure_unique_bound_variables(formula.inner_formula, used_names),
+            formula.bind_expression,
+            formula.already_matched,
+        )
     elif isinstance(formula, NegatedFormula):
         return NegatedFormula(
             ensure_unique_bound_variables(formula.args[0], used_names)
@@ -2629,12 +2609,28 @@ def ensure_unique_bound_variables(  # noqa: C901
         return formula
 
 
-def split_conjunction(formula: Formula) -> List[Formula]:
-    if not type(formula) is ConjunctiveFormula:
-        return [formula]
-    else:
-        formula: ConjunctiveFormula
-        return [elem for arg in formula.args for elem in split_conjunction(arg)]
+def split_conjunction(formulas: Formula | Iterable[Formula]) -> Tuple[Formula, ...]:
+    """
+    TODO: Document, test.
+
+    :param formulas:
+    :return:
+    """
+
+    if not (isinstance(formulas, Formula)):
+        return tuple(
+            conjunct for formula in formulas for conjunct in split_conjunction(formula)
+        )
+
+    assert isinstance(formulas, Formula)
+    if not isinstance(formulas, ConjunctiveFormula):
+        return (formulas,)
+
+    return tuple(
+        sub_conjunct
+        for conjunct in formulas.args
+        for sub_conjunct in split_conjunction(conjunct)
+    )
 
 
 def split_disjunction(formula: Formula) -> List[Formula]:
@@ -2990,9 +2986,11 @@ def univ_close_over_var_push_in(
             if other_formulas:
                 result_elements += [
                     univ_close_over_var_push_in(
-                        type(formula)(*other_formulas)
-                        if len(other_formulas) > 1
-                        else other_formulas[0],
+                        (
+                            type(formula)(*other_formulas)
+                            if len(other_formulas) > 1
+                            else other_formulas[0]
+                        ),
                         var,
                         in_var,
                         mexpr,
@@ -3309,9 +3307,11 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
             [
                 tuple(
                     [
-                        (elem, 0)
-                        if "[" not in elem
-                        else (elem.split("[")[0], int(elem.split("[")[1][:-1]) - 1)
+                        (
+                            (elem, 0)
+                            if "[" not in elem
+                            else (elem.split("[")[0], int(elem.split("[")[1][:-1]) - 1)
+                        )
                         for elem in seg.split(".")
                     ]
                 )
@@ -3588,9 +3588,11 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
                             DerivationTree(
                                 partial_tree.get_subtree(path_to_expand).value,
                                 [
-                                    DerivationTree(elem)
-                                    if is_nonterminal(elem)
-                                    else DerivationTree(elem, [])
+                                    (
+                                        DerivationTree(elem)
+                                        if is_nonterminal(elem)
+                                        else DerivationTree(elem, [])
+                                    )
                                     for elem in expansion
                                 ],
                             ),
@@ -3667,10 +3669,12 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
 
     def exitQfdFormula(
         self,
-        ctx: IslaLanguageParser.ForallContext
-        | IslaLanguageParser.ExistsContext
-        | IslaLanguageParser.ForallMexprContext
-        | IslaLanguageParser.ExistsMexprContext,
+        ctx: (
+            IslaLanguageParser.ForallContext
+            | IslaLanguageParser.ExistsContext
+            | IslaLanguageParser.ForallMexprContext
+            | IslaLanguageParser.ExistsMexprContext
+        ),
         mexpr=False,
     ):
         is_forall = str(ctx.children[0]) == "forall"
@@ -3882,31 +3886,31 @@ class ISLaEmitter(IslaLanguageListener.IslaLanguageListener):
         if not ctx.sexpr():
             self.smt_expressions[ctx] = parse_tree_text(ctx.op)
         else:
-            self.smt_expressions[
-                ctx
-            ] = f'({parse_tree_text(ctx.op)} {" ".join([self.smt_expressions[child] for child in ctx.sexpr()])})'
+            self.smt_expressions[ctx] = (
+                f'({parse_tree_text(ctx.op)} {" ".join([self.smt_expressions[child] for child in ctx.sexpr()])})'
+            )
 
     def exitSexprInfixReStr(self, ctx: IslaLanguageParser.SexprInfixReStrContext):
-        self.smt_expressions[
-            ctx
-        ] = f"({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})"
+        self.smt_expressions[ctx] = (
+            f"({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})"
+        )
 
     def exitSexprInfixPlusMinus(
         self, ctx: IslaLanguageParser.SexprInfixPlusMinusContext
     ):
-        self.smt_expressions[
-            ctx
-        ] = f"({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})"
+        self.smt_expressions[ctx] = (
+            f"({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})"
+        )
 
     def exitSexprInfixMulDiv(self, ctx: IslaLanguageParser.SexprInfixMulDivContext):
-        self.smt_expressions[
-            ctx
-        ] = f"({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})"
+        self.smt_expressions[ctx] = (
+            f"({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})"
+        )
 
     def exitSexprInfixEq(self, ctx: IslaLanguageParser.SexprInfixEqContext):
-        self.smt_expressions[
-            ctx
-        ] = f"({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})"
+        self.smt_expressions[ctx] = (
+            f"({parse_tree_text(ctx.op)} {self.smt_expressions[ctx.sexpr(0)]} {self.smt_expressions[ctx.sexpr(1)]})"
+        )
 
     # def exitSepxrParen(self, ctx: IslaLanguageParser.SepxrParenContext):
     #     self.smt_expressions[ctx] = self.smt_expressions[ctx.sexpr()]
@@ -4199,11 +4203,13 @@ def unparse_grammar(grammar: Grammar) -> str:
     return "\n".join(
         f"{symbol} ::= "
         + " | ".join(
-            '""'
-            if not expansion
-            else " ".join(
-                (elem if is_nonterminal(elem) else f'"{escape_string(elem)}"')
-                for elem in expansion
+            (
+                '""'
+                if not expansion
+                else " ".join(
+                    (elem if is_nonterminal(elem) else f'"{escape_string(elem)}"')
+                    for elem in expansion
+                )
             )
             for expansion in expansions
         )
@@ -4349,9 +4355,11 @@ def is_valid_combination(
         for _ in range(3):
             inp = "".join(
                 [
-                    str(fuzzer.expand_tree(DerivationTree(v.n_type)))
-                    if is_nonterminal(v.n_type)
-                    else v.n_type
+                    (
+                        str(fuzzer.expand_tree(DerivationTree(v.n_type)))
+                        if is_nonterminal(v.n_type)
+                        else v.n_type
+                    )
                     for v in combination
                 ]
             )
@@ -4419,20 +4427,19 @@ def match(
             for leaf_path, _ in t.leaves()
         )
 
-    if (
-        t.value != mexpr_tree.value
-        or safe(lambda: len(mexpr_tree.children) == 0 and t.children is None)()
-        .lash(lambda _: Success(False))
-        .unwrap()
+    if t.value != mexpr_tree.value or (
+        mexpr_tree.children is not None
+        and len(mexpr_tree.children) == 0
+        and t.children is None
     ):
         return None
 
     # If the match expression tree is "open," we have a match!
-    if (
-        mexpr_tree.children is None
-        or safe(lambda: len(mexpr_tree.children) == 0 and len(t.children) == 0)()
-        .lash(lambda _: Success(False))
-        .unwrap()
+    if mexpr_tree.children is None or (
+        mexpr_tree.children is not None
+        and t.children is not None
+        and len(mexpr_tree.children) == 0
+        and len(t.children) == 0
     ):
         assert not mexpr_var_paths or all(not path for path in mexpr_var_paths.values())
 
@@ -4616,7 +4623,7 @@ def parse_match_expression(
     ...     "x := 0 ; y := x",
     ...     "<start>",
     ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value))))
-    <Some: (x := 0 ; y := x, <start>)>
+    <Some: (x := 0 ; y := x, '<start>')>
 
     Now, we parse a single assignment with the :code:`<assgn>` start nonterminal:
 
@@ -4624,7 +4631,7 @@ def parse_match_expression(
     ...     "x := 0",
     ...     "<assgn>",
     ...     grammar_to_immutable(grammar)).map(lambda t: (t, t.value))))
-    <Some: (x := 0, <assgn>)>
+    <Some: (x := 0, '<assgn>')>
 
     In case of an error, Nothing is returned:
 

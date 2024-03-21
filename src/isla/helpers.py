@@ -18,6 +18,7 @@
 
 import copy
 import importlib.resources
+import inspect
 import itertools
 import logging
 import math
@@ -43,11 +44,12 @@ from typing import (
     Optional,
     AbstractSet,
     Iterator,
+    Mapping,
 )
 
 import returns
 from frozendict import frozendict
-from orderedset import OrderedSet
+from orderedset import OrderedSet, FrozenOrderedSet
 from returns.maybe import Maybe, Some
 from returns.result import safe, Success, Failure, Result
 
@@ -88,8 +90,90 @@ def singleton_iterator(elem: T) -> Iterator[T]:
     return iter([elem])
 
 
-def star(f: Callable[[[Any, ...]], T]) -> Callable[[Sequence[Any]], T]:
-    return lambda x: f(*x)
+def star(f: Callable[..., T], do_flatten=False) -> Callable[..., T]:
+    """
+    Transforms a function accepting n arguments into one accepting a sequence of n
+    elements. If :code:`do_flatten` is True, the returned function accepts multiple
+    arguments. Sequences in these arguments are flattened.
+
+    Example
+    -------
+
+    Transforming a function adding two numbers to a function adding the two elements
+    of a list of numbers:
+
+    >>> star(lambda a, b: a + b)([1, 2])
+    3
+
+    Transforming a function adding four numbers to a function adding all passed numbers
+    or their elements using flattening. There must be exactly four numbers in the
+    given arguments.
+
+    >>> star(lambda a, b, c, d: a + b + c + d, do_flatten=True)(1, [2, 3], 4)
+    10
+
+    It does not matter if the passed arguments are inside a list or not:
+
+    >>> star(lambda a, b, c, d: a + b + c + d, do_flatten=True)([1], 2, [3, 4])
+    10
+
+    But we must pass exactly five numbers:
+
+    >>> star(lambda a, b, c, d: a + b + c + d, do_flatten=True)(1, [2, 3, 4], 5)
+    Traceback (most recent call last):
+    ...
+    TypeError: <lambda>() takes 4 positional arguments but 5 were given
+
+    :param f: The function to be "starred."
+    :param do_flatten: Set to True if the returned function should accept multiple
+        arguments that are flattened before forwarding them to the original function.
+    :return: The "starred" function.
+    """
+
+    if do_flatten:
+        return lambda *x: f(*flatten(x))
+    else:
+        return lambda x: f(*x)
+
+
+ListOrTuple = TypeVar("ListOrTuple", list, tuple)
+
+
+def flatten(seq: ListOrTuple) -> ListOrTuple:
+    """
+    This function one level of the passed sequence.
+
+    Flattening of a nested list:
+
+    >>> flatten([[1], [3, 4]])
+    [1, 3, 4]
+
+    Flattening of a nested tuple:
+
+    >>> flatten(((1,), (3, 4)))
+    (1, 3, 4)
+
+    Flattening of a nested tuple, where some elements are no sequences:
+
+    >>> flatten((1, (3, 4)))
+    (1, 3, 4)
+
+    Flattening of a more deeply nested sequence leaves the deeper nested elements
+    unflattened:
+
+    >>> flatten((1, ((3, 4), 5)))
+    (1, (3, 4), 5)
+
+    :param seq: The sequence to flatten.
+    :return: A sequence in which elements nested one level are inlined.
+    """
+
+    constructor = type(seq)
+    return constructor(
+        item
+        for subseq in seq
+        for item in (subseq if isinstance(subseq, (tuple, list)) else [subseq])
+    )
 
 
 def is_path(maybe_path: Any) -> bool:
@@ -136,12 +220,14 @@ def path_iterator(
             yield from path_iterator(child, path + (i,))
 
 
-def delete_unreachable(grammar: Grammar) -> Grammar:
-    return {
-        nonterminal: expansions
+def delete_unreachable(grammar: Grammar, frozen=False) -> Grammar | FrozenGrammar:
+    result = {
+        nonterminal: tuple(expansions) if frozen else expansions
         for nonterminal, expansions in grammar.items()
         if nonterminal not in unreachable_nonterminals(grammar)
     }
+
+    return frozendict(result) if frozen else result
 
 
 def is_prefix(path_1: Path, path_2: Path) -> bool:
@@ -355,6 +441,60 @@ def grammar_to_immutable(grammar: Grammar) -> ImmutableGrammar:
     )
 
 
+def grammar_to_frozen(grammar: Mapping[str, Sequence[str]]) -> FrozenGrammar:
+    """
+    Converts a grammar to a frozen grammar.
+
+    Example
+    -------
+
+    >>> grammar = {
+    ...     "<start>": ["<A>"],
+    ...     "<A>": ["b", "c", "d"],
+    ... }
+
+    >>> grammar_to_frozen(grammar)
+    frozendict.frozendict({'<start>': ('<A>',), '<A>': ('b', 'c', 'd')})
+
+    The first result of :code:`grammar_to_frozen` is a fixed point:
+
+    >>> grammar_to_frozen(grammar_to_frozen(grammar))
+    frozendict.frozendict({'<start>': ('<A>',), '<A>': ('b', 'c', 'd')})
+
+    :param grammar: The grammar to convert.
+    :return: The converted frozen grammar.
+    """
+
+    return frozendict({k: tuple(v) for k, v in grammar.items()})
+
+
+def grammar_to_unfrozen(grammar: Mapping[str, Sequence[str]]) -> Grammar:
+    """
+    Converts a frozen grammar to a mutable one.
+
+    Example
+    -------
+
+    >>> grammar = {
+    ...     "<start>": ["<A>"],
+    ...     "<A>": ["b", "c", "d"],
+    ... }
+
+    >>> grammar_to_unfrozen(grammar_to_frozen(grammar))
+    {'<start>': ['<A>'], '<A>': ['b', 'c', 'd']}
+
+    The first result of :code:`grammar_to_unfrozen` is a fixed point:
+
+    >>> grammar_to_unfrozen(grammar_to_unfrozen(grammar_to_frozen(grammar)))
+    {'<start>': ['<A>'], '<A>': ['b', 'c', 'd']}
+
+    :param grammar: The grammar to convert.
+    :return: The converted "unfrozen" (mutable) grammar.
+    """
+
+    return {k: list(v) for k, v in grammar.items()}
+
+
 def grammar_to_mutable(grammar: ImmutableGrammar) -> Grammar:
     return {nonterminal: list(expansion) for nonterminal, expansion in grammar}
 
@@ -393,45 +533,55 @@ def split_str_with_nonterminals(expression: str) -> List[str]:
 
 
 def cluster_by_common_elements(
-    a_list: Sequence[T], f: Callable[[T], AbstractSet[S]]
-) -> List[List[T]]:
+    a_list: Iterable[T], f: Callable[[T], AbstractSet[S]]
+) -> Tuple[Tuple[T, ...], ...]:
     """
     Clusters elements of l by shared elements. Elements of interest are obtained using f.
     For instance, to cluster a list of lists based on common list elements:
 
     >>> cluster_by_common_elements([[1,2], [2,3], [3,4], [5,6]], lambda l: {e for e in l})
-    [[[2, 3], [3, 4], [1, 2]], [[5, 6]]]
+    (((2, 3), (3, 4), (1, 2)), ((5, 6),))
 
     >>> cluster_by_common_elements([1,2,3,4,5,6,7], lambda e: {e, e+3})
-    [[2, 5], [3, 6], [4, 7, 1]]
+    ((2, 5), (3, 6), (4, 7, 1))
 
     :param a_list: The list to cluster.
     :param f: The function to determine commonality.
     :return: The clusters w.r.t. f.
     """
-    clusters = [[e2 for e2 in a_list if not f(e1).isdisjoint(f(e2))] for e1 in a_list]
 
-    result = []
+    clusters = tuple(
+        tuple(
+            tuple(e2) if isinstance(e2, Iterable) else e2
+            for e2 in a_list
+            if not f(e1).isdisjoint(f(e2))
+        )
+        for e1 in a_list
+    )
+
+    result = ()
     for c in clusters:
         # Merge clusters with common elements...
-        clusters_with_common_elements = [
-            c1
-            for c1 in result
+        clusters_with_common_elements = tuple(
+            (idx, c1)
+            for idx, c1 in enumerate(result)
             if any(not f(e).isdisjoint(f(e1)) for e in c for e1 in c1)
-        ]
-        for c1 in clusters_with_common_elements:
-            result.remove(c1)
+        )
+        for idx, _ in clusters_with_common_elements:
+            result = result[:idx] + result[idx + 1 :]
 
-        merged_cluster = c + [e for c1 in clusters_with_common_elements for e in c1]
+        merged_cluster = c + tuple(
+            e for _, c1 in clusters_with_common_elements for e in c1
+        )
 
         # ...and remove duplicate elements from the merged cluster.
-        no_dupl_cluster = []
+        no_dupl_cluster = ()
         for cluster in merged_cluster:
             if cluster in no_dupl_cluster:
                 continue
-            no_dupl_cluster.append(cluster)
+            no_dupl_cluster += (cluster,)
 
-        result.append(no_dupl_cluster)
+        result += (no_dupl_cluster,)
 
     return result
 
@@ -768,10 +918,28 @@ def eassert(
     return expr
 
 
-def shuffle(a_list: List[T]) -> List[T]:
-    result: List[T] = list(a_list)
+def shuffle(an_iterable: Iterable[T]) -> Tuple[T, ...]:
+    """
+    Shuffles the given iterable and returns a tuple of the shuffled elements.
+
+    >>> random.seed(0)
+    >>> l = [1, 2, 3]
+
+    >>> shuffle(l)
+    (1, 3, 2)
+
+    The original list is not modified:
+
+    >>> l
+    [1, 2, 3]
+
+    :param an_iterable: The iterable to shuffle.
+    :return: A tuple of the shuffled elements.
+    """
+
+    result = list(an_iterable)
     random.shuffle(result)
-    return result
+    return tuple(result)
 
 
 Seq = TypeVar("Seq", bound=Sequence)
@@ -843,20 +1011,16 @@ def get_elem_by_equivalence(
 
 def get_expansions(leaf_value: str, grammar: CanonicalGrammar | FrozenCanonicalGrammar):
     all_expansions = grammar[leaf_value]
+    terminal_expansions = []
+    nonterminal_expansions = []
 
-    terminal_expansions = [
-        expansion
-        for expansion in all_expansions
-        if len(expansion) == 1 and not is_nonterminal(expansion[0])
-    ]
+    for expansion in all_expansions:
+        if len(expansion) == 1 and not is_nonterminal(expansion[0]):
+            terminal_expansions.append(expansion)
+        else:
+            nonterminal_expansions.append(expansion)
 
-    expansions = [
-        expansion
-        for expansion in all_expansions
-        if expansion not in terminal_expansions
-    ]
-
-    return terminal_expansions, expansions
+    return terminal_expansions, nonterminal_expansions
 
 
 def compute_nullable_nonterminals(
@@ -1055,6 +1219,7 @@ def deep_str(obj: Any) -> str:
     elif (
         isinstance(obj, set)
         or isinstance(obj, OrderedSet)
+        or isinstance(obj, FrozenOrderedSet)
         or isinstance(obj, frozenset)
     ):
         return "{" + ", ".join(map(deep_str, obj)) + "}"
@@ -1078,5 +1243,86 @@ def deep_str(obj: Any) -> str:
                 return str(Failure(deep_str(inner)))
     elif not str(obj):
         return repr(obj)
+    elif isinstance(obj, str):
+        return repr(str(obj))
     else:
         return str(obj)
+
+
+def depth_indent(c=".") -> str:
+    """
+    This function returns a string of :code:`c` characters/strings, where the
+    number of characters is equal to the depth of the current function call
+    stack (where only the calling function is considered). This is useful for
+    debugging recursive functions.
+
+    Example
+    -------
+
+    >>> def a(i=3):
+    ...     print(depth_indent() + "Hi!")
+    ...     if i > 0:
+    ...         a(i - 1)
+
+    >>> a()
+    Hi!
+    .Hi!
+    ..Hi!
+    ...Hi!
+
+    :param c: The character/string to use for indentation.
+    :return: A string of :code:`c` characters/strings corresponding to the
+        number of times the calling function occurs in the call stack.
+    """
+
+    stack = inspect.stack()
+    fname = stack[1].function
+    return c * len([fr for fr in stack[2:] if fr.function == fname])
+
+
+def sum_of_maybes(maybes: Iterable[Maybe[T]], neutral: Optional[T] = None) -> Maybe[T]:
+    """
+    Sums the given maybes. If any of the maybes is :code:`Nothing`, the result is
+    :code:`Nothing`. Otherwise, the result is the sum of the values of the maybes.
+
+    Example
+    -------
+
+    >>> sum_of_maybes(map(Some, range(4)))
+    <Some: 6>
+
+    >>> sum_of_maybes(map(Some, [(1, 2), (3,)]))
+    <Some: (1, 2, 3)>
+
+    >>> from returns.maybe import Nothing
+    >>> sum_of_maybes([Some(1), Nothing, Some(3)])
+    <Nothing>
+
+    >>> sum_of_maybes(())
+    Traceback (most recent call last):
+    ...
+    TypeError: reduce() of empty iterable with no initial value
+
+    >>> sum_of_maybes((), neutral=0)
+    <Some: 0>
+
+    :param maybes: The maybes to sum.
+    :return: The sum of the maybes.
+    """
+
+    if neutral is not None:
+        return reduce(
+            lambda acc, maybe: acc.bind(
+                lambda acc_val: maybe.bind(lambda val: Some(acc_val + val))
+            ),
+            maybes,
+            Some(neutral),
+        )
+    else:
+
+        return reduce(
+            lambda acc, maybe: acc.bind(
+                lambda acc_val: maybe.bind(lambda val: Some(acc_val + val))
+            ),
+            maybes,
+        )

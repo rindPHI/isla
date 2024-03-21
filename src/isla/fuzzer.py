@@ -179,8 +179,9 @@ class GrammarFuzzer(Fuzzer):
         expansion = exp_string(expansion)
         assert isinstance(expansion, str)
 
-        if expansion == "":  # Special case: epsilon expansion
-            return [DerivationTree("", [])]
+        # TODO: Re-enable if needed.
+        # if expansion == "":  # Special case: epsilon expansion
+        #     return [DerivationTree("", [])]
 
         strings = RE_NONTERMINAL.split(expansion)
         return [

@@ -95,6 +95,7 @@ from isla.helpers import (
     compute_nullable_nonterminals,
     eassert,
     merge_dict_of_sets,
+    list_set,
 )
 from isla.isla_predicates import (
     STANDARD_STRUCTURAL_PREDICATES,
@@ -105,7 +106,6 @@ from isla.language import (
     VariablesCollector,
     split_conjunction,
     split_disjunction,
-    convert_to_dnf,
     convert_to_nnf,
     ensure_unique_bound_variables,
     parse_isla,
@@ -116,6 +116,7 @@ from isla.language import (
     NoopFormulaTransformer,
     set_smt_auto_subst,
     fresh_constant,
+    to_dnf_clauses,
 )
 from isla.mutator import Mutator
 from isla.parser import EarleyParser
@@ -272,12 +273,12 @@ class SemanticError(Exception):
 @dataclass(frozen=True)
 class SolverDefaults:
     formula: Optional[language.Formula | str] = None
-    structural_predicates: frozenset[
-        language.StructuralPredicate
-    ] = STANDARD_STRUCTURAL_PREDICATES
-    semantic_predicates: frozenset[
-        language.SemanticPredicate
-    ] = STANDARD_SEMANTIC_PREDICATES
+    structural_predicates: frozenset[language.StructuralPredicate] = (
+        STANDARD_STRUCTURAL_PREDICATES
+    )
+    semantic_predicates: frozenset[language.SemanticPredicate] = (
+        STANDARD_SEMANTIC_PREDICATES
+    )
     max_number_free_instantiations: int = 10
     max_number_smt_instantiations: int = 10
     max_number_tree_insertion_results: int = 5
@@ -289,9 +290,9 @@ class SolverDefaults:
     predicates_unique_in_int_arg: Tuple[language.SemanticPredicate, ...] = (
         COUNT_PREDICATE,
     )
-    fuzzer_factory: Callable[
-        [Grammar], GrammarFuzzer
-    ] = lambda grammar: GrammarCoverageFuzzer(grammar)
+    fuzzer_factory: Callable[[Grammar], GrammarFuzzer] = (
+        lambda grammar: GrammarCoverageFuzzer(grammar)
+    )
     tree_insertion_methods: Optional[int] = None
     activate_unsat_support: bool = False
     grammar_unwinding_threshold: int = 4
@@ -543,11 +544,23 @@ class ISLaSolver:
             + f'found {len(top_constants)}: {", ".join(map(str, top_constants))}'
         )
 
-        self.top_constant = result_to_maybe(safe(lambda: next(iter(top_constants)))())
+        only_top_constant = Maybe.from_optional(next(iter(top_constants), None))
+        self.top_constant = only_top_constant.map(
+            lambda c: language.Constant(
+                c.name, Maybe.from_optional(start_symbol).value_or(c.n_type)
+            )
+        )
+
+        if only_top_constant != self.top_constant:
+            assert is_successful(only_top_constant)
+            assert is_successful(self.top_constant)
+            self.formula = self.formula.substitute_variables(
+                {only_top_constant.unwrap(): self.top_constant.unwrap()}
+            )
 
         quantifier_chains: List[Tuple[language.ForallFormula, ...]] = [
             tuple([f for f in c if isinstance(f, language.ForallFormula)])
-            for c in get_quantifier_chains(formula)
+            for c in get_quantifier_chains(self.formula)
         ]
         # TODO: Remove?
         self.quantifier_chains: List[Tuple[language.ForallFormula, ...]] = [
@@ -598,9 +611,9 @@ class ISLaSolver:
 
         # Debugging stuff
         self.debug = debug
-        self.state_tree: Dict[
-            SolutionState, List[SolutionState]
-        ] = {}  # is only filled if self.debug
+        self.state_tree: Dict[SolutionState, List[SolutionState]] = (
+            {}
+        )  # is only filled if self.debug
         self.state_tree_root = None
         self.current_state = None
         self.costs: Dict[SolutionState, float] = {}
@@ -865,9 +878,11 @@ class ISLaSolver:
                     safe(lambda: self.check(abstracted_tree))()
                     .bind(lambda _: Nothing)
                     .lash(
-                        lambda exc: Some(abstracted_tree)
-                        if isinstance(exc, UnknownResultError)
-                        else Nothing
+                        lambda exc: (
+                            Some(abstracted_tree)
+                            if isinstance(exc, UnknownResultError)
+                            else Nothing
+                        )
                     )
                     .bind(do_complete)
                 ):
@@ -1415,9 +1430,11 @@ class ISLaSolver:
                 semantic_predicate_formulas: List[
                     Tuple[language.SemanticPredicateFormula, bool]
                 ] = [
-                    (pred_formula, False)
-                    if isinstance(pred_formula, language.SemanticPredicateFormula)
-                    else (cast(language.NegatedFormula, pred_formula).args[0], True)
+                    (
+                        (pred_formula, False)
+                        if isinstance(pred_formula, language.SemanticPredicateFormula)
+                        else (cast(language.NegatedFormula, pred_formula).args[0], True)
+                    )
                     for pred_formula in language.FilterVisitor(
                         lambda f: (
                             constant in f.free_variables()
@@ -2014,7 +2031,7 @@ class ISLaSolver:
                 )
 
                 instantiated_formulas.append(inst_formula)
-                conjuncts[idx] = universal_formula_with_matches
+                conjuncts = list_set(conjuncts, idx, universal_formula_with_matches)
 
         if instantiated_formulas:
             return [
@@ -2038,9 +2055,9 @@ class ISLaSolver:
             language.ExistsFormula, conjuncts[existential_formula_idx]
         )
 
-        matches: List[
-            Dict[language.Variable, Tuple[Path, DerivationTree]]
-        ] = matches_for_quantified_formula(existential_formula, self.grammar)
+        matches: List[Dict[language.Variable, Tuple[Path, DerivationTree]]] = (
+            matches_for_quantified_formula(existential_formula, self.grammar)
+        )
 
         for match in matches:
             inst_formula = existential_formula.inner_formula.substitute_expressions(
@@ -2079,7 +2096,7 @@ class ISLaSolver:
         bind_expr_paths: Dict[language.BoundVariable, Path]
         for inserted_tree, bind_expr_paths in inserted_trees_and_bind_paths:
             self.logger.debug(
-                "insert_tree(self.canonical_grammar, %s, %s, self.graph, %s)",
+                "process_insertion_results(self.canonical_grammar, %s, %s, self.graph, %s)",
                 lazystr(lambda: repr(inserted_tree)),
                 lazystr(lambda: repr(existential_formula.in_variable)),
                 self.max_number_tree_insertion_results,
@@ -2547,12 +2564,16 @@ class ISLaSolver:
                         z3_or(
                             [
                                 z3.And(
-                                    repl_var >= z3.IntVal(interval[0])
-                                    if interval[0] > -sys.maxsize
-                                    else z3.BoolVal(True),
-                                    repl_var <= z3.IntVal(interval[1])
-                                    if interval[1] < sys.maxsize
-                                    else z3.BoolVal(True),
+                                    (
+                                        repl_var >= z3.IntVal(interval[0])
+                                        if interval[0] > -sys.maxsize
+                                        else z3.BoolVal(True)
+                                    ),
+                                    (
+                                        repl_var <= z3.IntVal(interval[1])
+                                        if interval[1] < sys.maxsize
+                                        else z3.BoolVal(True)
+                                    ),
                                 )
                                 for interval in intervals
                             ]
@@ -3204,9 +3225,11 @@ class ISLaSolver:
             elif constant in tree_substitutions:
                 # We have a more concrete shape of the desired instantiation available
                 regexes = [
-                    self.extract_regular_expression(t)
-                    if is_nonterminal(t)
-                    else z3.Re(t)
+                    (
+                        self.extract_regular_expression(t)
+                        if is_nonterminal(t)
+                        else z3.Re(t)
+                    )
                     for t in split_str_with_nonterminals(
                         str(tree_substitutions[constant])
                     )
@@ -3501,10 +3524,10 @@ class ISLaSolver:
         # return solver.check() == z3.unsat
 
     def establish_invariant(self, state: SolutionState) -> List[SolutionState]:
-        formula = convert_to_dnf(convert_to_nnf(state.constraint), deep=False)
+        clauses = to_dnf_clauses(convert_to_nnf(state.constraint))
         return [
-            SolutionState(disjunct, state.tree)
-            for disjunct in split_disjunction(formula)
+            SolutionState(reduce(lambda a, b: a & b, clause, sc.true()), state.tree)
+            for clause in clauses
         ]
 
     def compute_cost(self, state: SolutionState) -> float:
@@ -3626,9 +3649,11 @@ class ISLaSolver:
             )
         ):
             result_elements: List[z3.ReRef] = [
-                z3.Re(elem)
-                if not is_nonterminal(elem)
-                else self.extract_regular_expression(elem)
+                (
+                    z3.Re(elem)
+                    if not is_nonterminal(elem)
+                    else self.extract_regular_expression(elem)
+                )
                 for elem in canonical_expansions[0]
             ]
             return self.regex_cache.setdefault(nonterminal, z3.Concat(*result_elements))
@@ -4312,9 +4337,11 @@ def create_fixed_length_tree(
                         curr_len
                         + sum(
                             [
-                                len(child.value)
-                                if child.children == ()
-                                else (1 if child.value not in nullable else 0)
+                                (
+                                    len(child.value)
+                                    if child.children == ()
+                                    else (1 if child.value not in nullable else 0)
+                                )
                                 for child in new_children
                             ]
                         )
@@ -4337,9 +4364,9 @@ def create_fixed_length_tree(
 def subtree_solutions(
     solution: Dict[language.Constant | DerivationTree, DerivationTree]
 ) -> Dict[language.Variable | DerivationTree, DerivationTree]:
-    solution_with_subtrees: Dict[
-        language.Variable | DerivationTree, DerivationTree
-    ] = {}
+    solution_with_subtrees: Dict[language.Variable | DerivationTree, DerivationTree] = (
+        {}
+    )
     for orig, subst in solution.items():
         if isinstance(orig, language.Variable):
             solution_with_subtrees[orig] = subst

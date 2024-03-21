@@ -18,6 +18,7 @@
 
 import html
 import json
+import zlib
 from functools import lru_cache, cache
 from typing import (
     Optional,
@@ -29,11 +30,11 @@ from typing import (
     Callable,
     Union,
     Generator,
+    Mapping,
 )
 
 import graphviz
 import ijson
-import zlib
 from grammar_graph import gg
 from graphviz import Digraph
 
@@ -89,15 +90,143 @@ class DerivationTree:
             self.__is_open = True
 
     def to_json(self) -> str:
-        the_dict = self.__dict__
-        if "_DerivationTree__k_paths" in the_dict:
-            del the_dict["_DerivationTree__k_paths"]
-        if "_DerivationTree__concrete_k_paths" in the_dict:
-            del the_dict["_DerivationTree__concrete_k_paths"]
-        return json.dumps(the_dict, default=lambda o: o.__dict__)
+        """
+        Serializes the tree to a JSON string.
+
+        Example
+        -------
+
+        >>> tree = DerivationTree(
+        ...     "<start>",
+        ...     (
+        ...         DerivationTree(
+        ...             "<a>", (
+        ...                 DerivationTree("<b>", id=2),
+        ...                 DerivationTree("<c>", (), id=3),
+        ...             ),
+        ...             id=1,
+        ...         ),
+        ...     ),
+        ...     id=0,
+        ... )
+
+        >>> print(json.dumps(json.loads(tree.to_json()), indent=4))
+        {
+            "_DerivationTree__value": "<start>",
+            "_DerivationTree__children": [
+                {
+                    "_DerivationTree__value": "<a>",
+                    "_DerivationTree__children": [
+                        {
+                            "_DerivationTree__value": "<b>",
+                            "_DerivationTree__children": null,
+                            "_id": 2,
+                            "_DerivationTree__len": 1,
+                            "_DerivationTree__hash": null,
+                            "_DerivationTree__structural_hash": null,
+                            "_DerivationTree__is_open": true
+                        },
+                        {
+                            "_DerivationTree__value": "<c>",
+                            "_DerivationTree__children": [],
+                            "_id": 3,
+                            "_DerivationTree__len": 1,
+                            "_DerivationTree__hash": null,
+                            "_DerivationTree__structural_hash": null,
+                            "_DerivationTree__is_open": false
+                        }
+                    ],
+                    "_id": 1,
+                    "_DerivationTree__len": null,
+                    "_DerivationTree__hash": null,
+                    "_DerivationTree__structural_hash": null,
+                    "_DerivationTree__is_open": true
+                }
+            ],
+            "_id": 0,
+            "_DerivationTree__len": null,
+            "_DerivationTree__hash": null,
+            "_DerivationTree__structural_hash": null,
+            "_DerivationTree__is_open": true
+        }
+
+
+        :return: A JSON string representing the tree.
+        """
+
+        stack: List[str] = []
+
+        def atom_to_json(atom: Union[str, int, float, bool, None]) -> str:
+            if atom is None:
+                return "null"
+            elif isinstance(atom, bool):
+                return "true" if atom else "false"
+            elif isinstance(atom, (int, float)):
+                return str(atom)
+            elif isinstance(atom, str):
+                return json.dumps(atom)
+
+            raise NotImplementedError(
+                f"Unexpected atom {atom} (type: {type(atom).__name__})"
+            )
+
+        def action(_, subtree: DerivationTree) -> None:
+            result = f'{{"_DerivationTree__value": {atom_to_json(subtree.value)},'
+
+            children = (
+                "null"
+                if subtree.children is None
+                else (
+                    "[]"
+                    if not subtree.children
+                    else "[" + ", ".join(stack[-len(subtree.children) :]) + "]"
+                )
+            )
+            result += f'"_DerivationTree__children": {children},'
+            for _ in range(len(subtree.children or [])):
+                stack.pop()
+
+            result += f'"_id": {atom_to_json(subtree.id)},'
+            result += f'"_DerivationTree__len": {atom_to_json(subtree.__len)},'
+            result += f'"_DerivationTree__hash": {atom_to_json(subtree.__hash)},'
+            result += f'"_DerivationTree__structural_hash": {atom_to_json(subtree.__structural_hash)},'
+            result += f'"_DerivationTree__is_open": {atom_to_json(subtree.__is_open)}'
+            result += "}"
+
+            stack.append(result)
+
+        self.traverse(action, kind=DerivationTree.TRAVERSE_POSTORDER)
+        assert len(stack) == 1
+        return stack[0]
 
     def __getstate__(self) -> bytes:
         return zlib.compress(self.to_json().encode("UTF-8"))
+
+    def __copy__(self) -> "DerivationTree":
+        """
+        Derivation trees are immutable objects except some private fields
+        only used for caching. Therefore, the deep copy function returns
+        this object itself.
+
+        :param memo: The memo dictionary, intended to be treated as an
+            opaque object.
+        :return: This derivation tree object itself.
+        """
+
+        return self
+
+    def __deepcopy__(self, memo) -> "DerivationTree":
+        """
+        Derivation trees are immutable objects except some private fields
+        only used for caching. Therefore, the deep copy function returns
+        this object itself.
+
+        :param memo: The memo dictionary, intended to be treated as an
+            opaque object.
+        :return: This derivation tree object itself.
+        """
+
+        return self
 
     @staticmethod
     def from_json(
@@ -163,6 +292,40 @@ class DerivationTree:
                 for _, subt_2 in self.paths()
             )
             for _, subt_1 in self.paths()
+        )
+
+    def ensure_unique_ids(self):
+        """
+        Ensures that all nodes in the tree have unique IDs by traversing the
+        tree and choosing values starting at :code:`DerivationTree.next_id`.
+
+        >>> DerivationTree.next_id = 0
+        >>> tree = DerivationTree("<start>", (DerivationTree("<a>"), DerivationTree("<b>")))
+        >>> tree
+        DerivationTree('<start>', (DerivationTree('<a>', None, id=0), DerivationTree('<b>', None, id=1)), id=2)
+
+        >>> tree.ensure_unique_ids()
+        DerivationTree('<start>', (DerivationTree('<a>', None, id=4), DerivationTree('<b>', None, id=5)), id=3)
+
+        >>> tree.structural_hash() == tree.ensure_unique_ids().structural_hash()
+        True
+
+        :return: A new, structurally identical tree with unique IDs.
+        """
+
+        new_id = DerivationTree.next_id
+        DerivationTree.next_id += 1
+
+        return DerivationTree(
+            self.value,
+            (
+                tuple(map(lambda c: c.ensure_unique_ids(), self.children))
+                if self.children
+                else self.children
+            ),
+            id=new_id,
+            k_paths=self.__k_paths,
+            is_open=self.__is_open,
         )
 
     def k_coverage(
@@ -504,9 +667,11 @@ class DerivationTree:
     def new_ids(self) -> "DerivationTree":
         return DerivationTree(
             self.value,
-            None
-            if self.children is None
-            else [child.new_ids() for child in self.children],
+            (
+                None
+                if self.children is None
+                else [child.new_ids() for child in self.children]
+            ),
         )
 
     def __len__(self):
@@ -516,7 +681,7 @@ class DerivationTree:
         return self.__len
 
     def substitute(
-        self, subst_map: Dict["DerivationTree", "DerivationTree"]
+        self, subst_map: Mapping["DerivationTree", "DerivationTree"]
     ) -> "DerivationTree":
         # We perform an iterative reverse post-order depth-first traversal and use a
         # stack to store intermediate results from lower levels.
@@ -527,6 +692,9 @@ class DerivationTree:
         # We remove "nested" replacements since removing elements in replacements is not
         # intended.
 
+        # TODO: This is a performance bottleneck. For each element in the substitution
+        #       map, the code below searches the complete derivation tree (`find_node`).
+        #       This should be prevented! (DS, 2024/02/19)
         id_subst_map = {
             tree.id: repl
             for tree, repl in subst_map.items()
@@ -636,9 +804,9 @@ class DerivationTree:
         if not nonterminal_expansions:
             return []
 
-        possible_expansions: List[
-            Dict[Path, List[DerivationTree]]
-        ] = dict_of_lists_to_list_of_dicts(nonterminal_expansions)
+        possible_expansions: List[Dict[Path, List[DerivationTree]]] = (
+            dict_of_lists_to_list_of_dicts(nonterminal_expansions)
+        )
 
         assert (
             len(possible_expansions) > 1

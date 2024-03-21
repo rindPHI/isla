@@ -34,14 +34,12 @@ import z3
 from grammar_graph import gg
 from orderedset import OrderedSet
 from returns.functions import tap
-from returns.maybe import Maybe, Some
 from returns.pipeline import is_successful
 from returns.result import safe, Success
 
 import isla.derivation_tree
 import isla.evaluator
 import isla.global_config
-from evaluations.evaluate_csv import max_number_smt_instantiations
 from isla import isla_shortcuts as sc
 from isla import language
 from isla.derivation_tree import DerivationTree
@@ -245,11 +243,11 @@ forall <xml-tree> tree="<{<id> opid}[ <xml-attribute>]><inner-xml-tree></{<id> c
         chains_1 = get_quantifier_chains(XML_WELLFORMEDNESS_CONSTRAINT)
         self.assertEqual(1, len(chains_1))
         chains_2 = get_quantifier_chains(XML_NAMESPACE_CONSTRAINT)
-        self.assertEqual(2, len(chains_2))
+        self.assertEqual(3, len(chains_2))
         all_chains = get_quantifier_chains(
             XML_WELLFORMEDNESS_CONSTRAINT & XML_NAMESPACE_CONSTRAINT
         )
-        self.assertEqual(3, len(all_chains))
+        self.assertEqual(4, len(all_chains))
         self.assertEqual(set(chains_1) | set(chains_2), set(all_chains))
 
     def test_xml_with_prefixes(self):
@@ -1121,9 +1119,7 @@ forall <assgn> assgn_1="<var> := {<var> rhs}" in start:
         solver = ISLaSolver(LANG_GRAMMAR, formula)
 
         self.assertFalse(
-            solver.repair("x := a ; y := z ; z := c")
-            .map(solver.check)
-            .value_or(False),
+            solver.repair("x := a ; y := z ; z := c").map(solver.check).value_or(False),
         )
 
     def test_repair_unbalanced_xml_tree(self):

@@ -70,13 +70,13 @@ else
     case csv
       set jobs "Grammar Fuzzer" "Cnt-Columns"
     case rest
-      set jobs "Grammar Fuzzer" "Def-Use" "Def-Use + Len" "Def-Use + Len + List Numbering" "Def-Use + Len + List Numbering + No-Redef"
+      set jobs "Grammar Fuzzer" "Def-Use" "Def-Use + Len" "Def-Use + Len + List Numbering" "Def-Use + Len + List Numbering + No-Redef" "Def-Use + Len + List Numbering + No-Redef (RepairSolver)"
     case scriptsize_c
-      set jobs "Grammar Fuzzer" "Def-Use" "No-Redef" "Def-Use + No-Redef"
+      set jobs "Grammar Fuzzer" "Def-Use" "No-Redef" "Def-Use + No-Redef" "Def-Use + No-Redef (RepairSolver)"
     case tar
       set jobs "Grammar Fuzzer" "Length" "Length + Checksum" "Length + Checksum + Def-Use"
     case xml
-      set jobs "Grammar Fuzzer" "Def-Use" "Balance" "Balance + Def-Use" "Balance + Def-Use + No-Redef"
+      set jobs "Grammar Fuzzer" "Def-Use" "Balance" "Balance + Def-Use" "Balance + Def-Use + No-Redef" "Balance + Def-Use + No-Redef (RepairSolver)"
     case '*'
       echo "Unknown subject $subject"
       echo "Call '$script -h' for help."
