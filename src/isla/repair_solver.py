@@ -716,7 +716,7 @@ class RepairSolver:
 
         self.enable_optimized_z3_queries: bool = enable_optimized_z3_queries
         self.max_tries_existential_insertion: int = max_tries_existential_insertion
-        self.grammar_unwinding_threshold: int = 4
+        self.grammar_unwinding_threshold: int = 3
 
         self.grammar = grammar_to_frozen(
             parse_bnf(grammar) if isinstance(grammar, str) else grammar

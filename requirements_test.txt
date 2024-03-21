@@ -2,7 +2,7 @@ antlr4-python3-runtime>=4.13
 datrie>=0.8.2
 docutils>=0.18.1
 grammar_graph>=0.2.0
-grammar_to_regex>=0.0.4
+grammar_to_regex>=1.0.1
 ijson>=3.1.4
 matplotlib>=3.5.3
 more-itertools>=10.1.0
@@ -22,4 +22,4 @@ setuptools-antlr>=0.4.0
 toml>=0.10.2
 tox>=3.25.0
 typeguard>=4.1.5
-z3-solver==4.12.4.0
+z3-solver>=4.12.4.0

@@ -1,5 +1,6 @@
 import logging
 import random
+import string
 import time
 import unittest
 
@@ -621,6 +622,36 @@ class TestRepairSolver(unittest.TestCase):
         self.assertTrue(
             result.map(scriptsizec.compile_scriptsizec_clang).value_or(False) == True
         )
+
+    def test_solve_arith_expr_equation(self):
+        grammar = {
+            "<start>": ["<eq>"],
+            "<eq>": ["<a> = <b>"],
+            "<a>": ["<expression>"],
+            "<b>": ["<expression>"],
+            "<expression>": [
+                "<term>",
+                "<expression> + <term>",
+                "<expression> - <term>",
+            ],
+            "<term>": ["<factor>", "<term> * <factor>", "<term> / <factor>"],
+            "<factor>": ["<number>", "(<expression>)", "<chars>"],
+            "<chars>": [
+                "<char>",
+                "<chars><char>",
+            ],  # Better than <char><chars>, which breaks left-linearity!
+            "<char>": list(string.ascii_letters) + ["$", "_"],
+            "<number>": ["<digit>", "<number><digit>"],
+            "<digit>": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+        }
+
+        solver = RepairSolver(grammar=grammar, maybe_constraint="<a> = <b>")
+        for i in range(10):
+            solution = solver.solve()
+            LOGGER.info(f"Found solution no. %d: %s", i + 1, solution)
+            self.assertEqual(
+                str(solution.get_subtree((0, 0))), str(solution.get_subtree((0, 2)))
+            )
 
 
 if __name__ == "__main__":
