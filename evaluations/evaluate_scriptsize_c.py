@@ -2,7 +2,13 @@ from grammar_graph import gg
 from grammar_graph.gg import GrammarGraph
 
 from isla.performance_evaluator import Evaluator
-from isla.solver import ISLaSolver, CostSettings, CostWeightVector, GrammarBasedBlackboxCostComputer
+from isla.repair_solver import RepairSolver
+from isla.solver import (
+    ISLaSolver,
+    CostSettings,
+    CostWeightVector,
+    GrammarBasedBlackboxCostComputer,
+)
 from isla_formalizations import scriptsizec
 
 max_number_free_instantiations = 10
@@ -14,7 +20,8 @@ cost_vector = CostWeightVector(
     constraint_cost=2,
     derivation_depth_penalty=6,
     low_k_coverage_penalty=2,
-    low_global_k_path_coverage_penalty=21)
+    low_global_k_path_coverage_penalty=21,
+)
 
 cost_computer = GrammarBasedBlackboxCostComputer(
     CostSettings(cost_vector, k=eval_k),
@@ -48,10 +55,29 @@ g_defuse_redef = lambda timeout: ISLaSolver(
     cost_computer=cost_computer,
 )
 
-if __name__ == '__main__':
+repair_defuse_redef = lambda timeout: RepairSolver(
+    scriptsizec.SCRIPTSIZE_C_GRAMMAR,
+    scriptsizec.SCRIPTSIZE_C_DEF_USE_CONSTR & scriptsizec.SCRIPTSIZE_C_NO_REDEF_CONSTR,
+    timeout_seconds=timeout,
+).solve_iterator
+
+
+if __name__ == "__main__":
     # logging.basicConfig(level=logging.DEBUG)
-    generators = [scriptsizec.SCRIPTSIZE_C_GRAMMAR, g_defuse, g_redef, g_defuse_redef]
-    jobnames = ["Grammar Fuzzer", "Def-Use", "No-Redef", "Def-Use + No-Redef"]
+    generators = [
+        scriptsizec.SCRIPTSIZE_C_GRAMMAR,
+        g_defuse,
+        g_redef,
+        g_defuse_redef,
+        repair_defuse_redef,
+    ]
+    jobnames = [
+        "Grammar Fuzzer",
+        "Def-Use",
+        "No-Redef",
+        "Def-Use + No-Redef",
+        "Def-Use + No-Redef (RepairSolver)",
+    ]
 
     evaluator = Evaluator(
         "Scriptsize-C",
@@ -59,6 +85,7 @@ if __name__ == '__main__':
         jobnames,
         scriptsizec.compile_scriptsizec_clang,
         GrammarGraph.from_grammar(scriptsizec.SCRIPTSIZE_C_GRAMMAR),
-        default_timeout=60 * 60)
+        default_timeout=60 * 60,
+    )
 
     evaluator.run()

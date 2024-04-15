@@ -122,9 +122,11 @@ def evaluate(
     graph = gg.GrammarGraph.from_grammar(grammar) if graph is None else graph
 
     formula = instantiate_top_level_constant(
-        parse_isla(formula, grammar, structural_predicates, semantic_predicates)
-        if isinstance(formula, str)
-        else formula,
+        (
+            parse_isla(formula, grammar, structural_predicates, semantic_predicates)
+            if isinstance(formula, str)
+            else formula
+        ),
         reference_tree,
     )
 
@@ -874,13 +876,19 @@ def evaluate_structural_predicate_formula(
         return Nothing
 
     arg_insts = [
-        arg
-        if isinstance(arg, str)
-        else next(
-            path for path, subtree in reference_tree.paths() if subtree.id == arg.id
+        (
+            arg
+            if isinstance(arg, str)
+            else (
+                next(
+                    path
+                    for path, subtree in reference_tree.paths()
+                    if subtree.id == arg.id
+                )
+                if isinstance(arg, DerivationTree)
+                else assignments[arg][0]
+            )
         )
-        if isinstance(arg, DerivationTree)
-        else assignments[arg][0]
         for arg in formula.args
     ]
     return Some(
@@ -902,9 +910,11 @@ def evaluate_semantic_predicate_formula(
         return Nothing
 
     arg_insts = [
-        arg
-        if isinstance(arg, DerivationTree) or arg not in assignments
-        else assignments[arg][1]
+        (
+            arg
+            if isinstance(arg, DerivationTree) or arg not in assignments
+            else assignments[arg][1]
+        )
         for arg in formula.args
     ]
     eval_res = formula.predicate.evaluate(graph, *arg_insts)
@@ -1204,9 +1214,6 @@ def matches_for_quantified_formula(
         node, children = tree
         if node == qfd_var.n_type:
             if bind_expr is not None:
-                maybe_match: Optional[
-                    Tuple[Tuple[BoundVariable, Tuple[Path, DerivationTree]]], ...
-                ]
                 maybe_match = bind_expr.match(tree, grammar)
 
                 if maybe_match is not None:

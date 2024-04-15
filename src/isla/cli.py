@@ -52,6 +52,7 @@ from isla.isla_predicates import (
 )
 from isla.isla_shortcuts import true
 from isla.language import parse_bnf, parse_isla, StructuralPredicate, SemanticPredicate
+from isla.repair_solver import RepairSolver
 from isla.solver import (
     ISLaSolver,
     GrammarBasedBlackboxCostComputer,
@@ -127,6 +128,11 @@ def solve(stdout, stderr, parser: ArgumentParser, args: Namespace):
 
     grammar = parse_grammar(command, args.grammar, files, stderr)
     structural_predicates, semantic_predicates = read_predicates(files, stderr)
+
+    semantic_predicates = (
+        {}
+    )  # "The RepairSolver does not support semantic predicates" TODO
+
     constraint = parse_constraint(
         command,
         args.constraint,
@@ -134,24 +140,14 @@ def solve(stdout, stderr, parser: ArgumentParser, args: Namespace):
         grammar,
         stderr,
         structural_predicates=structural_predicates,
-        semantic_predicates=semantic_predicates,
-    )
-    cost_computer = parse_cost_computer_spec(
-        command, grammar, args.k, stderr, args.weight_vector
     )
 
-    solver = ISLaSolver(
+    solver = RepairSolver(
         grammar,
         constraint,
-        max_number_free_instantiations=args.free_instantiations,
-        max_number_smt_instantiations=args.smt_instantiations,
-        enforce_unique_trees_in_queue=args.unique_trees,
-        cost_computer=cost_computer,
         timeout_seconds=args.timeout if args.timeout > 0 else None,
-        activate_unsat_support=args.unsat_support,
-        grammar_unwinding_threshold=args.unwinding_depth,
+        # activate_unsat_support=args.unsat_support,
         structural_predicates=structural_predicates,
-        semantic_predicates=semantic_predicates,
     )
 
     try:
@@ -181,9 +177,6 @@ def solve(stdout, stderr, parser: ArgumentParser, args: Namespace):
                     ) as out_file:
                         out_file.write(result.encode("utf-8"))
             except StopIteration:
-                print("UNSAT", flush=True, file=stderr)
-                break
-            except TimeoutError:
                 break
             except Exception as exc:
                 print(
@@ -1009,12 +1002,12 @@ Activate support for unsatisfiable constraints. This can be required to make the
 analysis of unsatisfiable constraints terminate, but reduces the performance of the
 generator for satisfiable formulas""",
     )
-    free_insts_arg(parser)
-    smt_insts_arg(parser)
-    unique_trees_arg(parser)
-    unwinding_depth_arg(parser)
-    weight_vector_arg(parser)
-    k_arg(parser)
+
+    # TODO: Add support?
+    # unique_trees_arg(parser)
+    # unwinding_depth_arg(parser)
+    # k_arg(parser)
+
     log_level_arg(parser)
     grammar_constraint_extension_files_arg(parser)
 

@@ -52,8 +52,14 @@ from isla.helpers import (
     merge_dict_of_sets,
     merge_intervals,
     HELPERS_LOGGER,
+    shuffle,
+    deep_str,
 )
 from isla.three_valued_truth import ThreeValuedTruth
+
+Z3_RANDOM_SEED = "smt.random_seed"
+
+Z3_PARALLEL_ENABLE = "parallel.enable"
 
 Z3EvalResult = Tuple[
     Tuple[str, ...], bool | int | str | Callable[[Tuple[str, ...]], bool | int | str]
@@ -135,8 +141,6 @@ def evaluate_z3_expression(
                     evaluate_z3_seq_at,
                     evaluate_z3_seq_extract,
                     evaluate_z3_str_to_code,
-                    # Fallback
-                    not_implemented_failure,
                 ],
             ),
         )
@@ -149,7 +153,9 @@ def evaluate_z3_string_value(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
     if not z3.is_string_value(expr):
         return Nothing
     expr: z3.StringVal
-    return Some(((), expr.as_string().replace(r"\u{}", "\x00")))
+    return Some(
+        ((), expr.as_string().replace(r"\u{0}", "\x00").replace(r"\u{}", "\x00"))
+    )
 
 
 def evaluate_z3_int_value(expr: z3.ExprRef, _) -> Maybe[Z3EvalResult]:
@@ -601,44 +607,88 @@ def construct_result(
 
 
 def z3_solve(
-    formulas: Iterable[z3.BoolRef], timeout_ms=500
+    formulas: Iterable[z3.BoolRef],
+    medium_constraints: Iterable[z3.BoolRef] = (),
+    soft_constraints: Iterable[z3.BoolRef] = (),
+    timeout_ms=50,
 ) -> Tuple[z3.CheckSatResult, Optional[z3.ModelRef]]:
+    """
+    Solves the given formulas using Z3. If the solver returns unknown, we
+    try it again with a reduced timeout and a different order of formulas.
+    This is repeated until the solver returns sat or unsat or the timeout
+    is reached.
+
+    :param formulas: The formulas to solve.
+    :param medium_constraints: These constraints are initially added as
+        "hard" constraints; if we do not find a solution, we add them as
+        "soft" constraints and try again. In the latter case, they might be
+        violated.
+    :param soft_constraints: These constraints are added as soft constraints
+        (optimization targets). They might be violated.
+    :param timeout_ms: The initial SMT solver timeout in milliseconds.
+    :return: A tuple of the final solver verdict (sat, unsat, unknown)
+        and the model (if any).
+    """
+
     logger = logging.getLogger("z3_solve")
-    formulas = list(formulas)
+    shuffled_formulas: Tuple[z3.BoolRef, ...] = tuple(formulas) + tuple(
+        medium_constraints
+    )
 
     result = z3.unknown  # To remove IDE warning
     model: Optional[z3.ModelRef] = None
-    parallel = False
+    parallel = z3.get_param(Z3_PARALLEL_ENABLE)
+    initially_parallel = z3.get_param(Z3_PARALLEL_ENABLE)
 
-    for _ in range(20):
-        solver = z3.Solver()
+    for _ in range(3):
+        solver = z3.Solver() if not soft_constraints else z3.Optimize()
+
         if timeout_ms is not None:
             solver.set("timeout", timeout_ms)
-        for formula in formulas:
+        for formula in shuffled_formulas:
             solver.add(formula)
+        for suggestion in soft_constraints:
+            solver.add_soft(suggestion)
+
         result = solver.check()
 
         if result == z3.sat:
             model = solver.model()
+            return z3.sat, model
 
-        if result != z3.unknown:
-            break
+        if result == z3.unsat:
+            return z3.unsat, None
+
+        assert result == z3.unknown
 
         if timeout_ms is None:
             break
 
-        timeout_ms = int(timeout_ms * 0.9) + 1
-        random.shuffle(formulas)
+        timeout_ms = min(timeout_ms // 2, 1)
+        shuffled_formulas = shuffle(shuffled_formulas)
         parallel = not parallel
-        z3.set_param("parallel.enable", parallel)
-        z3.set_param("smt.random_seed", random.randint(0, 99999))
+        z3.set_param(Z3_PARALLEL_ENABLE, parallel)
+        z3.set_param(Z3_RANDOM_SEED, random.randint(0, 99999))
 
-    if result == z3.unknown:
-        logger.warning(
-            "Satisfiability of %s could not be decided", list(map(str, formulas))
+    z3.set_param(Z3_PARALLEL_ENABLE, initially_parallel)
+
+    if medium_constraints:
+        logger.info(
+            "Trying to solve with 'medium' constraints %s as soft constraints",
+            deep_str(medium_constraints),
         )
 
-    return result, model
+        return z3_solve(
+            formulas,
+            (),
+            tuple(medium_constraints) + tuple(soft_constraints),
+            timeout_ms=timeout_ms,
+        )
+
+    if result == z3.unknown:
+        logger.warning("Satisfiability of %s could not be decided", deep_str(formulas))
+
+    return z3.unknown, None
 
 
 class DomainError(RuntimeError):
@@ -695,10 +745,39 @@ def z3_eq(formula_1: z3.ExprRef, formula_2: z3.ExprRef | str | int) -> z3.BoolRe
 
 def z3_and(formulas: Sequence[z3.BoolRef]) -> z3.BoolRef:
     if not formulas:
-        return z3.BoolRef(True)
+        return z3.BoolVal(True)
     if len(formulas) == 1:
         return formulas[0]
     return z3.And(*formulas)
+
+
+def z3_concat(formulas: Sequence[z3.SeqRef]) -> z3.SeqRef:
+    """
+    Concatenates the given formulas using the z3 Concat operator.
+    Handles the special case of a single formula by returning it directly.
+
+    >>> x, y = z3.Strings("x y")
+    >>> z3_concat([x, z3.StringVal("abc"), y])
+    Concat(x, Concat("abc", y))
+
+    >>> z3_concat([x])
+    x
+
+    >>> z3_concat([])
+    Traceback (most recent call last):
+    ...
+    AssertionError: Cannot concatenate an empty sequence of formulas.
+
+    :param formulas: The formulas to concatenate.
+    :return: The concatenation of the given formulas.
+    """
+
+    assert formulas, "Cannot concatenate an empty sequence of formulas."
+
+    if len(formulas) == 1:
+        return formulas[0]
+
+    return z3.Concat(*formulas)
 
 
 def z3_or(formulas: Sequence[z3.BoolRef]) -> z3.BoolRef:
@@ -874,13 +953,13 @@ def smt_string_val_to_string(smt_val: z3.StringVal) -> str:
     r"""
     Converts `smt_val` to its string representation. Handles the special case of
     null-bytes characters in `smt_val`: Those are represented as `\u{}` by `as_string()`
-    and get converted to `\x00`.
+    in older Z3 versions and `\u{0}` in newer versions. They are replaced by `\x00`.
 
     :param smt_val: The `z3.StringVal` to convert to a Python string.
     :return: The Python string representation of `smt_val`.
     """
 
-    return smt_val.as_string().replace(r"\u{}", "\x00")
+    return smt_val.as_string().replace(r"\u{0}", "\x00").replace(r"\u{}", "\x00")
 
 
 def parent_relationships_in_z3_expr(
@@ -1286,9 +1365,11 @@ def numeric_intervals_from_concat(
                 lambda option_or_union: numeric_intervals_from_regex(
                     z3.Concat(option_or_union, *children[1:])
                 ),
-                first_child.children()
-                if first_child.decl().kind() == z3.Z3_OP_RE_UNION
-                else [z3.Re("+"), z3.Re("-")],
+                (
+                    first_child.children()
+                    if first_child.decl().kind() == z3.Z3_OP_RE_UNION
+                    else [z3.Re("+"), z3.Re("-")]
+                ),
             )
         )
     elif first_child in [z3.Re("+"), z3.Option(z3.Re("+"))]:

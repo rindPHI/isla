@@ -128,9 +128,9 @@ class Evaluator:
             exit(1)
 
         self.jobs_and_generators = {
-            f"{jobname_prefix} {job}": generator
-            if isinstance(generator, dict)
-            else generator(self.timeout)
+            f"{jobname_prefix} {job}": (
+                generator if isinstance(generator, dict) else generator(self.timeout)
+            )
             for job, generator in zip(jobnames, generators)
             if job in chosen_jobs
         }
@@ -340,15 +340,15 @@ class Evaluator:
 
             with pmp.Pool(processes=pmp.cpu_count()) as pool:
                 pool.starmap(
-                    lambda jobname, generator: generate_inputs(
-                        generator, self.timeout, jobname
-                    )
-                    if self.dry_run
-                    else store_inputs(
-                        jobname,
-                        self.timeout,
-                        generate_inputs(generator, self.timeout, jobname),
-                        self.db_file,
+                    lambda jobname, generator: (
+                        generate_inputs(generator, self.timeout, jobname)
+                        if self.dry_run
+                        else store_inputs(
+                            jobname,
+                            self.timeout,
+                            generate_inputs(generator, self.timeout, jobname),
+                            self.db_file,
+                        )
                     ),
                     list(self.jobs_and_generators.items()),
                 )
@@ -371,9 +371,11 @@ class Evaluator:
                 [jobname],
                 [self.validator],
                 [self.db_file],
-                sids[jobname]
-                if self.num_sessions < 0
-                else sids[jobname][len(sids[jobname]) - self.num_sessions :],
+                (
+                    sids[jobname]
+                    if self.num_sessions < 0
+                    else sids[jobname][len(sids[jobname]) - self.num_sessions :]
+                ),
             )
             for jobname in self.jobs_and_generators
         ]
@@ -399,9 +401,11 @@ class Evaluator:
                 [self.graph],
                 [k],
                 [self.db_file],
-                sids[jobname]
-                if self.num_sessions < 0
-                else sids[jobname][len(sids[jobname]) - self.num_sessions :],
+                (
+                    sids[jobname]
+                    if self.num_sessions < 0
+                    else sids[jobname][len(sids[jobname]) - self.num_sessions :]
+                ),
             )
             for jobname in self.jobs_and_generators
             for k in self.kvalues
@@ -676,9 +680,11 @@ def strtime() -> str:
 
 
 def generate_inputs(
-    generator: Generator[isla.derivation_tree.DerivationTree, None, None]
-    | ISLaSolver
-    | Grammar,
+    generator: (
+        Generator[isla.derivation_tree.DerivationTree, None, None]
+        | ISLaSolver
+        | Grammar
+    ),
     timeout_seconds: int = 60,
     jobname: Optional[str] = None,
 ) -> Dict[float, isla.derivation_tree.DerivationTree]:
@@ -717,9 +723,11 @@ def generate_inputs(
 
 
 def make_input_generator(
-    generator: Generator[isla.derivation_tree.DerivationTree, None, None]
-    | ISLaSolver
-    | Grammar
+    generator: (
+        Generator[isla.derivation_tree.DerivationTree, None, None]
+        | ISLaSolver
+        | Grammar
+    )
 ) -> Generator[isla.derivation_tree.DerivationTree, None, None]:
     if isinstance(generator, ISLaSolver):
 
@@ -727,7 +735,7 @@ def make_input_generator(
             while True:
                 try:
                     yield generator.solve()
-                except TimeoutError | StopIteration:
+                except (TimeoutError, StopIteration):
                     return
 
         return gen()

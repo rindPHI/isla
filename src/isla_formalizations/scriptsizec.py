@@ -120,9 +120,10 @@ def compile_scriptsizec_clang(
     contents += "\n" + str(tree).replace("\n", "    \t")
     contents += "\n" + "}"
 
-    with tempfile.NamedTemporaryFile(suffix=".c") as tmp, tempfile.NamedTemporaryFile(
-        suffix=".o"
-    ) as outfile:
+    with (
+        tempfile.NamedTemporaryFile(suffix=".c") as tmp,
+        tempfile.NamedTemporaryFile(suffix=".o") as outfile,
+    ):
         tmp.write(contents.encode())
         tmp.flush()
         cmd = ["clang", tmp.name, "-o", outfile.name]
