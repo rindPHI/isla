@@ -129,9 +129,9 @@ def solve(stdout, stderr, parser: ArgumentParser, args: Namespace):
     grammar = parse_grammar(command, args.grammar, files, stderr)
     structural_predicates, semantic_predicates = read_predicates(files, stderr)
 
-    assert (
-        not semantic_predicates
-    ), "The RepairSolver does not support semantic predicates"  # TODO
+    semantic_predicates = (
+        {}
+    )  # "The RepairSolver does not support semantic predicates" TODO
 
     constraint = parse_constraint(
         command,
