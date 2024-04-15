@@ -142,10 +142,6 @@ def solve(stdout, stderr, parser: ArgumentParser, args: Namespace):
         structural_predicates=structural_predicates,
     )
 
-    assert (
-        not args.activate_unsat_support
-    ), "UNSAT support is not yet supported by the RepairSolver"  # TODO
-
     solver = RepairSolver(
         grammar,
         constraint,
