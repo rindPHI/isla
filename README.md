@@ -93,7 +93,7 @@ a := a ; a := 9
 a := a ; a := a
 ```
 
-> :bulb: The setting `-f 1` restricts the number of times that ILSa randomly
+> :bulb: The setting `-f 1` restricts the number of times that ISLa randomly
 > instantiates unconstrained input elements to one time. Here, this affects the
 > `<digit>` nonterminals: Without `-f 1`, we would see 10 different variants of the
 > first input with variying numbers in the first and third assignment.
