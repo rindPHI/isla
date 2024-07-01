@@ -187,7 +187,7 @@ def level_check(  # noqa: C901
         if path_1[idx] != path_2[idx]:
             break
 
-        prefix = path_1[:idx]
+        prefix = path_1[:idx + 1]  # should consider a prefix up to and including the current index
         if context_tree.get_subtree(prefix).value == nonterminal:
             common_nonterminal_prefixes.append(prefix)
 
