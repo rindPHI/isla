@@ -108,24 +108,26 @@ REST_GRAMMAR = {
 }
 
 # The below encoding is the most efficient one, but heavily uses semantic predicates
-LENGTH_UNDERLINE = parse_isla(
-    """
-forall <section-title> title="{<title-text> titletxt}\n{<underline> underline}" in start:
-  exists int title_length:
-    exists int underline_length:
-      ((> (str.to.int title_length) 0) and
-      ((<= (str.to.int title_length) (str.to.int underline_length)) and
-      (ljust_crop(titletxt, title_length, " ") and
-       extend_crop(underline, underline_length))))
-""",
-    REST_GRAMMAR,
-    semantic_predicates={LJUST_CROP_PREDICATE, EXTEND_CROP_PREDICATE},
-)
-
-# LENGTH_UNDERLINE = parse_isla("""
+# LENGTH_UNDERLINE = parse_isla(
+#     """
 # forall <section-title> title="{<title-text> titletxt}\n{<underline> underline}" in start:
-#   (>= (str.len underline) (str.len titletxt))
-# """)
+#   exists int title_length:
+#     exists int underline_length:
+#       ((> (str.to.int title_length) 0) and
+#       ((<= (str.to.int title_length) (str.to.int underline_length)) and
+#       (ljust_crop(titletxt, title_length, " ") and
+#        extend_crop(underline, underline_length))))
+# """,
+#     REST_GRAMMAR,
+#     semantic_predicates={LJUST_CROP_PREDICATE, EXTEND_CROP_PREDICATE},
+# )
+
+LENGTH_UNDERLINE = parse_isla("""
+forall <section-title> title="{<title-text> titletxt}\n{<underline> underline}" in start: (
+  (>= (str.len underline) (str.len titletxt)) and
+  str.len(titletxt) > 0
+)
+""")
 
 DEF_LINK_TARGETS = parse_isla(
     """
