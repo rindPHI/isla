@@ -37,7 +37,10 @@ dependencies = [
     "returns>=0.21.0",
     "toml>=0.10.2",
     "wheel>=0.37.1",
-    "z3-solver>=4.8.17.0,<=4.11.2.0",
+    # No upper bound: null-byte rendering differs across z3 versions
+    # (`\u{}` in z3<=4.11, `\u{0}` in z3>=4.13) and z3_helpers handles both.
+    # z3>=4.13.0.0 is the first release with manylinux_aarch64 wheels.
+    "z3-solver>=4.8.17.0",
 ]
 
 [project.urls]

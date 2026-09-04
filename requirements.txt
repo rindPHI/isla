@@ -10,4 +10,6 @@ returns>=0.21.0
 setuptools-antlr>=0.4.0
 toml>=0.10.2
 wheel>=0.37.1
-z3-solver>=4.8.17.0,<=4.11.2.0
+# No upper bound on z3 (see pyproject.toml): z3_helpers handles both
+# null-byte renderings (`\u{}` old, `\u{0}` new); z3>=4.13 has aarch64 wheels.
+z3-solver>=4.8.17.0
